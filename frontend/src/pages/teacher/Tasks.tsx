@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { get, post } from '../../api'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmt, gradeTone, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
+import { MathText } from '../../MathText'
 
 type Task = { id: number; title: string; opens_at: string; closes_at: string; duration_min: number; questions: number; submitted: number; avg_pct: number | null }
 const ml = (x: any) => (x ? x.az || x.ru || x.en || '' : '')
@@ -88,7 +89,7 @@ function CreateTask({ ta, onClose, onDone }: { ta: number; onClose: () => void; 
               {qs.map(q => (
                 <label key={q.id} className="jrow" style={{ gridTemplateColumns: '24px minmax(0,1fr) auto', cursor: 'pointer' }}>
                   <input type="checkbox" checked={picked.has(q.id)} onChange={() => toggle(q)} />
-                  <span className="small">{q.n}. {ml(q.text).slice(0, 180)}{q.image ? ' 🖼' : ''}</span>
+                  <span className="small clamp2">{q.n}. <MathText text={ml(q.text)} />{q.image ? ' 🖼' : ''}</span>
                   <Pill>{q.kind === 'mcq' ? 'variantlı' : 'açıq'}</Pill>
                 </label>))}
             </div>
@@ -115,7 +116,7 @@ function Results({ ta, id, onClose }: { ta: number; id: number; onClose: () => v
           <section className="panel"><h2>Suallar üzrə</h2>
             {d.questions.map((q: any) => (
               <div key={q.index} className="row small" style={{ marginBottom: 6 }}>
-                <span className="grow">{q.index + 1}. {ml(q.text).slice(0, 90)}</span>
+                <span className="grow clamp2">{q.index + 1}. <MathText text={ml(q.text)} /></span>
                 <div className="cmp" style={{ width: 120, marginTop: 0 }}><i style={{ width: (q.pct || 0) + '%', background: (q.pct ?? 100) < 50 ? 'var(--bad)' : 'var(--accent)' }} /></div>
                 <b className="num" style={{ width: 44, textAlign: 'right' }}>{fmt(q.pct, 0)}%</b>
               </div>))}

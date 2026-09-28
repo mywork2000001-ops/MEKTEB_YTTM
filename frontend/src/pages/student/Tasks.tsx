@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ApiError, get, post, put } from '../../api'
 import { useT } from '../../i18n'
 import { AsyncBtn, Drawer, ErrorBox, gradeTone, Loading, Pill, toast, Top, useLoad } from '../../ui'
+import { MathText } from '../../MathText'
 
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 const hm = (s: string) => new Date(s).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -101,12 +102,12 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
       </div>
       <section className="panel">
         <p className="small muted">Sual {i + 1} / {d.questions.length}</p>
-        <p style={{ fontSize: 17, whiteSpace: 'pre-wrap' }}>{ml(q.text)}</p>
+        <MathText as="p" style={{ fontSize: 17, whiteSpace: 'pre-wrap' }} text={ml(q.text)} />
         {q.image && <img className="q-img" src={q.image} alt="" />}
         {q.kind === 'mcq' ? (
           <div className="stack">{q.options.map((o: any, k: number) => (
             <div key={k} className="q-opt" role="radio" tabIndex={0} aria-checked={ans[q.index] === k} onClick={() => set(q.index, k)} onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') set(q.index, k) }}>
-              <b>{'ABCDE'[k]})</b><span>{ml(o)}</span></div>))}</div>
+              <b>{'ABCDE'[k]})</b><MathText text={ml(o)} /></div>))}</div>
         ) : (
           <input className="sel w100" style={{ fontSize: 16 }} placeholder="Cavabınızı yazın" value={ans[q.index] ?? ''} onChange={e => set(q.index, e.target.value)} />
         )}
@@ -127,12 +128,12 @@ function Review({ id, onClose }: { id: number; onClose: () => void }) {
       <ErrorBox error={err} />
       {d?.questions.map((q: any, k: number) => (
         <section key={k} className="panel" style={{ marginBottom: 10, borderColor: q.ok ? 'var(--ok)' : 'var(--bad)' }}>
-          <p><b>{k + 1}.</b> {ml(q.text)}</p>
+          <p><b>{k + 1}.</b> <MathText text={ml(q.text)} /></p>
           {q.image && <img className="q-img" src={q.image} alt="" />}
           {q.kind === 'mcq' ? q.options.map((o: any, j: number) => (
-            <div key={j} className="small" style={{ color: j === q.correct ? 'var(--ok)' : j === q.given ? 'var(--bad)' : undefined, fontWeight: j === q.correct ? 600 : 400 }}>{'ABCDE'[j]}) {ml(o)}{j === q.given ? ' ← sizin cavab' : ''}</div>))
+            <div key={j} className="small" style={{ color: j === q.correct ? 'var(--ok)' : j === q.given ? 'var(--bad)' : undefined, fontWeight: j === q.correct ? 600 : 400 }}>{'ABCDE'[j]}) <MathText text={ml(o)} />{j === q.given ? ' ← sizin cavab' : ''}</div>))
             : <p className="small">Sizin cavab: <b>{q.given || '—'}</b> · Düzgün: <b style={{ color: 'var(--ok)' }}>{String(q.answer).split('|')[0]}</b></p>}
-          {q.explanation && <p className="small muted" style={{ whiteSpace: 'pre-wrap' }}>İzah: {ml(q.explanation)}</p>}
+          {q.explanation && <p className="small muted" style={{ whiteSpace: 'pre-wrap' }}>İzah: <MathText text={ml(q.explanation)} /></p>}
         </section>))}
     </Drawer>
   )

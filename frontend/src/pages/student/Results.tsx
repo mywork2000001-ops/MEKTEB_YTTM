@@ -1,6 +1,7 @@
 import { get } from '../../api'
 import { useT } from '../../i18n'
 import { ErrorBox, fmt, fmtDate, gradeTone, Loading, Pill, Stat, Top, useLoad } from '../../ui'
+import { MathText } from '../../MathText'
 
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 
@@ -42,10 +43,10 @@ export default function Results() {
         <h2>{t('Səhvlərim')} <small>{d.mistakes.length}</small></h2>
         {d.mistakes.length === 0 ? <p className="muted">Səhv yoxdur və ya cavablar hələ açılmayıb.</p> : d.mistakes.map((m: any, k: number) => (
           <details key={k} style={{ borderBottom: '1px solid var(--line)', padding: '8px 0' }}>
-            <summary style={{ cursor: 'pointer' }}>{ml(m.text).slice(0, 120)} <span className="small muted">· {m.task}</span></summary>
+            <summary style={{ cursor: 'pointer' }}><MathText text={ml(m.text)} /> <span className="small muted">· {m.task}</span></summary>
             {m.image && <img className="q-img" src={m.image} alt="" />}
-            <p className="small">Sizin cavab: <b style={{ color: 'var(--bad)' }}>{m.kind === 'mcq' ? (m.given != null ? ml(m.options?.[m.given]) : '—') : m.given || '—'}</b> · Düzgün: <b style={{ color: 'var(--ok)' }}>{m.kind === 'mcq' ? ml(m.options?.[m.correct]) : String(m.answer).split('|')[0]}</b></p>
-            {m.explanation && <p className="small muted" style={{ whiteSpace: 'pre-wrap' }}>{ml(m.explanation)}</p>}
+            <p className="small">Sizin cavab: <b style={{ color: 'var(--bad)' }}>{m.kind === 'mcq' ? (m.given != null ? <MathText text={ml(m.options?.[m.given])} /> : '—') : m.given || '—'}</b> · Düzgün: <b style={{ color: 'var(--ok)' }}>{m.kind === 'mcq' ? <MathText text={ml(m.options?.[m.correct])} /> : String(m.answer).split('|')[0]}</b></p>
+            {m.explanation && <p className="small muted" style={{ whiteSpace: 'pre-wrap' }}><MathText text={ml(m.explanation)} /></p>}
           </details>))}
       </section>
     </>

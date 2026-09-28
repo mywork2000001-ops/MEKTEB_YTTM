@@ -21,6 +21,7 @@ function ClassesTab() {
   const [edit, setEdit] = useState<Cls | 'new' | null>(null)
   const [join, setJoin] = useState<Cls | null>(null)
   const [members, setMembers] = useState<Cls | null>(null)
+  const [split, setSplit] = useState<Cls | null>(null)
   if (loading && !classes) return <Loading />
   return (
     <>
@@ -38,7 +39,8 @@ function ClassesTab() {
             <span className="row">
               <button className="btn sm" onClick={() => setJoin(c)}>{c.mine ? 'Cədvəl' : 'Qoşul'}</button>
               {c.can_open && <button className="btn sm" onClick={() => setEdit(c)}>Redaktə</button>}
-              {c.can_open && c.kind === 'qrup' && <button className="btn sm" onClick={() => setMembers(c)}>Üzvlər</button>}
+              {c.can_open && c.kind === 'qrup' && <button className="btn sm" onClick={() => setMembers(c)}>Bölünmə</button>}
+              {c.can_open && c.kind !== 'qrup' && <button className="btn sm" onClick={() => setSplit(c)}>Bölünmə yarat</button>}
             </span>
           </div>))}
         {classes?.length === 0 && <div className="empty">Hələ sinif yoxdur.</div>}
@@ -46,6 +48,7 @@ function ClassesTab() {
       {edit && <ClassForm cls={edit === 'new' ? null : edit} all={classes || []} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
       {join && <JoinForm cls={join} onClose={() => setJoin(null)} onDone={() => { setJoin(null); reload() }} />}
       {members && <Members cls={members} onClose={() => { setMembers(null); reload() }} />}
+      {split && <SplitForm parent={split} onClose={() => setSplit(null)} onDone={() => { setSplit(null); reload() }} />}
     </>
   )
 }
@@ -136,13 +139,55 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
 function Members({ cls, onClose }: { cls: Cls; onClose: () => void }) {
   const [studs] = useLoad<Stud[]>(() => get('/api/students', { class_id: cls.parent_id! }), [cls.parent_id])
   const [ids, setIds] = useState<Set<number>>(new Set())
+  const [other, setOther] = useState(cls.split_with || '')
   useEffect(() => { get<number[]>(`/api/classes/${cls.id}/members`).then(x => setIds(new Set(x))) }, [cls.id])
+  const inner = cls.name.includes('(') ? cls.name.slice(cls.name.indexOf('(') + 1).replace(')', '').replace(/ qrupu$/, '').trim() : 'Bu qrup'
+  const mine = inner.charAt(0).toLocaleUpperCase('az') + inner.slice(1)
+  const otherName = (other.split('–')[0] || 'Digər fənn').trim()
+  const set = (sid: number, inGroup: boolean) => { const n = new Set(ids); inGroup ? n.add(sid) : n.delete(sid); setIds(n) }
   return (
-    <Drawer title={`${cls.name} – üzvlər`} onClose={onClose}
-      footer={<><span className="small muted grow">{ids.size} şagird</span><AsyncBtn className="btn primary" ok="Qrup yadda saxlanıldı" onClick={async () => { await put(`/api/classes/${cls.id}/members`, { student_ids: [...ids] }); onClose() }}>Yadda saxla</AsyncBtn></>}>
-      <p className="small muted">{cls.split_with ? `Qalan şagirdlər paralel fənnə gedir: ${cls.split_with}.` : 'Qrupa daxil olan şagirdləri işarələyin.'}</p>
-      {!studs ? <Loading /> : studs.map(s => (
-        <label key={s.id} className="check"><input type="checkbox" checked={ids.has(s.id)} onChange={() => { const n = new Set(ids); n.has(s.id) ? n.delete(s.id) : n.add(s.id); setIds(n) }} />{s.full_name}</label>))}
+    <Drawer title={`${cls.name} – bölünmə`} onClose={onClose}
+      footer={<><span className="small muted grow">{mine}: {ids.size} · {otherName}: {(studs?.length || 0) - ids.size}</span>
+        <AsyncBtn className="btn primary" ok="Bölünmə yadda saxlanıldı" onClick={async () => {
+          if (other !== (cls.split_with || '')) await patch(`/api/classes/${cls.id}`, { split_with: other || null })
+          await put(`/api/classes/${cls.id}/members`, { student_ids: [...ids] }); onClose()
+        }}>Yadda saxla</AsyncBtn></>}>
+      <Field label="Paralel fənn (sinfin digər yarısı)" hint="məs. Biologiya – Şərqiyə müəllimə"><input value={other} onChange={e => setOther(e.target.value)} /></Field>
+      <div className="row" style={{ margin: '12px 0' }}>
+        <button className="btn sm" onClick={() => setIds(new Set((studs || []).map(s => s.id)))}>Hamısı: {mine}</button>
+        <button className="btn sm" onClick={() => setIds(new Set())}>Hamısı: {otherName}</button>
+      </div>
+      {!studs ? <Loading /> : (
+        <div className="jlist">{studs.map(s => (
+          <div key={s.id} className="jrow" style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}>
+            <span>{s.full_name}</span>
+            <div className="seg" role="group" aria-label={s.full_name} style={{ minWidth: 220 }}>
+              <button aria-pressed={ids.has(s.id)} onClick={() => set(s.id, true)}>{mine}</button>
+              <button aria-pressed={!ids.has(s.id)} onClick={() => set(s.id, false)}>{otherName}</button>
+            </div>
+          </div>))}</div>)}
+    </Drawer>
+  )
+}
+
+function SplitForm({ parent, onClose, onDone }: { parent: Cls; onClose: () => void; onDone: () => void }) {
+  const [subject, setSubject] = useState('riyaziyyat')
+  const [other, setOther] = useState('Biologiya')
+  const [err, setErr] = useState<unknown>()
+  return (
+    <Drawer title={`${parent.name} – bölünmə yarat`} onClose={onClose}
+      footer={<><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" disabled={!subject || !other} onClick={async () => {
+        try {
+          await post('/api/classes', { name: `${parent.name} (${subject} qrupu)`, kind: 'qrup', parent_id: parent.id, split_with: other })
+          toast('Qrup yaradıldı – indi «Qoşul» ilə cədvəli, «Bölünmə» ilə şagirdləri seçin'); onDone()
+        } catch (e) { setErr(e) }
+      }}>Yarat</button></>}>
+      <div className="stack">
+        <p className="small muted">Sinif bəzi saatlarda iki qrupa bölünür: bir qrup sizin fənninizə, digəri paralel fənnə gedir. Şagirdləri sonra özünüz seçəcəksiniz.</p>
+        <Field label="Sizin qrupun fənni"><input value={subject} onChange={e => setSubject(e.target.value)} /></Field>
+        <Field label="Paralel fənn (və müəllimi)"><input value={other} onChange={e => setOther(e.target.value)} placeholder="Biologiya – Şərqiyə müəllimə" /></Field>
+        <ErrorBox error={err} />
+      </div>
     </Drawer>
   )
 }

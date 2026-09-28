@@ -30,3 +30,4 @@
 .bubble img{max-width:240px;border-radius:8px;display:block;margin-top:4px}
 .bubble audio,.bubble video{max-width:260px;display:block;margin-top:4px}
 @media print{.side,.tabbar,.topbar,.no-print{display:none!important}.app{display:block}main{padding:0}body{background:#fff;color:#000}}
+.clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
