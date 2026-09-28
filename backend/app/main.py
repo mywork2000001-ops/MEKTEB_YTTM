@@ -29,14 +29,32 @@ def bootstrap():
     pw = settings().admin_password
     if not pw:
         return
+    import hashlib
+    from .models import AppState
+    applied = hashlib.sha256(pw.encode()).hexdigest()
     with SessionLocal() as db:
         if db.scalar(select(User.id).limit(1)):
+            # MK_ADMIN_PASSWORD hostinqdə DƏYİŞDİRİLİBSƏ – admin parolu bir dəfə ona keçir
+            # (tətbiqdə sonradan dəyişdirilən parol, env dəyişmədikcə pozulmur)
+            st = db.get(AppState, 'admin_pw_applied')
+            if st is None:
+                st = AppState(key='admin_pw_applied', value='')
+                db.add(st)
+            if st.value != applied:
+                u = db.scalar(select(User).where(User.login == settings().admin_login))
+                if u:
+                    u.password_hash = hash_password(pw)
+                    u.failed_logins, u.locked_until = 0, None
+                st.value = applied
+                db.commit()
+                logging.getLogger('bootstrap').info('admin parolu hostinq dəyişəni ilə yeniləndi')
             return
         from .seed import seed
         seed(db, login=settings().admin_login, utis_xlsx=Path('/nonexistent'), plans_dir=None,
              out_dir=Path(tempfile.gettempdir()))
         u = db.scalar(select(User).where(User.login == settings().admin_login))
         u.password_hash = hash_password(pw)
+        db.merge(AppState(key='admin_pw_applied', value=applied))
         db.commit()
         logging.getLogger('bootstrap').info('ilk quraşdırma: admin %s yaradıldı', u.login)
 
