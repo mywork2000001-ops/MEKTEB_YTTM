@@ -22,6 +22,7 @@ class LoginIn(BaseModel):
 
 
 class MeOut(BaseModel):
+    weak_password: bool = False
     id: int
     role: Role
     login: str
@@ -58,7 +59,9 @@ def login(body: LoginIn, response: Response, db: Session = Depends(get_db)):
     db.add(AuditLog(user_id=u.id, action='login', entity='user', entity_id=str(u.id)))
     db.commit()
     _set_cookie(response, u)
-    return _me(u)
+    out = _me(u)
+    out.weak_password = u.role != Role.student and len(body.password) < 8   # müəllim/admin üçün xəbərdarlıq
+    return out
 
 
 @router.post('/logout')

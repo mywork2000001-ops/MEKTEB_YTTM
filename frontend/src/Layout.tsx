@@ -71,6 +71,8 @@ export function Layout({ children }: { children: ReactNode }) {
               <span className="tb-uname"><b>{shortName}</b><small>{student ? t('Şagird') : me?.role === 'admin' ? 'Admin' : 'Müəllim'}</small></span>
             </button>
           </div>
+          {!student && (() => { try { return sessionStorage.getItem('mk-weak') === '1' } catch { return false } })() && (
+            <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>Parolunuz zəifdir (8 simvoldan qısa). Tənzimləmələr → Hesab bölməsində daha uzun parol qoyun.</div>)}
           {children}
         </main>
       </div>

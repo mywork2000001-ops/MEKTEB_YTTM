@@ -8,7 +8,7 @@ type Stud = { id: number; full_name: string; portal_code: string }
 type MarkRow = { student_id: number; kind: 'şifahi' | 'yazılı' | 'test'; grade?: number | null; test_correct?: number | null; test_total?: number | null }
 type Lesson = {
   period: number; time: string | null; held: boolean; shift: number; homework_to_check: string | null
-  plan: { topic: string; assessment_type: string; section: string | null; resources: string | null; seq: number; tasks: any[] } | null
+  plan: { topic: string; assessment_type: string; section: string | null; resources: string | null; seq: number; standards: string[] | null; tasks: { kind: string; label: string; start: number; end: number }[] | null } | null
   entry: { exists: boolean; topic?: string | null; homework?: string | null; note?: string | null; attendance: Record<string, string>; marks: MarkRow[]; homework_checks: Record<string, string> }
 }
 type Day = { date: string; weekday: string | null; class_name: string; lessons: Lesson[]; students: Stud[] }
@@ -93,6 +93,8 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
     else await post(`/api/plan/${ta.id}/hold`, { date, period: lesson.period })
     onSaved()
   }
+  const taskText = (kind: string) => (lesson.plan?.tasks || []).filter(t => t.kind === kind)
+    .map(t => `${t.label ? t.label + ' ' : ''}${t.start === t.end ? '№' + t.start : t.start + '–' + t.end}`).join('; ')
   const present = students.filter(s => att[s.id] !== 'yox').length
   const isExam = lesson.plan && ['KSQ', 'BSQ'].includes(lesson.plan.assessment_type)
 
@@ -107,8 +109,12 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
         <label className="f full">Mövzu <span className="hint">perspektiv plandan avtomatik{lesson.plan ? ` (№${lesson.plan.seq})` : ''}</span>
           <textarea value={topic || lesson.plan?.topic || ''} onChange={x => setTopic(x.target.value)} rows={2} />
         </label>
+        {lesson.plan?.standards?.length ? <p className="full small" style={{ margin: 0 }}>Standartlar: <b>{lesson.plan.standards.join(', ')}</b></p> : null}
         {lesson.plan?.resources && <p className="full small muted" style={{ margin: 0 }}>Resurslar: {lesson.plan.resources}</p>}
-        <label className="f full">Ev tapşırığı<input value={homework} onChange={x => setHomework(x.target.value)} placeholder="məs. S 1–10, E 11–20" /></label>
+        {taskText('sinif') && <p className="full small" style={{ margin: 0 }}>Sinifdə: <b>{taskText('sinif')}</b>{taskText('mustaqil') ? <> · müstəqil: {taskText('mustaqil')}</> : null}</p>}
+        <label className="f full">Ev tapşırığı
+          <span className="row" style={{ flexWrap: 'nowrap' }}><input className="grow" value={homework} onChange={x => setHomework(x.target.value)} placeholder="məs. S 1–10, E 11–20" />
+            {taskText('ev') && <button type="button" className="btn sm" onClick={() => setHomework(taskText('ev'))} title="Plandakı ev tapşırığı">Plandan</button>}</span></label>
       </div>
       <div className="row" style={{ marginBottom: 10 }}>
         <span className="small muted">İştirak: {present}/{students.length}</span>

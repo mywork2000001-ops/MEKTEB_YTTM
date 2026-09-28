@@ -130,7 +130,7 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
                   <span className="num" style={{ width: 48, textAlign: 'right' }}>{fmt(it.pct, 0)}%</span>
                 </div>))}
               {d.standards.length > 0 && <><h2 style={{ marginTop: 12 }}>Standartlar</h2>
-                {d.standards.map((s: any) => <div key={s.standard} className="row small"><span className="grow">{s.standard}</span><b>{fmt(s.pct, 0)}%</b></div>)}</>}
+                {d.standards.map((s: any) => <div key={s.standard} className="row small"><span className="grow">{s.standard}</span>{s.pct != null && s.pct < 50 && <Pill tone="bad">təkrar tövsiyə olunur</Pill>}<b>{fmt(s.pct, 0)}%</b></div>)}</>}
             </section>)}
         </>
       )}

@@ -40,13 +40,14 @@ def add_students(db: Session, sc: SchoolClass, students, created_by: int | None)
     """UTİS siyahısından sinfə şagird əlavə edir (ad + doğum tarixi təkrarlanırsa ötürür).
     Qaytarır: (sinif, ad, giriş kodu, PIN) – PIN yalnız bu anda məlumdur."""
     out = []
-    for i, s in enumerate(students, 1):
+    used = {int(x.rsplit('-', 1)[1]) for x in db.scalars(select(Student.portal_code)
+            .where(Student.portal_code.like(f'{sc.code}-%'))) if x.rsplit('-', 1)[1].isdigit()}
+    for s in students:
         if _one(db, Student, school_id=sc.school_id, full_name=s.name, birth_date=s.birth_date):
             continue
-        code = f'{sc.code}-{i:03d}'
-        while _one(db, Student, portal_code=code):          # kod toqquşmasın
-            i += 100
-            code = f'{sc.code}-{i:03d}'
+        n = max(used, default=0) + 1                        # sinfin növbəti nömrəsi: XE-001, XE-002, …
+        used.add(n)
+        code = f'{sc.code}-{n:03d}'
         pin = new_pin()
         u = User(role=Role.student, login=code, password_hash=hash_password(pin), full_name=s.name,
                  school_id=sc.school_id)

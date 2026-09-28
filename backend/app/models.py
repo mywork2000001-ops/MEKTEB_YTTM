@@ -466,3 +466,17 @@ class MaterialSubmission(Base):
 
 
 from .storage import FileBlob  # noqa: E402,F401 – çat fayllarının bazada saxlanması (Alembic üçün qeydiyyat)
+
+
+class InviteLink(Base):
+    """Şagirdin özünü qeydiyyatdan keçirməsi üçün sinif linki (müəllim yaradır; müddət və say limiti)."""
+    __tablename__ = 'invite_links'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True)
+    class_id: Mapped[int] = mapped_column(ForeignKey('classes.id', ondelete='CASCADE'))
+    created_by: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    max_uses: Mapped[int] = mapped_column(Integer, default=40)
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)

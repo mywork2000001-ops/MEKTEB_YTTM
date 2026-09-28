@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api, get, post, put } from '../../api'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmtDate, gradeTone, PickFirst, Pill, Seg, toast, Top, useLoad } from '../../ui'
-import { LessonSelect, useMyLessons, usePick } from './common'
+import { LessonSelect, TargetPicker, useMyLessons, usePick } from './common'
 
 type Mat = { id: number; kind: 'task' | 'video' | 'link' | 'note'; title: string; body: string | null; url: string | null; due_at: string | null
   file: { name: string; type: string; size: number; url: string } | null; submitted: number; graded: number; targets: number; created_at: string }
@@ -43,6 +43,7 @@ function CreateMaterial({ ta, onClose, onDone }: { ta: number; onClose: () => vo
   const [kind, setKind] = useState<'task' | 'video' | 'link' | 'note'>('task')
   const [f, setF] = useState({ title: '', body: '', url: '', due: '' })
   const [file, setFile] = useState<File | null>(null)
+  const [targets, setTargets] = useState<number[] | null>(null)
   const [err, setErr] = useState<unknown>()
   const submit = async () => {
     try {
@@ -52,18 +53,20 @@ function CreateMaterial({ ta, onClose, onDone }: { ta: number; onClose: () => vo
       if (f.url) fd.append('url', f.url)
       if (f.due) fd.append('due_at', new Date(f.due).toISOString())
       if (file) fd.append('file', file)
+      if (targets) fd.append('student_ids', targets.join(','))
       await api(`/api/materials/${ta}`, { method: 'POST', form: fd })
       toast('Göndərildi'); onDone()
     } catch (e) { setErr(e) }
   }
   return (
-    <Drawer title="Yeni material" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" disabled={f.title.length < 2} onClick={submit}>Göndər</button></>}>
+    <Drawer title="Yeni material" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" disabled={f.title.length < 2 || (targets !== null && !targets.length)} onClick={submit}>Göndər</button></>}>
       <div className="stack">
         <Seg value={kind} onChange={setKind} options={[['task', 'PDF tapşırıq'], ['video', 'Video dərs'], ['link', 'Link'], ['note', 'Qeyd']]} />
         <Field label="Başlıq"><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
         {(kind === 'video' || kind === 'link') && <Field label="Ünvan" hint="məs. https://youtu.be/…"><input inputMode="url" value={f.url} onChange={e => setF({ ...f, url: e.target.value })} /></Field>}
         {(kind === 'task' || kind === 'note') && <Field label="Fayl" hint="PDF, Word, PowerPoint, şəkil, səs və ya video"><input type="file" accept=".pdf,.doc,.docx,.pptx,image/*,audio/*,video/mp4,video/webm" onChange={e => setFile(e.target.files?.[0] || null)} /></Field>}
         <Field label="Mətn / izah"><textarea value={f.body} onChange={e => setF({ ...f, body: e.target.value })} /></Field>
+        <TargetPicker ta={ta} onChange={setTargets} />
         {kind === 'task' && <Field label="Son vaxt" hint="keçəndən sonra gələn cavab «gecikmiş» qeyd olunur"><input type="datetime-local" value={f.due} onChange={e => setF({ ...f, due: e.target.value })} /></Field>}
         <ErrorBox error={err} />
       </div>

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { get, post, put } from '../../api'
-import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, levelTone, Loading, PickFirst, Pill, Top, useLoad } from '../../ui'
+import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, levelTone, Loading, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
 import { usePick } from './common'
 
 type Cls = { id: number; name: string; code: string; kind: string; students: number; can_open: boolean; split_with: string | null
@@ -42,10 +42,12 @@ export default function Classes() {
 function StudentList({ cls, onOpen }: { cls: Cls; onOpen: (s: Stud) => void }) {
   const [rows, err] = useLoad<Stud[]>(() => get('/api/students', { class_id: cls.id }), [cls.id])
   const [q, setQ] = useState('')
+  const [inv, setInv] = useState(false)
   const list = (rows || []).filter(s => !q || s.full_name.toLowerCase().includes(q.toLowerCase()))
   return (
     <>
-      <h2 className="sec">{cls.name} <small>{rows?.length ?? ''} şagird</small></h2>
+      <h2 className="sec">{cls.name} <small>{rows?.length ?? ''} şagird</small>{cls.kind !== 'qrup' && <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => setInv(true)}>Qeydiyyat linki</button>}</h2>
+      {inv && <Invites cls={cls} onClose={() => setInv(false)} />}
       <ErrorBox error={err} />
       <div className="toolbar"><div className="search"><input placeholder="Şagird axtar" value={q} onChange={e => setQ(e.target.value)} /></div></div>
       <div className="tbl-wrap"><table>
@@ -129,5 +131,36 @@ function IPlans({ sid }: { sid: number }) {
         setGoal(''); setSteps(''); reload()
       }}>Plan yarat</AsyncBtn>
     </div>
+  )
+}
+
+function Invites({ cls, onClose }: { cls: Cls; onClose: () => void }) {
+  const [list, err, , reload] = useLoad<any[]>(() => get(`/api/classes/${cls.id}/invites`), [cls.id])
+  const [days, setDays] = useState(7)
+  const [max, setMax] = useState(40)
+  const full = (u: string) => location.origin + u
+  return (
+    <Drawer title={`${cls.name} – qeydiyyat linki`} onClose={onClose}>
+      <div className="stack">
+        <p className="small muted">Şagird linki açır, soyadını, adını, ata adını və doğum tarixini yazır – giriş kodu və PIN avtomatik verilir. Təkrar qeydiyyat bloklanır.</p>
+        <div className="fg">
+          <Field label="Müddət (gün)"><select value={days} onChange={e => setDays(Number(e.target.value))}>{[1, 3, 7, 14, 30].map(d => <option key={d}>{d}</option>)}</select></Field>
+          <Field label="Ən çox qeydiyyat"><select value={max} onChange={e => setMax(Number(e.target.value))}>{[5, 10, 20, 30, 40, 60].map(d => <option key={d}>{d}</option>)}</select></Field>
+        </div>
+        <AsyncBtn className="btn primary" ok="Link yaradıldı" onClick={async () => { await post(`/api/classes/${cls.id}/invites`, { days, max_uses: max }); reload() }}>Yeni link yarat</AsyncBtn>
+        <ErrorBox error={err} />
+        {(list || []).map(l => (
+          <section key={l.id} className="panel" style={{ padding: 12 }}>
+            <div className="row">{l.active ? <Pill tone="ok">aktiv</Pill> : <Pill>bağlıdır</Pill>}<span className="small muted">{l.uses}/{l.max_uses} · son: {fmtDate(l.expires_at)}</span></div>
+            <input className="sel w100" readOnly value={full(l.url)} onFocus={e => e.target.select()} style={{ margin: '8px 0' }} />
+            {l.active && <div className="row">
+              <button className="btn sm" onClick={async () => { try { await navigator.clipboard.writeText(full(l.url)); toast('Kopyalandı') } catch { toast('Linki seçib kopyalayın') } }}>Kopyala</button>
+              <a className="btn sm" target="_blank" rel="noreferrer" href={'https://wa.me/?text=' + encodeURIComponent(`${cls.name} sinfi – Müəllim köməkçisi qeydiyyatı: ${full(l.url)}`)}>WhatsApp</a>
+              <AsyncBtn className="btn sm danger" ok="Link bağlandı" onClick={async () => { await post(`/api/invites/${l.id}/revoke`); reload() }}>Bağla</AsyncBtn>
+            </div>}
+            {l.registered.length > 0 && <p className="small" style={{ margin: '8px 0 0' }}>Qeydiyyatdan keçənlər: {l.registered.join(', ')}</p>}
+          </section>))}
+      </div>
+    </Drawer>
   )
 }

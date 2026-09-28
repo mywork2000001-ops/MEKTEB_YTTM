@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { get, post } from '../../api'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmt, gradeTone, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
-import { LessonSelect, useMyLessons, usePick } from './common'
+import { LessonSelect, TargetPicker, useMyLessons, usePick } from './common'
 import { MathText } from '../../MathText'
 
 type Task = { id: number; title: string; opens_at: string; closes_at: string; duration_min: number; questions: number; submitted: number; avg_pct: number | null }
@@ -51,6 +51,7 @@ function CreateTask({ ta, onClose, onDone }: { ta: number; onClose: () => void; 
   const [qs, setQs] = useState<any[]>([])
   const [picked, setPicked] = useState<Map<number, any>>(new Map())
   const [n, setN] = useState(10)
+  const [targets, setTargets] = useState<number[] | null>(null)
   const [err, setErr] = useState<unknown>()
   useEffect(() => { setLessons([]); setFile(null); if (src) get(`/api/bank/lessons`, { source: src }).then(setLessons, setErr) }, [src])
   useEffect(() => { setQs([]); if (file) get('/api/bank/questions', { file_id: file, limit: 200 }).then(r => setQs(r.items), setErr) }, [file])
@@ -60,13 +61,13 @@ function CreateTask({ ta, onClose, onDone }: { ta: number; onClose: () => void; 
     try {
       const iso = (t: string) => new Date(`${f.date}T${t}:00`).toISOString()
       await post(`/api/tasks/${ta}`, { title: f.title, opens_at: iso(f.from), closes_at: iso(f.to), duration_min: f.duration,
-        bank_ids: [...picked.keys()], shuffle: f.shuffle, show_answers: f.show })
+        bank_ids: [...picked.keys()], shuffle: f.shuffle, show_answers: f.show, student_ids: targets })
       toast('Tapşırıq yaradıldı')
       onDone()
     } catch (e) { setErr(e) }
   }
   return (
-    <Drawer title="Yeni tapşırıq" onClose={onClose} footer={<><span className="small muted grow">{picked.size} sual seçilib</span><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" disabled={!f.title || !picked.size} onClick={submit}>Yarat</button></>}>
+    <Drawer title="Yeni tapşırıq" onClose={onClose} footer={<><span className="small muted grow">{picked.size} sual seçilib</span><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" disabled={!f.title || !picked.size || (targets !== null && !targets.length)} onClick={submit}>Yarat</button></>}>
       <div className="stack">
         <div className="fg">
           <Field label="Ad" full><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="məs. Kvadrat tənliklər – test" /></Field>
@@ -78,6 +79,7 @@ function CreateTask({ ta, onClose, onDone }: { ta: number; onClose: () => void; 
             <option value="after_close">tapşırıq bağlanandan sonra</option><option value="after_submit">təhvil verəndən dərhal sonra</option><option value="never">heç vaxt</option></select></Field>
           <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> Sualların sırası hər şagirdə fərqli</label>
         </div>
+        <TargetPicker ta={ta} onChange={setTargets} />
         <fieldset><legend>Test bazasından suallar (viktorina – avtomatik yenilənir)</legend>
           <div className="stack">
             <select className="sel" value={src} onChange={e => setSrc(e.target.value)}><option value="">— mənbə —</option>

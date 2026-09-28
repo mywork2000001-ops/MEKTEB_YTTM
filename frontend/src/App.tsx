@@ -4,6 +4,7 @@ import { useAuth } from './auth'
 import { I18nCtx, type Lang } from './i18n'
 import { Layout } from './Layout'
 import Login from './pages/Login'
+import Join from './pages/Join'
 import { Loading, ToastHost } from './ui'
 
 const T = {
@@ -33,6 +34,8 @@ export default function App() {
   const { me, ready } = useAuth()
   const [guestLang, setGuestLang] = useState<Lang>(() => (localStorage.getItem('mk-lang') as Lang) || 'az')
   const lang: Lang = me?.language || guestLang
+  const join = location.pathname.match(/^\/join\/([\w-]+)$/)
+  if (join) return <I18nCtx.Provider value={lang}><Join token={join[1]} /><ToastHost /></I18nCtx.Provider>
   if (!ready) return <Loading />
   return (
     <I18nCtx.Provider value={lang}>

@@ -5,7 +5,7 @@ import type { Lang } from './i18n'
 
 export type Me = {
   id: number; role: 'admin' | 'teacher' | 'student'; login: string; full_name: string
-  school_id: number | null; language: Lang; theme: string | null
+  school_id: number | null; language: Lang; theme: string | null; weak_password?: boolean
 }
 
 type Ctx = {
@@ -45,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (l: string, p: string) => {
     const m = await post<Me>('/api/auth/login', { login: l, password: p })
+    try { m.weak_password ? sessionStorage.setItem('mk-weak', '1') : sessionStorage.removeItem('mk-weak') } catch { /* noop */ }
     adopt(m)
     return m
   }

@@ -111,6 +111,11 @@ function Audit() {
   return (
     <>
       <ErrorBox error={err} />
+      <section className="panel" style={{ marginBottom: 14 }}>
+        <h2>Ehtiyat nüsxə</h2>
+        <p className="small muted">Bütün məlumatları (fayllardan başqa) JSON faylı kimi endirir. Pulsuz hostinqdə baza silinə bilər – həftədə bir dəfə endirin. Yeni bazaya yükləmə: <code>tools/restore_backup.py</code>.</p>
+        <a className="btn primary" href="/api/admin/backup">Ehtiyat nüsxəni endir</a>
+      </section>
       <p className="small muted">Kim, nə vaxt, nəyi dəyişib. Mesajların məzmunu burada yoxdur.</p>
       <div className="tbl-wrap"><table><thead><tr><th>Vaxt</th><th>İstifadəçi</th><th>Əməliyyat</th><th>Obyekt</th></tr></thead>
         <tbody>{(rows || []).map(a => <tr key={a.id}><td className="small">{new Date(a.at).toLocaleString('az-AZ')}</td><td>{a.user || '—'}</td><td>{a.action}</td><td className="small">{a.entity} {a.entity_id ? '#' + a.entity_id : ''}</td></tr>)}</tbody></table></div>

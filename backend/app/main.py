@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import scheduler
-from .api import analytics, auth, bank, chat, classes, exams, imports, journal, materials, plan, portal, school, students, tasks
+from .api import admin, analytics, auth, bank, chat, classes, exams, imports, invites, journal, materials, plan, portal, school, students, tasks
 
 def bootstrap():
     """İlk açılış (hostinq): miqrasiyalar + baza boşdursa məktəb, admin, tədris ili, siniflər, cədvəl.
@@ -79,6 +79,28 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title='Müəllim köməkçisi', version='0.1.0', lifespan=lifespan)
+
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+       "font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob:; "
+       "frame-src https://www.youtube-nocookie.com https://www.youtube.com; connect-src 'self'; "
+       "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'")
+
+
+@app.middleware('http')
+async def security_headers(request, call_next):
+    resp = await call_next(request)
+    h = resp.headers
+    h.setdefault('X-Content-Type-Options', 'nosniff')
+    h.setdefault('X-Frame-Options', 'DENY')
+    h.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    h.setdefault('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()')
+    h.setdefault('Content-Security-Policy', CSP)
+    if request.url.path.startswith('/api/'):
+        h.setdefault('Cache-Control', 'no-store')
+    from .config import settings as _s
+    if _s().cookie_secure:
+        h.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    return resp
 app.include_router(auth.router)
 app.include_router(bank.router)
 app.include_router(school.router)
@@ -93,6 +115,8 @@ app.include_router(chat.router)
 app.include_router(analytics.router)
 app.include_router(imports.router)
 app.include_router(materials.router)
+app.include_router(invites.router)
+app.include_router(admin.router)
 
 
 @app.get('/api/health')

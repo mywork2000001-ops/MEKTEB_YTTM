@@ -226,6 +226,7 @@ function StudentsTab() {
   const [rows, err, , reload] = useLoad<Stud[] | null>(() => (cid ? get('/api/students', { class_id: cid }) : Promise.resolve(null)), [cid])
   const [edit, setEdit] = useState<Stud | 'new' | null>(null)
   const [pin, setPin] = useState<{ code: string; pin: string; name: string } | null>(null)
+  const [scores, setScores] = useState(false)
   const openable = (classes || []).filter(c => c.can_open && c.kind !== 'qrup')
   return (
     <>
@@ -233,10 +234,11 @@ function StudentsTab() {
         <select className="sel" value={cid ?? ''} onChange={e => setCid(e.target.value ? Number(e.target.value) : null)}>
           <option value="">— sinif seçin —</option>{openable.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
         {cid && <button className="btn primary" onClick={() => setEdit('new')}>+ Şagird</button>}
+        {cid && <button className="btn" aria-pressed={scores} onClick={() => setScores(!scores)}>{scores ? 'Siyahıya qayıt' : 'IX buraxılış ballarını redaktə et'}</button>}
       </div>
       {me?.role === 'admin' && <RosterImport onDone={reload} />}
       <ErrorBox error={err} />
-      {!cid ? <PickFirst /> : (
+      {!cid ? <PickFirst /> : scores ? <ScoresEditor rows={rows || []} onDone={() => { reload(); setScores(false) }} /> : (
         <div className="jlist">
           {(rows || []).map(s => (
             <div className="jrow" key={s.id}>
@@ -255,6 +257,36 @@ function StudentsTab() {
           <dl className="kv"><dt>Giriş kodu</dt><dd className="mono">{pin.code}</dd><dt>PIN</dt><dd className="mono" style={{ fontSize: 24 }}>{pin.pin}</dd></dl>
           <p className="small muted" style={{ marginTop: 12 }}>PIN yalnız indi göstərilir – yazın və şagirdə verin. Şagird PIN-i sonra özü dəyişə bilər.</p>
         </Drawer>)}
+    </>
+  )
+}
+
+function ScoresEditor({ rows, onDone }: { rows: Stud[]; onDone: () => void }) {
+  type V = { l: string; m: string; f: string }
+  const init = (s: Stud): V => ({ l: s.score_language == null ? '' : String(s.score_language), m: s.score_math == null ? '' : String(s.score_math), f: s.score_foreign == null ? '' : String(s.score_foreign) })
+  const [vals, setVals] = useState<Record<number, V>>(() => Object.fromEntries(rows.map(s => [s.id, init(s)])))
+  const num = (v: string) => (v.trim() === '' ? null : Number(v.replace(',', '.')))
+  const bad = (v: string) => v.trim() !== '' && (isNaN(num(v)!) || num(v)! < 0 || num(v)! > 100)
+  const changed = rows.filter(s => JSON.stringify(vals[s.id]) !== JSON.stringify(init(s)))
+  const invalid = Object.values(vals).some(v => bad(v.l) || bad(v.m) || bad(v.f))
+  const set = (id: number, k: keyof V, v: string) => setVals({ ...vals, [id]: { ...vals[id], [k]: v } })
+  return (
+    <>
+      <p className="small muted">IX sinif buraxılış imtahanı balları (0–100). Boş – bal yoxdur. Riyaziyyat balı şagirdin ilkin səviyyəsini müəyyən edir.</p>
+      <div className="tbl-wrap"><table style={{ minWidth: 560 }}>
+        <thead><tr><th>Şagird</th><th className="r">Tədris dili</th><th className="r">Riyaziyyat</th><th className="r">Xarici dil</th><th className="r">Yekun</th></tr></thead>
+        <tbody>{rows.map(s => { const v = vals[s.id]; const tot = [v.l, v.m, v.f].every(x => x.trim() !== '' && !bad(x)) ? (num(v.l)! + num(v.m)! + num(v.f)!).toFixed(1).replace('.', ',') : '—'
+          return (
+            <tr key={s.id}><td>{s.full_name}</td>
+              {(['l', 'm', 'f'] as const).map(k => <td key={k} className="r"><input className="sel" inputMode="decimal" style={{ width: 86, textAlign: 'right', borderColor: bad(v[k]) ? 'var(--bad)' : undefined }} value={v[k]} onChange={e => set(s.id, k, e.target.value)} aria-label={s.full_name + ' ' + k} /></td>)}
+              <td className="r num">{tot}</td></tr>) })}</tbody></table></div>
+      <div className="row" style={{ marginTop: 12 }}>
+        <span className="small muted">{changed.length} şagird dəyişib</span>
+        <AsyncBtn className="btn primary right" disabled={!changed.length || invalid} ok="Ballar yadda saxlanıldı" onClick={async () => {
+          for (const s of changed) { const v = vals[s.id]; await patch(`/api/students/${s.id}`, { score_language: num(v.l), score_math: num(v.m), score_foreign: num(v.f) }) }
+          onDone()
+        }}>Yadda saxla</AsyncBtn>
+      </div>
     </>
   )
 }
