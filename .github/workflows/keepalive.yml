@@ -1,9 +1,10 @@
-# Render pulsuz planı 15 dəqiqə istifadəsiz qalanda yatır – hər 10 dəqiqədə bir yoxlama onu oyaq saxlayır.
+# Render pulsuz planı 15 dəqiqə istifadəsiz qalanda yatır. Gündüz (Bakı 05:00–23:00) hər 10 dəqiqədə bir
+# yoxlama onu oyaq saxlayır; gecə 23:00–05:00 oyadılmır (pulsuz saatlara qənaət). Bakı = UTC+4.
 # Repo → Settings → Secrets and variables → Actions → Variables: RENDER_URL = https://....onrender.com
 name: keepalive
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/10 1-18 * * *'     # 01:00–18:50 UTC = 05:00–22:50 Bakı
   workflow_dispatch:
 jobs:
   ping:
@@ -12,4 +13,4 @@ jobs:
       - name: Ping
         run: |
           if [ -z "${{ vars.RENDER_URL }}" ]; then echo "RENDER_URL təyin edilməyib"; exit 0; fi
-          curl -fsS --max-time 60 --retry 3 --retry-delay 10 "${{ vars.RENDER_URL }}/api/health"
+          curl -fsS --max-time 90 --retry 3 --retry-delay 15 "${{ vars.RENDER_URL }}/api/health"
