@@ -1,0 +1,27 @@
+"""Müəllim köməkçisi – FastAPI tətbiqi."""
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from . import scheduler
+from .api import auth, bank
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s %(message)s')
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler.start()
+    yield
+    scheduler.stop()
+
+
+app = FastAPI(title='Müəllim köməkçisi', version='0.1.0', lifespan=lifespan)
+app.include_router(auth.router)
+app.include_router(bank.router)
+
+
+@app.get('/api/health')
+def health():
+    return {'ok': True}
