@@ -2,7 +2,7 @@ import glob, os
 import pytest
 from app.importers.plans import parse_resources, assessment_type, parse_plan
 from app.importers.students import read_workbook
-from app.domain.calendar import CLASSES, check_plan_dates
+from app.domain.calendar import CLASSES, check_plan_dates, check_bsq
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
 PLANS = os.path.join(ROOT, '01 Aktual dərs proqramları 2026-2027')
@@ -38,10 +38,11 @@ def test_official_plans_parse(c):
     p = parse_plan(f[0])
     assert p.lessons and not p.warnings
     if c.has_summative:
-        assert any(l.assessment_type == 'BSQ' for l in p.lessons)
+        bsq = [(l.exam_no, l.date) for l in p.lessons if l.assessment_type == 'BSQ']
+        assert check_bsq(bsq, c.slots) == []
+        assert sum(l.assessment_type == 'KSQ' for l in p.lessons) >= 10
     chk = check_plan_dates([l.date for l in p.lessons], c.slots)
-    if c.code != 'xia':                 # XI a planında məlum uyğunsuzluq var (hesabatda sual)
-        assert chk['ferq'] == 0 and not chk['uygunsuz_tarixler']
+    assert chk['ferq'] == 0 and not chk['uygunsuz_tarixler'] and not chk['tetile_dusen']
 
 
 @pytest.mark.skipif(not os.path.isfile(XLSX), reason='şagird faylı yoxdur')
@@ -72,3 +73,12 @@ def test_utis_roster_merges_scores_without_secrets():
         if c.utis_class:
             assert c.utis_class in u.classes, c.code
     assert len(u.classes['10 e']) == 18
+
+
+def test_bsq_rule_dates():
+    import datetime as dt
+    from app.domain.calendar import bsq_due_dates, CLASS_BY_CODE
+    assert bsq_due_dates(CLASS_BY_CODE['xb'].slots) == (dt.date(2027, 1, 22), dt.date(2027, 6, 11))
+    assert bsq_due_dates(CLASS_BY_CODE['xia'].slots) == (dt.date(2027, 1, 25), dt.date(2027, 6, 14))
+    assert bsq_due_dates(CLASS_BY_CODE['xc'].slots) == (dt.date(2027, 1, 26), dt.date(2027, 6, 14))
+    assert check_bsq([(1, dt.date(2026, 12, 25)), (2, dt.date(2027, 6, 11))], CLASS_BY_CODE['xb'].slots)

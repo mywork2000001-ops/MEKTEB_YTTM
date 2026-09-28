@@ -112,3 +112,22 @@ def check_plan_dates(plan_dates: list[dt.date], slots: dict[int, list[int]],
         'ilk_uygunsuzluqlar': mismatches[:10],
         'tetile_dusen': [d.isoformat() for d in plan_dates if d in (OFF_DAYS if off is None else off)],
     }
+
+
+def bsq_due_dates(slots: dict[int, list[int]]) -> tuple[dt.date, dt.date]:
+    """BSQ qaydası: BSQ-1 – I yarımilin son dərs günü (SEM1_END-ə qədər), BSQ-2 – ilin son dərs günü (YEAR_END-ə qədər)."""
+    days = [d for d, _ in lesson_slots(slots)]
+    return max(d for d in days if d <= SEM1_END), max(d for d in days if d <= YEAR_END)
+
+
+def check_bsq(plan_bsq: list[tuple[int | None, dt.date]], slots: dict[int, list[int]]) -> list[str]:
+    """Plandakı BSQ-ləri qayda ilə tutuşdurur; boş siyahı = uyğundur. Eyni BSQ bir gündə 2 saat ola bilər."""
+    due = bsq_due_dates(slots)
+    got = sorted({(n, d) for n, d in plan_bsq})
+    errs = []
+    if len({n for n, _ in got}) != 2:
+        errs.append(f'BSQ sayı 2 olmalıdır, planda: {len({n for n, _ in got})}')
+    for n, d in got:
+        if n in (1, 2) and d != due[n - 1]:
+            errs.append(f'BSQ-{n}: planda {d:%d.%m.%Y}, olmalıdır {due[n - 1]:%d.%m.%Y} (yarımilin son dərs günü)')
+    return errs
