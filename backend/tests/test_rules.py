@@ -1,0 +1,30 @@
+import pytest
+from app.domain.rules import round_half_up, summative_grade, semester_grade, grade_from_points
+
+
+@pytest.mark.parametrize('x,exp', [(2.5, 3), (3.5, 4), (2.49, 2), (4.5, 5), (0.5, 1)])
+def test_round_half_up(x, exp):
+    assert round_half_up(x) == exp
+
+
+@pytest.mark.parametrize('pct,g', [(0, 2), (30, 2), (30.4, 2), (30.5, 3), (31, 3), (60, 3), (61, 4), (80, 4), (81, 5), (100, 5)])
+def test_summative_bands(pct, g):
+    assert summative_grade(pct) == g
+
+
+def test_grade_from_points_no_double_rounding():
+    assert grade_from_points(6, 20) == 2        # 30%
+    assert grade_from_points(12.2, 20) == 4     # 61%
+    with pytest.raises(ValueError):
+        grade_from_points(5, 0)
+
+
+def test_semester_formula():
+    # (4+5+3)/3 = 4 → 4*0,4 + 5*0,6 = 4,6 → 5
+    assert semester_grade([4, 5, 3], 5) == 5
+    # (3+4)/2 = 3,5 → 1,4 + 1,8 = 3,2 → 3
+    assert semester_grade([3, 4], 3) == 3
+    # (3+4+4+4)/4 = 3,75 → 1,5 + 3,0 = 4,5 → 5 (adi yuvarlaqlaşdırma, bank üsulu 4 verərdi)
+    assert semester_grade([3, 4, 4, 4], 5) == 5
+    assert semester_grade([], 5) is None
+    assert semester_grade([4], None) is None

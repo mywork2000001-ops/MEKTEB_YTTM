@@ -1,0 +1,23 @@
+# Şəxsi məlumat – heç vaxt repoya getmir
+*.xlsx
+*.xls
+*.docx
+*.pdf
+*.csv
+*.db
+*.sqlite*
+maket/
+data/
+uploads/
+backups/
+.env
+.env.*
+!.env.example
+
+# Python / Node
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+dist/
