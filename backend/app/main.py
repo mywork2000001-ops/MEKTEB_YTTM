@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from . import scheduler
-from .api import auth, bank
+from .api import auth, bank, classes, school, students
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s %(message)s')
 
@@ -20,6 +20,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title='Müəllim köməkçisi', version='0.1.0', lifespan=lifespan)
 app.include_router(auth.router)
 app.include_router(bank.router)
+app.include_router(school.router)
+app.include_router(classes.router)
+app.include_router(students.router)
 
 
 @app.get('/api/health')

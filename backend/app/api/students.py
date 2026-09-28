@@ -1,0 +1,212 @@
+"""Şagirdlər – məktəbin ortaq siyahısı.
+- Müəllim yalnız dərs dediyi siniflərin şagirdlərini görür; admin – bütün məktəbi.
+- Eyni ad + doğum tarixi ilə ikinci şagird yaranmır (409); portal kodu bütün müəllimlər üçün eynidir.
+- Rəsmi Uşaq İD / pinkod / şəxsiyyət vəsiqəsi qəbul edilmir və saxlanmır."""
+from __future__ import annotations
+
+import datetime as dt
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from ..db import get_db
+from ..deps import staff
+from ..domain.rules import level
+from ..models import GroupMember, Role, SchoolClass, Student, User
+from ..security import hash_password, new_pin
+from .common import (ConfirmIn, audit, can_see_class, check_confirm, get_or_404, my_class_ids, need_school,
+                     settings_unlocked)
+
+router = APIRouter(prefix='/api/students', tags=['students'])
+
+
+def student_out(s: Student, cls_name: str | None = None):
+    total = None
+    if None not in (s.score_language, s.score_math, s.score_foreign):
+        total = round(s.score_language + s.score_math + s.score_foreign, 1)
+    return {'id': s.id, 'full_name': s.full_name, 'birth_date': s.birth_date, 'gender': s.gender,
+            'class_id': s.class_id, 'class_name': cls_name, 'portal_code': s.portal_code,
+            'score_language': s.score_language, 'score_math': s.score_math, 'score_foreign': s.score_foreign,
+            'score_total': total, 'level': level(s.score_math), 'archived': s.archived_at is not None}
+
+
+@router.get('')
+def list_students(class_id: int | None = None, archived: bool = False, q: str | None = None,
+                  user: User = Depends(staff), db: Session = Depends(get_db)):
+    sid = need_school(user)
+    st = (select(Student, SchoolClass.name).join(SchoolClass, SchoolClass.id == Student.class_id)
+          .where(Student.school_id == sid,
+                 Student.archived_at.is_not(None) if archived else Student.archived_at.is_(None)))
+    mine = my_class_ids(db, user)
+    if class_id:
+        c = get_or_404(db, SchoolClass, class_id, 'Sinif')
+        if not can_see_class(db, user, c):
+            raise HTTPException(403, 'Bu sinif sizin siniflərinizdən deyil')
+        if c.kind == 'qrup':
+            st = st.join(GroupMember, GroupMember.student_id == Student.id).where(GroupMember.group_id == c.id)
+        else:
+            st = st.where(Student.class_id == class_id)
+    elif mine is not None:
+        st = st.where(Student.class_id.in_(mine))
+    if q:
+        st = st.where(func.lower(Student.full_name).contains(q.strip().lower()))
+    return [student_out(s, n) for s, n in db.execute(st.order_by(SchoolClass.name, Student.full_name))]
+
+
+class StudentIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')      # Uşaq İD, pinkod və s. göndərilsə – rədd edilir
+    full_name: str = Field(min_length=5, max_length=200)
+    class_id: int
+    birth_date: dt.date | None = None
+    gender: str | None = Field(None, pattern='^(Qız|Oğlan)$')
+    score_language: float | None = Field(None, ge=0, le=100)
+    score_math: float | None = Field(None, ge=0, le=100)
+    score_foreign: float | None = Field(None, ge=0, le=100)
+
+
+def _class_for_write(db: Session, user: User, class_id: int) -> SchoolClass:
+    c = get_or_404(db, SchoolClass, class_id, 'Sinif')
+    if c.kind == 'qrup':
+        raise HTTPException(400, 'Şagird ana sinfə əlavə olunur; qrupa üzvlük qrup bölməsindən təyin edilir')
+    if not can_see_class(db, user, c) or c.archived_at:
+        raise HTTPException(403, 'Bu sinif sizin siniflərinizdən deyil')
+    return c
+
+
+def _dup(db: Session, school_id: int, name: str, birth: dt.date | None, exclude: int | None = None):
+    st = select(Student, SchoolClass.name).join(SchoolClass, SchoolClass.id == Student.class_id).where(
+        Student.school_id == school_id, func.lower(Student.full_name) == name.lower())
+    if birth:
+        st = st.where(Student.birth_date == birth)
+    for s, cname in db.execute(st):
+        if s.id != exclude and (birth or s.birth_date is None):
+            where = f'{cname} sinfində' + (' (arxivdə)' if s.archived_at else '')
+            raise HTTPException(409, {'message': f'Bu şagird artıq var: {s.full_name}, {where}', 'student_id': s.id})
+
+
+def next_portal_code(db: Session, c: SchoolClass) -> str:
+    codes = db.scalars(select(Student.portal_code).where(Student.portal_code.like(f'{c.code}-%')))
+    n = max((int(x.rsplit('-', 1)[1]) for x in codes if x.rsplit('-', 1)[1].isdigit()), default=0) + 1
+    return f'{c.code}-{n:03d}'
+
+
+@router.post('')
+def create_student(body: StudentIn, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    sid = need_school(user)
+    c = _class_for_write(db, user, body.class_id)
+    name = ' '.join(body.full_name.split())
+    _dup(db, sid, name, body.birth_date)
+    code = next_portal_code(db, c)
+    pin = new_pin()
+    acc = User(role=Role.student, login=code, password_hash=hash_password(pin), full_name=name, school_id=sid)
+    db.add(acc)
+    db.flush()
+    s = Student(school_id=sid, created_by=user.id, portal_code=code, user_id=acc.id,
+                **{**body.model_dump(), 'full_name': name})
+    db.add(s)
+    db.flush()
+    audit(db, user, 'create', 'student', s.id, class_id=c.id)
+    db.commit()
+    return {**student_out(s, c.name), 'initial_pin': pin}       # PIN yalnız bir dəfə göstərilir
+
+
+class StudentPatch(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    full_name: str | None = Field(None, min_length=5, max_length=200)
+    class_id: int | None = None
+    birth_date: dt.date | None = None
+    gender: str | None = Field(None, pattern='^(Qız|Oğlan)$')
+    score_language: float | None = Field(None, ge=0, le=100)
+    score_math: float | None = Field(None, ge=0, le=100)
+    score_foreign: float | None = Field(None, ge=0, le=100)
+
+
+def _student_for_write(db: Session, user: User, sid_: int) -> Student:
+    s = get_or_404(db, Student, sid_, 'Şagird')
+    c = db.get(SchoolClass, s.class_id)
+    if s.school_id != user.school_id or not can_see_class(db, user, c):
+        raise HTTPException(403, 'Bu şagird sizin siniflərinizdən deyil')
+    return s
+
+
+@router.patch('/{sid_}')
+def update_student(sid_: int, body: StudentPatch, user: User = Depends(settings_unlocked),
+                   db: Session = Depends(get_db)):
+    s = _student_for_write(db, user, sid_)
+    data = body.model_dump(exclude_unset=True)
+    if 'full_name' in data:
+        data['full_name'] = ' '.join(data['full_name'].split())
+    if 'full_name' in data or 'birth_date' in data:
+        _dup(db, s.school_id, data.get('full_name', s.full_name), data.get('birth_date', s.birth_date), s.id)
+    if 'class_id' in data and data['class_id'] != s.class_id:
+        _class_for_write(db, user, data['class_id'])
+        db.query(GroupMember).filter(GroupMember.student_id == s.id).delete()   # köhnə sinfin qruplarından çıxır
+    for k, v in data.items():
+        setattr(s, k, v)
+    if 'full_name' in data and s.user_id:
+        db.get(User, s.user_id).full_name = s.full_name
+    audit(db, user, 'update', 'student', s.id, fields=sorted(data))
+    db.commit()
+    return student_out(s, db.get(SchoolClass, s.class_id).name)
+
+
+@router.post('/{sid_}/reset-pin')
+def reset_pin(sid_: int, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    s = _student_for_write(db, user, sid_)
+    pin = new_pin()
+    acc = db.get(User, s.user_id) if s.user_id else None
+    if acc is None:
+        acc = User(role=Role.student, login=s.portal_code, full_name=s.full_name, school_id=s.school_id,
+                   password_hash='')
+        db.add(acc)
+        db.flush()
+        s.user_id = acc.id
+    acc.password_hash = hash_password(pin)
+    acc.failed_logins, acc.locked_until = 0, None
+    audit(db, user, 'update', 'student_pin', s.id)
+    db.commit()
+    return {'portal_code': s.portal_code, 'pin': pin}
+
+
+@router.post('/{sid_}/archive')
+def archive_student(sid_: int, body: ConfirmIn, user: User = Depends(settings_unlocked),
+                    db: Session = Depends(get_db)):
+    s = _student_for_write(db, user, sid_)
+    check_confirm(s.full_name, body.confirm)
+    s.archived_at = dt.datetime.now(dt.timezone.utc)
+    if s.user_id:
+        db.get(User, s.user_id).archived_at = s.archived_at      # portala giriş bağlanır
+    audit(db, user, 'archive', 'student', s.id)
+    db.commit()
+    return {'ok': True}
+
+
+@router.post('/{sid_}/restore')
+def restore_student(sid_: int, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    s = _student_for_write(db, user, sid_)
+    s.archived_at = None
+    if s.user_id:
+        db.get(User, s.user_id).archived_at = None
+    audit(db, user, 'restore', 'student', s.id)
+    db.commit()
+    return {'ok': True}
+
+
+@router.delete('/{sid_}')
+def delete_student(sid_: int, body: ConfirmIn, user: User = Depends(settings_unlocked),
+                   db: Session = Depends(get_db)):
+    s = _student_for_write(db, user, sid_)
+    if not s.archived_at:
+        raise HTTPException(409, 'Əvvəlcə arxivə göndərin')
+    check_confirm(s.full_name, body.confirm)
+    db.query(GroupMember).filter(GroupMember.student_id == s.id).delete()
+    acc = db.get(User, s.user_id) if s.user_id else None
+    audit(db, user, 'delete', 'student', s.id)
+    db.delete(s)
+    db.flush()
+    if acc:
+        db.delete(acc)
+    db.commit()
+    return {'ok': True}

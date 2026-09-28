@@ -53,6 +53,7 @@ class User(Base, Archivable):
     subjects: Mapped[list | None] = mapped_column(JSON)                  # müəllim: ["Riyaziyyat"]
     language: Mapped[str] = mapped_column(String(2), default='az')
     theme: Mapped[str | None] = mapped_column(String(20))
+    settings_password_hash: Mapped[str | None] = mapped_column(String(255))   # Tənzimləmələr kilidi (boş = yoxdur)
     failed_logins: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
