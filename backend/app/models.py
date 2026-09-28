@@ -399,3 +399,29 @@ class ChatReport(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
     resolved_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (UniqueConstraint('message_id', 'reporter_id'),)
+
+
+# ---------------------------------------------------------------- şagird kartı: valideynlə əlaqə, fərdi iş planı
+class ParentContact(Base):
+    __tablename__ = 'parent_contacts'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'))
+    teacher_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    date: Mapped[dt.date] = mapped_column(Date)
+    method: Mapped[str] = mapped_column(String(20))                    # zəng | görüş | mesaj | iclas
+    topic: Mapped[str] = mapped_column(String(300))
+    outcome: Mapped[str | None] = mapped_column(Text)
+    follow_up: Mapped[dt.date | None] = mapped_column(Date)
+
+
+class IndividualPlan(Base):
+    __tablename__ = 'individual_plans'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'))
+    teacher_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    goal: Mapped[str] = mapped_column(Text)
+    steps: Mapped[list] = mapped_column(JSON, default=list)             # [{"text":..., "done": false}]
+    start: Mapped[dt.date] = mapped_column(Date)
+    review_date: Mapped[dt.date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(12), default='aktiv')    # aktiv | tamamlandı | dayandırıldı
+    note: Mapped[str | None] = mapped_column(Text)

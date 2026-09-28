@@ -115,7 +115,8 @@ def fmt(v: float | None, digits: int = 1) -> str:
 # ---------------------------------------------------------------- reytinq
 def rating_score(avg_grade: float | None, ksq_avg_pct: float | None, homework_pct: float | None,
                  attendance_pct: float | None, w: dict = RATING_WEIGHTS) -> float | None:
-    """0–100 şkalası. Qiymət ortası 2–5 → 0–100. Məlumatı olmayan komponentin çəkisi qalanlara bölünür."""
+    """0–100 şkalası. Qiymət ortası 2–5 → 0–100. Məlumatı olmayan komponentin çəkisi qalanlara bölünür;
+    qiymət və KSQ-nin ikisi də yoxdursa – reytinq yoxdur."""
     comps = {
         'qiymet': None if avg_grade is None else (avg_grade - 2) / 3 * 100,
         'ksq': ksq_avg_pct,
@@ -123,8 +124,8 @@ def rating_score(avg_grade: float | None, ksq_avg_pct: float | None, homework_pc
         'davamiyyet': attendance_pct,
     }
     have = {k: v for k, v in comps.items() if v is not None}
-    if not have:
-        return None
+    if comps['qiymet'] is None and comps['ksq'] is None:
+        return None          # yalnız davamiyyət/ev tapşırığı ilə reytinq verilmir (nəticə göstəricisi lazımdır)
     tw = sum(w[k] for k in have)
     return round(sum(w[k] * v for k, v in have.items()) / tw, 1)
 
