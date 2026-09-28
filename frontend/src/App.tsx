@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { Component, lazy as reactLazy, Suspense, useState, type ComponentType, type ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './auth'
 import { I18nCtx, type Lang } from './i18n'
@@ -6,6 +6,27 @@ import { Layout } from './Layout'
 import Login from './pages/Login'
 import Join from './pages/Join'
 import { Loading, ToastHost } from './ui'
+
+// Yeni yayımdan sonra açıq səhifə köhnə hissəni (chunk) tapmırsa – bir dəfə avtomatik yenilənir (ağ ekran olmasın)
+function lazy<T extends ComponentType<any>>(f: () => Promise<{ default: T }>) {
+  return reactLazy(() => f().then(m => { try { sessionStorage.removeItem('mk-chunk-reload') } catch { /* noop */ } return m }).catch(e => {
+    let tried = false
+    try { tried = sessionStorage.getItem('mk-chunk-reload') === '1'; sessionStorage.setItem('mk-chunk-reload', '1') } catch { /* noop */ }
+    if (!tried) { location.reload(); return new Promise<{ default: T }>(() => {}) }
+    throw e
+  }))
+}
+
+class Boundary extends Component<{ children: ReactNode }, { err: boolean }> {
+  state = { err: false }
+  static getDerivedStateFromError() { return { err: true } }
+  render() {
+    return this.state.err ? (
+      <div className="empty"><p>Səhifə yüklənmədi (tətbiq yenilənmiş ola bilər).</p>
+        <button className="btn primary" onClick={() => { try { sessionStorage.removeItem('mk-chunk-reload') } catch { /* noop */ } location.reload() }}>Yenilə</button></div>
+    ) : this.props.children
+  }
+}
 
 const T = {
   Home: lazy(() => import('./pages/teacher/Home')),
@@ -43,7 +64,7 @@ export default function App() {
         <Login lang={lang} setLang={l => { setGuestLang(l); try { localStorage.setItem('mk-lang', l) } catch { /* noop */ } }} />
       ) : (
         <Layout>
-          <Suspense fallback={<Loading />}>
+          <Boundary><Suspense fallback={<Loading />}>
             {me.role === 'student' ? (
               <Routes>
                 <Route path="/" element={<S.Today />} />
@@ -72,7 +93,7 @@ export default function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             )}
-          </Suspense>
+          </Suspense></Boundary>
         </Layout>
       )}
       <ToastHost />

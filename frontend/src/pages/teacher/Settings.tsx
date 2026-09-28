@@ -1,11 +1,13 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { ApiError, get, patch, post, put, setSettingsToken, settingsToken } from '../../api'
 import { useAuth } from '../../auth'
 import { AsyncBtn, ErrorBox, Field, Loading, toast, Top, useLoad } from '../../ui'
 import { LookPanel, PasswordPanel } from '../shared'
 
-const Roster = lazy(() => import('./SettingsRoster'))
-const Admin = lazy(() => import('./SettingsAdmin'))
+import SettingsRoster from './SettingsRoster'
+import SettingsAdmin from './SettingsAdmin'
+const Roster = SettingsRoster
+const Admin = SettingsAdmin
 
 export default function Settings() {
   const { me } = useAuth()
