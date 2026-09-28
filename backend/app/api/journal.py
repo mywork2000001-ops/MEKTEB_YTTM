@@ -1,0 +1,162 @@
+"""Jurnal: gün seçilir -> həmin günün dərs saatları (hər saat ayrıca), mövzu işçi plandan avtomatik,
+davamiyyət, formativ qiymət (test: düzgün sayı -> faiz -> qiymət), ev tapşırığı və yoxlanması."""
+from __future__ import annotations
+
+import datetime as dt
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ..db import get_db
+from ..deps import staff
+from ..domain.plan import slot_at
+from ..domain.rules import summative_grade
+from ..models import Attendance, HomeworkCheck, JournalEntry, Mark, User
+from ..services import lesson_out, own_assignment, plan_ctx, roster, today
+from .common import audit
+from .plan import WEEKDAYS, bell
+
+router = APIRouter(prefix='/api/journal', tags=['journal'])
+ATT = ('var', 'yox', 'üzrlü', 'gecikdi')
+HW = ('etdi', 'qismən', 'etmədi', 'köçürüb')
+
+
+def _entry_payload(db: Session, e: JournalEntry | None) -> dict:
+    if not e:
+        return {'exists': False, 'attendance': {}, 'marks': [], 'homework_checks': {}}
+    return {
+        'exists': True, 'id': e.id, 'topic': e.topic, 'homework': e.homework, 'note': e.note,
+        'attendance': {a.student_id: a.status for a in db.scalars(select(Attendance).where(Attendance.entry_id == e.id))},
+        'marks': [{'student_id': m.student_id, 'kind': m.kind, 'grade': m.grade, 'test_correct': m.test_correct,
+                   'test_total': m.test_total, 'comment': m.comment}
+                  for m in db.scalars(select(Mark).where(Mark.entry_id == e.id))],
+        'homework_checks': {h.student_id: h.status
+                            for h in db.scalars(select(HomeworkCheck).where(HomeworkCheck.entry_id == e.id))},
+    }
+
+
+def _prev_homework(db: Session, ta_id: int, d: dt.date, period: int) -> str | None:
+    """Yoxlanılacaq ev tapşırığı – əvvəlki yazılmış dərsdə verilən."""
+    e = db.scalar(select(JournalEntry).where(
+        JournalEntry.assignment_id == ta_id, JournalEntry.homework.is_not(None),
+        (JournalEntry.date < d) | ((JournalEntry.date == d) & (JournalEntry.period < period)))
+        .order_by(JournalEntry.date.desc(), JournalEntry.period.desc()))
+    return e.homework if e else None
+
+
+@router.get('/{ta_id}/day')
+def day(ta_id: int, date: dt.date | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+    ta = own_assignment(db, user, ta_id)
+    ctx = plan_ctx(db, ta)
+    d = date or today()
+    lessons = []
+    for s in (x for x in ctx.slots if x.date == d):
+        e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == d,
+                                                 JournalEntry.period == s.period))
+        lessons.append({'period': s.period, 'time': bell(db, ctx.cls, s.period), 'held': s.held, 'shift': s.shift,
+                        'plan': lesson_out(ctx.lesson_for(s)), 'entry': _entry_payload(db, e),
+                        'homework_to_check': _prev_homework(db, ta.id, d, s.period)})
+    return {'date': d, 'weekday': WEEKDAYS[d.weekday()] if d.weekday() < 5 else None,
+            'class_name': ctx.cls.name, 'subject': ta.subject, 'lessons': lessons,
+            'students': [{'id': s.id, 'full_name': s.full_name, 'portal_code': s.portal_code}
+                         for s in roster(db, ta)]}
+
+
+class MarkIn(BaseModel):
+    student_id: int
+    kind: Literal['şifahi', 'yazılı', 'test']
+    grade: int | None = Field(None, ge=2, le=5)
+    test_correct: int | None = Field(None, ge=0)
+    test_total: int | None = Field(None, ge=1, le=100)
+    comment: str | None = Field(None, max_length=300)
+
+    @model_validator(mode='after')
+    def _check(self):
+        if self.kind == 'test':
+            if self.test_correct is None or self.test_total is None or self.test_correct > self.test_total:
+                raise ValueError('test: düzgün cavab sayı və sual sayı lazımdır (düzgün ≤ sual)')
+            self.grade = summative_grade(self.test_correct / self.test_total * 100)
+        elif self.grade is None:
+            raise ValueError('qiymət (2–5) lazımdır')
+        return self
+
+
+class EntryIn(BaseModel):
+    date: dt.date
+    period: int = Field(ge=0, le=9)
+    topic: str | None = Field(None, max_length=2000)      # boş = plandakı mövzu
+    homework: str | None = Field(None, max_length=2000)
+    note: str | None = Field(None, max_length=2000)
+    attendance: dict[int, Literal['var', 'yox', 'üzrlü', 'gecikdi']] = Field(default_factory=dict)
+    marks: list[MarkIn] = Field(default_factory=list)
+    homework_checks: dict[int, Literal['etdi', 'qismən', 'etmədi', 'köçürüb']] = Field(default_factory=dict)
+
+
+@router.put('/{ta_id}/entry')
+def save_entry(ta_id: int, body: EntryIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Gündəlik yazı – Tənzimləmələr kilidi tələb olunmur. Göndərilən siyahılar həmin dərs üçün tam əvəzlənir."""
+    ta = own_assignment(db, user, ta_id)
+    ctx = plan_ctx(db, ta)
+    s = slot_at(ctx.slots, body.date, body.period)
+    if not s:
+        raise HTTPException(400, 'Bu tarixdə və saatda dərsiniz yoxdur (bayram, tətil və ya cədvəldə yoxdur)')
+    if body.date > today() + dt.timedelta(days=14):
+        raise HTTPException(400, 'Gələcək dərs üçün jurnal yazıla bilməz (ev tapşırığı üçün 14 günə qədər)')
+    ids = {st.id for st in roster(db, ta)}
+    extra = (set(body.attendance) | {m.student_id for m in body.marks} | set(body.homework_checks)) - ids
+    if extra:
+        raise HTTPException(400, f'Bu şagirdlər bu sinifdə/qrupda deyil: {sorted(extra)}')
+    absent_marked = [m.student_id for m in body.marks if body.attendance.get(m.student_id) == 'yox']
+    if absent_marked:
+        raise HTTPException(400, 'Dərsdə olmayan şagirdə qiymət yazıla bilməz')
+    e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == body.date,
+                                             JournalEntry.period == body.period))
+    pl = ctx.lesson_for(s)
+    if e is None:
+        e = JournalEntry(assignment_id=ta.id, date=body.date, period=body.period)
+        db.add(e)
+    e.plan_lesson_id = pl.id if pl else None
+    e.topic = body.topic if body.topic and (not pl or body.topic.strip() != pl.topic) else None
+    e.homework, e.note = body.homework, body.note
+    db.flush()
+    for model in (Attendance, Mark, HomeworkCheck):
+        db.query(model).filter(model.entry_id == e.id).delete()
+    db.add_all(Attendance(entry_id=e.id, student_id=k, status=v) for k, v in body.attendance.items())
+    db.add_all(Mark(entry_id=e.id, **m.model_dump()) for m in body.marks)
+    db.add_all(HomeworkCheck(entry_id=e.id, student_id=k, status=v) for k, v in body.homework_checks.items())
+    audit(db, user, 'update', 'journal', e.id, date=str(body.date), period=body.period)
+    db.commit()
+    return {'id': e.id, **_entry_payload(db, e)}
+
+
+@router.get('/{ta_id}/summary')
+def summary(ta_id: int, semester: int | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Şagird üzrə: formativ orta, davamiyyət %, ev tapşırığı icrası %, testlər."""
+    ta = own_assignment(db, user, ta_id)
+    ctx = plan_ctx(db, ta)
+    st = select(JournalEntry.id).where(JournalEntry.assignment_id == ta.id)
+    if semester == 1:
+        st = st.where(JournalEntry.date <= ctx.year.sem1_end)
+    elif semester == 2:
+        st = st.where(JournalEntry.date >= ctx.year.sem2_start)
+    eids = list(db.scalars(st))
+    marks = list(db.scalars(select(Mark).where(Mark.entry_id.in_(eids))))
+    att = list(db.scalars(select(Attendance).where(Attendance.entry_id.in_(eids))))
+    hw = list(db.scalars(select(HomeworkCheck).where(HomeworkCheck.entry_id.in_(eids))))
+    hw_w = {'etdi': 1.0, 'qismən': 0.5, 'etmədi': 0.0, 'köçürüb': 0.0}
+    out = []
+    for s in roster(db, ta):
+        g = [m.grade for m in marks if m.student_id == s.id]
+        t = [m for m in marks if m.student_id == s.id and m.kind == 'test']
+        a = [x.status for x in att if x.student_id == s.id]
+        h = [hw_w[x.status] for x in hw if x.student_id == s.id]
+        out.append({'student_id': s.id, 'full_name': s.full_name,
+                    'avg_grade': round(sum(g) / len(g), 2) if g else None, 'marks': len(g),
+                    'tests': len(t), 'test_pct': round(sum(m.test_correct for m in t) * 100 / sum(m.test_total for m in t), 1) if t else None,
+                    'lessons': len(a), 'absent': a.count('yox') + a.count('üzrlü'),
+                    'attendance_pct': round((len(a) - a.count('yox') - a.count('üzrlü')) * 100 / len(a), 1) if a else None,
+                    'homework_pct': round(sum(h) * 100 / len(h), 1) if h else None})
+    return {'lessons_written': len(eids), 'students': out}

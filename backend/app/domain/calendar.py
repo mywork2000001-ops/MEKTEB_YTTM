@@ -92,9 +92,10 @@ def is_school_day(d: dt.date, off: dict[dt.date, str] | None = None) -> bool:
 def lesson_slots(slots: dict[int, list[int]], off: dict[dt.date, str] | None = None,
                  start: dt.date = YEAR_START, end: dt.date = YEAR_END) -> list[tuple[dt.date, int]]:
     """Cədvəl və təqvimə görə bütün dərs yuvaları (tarix, dərs saatı), xronoloji ardıcıllıqla."""
+    off = OFF_DAYS if off is None else off
     out, d = [], start
     while d <= end:
-        if is_school_day(d, off):
+        if d.weekday() < 5 and d not in off:            # il sərhədi – start/end (hər tədris ili üçün)
             for p in sorted(slots.get(d.weekday(), [])):
                 out.append((d, p))
         d += dt.timedelta(days=1)

@@ -18,12 +18,15 @@ from sqlalchemy.orm import Session
 from .db import SessionLocal
 from .domain import calendar as cal
 from .importers.utis import read_utis
-from .models import (AcademicYear, Holiday, Role, School, SchoolClass, Student, TeachingAssignment, User)
+from .models import (AcademicYear, Holiday, PlanLesson, Role, School, SchoolClass, Student, TeachingAssignment,
+                     User)
+from .services import import_plan
 from .security import hash_password, new_password, new_pin
 
 DESKTOP = Path.home() / 'Desktop' / 'Tom planlama'
 UTIS_XLSX = DESKTOP / 'Utis_siyahi (27).xlsx'
 DIM_XLSX = DESKTOP / 'TOM-şagirdlər buraxılış balları (1).xlsx'
+PLANS_DIR = DESKTOP / '01 Aktual dərs proqramları 2026-2027'
 DATA = Path(__file__).resolve().parent.parent / 'data'
 
 CODES = {'xb': 'XB', 'xb_q': 'XBQ', 'xc': 'XC', 'xe': 'XE', 'xia': 'XIA', 'xip': 'XIP'}
@@ -34,7 +37,8 @@ def _one(db: Session, model, **where):
 
 
 def seed(db: Session, utis: str | None = None, login: str = 'hesenov.ferid',
-         utis_xlsx: Path = UTIS_XLSX, dim_xlsx: Path = DIM_XLSX, out_dir: Path = DATA) -> dict:
+         utis_xlsx: Path = UTIS_XLSX, dim_xlsx: Path = DIM_XLSX, out_dir: Path = DATA,
+         plans_dir: Path | None = PLANS_DIR) -> dict:
     report = {'created': [], 'secrets_file': None}
     secrets_rows: list[tuple[str, str, str, str]] = []
 
@@ -82,10 +86,18 @@ def seed(db: Session, utis: str | None = None, login: str = 'hesenov.ferid',
             db.flush()
             report['created'].append(f'sinif {c.name}')
         by_code[c.code] = sc
-        if not _one(db, TeachingAssignment, teacher_id=admin.id, class_id=sc.id, subject='Riyaziyyat'):
-            db.add(TeachingAssignment(teacher_id=admin.id, class_id=sc.id, subject='Riyaziyyat',
-                                      weekly_hours=c.weekly_hours, has_summative=c.has_summative,
-                                      slots={str(k): v for k, v in c.slots.items() if v}))
+        ta = _one(db, TeachingAssignment, teacher_id=admin.id, class_id=sc.id, subject='Riyaziyyat')
+        if not ta:
+            ta = TeachingAssignment(teacher_id=admin.id, class_id=sc.id, subject='Riyaziyyat',
+                                    weekly_hours=c.weekly_hours, has_summative=c.has_summative,
+                                    slots={str(k): v for k, v in c.slots.items() if v})
+            db.add(ta)
+            db.flush()
+        if plans_dir and not _one(db, PlanLesson, assignment_id=ta.id):
+            f = next((x for x in sorted(plans_dir.glob('*.docx')) if x.name.startswith(c.plan_prefix + ' –')), None)
+            if f:
+                rep = import_plan(db, ta, f)
+                report['created'].append(f'{c.name}: plan {rep["lessons"]} dərs')
         if roster and c.utis_class in roster.classes:
             n_new = 0
             for i, s in enumerate(roster.classes[c.utis_class], 1):

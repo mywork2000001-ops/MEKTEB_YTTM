@@ -217,3 +217,104 @@ class AppState(Base):
     __tablename__ = 'app_state'
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str | None] = mapped_column(Text)
+
+
+# ---------------------------------------------------------------- perspektiv plan (rəsmi – dəyişmir) və geriləmə
+class PlanLesson(Base):
+    __tablename__ = 'plan_lessons'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'))
+    seq: Mapped[int] = mapped_column(Integer)
+    semester: Mapped[int] = mapped_column(Integer)
+    section: Mapped[str | None] = mapped_column(String(300))
+    topic: Mapped[str] = mapped_column(Text)
+    standards: Mapped[list | None] = mapped_column(JSON)
+    integration: Mapped[str | None] = mapped_column(Text)
+    resources: Mapped[str | None] = mapped_column(Text)
+    assessment: Mapped[str | None] = mapped_column(Text)
+    assessment_type: Mapped[str] = mapped_column(String(12))           # formativ | KSQ | BSQ | diaqnostik
+    exam_no: Mapped[int | None] = mapped_column(Integer)
+    date: Mapped[dt.date] = mapped_column(Date)                         # rəsmi tarix
+    tt_pages: Mapped[str | None] = mapped_column(String(300))
+    tasks: Mapped[list | None] = mapped_column(JSON)                    # [{kind, label, start, end}]
+    __table_args__ = (UniqueConstraint('assignment_id', 'seq'),)
+
+
+class PlanHold(Base):
+    """«Mövzunu saxla»: bu yuvada mövzu növbəti dərsə keçir, işçi plan bir dərs sürüşür."""
+    __tablename__ = 'plan_holds'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'))
+    date: Mapped[dt.date] = mapped_column(Date)
+    period: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str | None] = mapped_column(String(300))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    __table_args__ = (UniqueConstraint('assignment_id', 'date', 'period'),)
+
+
+# ---------------------------------------------------------------- jurnal
+class JournalEntry(Base):
+    """Bir dərs saatı (bölünən qrup öz bağlılığı ilə ayrıca yazılır)."""
+    __tablename__ = 'journal_entries'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'))
+    date: Mapped[dt.date] = mapped_column(Date)
+    period: Mapped[int] = mapped_column(Integer)
+    plan_lesson_id: Mapped[int | None] = mapped_column(ForeignKey('plan_lessons.id', ondelete='SET NULL'))
+    topic: Mapped[str | None] = mapped_column(Text)                    # əl ilə dəyişdirilibsə
+    homework: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+    __table_args__ = (UniqueConstraint('assignment_id', 'date', 'period'),)
+
+
+class Attendance(Base):
+    __tablename__ = 'attendance'
+    entry_id: Mapped[int] = mapped_column(ForeignKey('journal_entries.id', ondelete='CASCADE'), primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
+    status: Mapped[str] = mapped_column(String(10))                    # var | yox | üzrlü | gecikdi
+
+
+class Mark(Base):
+    """Formativ qiymət. Test: düzgün cavab sayı / sual sayı -> faiz -> qiymət (avtomatik)."""
+    __tablename__ = 'marks'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entry_id: Mapped[int] = mapped_column(ForeignKey('journal_entries.id', ondelete='CASCADE'))
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'))
+    kind: Mapped[str] = mapped_column(String(10))                      # şifahi | yazılı | test
+    grade: Mapped[int] = mapped_column(Integer)
+    test_correct: Mapped[int | None] = mapped_column(Integer)
+    test_total: Mapped[int | None] = mapped_column(Integer)
+    comment: Mapped[str | None] = mapped_column(String(300))
+    __table_args__ = (UniqueConstraint('entry_id', 'student_id', 'kind'),)
+
+
+class HomeworkCheck(Base):
+    __tablename__ = 'homework_checks'
+    entry_id: Mapped[int] = mapped_column(ForeignKey('journal_entries.id', ondelete='CASCADE'), primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
+    status: Mapped[str] = mapped_column(String(10))                    # etdi | qismən | etmədi | köçürüb
+
+
+# ---------------------------------------------------------------- KSQ / BSQ
+class Exam(Base):
+    __tablename__ = 'exams'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'))
+    kind: Mapped[str] = mapped_column(String(3))                       # KSQ | BSQ
+    no: Mapped[int] = mapped_column(Integer)
+    semester: Mapped[int] = mapped_column(Integer)
+    date: Mapped[dt.date] = mapped_column(Date)
+    max_points: Mapped[float] = mapped_column(Float)
+    items: Mapped[list | None] = mapped_column(JSON)                   # [{"n":1,"points":1,"standard":"1.2.3"}]
+    title: Mapped[str | None] = mapped_column(String(300))
+    __table_args__ = (UniqueConstraint('assignment_id', 'kind', 'semester', 'no'),)
+
+
+class ExamScore(Base):
+    __tablename__ = 'exam_scores'
+    exam_id: Mapped[int] = mapped_column(ForeignKey('exams.id', ondelete='CASCADE'), primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
+    points: Mapped[float | None] = mapped_column(Float)
+    item_marks: Mapped[list | None] = mapped_column(JSON)              # [1, 0, 1, …] – tapşırıq üzrə ✓/✗
+    absent: Mapped[bool] = mapped_column(Boolean, default=False)
