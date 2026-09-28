@@ -185,3 +185,19 @@ def test_chat_upload_limit_streams_and_cleans(tmp_path):
     with pytest.raises(HTTPException) as e:
         save_stream(UploadFile(_io.BytesIO(b'x' * 3_000_000)), tmp_path / 'g', limit=2_000_000)
     assert e.value.status_code == 413 and not (tmp_path / 'g').exists()
+
+
+def test_chat_files_in_database_storage(world, clock, monkeypatch):
+    """MK_STORAGE=db: fayl bazada saxlanılır (hostinq yenidən başlayanda silinmir) və axınla qaytarılır."""
+    from app.config import settings
+    monkeypatch.setattr(settings(), 'storage', 'db')
+    admin, ta, cid, st, ids = setup(world)
+    a = student_client(st[0]['portal_code'], st[0]['initial_pin'])
+    room = next(r for r in a.get('/api/chat/rooms').json() if r['kind'] == 'class')
+    blob = bytes(range(256)) * 9000                                  # ~2,3 MB – bir neçə hissə
+    ok = a.post(f'/api/chat/rooms/{room["id"]}/messages', files={'file': ('şəkil.png', blob, 'image/png')})
+    assert ok.status_code == 200 and ok.json()['file']['size'] == len(blob)
+    got = admin.get(ok.json()['file']['url'])
+    assert got.status_code == 200 and got.content == blob
+    from app.storage import upload_limit
+    assert upload_limit() == 50 * 1024 ** 2

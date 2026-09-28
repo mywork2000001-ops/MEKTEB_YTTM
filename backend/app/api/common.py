@@ -83,6 +83,12 @@ def settings_unlocked(user: User = Depends(staff),
     return user
 
 
+def admin_only_unlocked(user: User = Depends(settings_unlocked)) -> User:
+    if user.role != Role.admin:
+        raise HTTPException(403, 'Yalnız admin')
+    return user
+
+
 def get_or_404(db: Session, model, id_, what='Qeyd'):
     obj = db.get(model, id_)
     if obj is None:

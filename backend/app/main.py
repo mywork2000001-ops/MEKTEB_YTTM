@@ -1,5 +1,6 @@
 """Müəllim köməkçisi – FastAPI tətbiqi."""
 import logging
+import tempfile
 from contextlib import asynccontextmanager
 
 from pathlib import Path
@@ -9,13 +10,43 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import scheduler
-from .api import analytics, auth, bank, chat, classes, exams, journal, plan, portal, school, students, tasks
+from .api import analytics, auth, bank, chat, classes, exams, imports, journal, plan, portal, school, students, tasks
+
+def bootstrap():
+    """İlk açılış (hostinq): miqrasiyalar + baza boşdursa məktəb, admin, tədris ili, siniflər, cədvəl.
+    Şagirdlər və planlar serverə kodla getmir – Tənzimləmələrdən yüklənir."""
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import select
+    from .config import settings
+    from .db import SessionLocal
+    from .models import User
+    from .security import hash_password
+    ini = Path(__file__).resolve().parents[1] / 'alembic.ini'
+    cfg = Config(str(ini))
+    cfg.set_main_option('script_location', str(ini.parent / 'migrations'))
+    command.upgrade(cfg, 'head')
+    pw = settings().admin_password
+    if not pw:
+        return
+    with SessionLocal() as db:
+        if db.scalar(select(User.id).limit(1)):
+            return
+        from .seed import seed
+        seed(db, login=settings().admin_login, utis_xlsx=Path('/nonexistent'), plans_dir=None,
+             out_dir=Path(tempfile.gettempdir()))
+        u = db.scalar(select(User).where(User.login == settings().admin_login))
+        u.password_hash = hash_password(pw)
+        db.commit()
+        logging.getLogger('bootstrap').info('ilk quraşdırma: admin %s yaradıldı', u.login)
+
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s %(message)s')
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    bootstrap()
     scheduler.start()
     yield
     scheduler.stop()
@@ -34,6 +65,7 @@ app.include_router(tasks.router)
 app.include_router(portal.router)
 app.include_router(chat.router)
 app.include_router(analytics.router)
+app.include_router(imports.router)
 
 
 @app.get('/api/health')

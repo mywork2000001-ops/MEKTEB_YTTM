@@ -9,7 +9,7 @@ import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -30,8 +30,13 @@ CHUNK = 1024 * 1024
 
 
 def upload_dir() -> Path:
-    p = Path(settings().database_url.removeprefix('sqlite:///')).parent / 'uploads' \
-        if settings().database_url.startswith('sqlite:///') else Path('data/uploads')
+    cfg = settings()
+    if cfg.upload_dir:
+        p = Path(cfg.upload_dir)
+    elif cfg.database_url.startswith('sqlite:///'):
+        p = Path(cfg.database_url.removeprefix('sqlite:///')).parent / 'uploads'
+    else:
+        p = Path('data/uploads')
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -214,8 +219,10 @@ def send(room_id: int, text: str | None = Form(None), file: UploadFile | None = 
         ctype = (file.content_type or '').split(';')[0]
         if ctype not in ALLOWED:
             raise HTTPException(400, 'Yalnız şəkil, PDF, səs və ya video faylı')
-        key = secrets.token_hex(16)
-        size = save_stream(file, upload_dir() / key)
+        from ..storage import get_storage, upload_limit
+        key, size = get_storage().save(file.file, (file.filename or 'fayl')[:200], ctype, upload_limit(), db)
+        if size == 0:
+            raise HTTPException(400, 'Fayl boşdur')
         m.file_name, m.file_key, m.file_type, m.file_size = (file.filename or 'fayl')[:200], key, ctype, size
     db.add(m)
     db.commit()
@@ -228,7 +235,14 @@ def get_file(message_id: int, u: User = Depends(current_user), db: Session = Dep
     if not m or not m.file_key or m.deleted_at:
         raise HTTPException(404, 'Fayl tapılmadı')
     _room(db, u, m.room_id)
-    return FileResponse(upload_dir() / m.file_key, media_type=m.file_type, filename=m.file_name)
+    from urllib.parse import quote
+    from ..storage import storage_for_key
+    st = storage_for_key(m.file_key)
+    if st.kind == 'local':
+        return FileResponse(st.root / m.file_key, media_type=m.file_type, filename=m.file_name)   # video üçün Range
+    return StreamingResponse(st.stream(m.file_key, db), media_type=m.file_type, headers={
+        'Content-Length': str(m.file_size),
+        'Content-Disposition': f"inline; filename*=UTF-8''{quote(m.file_name)}"})
 
 
 @router.post('/rooms/{room_id}/read')

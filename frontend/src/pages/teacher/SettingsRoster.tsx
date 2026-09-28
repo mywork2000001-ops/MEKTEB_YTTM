@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError, del, get, patch, post, put } from '../../api'
+import { useAuth } from '../../auth'
 import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, Loading, PickFirst, Pill, toast, useLoad } from '../../ui'
 
 type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; split_with: string | null; utis_class: string | null
@@ -194,6 +195,7 @@ function SplitForm({ parent, onClose, onDone }: { parent: Cls; onClose: () => vo
 
 // ---------------------------------------------------------------- şagirdlər
 function StudentsTab() {
+  const { me } = useAuth()
   const [classes] = useLoad<Cls[]>(() => get('/api/classes'), [])
   const [cid, setCid] = useState<number | null>(null)
   const [rows, err, , reload] = useLoad<Stud[] | null>(() => (cid ? get('/api/students', { class_id: cid }) : Promise.resolve(null)), [cid])
@@ -207,6 +209,7 @@ function StudentsTab() {
           <option value="">— sinif seçin —</option>{openable.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
         {cid && <button className="btn primary" onClick={() => setEdit('new')}>+ Şagird</button>}
       </div>
+      {me?.role === 'admin' && <RosterImport onDone={reload} />}
       <ErrorBox error={err} />
       {!cid ? <PickFirst /> : (
         <div className="jlist">
@@ -265,6 +268,37 @@ function StudentForm({ s, classId, classes, onClose, onDone }: { s: Stud | null;
           : <button className="btn danger" onClick={() => setConfirm(true)}>Arxivə göndər</button>)}
       </div>
     </Drawer>
+  )
+}
+
+function RosterImport({ onDone }: { onDone: () => void }) {
+  const [utis, setUtis] = useState<File | null>(null)
+  const [dim, setDim] = useState<File | null>(null)
+  const [res, setRes] = useState<any>(null)
+  const csv = () => {
+    const rows = [['Sinif', 'Ad', 'Giriş kodu', 'PIN'], ...res.added.map((r: any) => [r.class_name, r.full_name, r.portal_code, r.pin])]
+    const blob = new Blob(['﻿' + rows.map(r => r.join(';')).join(String.fromCharCode(10))], { type: 'text/csv;charset=utf-8' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'giris_kodlari.csv'; a.click()
+  }
+  return (
+    <details className="panel" style={{ marginBottom: 14 }}>
+      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>UTİS siyahısından şagird import (admin)</summary>
+      <div className="stack" style={{ marginTop: 10 }}>
+        <p className="small muted">Siniflər «UTİS sinfi» sahəsinə görə eşləşdirilir (məs. X e = 10 e). Uşaq İD, şəxsiyyət vəsiqəsi, pinkod saxlanmır; mövcud şagirdlər təkrarlanmır.</p>
+        <label className="f">UTİS faylı (.xlsx)<input type="file" accept=".xlsx" onChange={e => setUtis(e.target.files?.[0] || null)} /></label>
+        <label className="f">DİM buraxılış balları (.xlsx, istəyə görə)<input type="file" accept=".xlsx" onChange={e => setDim(e.target.files?.[0] || null)} /></label>
+        <AsyncBtn className="btn primary" disabled={!utis} onClick={async () => {
+          const fd = new FormData(); fd.append('utis', utis!); if (dim) fd.append('dim', dim)
+          const r = await api('/api/import/roster', { method: 'POST', form: fd }); setRes(r); onDone()
+          toast(`${r.added.length} şagird əlavə olundu`)
+        }}>Import et</AsyncBtn>
+        {res && (<>
+          <p className="small">Eşləşən siniflər: <b>{res.matched_classes.join(', ') || '—'}</b> · əlavə: <b>{res.added.length}</b>{res.without_scores ? ` · balı olmayan: ${res.without_scores}` : ''}</p>
+          {res.added.length > 0 && <><button className="btn" onClick={csv}>Giriş kodları və PIN-lər (CSV)</button>
+            <p className="small muted">PIN-lər yalnız indi göstərilir – faylı yükləyin, çap edib paylayın.</p></>}
+        </>)}
+      </div>
+    </details>
   )
 }
 

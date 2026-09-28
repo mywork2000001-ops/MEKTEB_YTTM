@@ -20,17 +20,24 @@ class UtisRoster:
     warnings: list[str]
 
 
+def _src(p):
+    """Yol və ya yaddaşdakı fayl (BytesIO) – ikisi də qəbul olunur."""
+    return str(p) if isinstance(p, (str, Path)) else p
+
+
 def _rows(path, sheet=None):
     import openpyxl
-    wb = openpyxl.load_workbook(str(path), data_only=True, read_only=True)
+    wb = openpyxl.load_workbook(_src(path), data_only=True, read_only=True)
     ws = wb[sheet] if sheet else wb.active
-    return list(ws.iter_rows(values_only=True))
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+    return rows
 
 
 def _dim_scores(path) -> dict[int, tuple]:
     """Uşaq İD -> (dil, riyaziyyat, xarici dil). Yalnız bu funksiyanın daxilində və qaytarılan lüğətdə yaşayır."""
     import openpyxl
-    wb = openpyxl.load_workbook(str(path), data_only=True, read_only=True)
+    wb = openpyxl.load_workbook(_src(path), data_only=True, read_only=True)
     out = {}
     for ws in wb:
         rows = list(ws.iter_rows(values_only=True))

@@ -12,9 +12,12 @@ class Base(DeclarativeBase):
 
 def make_engine(url: str | None = None):
     url = url or settings().database_url
+    if url.startswith(('postgres://', 'postgresql://')):          # Render/Neon formatı -> psycopg 3
+        url = 'postgresql+psycopg://' + url.split('://', 1)[1]
     if url.startswith('sqlite:///'):
         Path(url.removeprefix('sqlite:///')).parent.mkdir(parents=True, exist_ok=True)
-    eng = create_engine(url, connect_args={'check_same_thread': False} if url.startswith('sqlite') else {})
+    eng = create_engine(url, connect_args={'check_same_thread': False} if url.startswith('sqlite') else {},
+                        pool_pre_ping=True)
     if url.startswith('sqlite'):
         @event.listens_for(eng, 'connect')
         def _fk(conn, _):

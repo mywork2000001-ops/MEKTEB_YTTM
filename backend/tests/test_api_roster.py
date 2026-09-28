@@ -170,3 +170,23 @@ def test_teacher_accounts_admin_only(world):
     r = admin.post('/api/teachers', json={'login': 'gulay', 'full_name': 'Səmədzadə Gülay', 'subjects': ['Az. dili']})
     assert r.status_code == 200 and len(r.json()['initial_password']) >= 10
     assert admin.post('/api/teachers', json={'login': 'GULAY', 'full_name': 'X Y Z'}).status_code == 409
+
+
+def test_roster_import_from_utis(world):
+    import os
+    from app.seed import UTIS_XLSX, DIM_XLSX
+    import pytest
+    if not UTIS_XLSX.exists():
+        pytest.skip('UTİS faylı yoxdur')
+    as_, _ = world
+    admin = as_('admin')
+    cid = mk_class(admin, 'X e', utis_class='10 e').json()['id']
+    with open(UTIS_XLSX, 'rb') as u, open(DIM_XLSX, 'rb') as d:
+        r = admin.post('/api/import/roster', files={'utis': ('u.xlsx', u.read()), 'dim': ('d.xlsx', d.read())})
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j['matched_classes'] == ['X e'] and len(j['added']) == 18 and len(j['added'][0]['pin']) == 4
+    with open(UTIS_XLSX, 'rb') as u:
+        again = admin.post('/api/import/roster', files={'utis': ('u.xlsx', u.read())}).json()
+    assert again['added'] == []                                     # təkrar import şagird təkrarlamır
+    assert as_('ilqar').post('/api/import/roster', files={'utis': ('u.xlsx', b'x')}).status_code == 403

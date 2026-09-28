@@ -23,7 +23,8 @@ from app.config import settings
 from app.db import Base
 
 target_metadata = Base.metadata
-config.set_main_option('sqlalchemy.url', settings().database_url)
+from app.db import engine as _eng
+config.set_main_option('sqlalchemy.url', _eng.url.render_as_string(hide_password=False).replace('%', '%%'))
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

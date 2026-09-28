@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import get_db
 from ..deps import current_user
 from ..models import AuditLog, Role, User
@@ -37,7 +38,7 @@ def _me(u: User) -> MeOut:
 
 def _set_cookie(response: Response, u: User):
     response.set_cookie(SESSION_COOKIE, make_session(u.id, u.password_hash), max_age=SESSION_MAX_AGE,
-                        httponly=True, samesite='lax')
+                        httponly=True, samesite='lax', secure=settings().cookie_secure)
 
 
 @router.post('/login', response_model=MeOut)

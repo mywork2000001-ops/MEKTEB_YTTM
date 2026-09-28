@@ -1,0 +1,30 @@
+# Render Blueprint (pulsuz plan). Gizli dəyərlər (sync: false) Render panelində daxil edilir – repoya yazılmır.
+services:
+  - type: web
+    name: muellim-komekcisi
+    runtime: docker
+    plan: free
+    region: frankfurt
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: MK_DATABASE_URL          # Neon (pulsuz, müddətsiz) PostgreSQL bağlantısı
+        sync: false
+      - key: MK_SECRET_KEY
+        generateValue: true
+      - key: MK_ADMIN_PASSWORD        # ilk açılışda admin (hesenov.ferid) bu parolla yaradılır
+        sync: false
+      - key: MK_COOKIE_SECURE
+        value: "true"
+      - key: MK_STORAGE               # db – fayllar bazada; Google Drive qoşulanda: gdrive
+        value: db
+      - key: MK_BANK_SYNC_MINUTES
+        value: "60"
+      - key: MK_GDRIVE_FOLDER_ID
+        sync: false
+      - key: MK_GDRIVE_CLIENT_ID
+        sync: false
+      - key: MK_GDRIVE_CLIENT_SECRET
+        sync: false
+      - key: MK_GDRIVE_REFRESH_TOKEN
+        sync: false

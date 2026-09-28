@@ -36,6 +36,30 @@ def _one(db: Session, model, **where):
     return db.scalar(select(model).filter_by(**where))
 
 
+def add_students(db: Session, sc: SchoolClass, students, created_by: int | None) -> list[tuple[str, str, str, str]]:
+    """UTİS siyahısından sinfə şagird əlavə edir (ad + doğum tarixi təkrarlanırsa ötürür).
+    Qaytarır: (sinif, ad, giriş kodu, PIN) – PIN yalnız bu anda məlumdur."""
+    out = []
+    for i, s in enumerate(students, 1):
+        if _one(db, Student, school_id=sc.school_id, full_name=s.name, birth_date=s.birth_date):
+            continue
+        code = f'{sc.code}-{i:03d}'
+        while _one(db, Student, portal_code=code):          # kod toqquşmasın
+            i += 100
+            code = f'{sc.code}-{i:03d}'
+        pin = new_pin()
+        u = User(role=Role.student, login=code, password_hash=hash_password(pin), full_name=s.name,
+                 school_id=sc.school_id)
+        db.add(u)
+        db.flush()
+        db.add(Student(school_id=sc.school_id, class_id=sc.id, full_name=s.name, birth_date=s.birth_date,
+                       gender=s.gender, portal_code=code, user_id=u.id, score_language=s.score_language,
+                       score_math=s.score_math, score_foreign=s.score_foreign, created_by=created_by))
+        db.flush()
+        out.append((sc.name, s.name, code, pin))
+    return out
+
+
 def seed(db: Session, utis: str | None = None, login: str = 'hesenov.ferid',
          utis_xlsx: Path = UTIS_XLSX, dim_xlsx: Path = DIM_XLSX, out_dir: Path = DATA,
          plans_dir: Path | None = PLANS_DIR) -> dict:
@@ -99,26 +123,10 @@ def seed(db: Session, utis: str | None = None, login: str = 'hesenov.ferid',
                 rep = import_plan(db, ta, f)
                 report['created'].append(f'{c.name}: plan {rep["lessons"]} dərs')
         if roster and c.utis_class in roster.classes:
-            n_new = 0
-            for i, s in enumerate(roster.classes[c.utis_class], 1):
-                if _one(db, Student, school_id=school.id, full_name=s.name, birth_date=s.birth_date):
-                    continue
-                code = f'{sc.code}-{i:03d}'
-                while _one(db, Student, portal_code=code):          # kod toqquşmasın
-                    i += 100
-                    code = f'{sc.code}-{i:03d}'
-                pin = new_pin()
-                u = User(role=Role.student, login=code, password_hash=hash_password(pin), full_name=s.name,
-                         school_id=school.id)
-                db.add(u)
-                db.flush()
-                db.add(Student(school_id=school.id, class_id=sc.id, full_name=s.name, birth_date=s.birth_date,
-                               gender=s.gender, portal_code=code, user_id=u.id, score_language=s.score_language,
-                               score_math=s.score_math, score_foreign=s.score_foreign, created_by=admin.id))
-                secrets_rows.append((c.name, s.name, code, pin))
-                n_new += 1
-            if n_new:
-                report['created'].append(f'{c.name}: {n_new} şagird')
+            rows = add_students(db, sc, roster.classes[c.utis_class], admin.id)
+            secrets_rows += rows
+            if rows:
+                report['created'].append(f'{c.name}: {len(rows)} şagird')
     db.commit()
 
     if secrets_rows:

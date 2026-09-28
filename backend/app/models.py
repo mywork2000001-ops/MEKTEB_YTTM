@@ -425,3 +425,6 @@ class IndividualPlan(Base):
     review_date: Mapped[dt.date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(12), default='aktiv')    # aktiv | tamamlandı | dayandırıldı
     note: Mapped[str | None] = mapped_column(Text)
+
+
+from .storage import FileBlob  # noqa: E402,F401 – çat fayllarının bazada saxlanması (Alembic üçün qeydiyyat)
