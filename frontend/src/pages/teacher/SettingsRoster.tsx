@@ -31,6 +31,7 @@ function ClassesTab() {
         <button className="btn primary" onClick={() => setEdit('new')}>+ Yeni sinif / qrup</button>
         <span className="small muted">Sinif məktəbə aiddir: başqa müəllim yaradıbsa, yenisini yaratmayın – «Qoşul» düyməsini basın.</span>
       </div>
+      <PlansUpload onDone={reload} />
       <div className="jlist">
         {(classes || []).map(c => (
           <div className="jrow" key={c.id}>
@@ -51,6 +52,30 @@ function ClassesTab() {
       {members && <Members cls={members} onClose={() => { setMembers(null); reload() }} />}
       {split && <SplitForm parent={split} onClose={() => setSplit(null)} onDone={() => { setSplit(null); reload() }} />}
     </>
+  )
+}
+
+function PlansUpload({ onDone }: { onDone: () => void }) {
+  const [files, setFiles] = useState<File[]>([])
+  const [res, setRes] = useState<any[] | null>(null)
+  return (
+    <details className="panel" style={{ marginBottom: 12 }}>
+      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Rəsmi perspektiv planları yüklə (bir dəfəyə hamısı)</summary>
+      <div className="stack" style={{ marginTop: 10 }}>
+        <p className="small muted">Word (.docx) fayllarını seçin – fayl adına görə sinfə özü bağlanır (məs. «X-e sinif – Riyaziyyat perspektiv plan…» → X e). Jurnal qeydləri qorunur.</p>
+        <input type="file" accept=".docx" multiple onChange={e => setFiles(Array.from(e.target.files || []))} />
+        <AsyncBtn className="btn primary" disabled={!files.length} onClick={async () => {
+          const fd = new FormData(); files.forEach(f => fd.append('files', f))
+          const r = await api('/api/plan/import-many', { method: 'POST', form: fd }); setRes(r); onDone()
+          toast(`${r.filter((x: any) => x.ok).length} plan yükləndi`)
+        }}>Yüklə ({files.length})</AsyncBtn>
+        {res && <div className="jlist">{res.map((x: any) => (
+          <div key={x.file} className="jrow" style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}>
+            <span className="small">{x.file}</span>
+            {x.ok ? <Pill tone="ok">{x.class_name}: {x.lessons} dərs · KSQ {x.ksq} · BSQ {x.bsq}</Pill> : <Pill>{x.message}</Pill>}
+          </div>))}</div>}
+      </div>
+    </details>
   )
 }
 

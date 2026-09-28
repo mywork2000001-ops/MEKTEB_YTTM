@@ -36,19 +36,18 @@ function Teachers() {
         <h2>Yeni müəllim hesabı</h2>
         <div className="stack">
           <Field label="Soyadı, adı, ata adı"><input value={f.full_name} onChange={e => setF({ ...f, full_name: e.target.value })} /></Field>
-          <Field label="Login" hint="latın hərfləri, rəqəm, nöqtə"><input value={f.login} onChange={e => setF({ ...f, login: e.target.value.replace(/[^A-Za-z0-9._@-]/g, '') })} /></Field>
           <Field label="Fənlər" hint="vergüllə"><input value={f.subjects} onChange={e => setF({ ...f, subjects: e.target.value })} /></Field>
-          <AsyncBtn className="btn primary" disabled={f.login.length < 3 || f.full_name.length < 3} onClick={async () => {
-            const r = await post('/api/teachers', { login: f.login, full_name: f.full_name, school_id: school?.id ?? null,
+          <AsyncBtn className="btn primary" disabled={f.full_name.length < 3} onClick={async () => {
+            const r = await post('/api/teachers', { full_name: f.full_name, school_id: school?.id ?? null,
               subjects: f.subjects.split(',').map(s => s.trim()).filter(Boolean) })
             setShown({ login: r.login, pw: r.initial_password }); setF({ login: '', full_name: '', subjects: '' }); reload()
           }}>Yarat</AsyncBtn>
-          <p className="small muted">Müəllim yalnız öz fənnini, siniflərini və jurnalını görür; başqalarının yazışmasını heç kim görmür.</p>
+          <p className="small muted">ID avtomatik verilir (M-002, M-003, …). Müəllim yalnız öz fənnini, siniflərini və jurnalını görür; başqalarının yazışmasını heç kim görmür.</p>
         </div>
       </section>
       {shown && (
         <Drawer title="İlk giriş məlumatı" onClose={() => setShown(null)}>
-          <dl className="kv"><dt>Login</dt><dd className="mono">{shown.login}</dd><dt>Parol</dt><dd className="mono" style={{ fontSize: 20 }}>{shown.pw}</dd></dl>
+          <dl className="kv"><dt>ID</dt><dd className="mono">{shown.login}</dd><dt>Parol</dt><dd className="mono" style={{ fontSize: 20 }}>{shown.pw}</dd></dl>
           <p className="small muted" style={{ marginTop: 12 }}>Parol yalnız indi göstərilir. Müəllim ilk girişdən sonra onu dəyişməlidir.</p>
         </Drawer>)}
     </div>

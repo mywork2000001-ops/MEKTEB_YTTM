@@ -105,10 +105,16 @@ def join_school(body: JoinSchoolIn, user: User = Depends(staff), db: Session = D
 
 # ---------------------------------------------------------------- müəllim hesabları (admin)
 class TeacherIn(BaseModel):
-    login: str = Field(min_length=3, max_length=64, pattern=r'^[A-Za-z0-9._@-]+$')
+    login: str | None = Field(None, max_length=64)       # köhnə uyğunluq üçün; ID avtomatik verilir (M-002, …)
     full_name: str = Field(min_length=3, max_length=200)
     subjects: list[str] = Field(default_factory=list)
     school_id: int | None = None
+
+
+def next_teacher_id(db: Session) -> str:
+    """Müəllim ID-si: M-001, M-002, … (giriş bu ID ilə)."""
+    nums = [int(x[2:]) for x in db.scalars(select(User.login).where(User.login.like('M-%'))) if x[2:].isdigit()]
+    return f'M-{max(nums, default=0) + 1:03d}'
 
 
 def teacher_out(u: User):
@@ -125,10 +131,8 @@ def list_teachers(user: User = Depends(admin_only), db: Session = Depends(get_db
 @router.post('/teachers')
 def create_teacher(body: TeacherIn, user: User = Depends(admin_only), db: Session = Depends(get_db),
                    _: User = Depends(settings_unlocked)):
-    if db.scalar(select(User).where(func.lower(User.login) == body.login.lower())):
-        raise HTTPException(409, 'Bu login artıq var')
     pw = new_password()
-    t = User(role=Role.teacher, login=body.login, full_name=body.full_name, subjects=body.subjects,
+    t = User(role=Role.teacher, login=next_teacher_id(db), full_name=body.full_name, subjects=body.subjects,
              school_id=body.school_id, password_hash=hash_password(pw))
     db.add(t)
     db.flush()

@@ -23,7 +23,7 @@ def _ok(S, pw):
     from app.models import User
     from app.security import verify_password
     with S() as db:
-        return verify_password(db.query(User).filter_by(login='hesenov.ferid').one().password_hash, pw)
+        return verify_password(db.query(User).filter_by(login='M-001').one().password_hash, pw)
 
 
 def test_env_password_change_applies_once(boot):
@@ -34,10 +34,23 @@ def test_env_password_change_applies_once(boot):
     from app.models import User
     from app.security import hash_password
     with S() as db:
-        db.query(User).filter_by(login='hesenov.ferid').one().password_hash = hash_password('menim-parolum')
+        db.query(User).filter_by(login='M-001').one().password_hash = hash_password('menim-parolum')
         db.commit()
     run('ilk-parol-1')
     assert _ok(S, 'menim-parolum')
     # hostinqdə MK_ADMIN_PASSWORD dəyişdirilir – bir dəfə tətbiq olunur
     run('yeni-env-parol')
     assert _ok(S, 'yeni-env-parol')
+
+
+def test_old_login_migrates_to_id(boot):
+    run, S = boot
+    run('parol-1')
+    from app.models import User
+    with S() as db:
+        db.query(User).filter_by(login='M-001').one().login = 'hesenov.ferid'
+        db.commit()
+    run('parol-1')
+    with S() as db:
+        assert db.query(User).filter_by(login='M-001').count() == 1
+        assert db.query(User).filter_by(login='hesenov.ferid').count() == 0

@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     bank_exclude_sources: str = 'eduhub'                 # vergüllə; EduHub açar tələb edir
     chrome_path: str | None = None                       # lokal: C:/Program Files/Google/Chrome/Application/chrome.exe
     admin_password: str | None = None                    # ilk açılış: baza boşdursa admin bu parolla yaradılır
-    admin_login: str = 'hesenov.ferid'
+    admin_login: str = 'M-001'                           # müəllimlər ID ilə daxil olur (M-001, M-002, …)
     cookie_secure: bool = False                          # HTTPS-də (Render) True
     upload_dir: str | None = None                        # çat faylları; boşdursa – bazanın yanında data/uploads
     storage: str = 'local'                               # local | db | gdrive (hostinqdə: gdrive, qoşulana qədər db)

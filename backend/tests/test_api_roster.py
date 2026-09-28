@@ -167,9 +167,9 @@ def test_teacher_accounts_admin_only(world):
     as_, _ = world
     admin, ilqar = as_('admin'), as_('ilqar')
     assert ilqar.get('/api/teachers').status_code == 403
-    r = admin.post('/api/teachers', json={'login': 'gulay', 'full_name': 'Səmədzadə Gülay', 'subjects': ['Az. dili']})
-    assert r.status_code == 200 and len(r.json()['initial_password']) >= 10
-    assert admin.post('/api/teachers', json={'login': 'GULAY', 'full_name': 'X Y Z'}).status_code == 409
+    r = admin.post('/api/teachers', json={'full_name': 'Səmədzadə Gülay', 'subjects': ['Az. dili']})
+    assert r.status_code == 200 and len(r.json()['initial_password']) >= 10 and r.json()['login'] == 'M-001'
+    assert admin.post('/api/teachers', json={'full_name': 'Başqa Müəllim'}).json()['login'] == 'M-002'
 
 
 def test_roster_import_from_utis(world):

@@ -30,7 +30,7 @@ export default function Login({ lang, setLang }: { lang: Lang; setLang: (l: Lang
         <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
           {who === 'teacher' ? (
             <>
-              <Field label={t('Login')}><input autoComplete="username" value={l} onChange={e => setL(e.target.value)} required /></Field>
+              <Field label="ID" hint="məs. M-001"><input autoComplete="username" autoCapitalize="characters" value={l} onChange={e => setL(e.target.value.toUpperCase())} required /></Field>
               <Field label={t('Parol')}><input type="password" autoComplete="current-password" value={p} onChange={e => setP(e.target.value)} required /></Field>
             </>
           ) : (

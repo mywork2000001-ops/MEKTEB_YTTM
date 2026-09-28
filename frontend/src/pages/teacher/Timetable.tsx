@@ -22,8 +22,25 @@ export default function Timetable() {
         <button className="btn sm right" onClick={() => window.print()}>Çap et</button>
       </div>
       <ErrorBox error={err} />
+      {d && (
+        <div className="only-phone stack">
+          {d.days.map(x => {
+            const cells = Object.entries(x.periods).flatMap(([p, cs]) => cs.map(c => ({ p: Number(p), ...c }))).sort((u, v) => (u.time || '').localeCompare(v.time || ''))
+            const today = x.date === isoDate(new Date())
+            return (
+              <section key={x.date} className="panel" style={{ padding: 12, outline: today ? '2px solid var(--accent)' : undefined }}>
+                <h2 style={{ marginBottom: 8 }}>{x.weekday} <small>{fmtDate(x.date)}{today ? ' · bu gün' : ''}</small></h2>
+                {cells.length === 0 ? <p className="muted small" style={{ margin: 0 }}>Dərs yoxdur</p> : cells.map(c => (
+                  <div key={c.ta_id + '-' + c.p} style={{ display: 'grid', gridTemplateColumns: '64px minmax(0,1fr)', gap: 8, padding: '8px 0', borderTop: '1px solid var(--line)' }}>
+                    <span className="small"><b>{c.p}-ci</b><br /><span className="muted">{c.time?.split('–')[0]}</span></span>
+                    <span style={{ minWidth: 0 }}><b className="ctag">{c.class_name}</b>{c.assessment_type && c.assessment_type !== 'formativ' && <> <Pill tone="warn">{c.assessment_type}</Pill></>}
+                      <span className="small" style={{ display: 'block', overflowWrap: 'anywhere' }}>{c.topic || '—'}</span></span>
+                  </div>))}
+              </section>)
+          })}
+        </div>)}
       {loading && !d ? <Loading /> : d && (
-        <div className="tbl-wrap">
+        <div className="tbl-wrap only-desk">
           <table className="tt" style={{ minWidth: 760 }}>
             <thead><tr><th style={{ width: 80 }}>Saat</th>{d.days.map(x => <th key={x.date}>{x.weekday} {fmtDate(x.date).slice(0, 5)}</th>)}</tr></thead>
             <tbody>

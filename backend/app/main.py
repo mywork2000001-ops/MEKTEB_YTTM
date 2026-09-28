@@ -32,7 +32,13 @@ def bootstrap():
     import hashlib
     from .models import AppState
     applied = hashlib.sha256(pw.encode()).hexdigest()
+    from .models import Role
     with SessionLocal() as db:
+        # köhnə login (hesenov.ferid) -> ID (M-001)
+        old = db.scalar(select(User).where(User.login == 'hesenov.ferid'))
+        if old and not db.scalar(select(User).where(User.login == settings().admin_login)):
+            old.login = settings().admin_login
+            db.commit()
         if db.scalar(select(User.id).limit(1)):
             # MK_ADMIN_PASSWORD hostinqdə DƏYİŞDİRİLİBSƏ – admin parolu bir dəfə ona keçir
             # (tətbiqdə sonradan dəyişdirilən parol, env dəyişmədikcə pozulmur)
@@ -41,7 +47,8 @@ def bootstrap():
                 st = AppState(key='admin_pw_applied', value='')
                 db.add(st)
             if st.value != applied:
-                u = db.scalar(select(User).where(User.login == settings().admin_login))
+                u = (db.scalar(select(User).where(User.login == settings().admin_login))
+                     or db.scalar(select(User).where(User.role == Role.admin).order_by(User.id)))
                 if u:
                     u.password_hash = hash_password(pw)
                     u.failed_logins, u.locked_until = 0, None

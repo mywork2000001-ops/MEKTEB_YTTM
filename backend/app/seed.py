@@ -1,6 +1,6 @@
 """İlkin doldurma (təkrar işə salmaq təhlükəsizdir – mövcud olanlar ötürülür).
 
-    python -m app.seed [--utis KOD] [--login hesenov.ferid]
+    python -m app.seed [--utis KOD] [--login M-001]
 
 Yaradır: məktəb, admin (Həsənov Fərid), 2026–2027 tədris ili + bayramlar, siniflər və dərs cədvəli,
 UTİS siyahısından şagirdlər (portal kodu + 4 rəqəmli PIN). İlk parol və PIN-lər YALNIZ bir dəfə
@@ -60,7 +60,7 @@ def add_students(db: Session, sc: SchoolClass, students, created_by: int | None)
     return out
 
 
-def seed(db: Session, utis: str | None = None, login: str = 'hesenov.ferid',
+def seed(db: Session, utis: str | None = None, login: str = 'M-001',
          utis_xlsx: Path = UTIS_XLSX, dim_xlsx: Path = DIM_XLSX, out_dir: Path = DATA,
          plans_dir: Path | None = PLANS_DIR) -> dict:
     report = {'created': [], 'secrets_file': None}
@@ -143,7 +143,7 @@ def seed(db: Session, utis: str | None = None, login: str = 'hesenov.ferid',
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--utis', help='məktəbin UTİS kodu (sonra tənzimləmələrdə də yazıla bilər)')
-    ap.add_argument('--login', default='hesenov.ferid')
+    ap.add_argument('--login', default='M-001')
     a = ap.parse_args()
     from alembic import command
     from alembic.config import Config

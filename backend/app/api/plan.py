@@ -145,3 +145,45 @@ def timetable(date: dt.date | None = None, user: User = Depends(staff), db: Sess
                     'assessment_type': pl.assessment_type if pl else None, 'held': s.held})
     return {'week_start': a, 'days': [{'date': x, 'weekday': WEEKDAYS[i], 'periods': grid[str(x)]}
                                       for i, x in enumerate(days)]}
+
+
+def _plan_key(s: str) -> str:
+    """Fayl adı və sinif adı üçün ortaq açar: «X-b sinif – riyaziyyat qrupu» ≈ «X b (riyaziyyat qrupu)»."""
+    import re
+    s = s.lower().replace('i̇', 'i')
+    s = s.split(' – riyaziyyat perspektiv')[0].split(' - riyaziyyat perspektiv')[0]
+    for w in ('bütöv sinif', 'sinifi', 'sinfi', 'sinif'):
+        s = s.replace(w, ' ')
+    return re.sub(r'[\s\-–()_.]+', '', s)
+
+
+@router.post('/plan/import-many')
+def import_many(files: list[UploadFile] = File(...), user: User = Depends(settings_unlocked),
+                db: Session = Depends(get_db)):
+    """Bir neçə rəsmi planı birdən yükləyir; fayl adına görə müəllimin öz dərs bağlılığına eşləşdirilir."""
+    from ..services import import_plan
+    tas = {}
+    for ta, c in db.execute(select(TeachingAssignment, SchoolClass).join(SchoolClass).where(
+            TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None))):
+        tas[_plan_key(c.name)] = (ta, c)
+    out = []
+    for f in files:
+        name = f.filename or ''
+        hit = tas.get(_plan_key(name.rsplit('.', 1)[0])) if name.lower().endswith('.docx') else None
+        if not hit:
+            out.append({'file': name, 'ok': False, 'message': 'Uyğun sinif tapılmadı'})
+            continue
+        ta, c = hit
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / 'plan.docx'
+            p.write_bytes(f.file.read())
+            try:
+                rep = import_plan(db, ta, p)
+            except ValueError as e:
+                out.append({'file': name, 'ok': False, 'message': str(e)})
+                continue
+        audit(db, user, 'import', 'plan', ta.id, lessons=rep['lessons'])
+        out.append({'file': name, 'ok': True, 'class_name': c.name, 'lessons': rep['lessons'],
+                    'ksq': rep['ksq'], 'bsq': rep['bsq'], 'warnings': rep['warnings'][:5]})
+    db.commit()
+    return out

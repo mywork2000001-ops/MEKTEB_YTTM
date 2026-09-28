@@ -174,3 +174,24 @@ def test_real_plans_on_real_dates(tmp_path):
         assert slot_at(ctx.slots, dt.date(2026, 9, 29), 1) and slot_at(ctx.slots, dt.date(2026, 9, 29), 5)
         day = [ctx.lesson_for(s) for s in ctx.slots if s.date == dt.date(2027, 1, 26)]
         assert [(l.assessment_type, l.exam_no) for l in day][-1] == ('BSQ', 1)     # günün son dərsi
+
+
+def test_import_many_plans_by_filename(world):
+    import glob, os
+    from app.seed import PLANS_DIR
+    if not PLANS_DIR.exists():
+        pytest.skip('planlar yoxdur')
+    as_, _ = world
+    c = as_('admin')
+    for name, slots, hours in [('X e', {'0': [2, 7], '1': [1, 5], '2': [6], '3': [5], '4': [6]}, 7),
+                               ('X b', {'2': [3, 7], '3': [1, 4], '4': [2]}, 5)]:
+        cid = c.post('/api/classes', json={'name': name}).json()['id']
+        c.post(f'/api/classes/{cid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': hours, 'slots': slots})
+    xb = next(x['id'] for x in c.get('/api/classes').json() if x['name'] == 'X b')
+    q = c.post('/api/classes', json={'name': 'X b (riyaziyyat qrupu)', 'kind': 'qrup', 'parent_id': xb}).json()['id']
+    c.post(f'/api/classes/{q}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 5, 'slots': {'0': [3, 5], '1': [3, 6, 7]}, 'has_summative': False})
+    files = [('files', (os.path.basename(f), open(f, 'rb').read())) for f in sorted(glob.glob(str(PLANS_DIR / '*.docx')))]
+    r = c.post('/api/plan/import-many', files=files).json()
+    ok = {x['class_name']: x['lessons'] for x in r if x['ok']}
+    assert ok == {'X e': 237, 'X b': 172, 'X b (riyaziyyat qrupu)': 168}
+    assert any(not x['ok'] and x['file'].startswith('Üz qabığı') for x in r)
