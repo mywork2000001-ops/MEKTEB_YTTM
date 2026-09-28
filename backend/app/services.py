@@ -92,5 +92,10 @@ def import_plan(db: Session, ta: TeachingAssignment, path: str | Path) -> dict:
             'bsq': sum(l.assessment_type == 'BSQ' for l in p.lessons)}
 
 
+SCHOOL_TZ = 'Asia/Baku'
+
+
 def today() -> dt.date:
-    return dt.date.today()
+    """Məktəbin tarixi (Bakı vaxtı) – server UTC-də işləsə də gecə 00:00–04:00 arası «dünən» sayılmasın."""
+    from zoneinfo import ZoneInfo
+    return dt.datetime.now(ZoneInfo(SCHOOL_TZ)).date()

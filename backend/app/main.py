@@ -26,6 +26,12 @@ def bootstrap():
     cfg = Config(str(ini))
     cfg.set_main_option('script_location', str(ini.parent / 'migrations'))
     command.upgrade(cfg, 'head')
+    with SessionLocal() as db:
+        # köhnə login (hesenov.ferid) -> ID (M-001) – həmişə
+        old = db.scalar(select(User).where(User.login == 'hesenov.ferid'))
+        if old and not db.scalar(select(User).where(User.login == settings().admin_login)):
+            old.login = settings().admin_login
+            db.commit()
     pw = settings().admin_password
     if not pw:
         return
@@ -34,11 +40,6 @@ def bootstrap():
     applied = hashlib.sha256(pw.encode()).hexdigest()
     from .models import Role
     with SessionLocal() as db:
-        # köhnə login (hesenov.ferid) -> ID (M-001)
-        old = db.scalar(select(User).where(User.login == 'hesenov.ferid'))
-        if old and not db.scalar(select(User).where(User.login == settings().admin_login)):
-            old.login = settings().admin_login
-            db.commit()
         if db.scalar(select(User.id).limit(1)):
             # MK_ADMIN_PASSWORD hostinqdə DƏYİŞDİRİLİBSƏ – admin parolu bir dəfə ona keçir
             # (tətbiqdə sonradan dəyişdirilən parol, env dəyişmədikcə pozulmur)

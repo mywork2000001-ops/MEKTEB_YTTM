@@ -54,3 +54,16 @@ def test_xb_split_with_biology():
     q = CLASS_BY_CODE['xb_q']
     assert q.parent == 'xb' and q.slots == {0: [3, 5], 1: [3, 6, 7]} and 'Biologiya' in q.split_with
     assert CLASS_BY_CODE['xb'].slots == {2: [3, 7], 3: [1, 4], 4: [2]}
+
+
+def test_today_uses_baku_time(monkeypatch):
+    import datetime as dt
+    from app import services
+
+    class FakeDT(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            # UTC 22.09 21:30 = Bakı 23.09 01:30
+            return dt.datetime(2026, 9, 22, 21, 30, tzinfo=dt.timezone.utc).astimezone(tz)
+    monkeypatch.setattr(services.dt, 'datetime', FakeDT)
+    assert services.today() == dt.date(2026, 9, 23)
