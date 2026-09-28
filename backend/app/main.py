@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from . import scheduler
-from .api import auth, bank, classes, exams, journal, plan, school, students
+from .api import auth, bank, chat, classes, exams, journal, plan, portal, school, students, tasks
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s %(message)s')
 
@@ -26,6 +26,9 @@ app.include_router(students.router)
 app.include_router(plan.router)
 app.include_router(journal.router)
 app.include_router(exams.router)
+app.include_router(tasks.router)
+app.include_router(portal.router)
+app.include_router(chat.router)
 
 
 @app.get('/api/health')

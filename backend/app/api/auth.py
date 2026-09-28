@@ -91,3 +91,17 @@ def change_password(body: PasswordIn, response: Response, user: User = Depends(c
     db.commit()
     _set_cookie(response, user)
     return {'ok': True}
+
+
+class PrefsIn(BaseModel):
+    language: str | None = Field(None, pattern='^(az|en|ru)$')
+    theme: str | None = Field(None, max_length=20)
+
+
+@router.patch('/prefs', response_model=MeOut)
+def prefs(body: PrefsIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Dil (AZ/EN/RU) və rəng çaları – hər istifadəçi özü üçün (şagird də)."""
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(user, k, v)
+    db.commit()
+    return _me(user)

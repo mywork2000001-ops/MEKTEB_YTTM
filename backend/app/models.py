@@ -318,3 +318,84 @@ class ExamScore(Base):
     points: Mapped[float | None] = mapped_column(Float)
     item_marks: Mapped[list | None] = mapped_column(JSON)              # [1, 0, 1, …] – tapşırıq üzrə ✓/✗
     absent: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+# ---------------------------------------------------------------- onlayn tapşırıqlar (vaxtlı testlər)
+class OnlineTask(Base, Archivable):
+    """Suallar yaradılanda SURƏT kimi saxlanılır – test bazası sonra dəyişsə də tapşırıq dəyişmir."""
+    __tablename__ = 'online_tasks'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'))
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    opens_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    closes_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    duration_min: Mapped[int] = mapped_column(Integer)                  # həll müddəti
+    questions: Mapped[list] = mapped_column(JSON)                       # [{bank_id, kind, text, options, correct, answer, image, explanation}]
+    shuffle: Mapped[bool] = mapped_column(Boolean, default=True)
+    show_answers: Mapped[str] = mapped_column(String(12), default='after_close')   # after_close | after_submit | never
+    student_ids: Mapped[list | None] = mapped_column(JSON)              # None = bütün sinif/qrup
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TaskAttempt(Base):
+    __tablename__ = 'task_attempts'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey('online_tasks.id', ondelete='CASCADE'))
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'))
+    started_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    deadline: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    order: Mapped[list] = mapped_column(JSON)                           # sualların şagirdə göstərilən sırası
+    answers: Mapped[dict] = mapped_column(JSON, default=dict)           # {"sual indeksi": cavab}
+    submitted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    auto_submitted: Mapped[bool] = mapped_column(Boolean, default=False)
+    correct: Mapped[int | None] = mapped_column(Integer)
+    total: Mapped[int | None] = mapped_column(Integer)
+    grade: Mapped[int | None] = mapped_column(Integer)
+    __table_args__ = (UniqueConstraint('task_id', 'student_id'),)
+
+
+# ---------------------------------------------------------------- daxili çat (tam məxfilik)
+class ChatRoom(Base):
+    __tablename__ = 'chat_rooms'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey('schools.id'))
+    kind: Mapped[str] = mapped_column(String(10))                      # class | dm | staff
+    class_id: Mapped[int | None] = mapped_column(ForeignKey('classes.id', ondelete='CASCADE'))
+    dm_key: Mapped[str | None] = mapped_column(String(40), unique=True)   # «dm:5:9» – iki istifadəçi
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ChatMember(Base):
+    __tablename__ = 'chat_members'
+    room_id: Mapped[int] = mapped_column(ForeignKey('chat_rooms.id', ondelete='CASCADE'), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    last_read_id: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ChatMessage(Base):
+    __tablename__ = 'chat_messages'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    room_id: Mapped[int] = mapped_column(ForeignKey('chat_rooms.id', ondelete='CASCADE'))
+    sender_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    text: Mapped[str | None] = mapped_column(Text)
+    file_name: Mapped[str | None] = mapped_column(String(200))          # istifadəçinin fayl adı
+    file_key: Mapped[str | None] = mapped_column(String(80))            # diskdə təsadüfi ad
+    file_type: Mapped[str | None] = mapped_column(String(60))           # image/* | application/pdf | audio/*
+    file_size: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    deleted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ChatReport(Base):
+    """«!» – şagird mesajı müəllimə bildirir; müəllim YALNIZ bildirilən mesajı görür."""
+    __tablename__ = 'chat_reports'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey('chat_messages.id', ondelete='CASCADE'))
+    reporter_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    class_id: Mapped[int | None] = mapped_column(ForeignKey('classes.id'))
+    reason: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    resolved_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (UniqueConstraint('message_id', 'reporter_id'),)

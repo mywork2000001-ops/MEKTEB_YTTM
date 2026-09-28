@@ -224,3 +224,5 @@ Maket: `Şagirdlər\Müəllim köməkçisi\maket\Müəllim köməkçisi – make
 - **Şagird portalı əlavə:** «Analitika» (dövr seçimi, test dinamikası sinif ortası ilə – adsız, mövzular üzrə mənimsəmə, davamiyyət, ev tapşırığı, «Hesabatım» A4); imtahan sayğacı (sinfin buraxılış tarixi, BSQ, növbəti KSQ); müəllimin adı sinif/qrup/dərsdə.
 - **Əlavə modullar:** KSQ tapşırıq üzrə (✓/✗) + tapşırıq/standart təhlili; ev tapşırığının yoxlanması (etdi/qismən/etmədi/köçürüb); valideynlə əlaqə jurnalı; fərdi iş planı; davamiyyət hesabatı (istilik xəritəsi, 25%+).
 - **Sinif adı:** «X e» (Excel vərəqində «X ə» yazılıb).
+
+- **Çatda fayl göndərmə (istifadəçi, 29.09.2026):** şəkil, PDF, səs və video – **2 GB-a qədər**; server faylı diskə axınla (1 MB hissələrlə) yazır, yaddaşa bütöv yükləmir. Hostinqdə fayllar üçün daimi disk (volume) lazımdır.
