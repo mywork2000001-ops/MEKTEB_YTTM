@@ -215,7 +215,7 @@ Maket: `Şagirdlər\Müəllim köməkçisi\maket\Müəllim köməkçisi – make
 - **Qiymətləndirmə:** KSQ/BSQ bal → faiz → qiymət (0–30→2, 31–60→3, 61–80→4, 81–100→5). **Yarımil qiyməti = (KSQ qiymətlərinin cəmi / KSQ sayı) × 0,4 + BSQ × 0,6**, adi yuvarlaqlaşdırma.
 - **Jurnal:** mövzu perspektiv plandan tarix + dərs saatına görə avtomatik; hər dərs saatı ayrıca qeyd; bölünən qrup öz planı ilə ayrıca; ev tapşırığı sahəsi; testlər açılan siyahıdan (düz cavab sayı → faiz → qiymət avtomatik).
 - **Geriləmə:** «Mövzunu saxla» — işçi plan təqvimdə sürüşür, rəsmi plan dəyişmir.
-- **Dərs vaxtları:** məktəbin ümumi zəng cədvəli (XI peşə də); lazım olsa sinif üçün ayrıca vaxt.
+- **Dərs vaxtları:** məktəbin ümumi zəng cədvəli; sinif üçün ayrıca zəng vaxtı ola bilər. **XI peşə sinfi – öz zəngi:** 1-ci saat 08:00–08:45, 2-ci saat 08:50–09:35 (B.e. 1, 2; Ç.a. 1; Ç. 1). Müəllimin dərsləri real vaxt üzrə toqquşmaya yoxlanır.
 - **Şagird portalı:** Bu gün (gündəlik motivasiya), Dərs (gündəlik: mövzu, ev tapşırığı, davamiyyət, qiymət), Tapşırıqlar (vaxtlı testlər: tarix + saat aralığı + həll müddəti, taymer, avtomatik təhvil), Plan (gün/həftə/ay/yarımil), Nəticələrim (test nəticələri, KSQ/BSQ, yarımil qiyməti, səhvlərim, nailiyyətlər), Çat (müəllim, sinif, sinif yoldaşı), Tənzimləmələr (PIN, rəng çaları).
 - **Analitika və hesabat:** ümumi analitika, reytinq (ümumi və irəliləyiş), çap/PDF (A4, ağ-qara).
 - **Görünüş:** telefon, planşet, noutbuk; 6 rəng çaları + işıqlı/qaranlıq rejim.

@@ -54,6 +54,7 @@ class ClassSeed:
     has_summative: bool = True
     parent: str | None = None
     utis_class: str | None = None      # UTİS siyahısında sinif (şagirdlər buradan: Utis_siyahi.xlsx)
+    bells: dict[int, str] | None = None   # sinfin öz zəng vaxtları (dərs saatı -> vaxt); yoxdursa məktəbin BELLS
 
 
 CLASSES: list[ClassSeed] = [
@@ -63,7 +64,9 @@ CLASSES: list[ClassSeed] = [
     ClassSeed('xc', 'X c', 'TOM', 8, 'X-c sinif', {0: [6], 1: [2, 4], 2: [1, 2], 3: [6, 7], 4: [1]}, utis_class='10 c'),
     ClassSeed('xe', 'X e', 'TOM', 7, 'X-e sinif', {0: [2, 7], 1: [1, 5], 2: [6], 3: [5], 4: [6]}, utis_class='10 e'),   # istifadəçi təsdiqi 2026-09-28: X e = UTİS «10 e» (köhnə «X ə» vərəqi 10 ə idi – səhv)
     ClassSeed('xia', 'XI a', 'TOM', 7, 'XI-a sinif', {0: [4], 1: [], 2: [4, 5], 3: [2, 3], 4: [3, 4]}, utis_class='11 a 1'),
-    ClassSeed('xip', 'XI peşə sinfi', 'adi', 4, 'XI peşə sinfi', {0: [1, 2], 1: [1], 2: [1]}),
+    # XI peşə – öz zəng vaxtları (istifadəçi, 28.09.2026): 1-ci saat 08:00–08:45, 2-ci saat 08:50–09:35
+    ClassSeed('xip', 'XI peşə sinfi', 'adi', 4, 'XI peşə sinfi', {0: [1, 2], 1: [1], 2: [1]},
+              bells={1: '08:00–08:45', 2: '08:50–09:35'}),
 ]
 CLASS_BY_CODE = {c.code: c for c in CLASSES}
 
@@ -131,3 +134,31 @@ def check_bsq(plan_bsq: list[tuple[int | None, dt.date]], slots: dict[int, list[
         if n in (1, 2) and d != due[n - 1]:
             errs.append(f'BSQ-{n}: planda {d:%d.%m.%Y}, olmalıdır {due[n - 1]:%d.%m.%Y} (yarımilin son dərs günü)')
     return errs
+
+
+def bell_time(c: ClassSeed, period: int) -> str:
+    """Dərs saatının vaxtı: sinfin öz zəngi, yoxdursa məktəbin ümumi zəngi."""
+    if c.bells and period in c.bells:
+        return c.bells[period]
+    return BELLS[period - 1]
+
+
+def _minutes(t: str) -> tuple[int, int]:
+    a, b = t.replace('–', '-').split('-')
+    f = lambda x: int(x.split(':')[0]) * 60 + int(x.split(':')[1])
+    return f(a), f(b)
+
+
+def teacher_conflicts(classes: list[ClassSeed]) -> list[str]:
+    """Müəllimin həftəlik cədvəlində real vaxt üzrə üst-üstə düşən dərslər. Bölünən qrup (parent) öz sinfi ilə
+    eyni anda ola bilməz; boş siyahı = toqquşma yoxdur."""
+    busy, out = [], []
+    for c in classes:
+        for wd, periods in c.slots.items():
+            for p in periods:
+                a, b = _minutes(bell_time(c, p))
+                for wd2, a2, b2, c2, p2 in busy:
+                    if wd2 == wd and a < b2 and a2 < b:
+                        out.append(f'{WEEKDAYS[wd]} {c2.name} ({p2}-ci saat) ↔ {c.name} ({p}-ci saat)')
+                busy.append((wd, a, b, c, p))
+    return out

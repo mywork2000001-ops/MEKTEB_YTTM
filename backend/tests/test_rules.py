@@ -28,3 +28,22 @@ def test_semester_formula():
     assert semester_grade([3, 4, 4, 4], 5) == 5
     assert semester_grade([], 5) is None
     assert semester_grade([4], None) is None
+
+
+def test_timetable_no_conflicts_with_class_bells():
+    from app.domain.calendar import CLASSES, CLASS_BY_CODE, bell_time, teacher_conflicts
+    xip = CLASS_BY_CODE['xip']
+    assert bell_time(xip, 1) == '08:00–08:45' and bell_time(xip, 2) == '08:50–09:35'
+    assert bell_time(CLASS_BY_CODE['xe'], 1) == '08:50–09:35'
+    assert teacher_conflicts(CLASSES) == []
+    # 32 saat TOM + 4 saat XI peşə
+    assert sum(len(p) for c in CLASSES for p in c.slots.values()) == 36
+
+
+def test_conflict_detected_without_own_bells():
+    import dataclasses
+    from app.domain.calendar import CLASSES
+    wrong = [dataclasses.replace(c, bells=None) if c.code == 'xip' else c for c in CLASSES]
+    from app.domain.calendar import teacher_conflicts
+    found = teacher_conflicts(wrong)
+    assert any('XI peşə' in x and 'X e' in x for x in found)      # Ç.a. 08:50 X e ilə
