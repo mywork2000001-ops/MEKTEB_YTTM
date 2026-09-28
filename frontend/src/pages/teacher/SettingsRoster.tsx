@@ -234,6 +234,7 @@ function StudentsTab() {
         <select className="sel" value={cid ?? ''} onChange={e => setCid(e.target.value ? Number(e.target.value) : null)}>
           <option value="">— sinif seçin —</option>{openable.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
         {cid && <button className="btn primary" onClick={() => setEdit('new')}>+ Şagird</button>}
+        {cid && <SlipsButton cid={cid} />}
         {cid && <button className="btn" aria-pressed={scores} onClick={() => setScores(!scores)}>{scores ? 'Siyahıya qayıt' : 'IX buraxılış ballarını redaktə et'}</button>}
       </div>
       {me?.role === 'admin' && <RosterImport onDone={reload} />}
@@ -259,6 +260,33 @@ function StudentsTab() {
         </Drawer>)}
     </>
   )
+}
+
+function SlipsButton({ cid }: { cid: number }) {
+  const [ask, setAsk] = useState(false)
+  const esc = (x: string) => x.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!))
+  const run = async () => {
+    const r = await post(`/api/students/by-class/${cid}/reset-pins`)
+    const rows = r.students as { full_name: string; portal_code: string; pin: string }[]
+    const csv = '﻿' + [['Ad', 'Giriş kodu', 'PIN'], ...rows.map(x => [x.full_name, x.portal_code, x.pin])].map(x => x.join(';')).join(String.fromCharCode(10))
+    const w = window.open('', '_blank')
+    if (!w) { toast('Pəncərə açılmadı – brauzerdə açılan pəncərələrə icazə verin'); return }
+    w.document.write(`<!doctype html><meta charset="utf-8"><title>${esc(r.class_name)} – giriş vərəqələri</title>
+      <style>body{font:14px/1.4 Arial,sans-serif;margin:10mm;color:#000}h1{font-size:16px}.g{display:grid;grid-template-columns:1fr 1fr;gap:0}
+      .s{border:1px dashed #000;padding:8mm 6mm;break-inside:avoid}.s b{font-size:15px}.k{font:700 18px monospace;margin-top:4px}
+      .n{font-size:11px;margin-top:6px}@media print{.np{display:none}}</style>
+      <div class="np"><button id="pr">Çap et</button> <a download="${esc(r.class_name)}-giris.csv" href="data:text/csv;charset=utf-8,${encodeURIComponent(csv)}">CSV endir</a></div>
+      <h1>${esc(r.class_name)} – Müəllim köməkçisi: giriş vərəqələri</h1><div class="g">${rows.map(x => `<div class="s"><b>${esc(x.full_name)}</b>
+      <div class="k">Kod: ${esc(x.portal_code)} &nbsp; PIN: ${esc(x.pin)}</div><div class="n">Sayt: ${location.origin} → «Şagird». PIN-i ilk girişdən sonra Tənzimləmələrdə dəyişin.</div></div>`).join('')}</div>`)
+    w.document.close()
+    const b = w.document.getElementById('pr')
+    if (b) b.onclick = () => w.print()          // inline skript CSP ilə bloklanır – kənardan bağlanır
+    setAsk(false)
+  }
+  return ask ? (
+    <span className="confirm" style={{ width: 'auto' }}>Sinfin bütün PIN-ləri yenilənəcək (köhnələr işləməyəcək).
+      <AsyncBtn className="btn danger sm" onClick={run}>Davam et</AsyncBtn><button className="btn ghost sm" onClick={() => setAsk(false)}>Ləğv et</button></span>
+  ) : <button className="btn" onClick={() => setAsk(true)}>Giriş vərəqələri (yeni PIN)</button>
 }
 
 function ScoresEditor({ rows, onDone }: { rows: Stud[]; onDone: () => void }) {

@@ -11,6 +11,8 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from .config import settings
 
 _ph = PasswordHasher()
+# Şagird PIN-i (4 rəqəm) üçün yüngül parametrlər: onlayn təxmini hesab kilidi qoruyur; pulsuz serverdə 76 PIN tez hazırlanır
+_ph_pin = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
 SESSION_COOKIE = 'mk_session'
 SESSION_MAX_AGE = 60 * 60 * 24 * 14           # 14 gün
 MAX_FAILED = 5                                 # 5 səhv cəhd -> 15 dəqiqə kilid
@@ -18,7 +20,7 @@ LOCK_MINUTES = 15
 
 
 def hash_password(p: str) -> str:
-    return _ph.hash(p)
+    return (_ph_pin if len(p) == 4 and p.isdigit() else _ph).hash(p)
 
 
 def verify_password(h: str, p: str) -> bool:

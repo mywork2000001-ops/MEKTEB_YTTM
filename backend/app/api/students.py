@@ -210,3 +210,28 @@ def delete_student(sid_: int, body: ConfirmIn, user: User = Depends(settings_unl
         db.delete(acc)
     db.commit()
     return {'ok': True}
+
+
+@router.post('/by-class/{cid}/reset-pins')
+def reset_class_pins(cid: int, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    """Sinfin bütün şagirdlərinə yeni PIN (giriş vərəqələri üçün). PIN-lər yalnız bu cavabda bir dəfə qaytarılır."""
+    c = get_or_404(db, SchoolClass, cid, 'Sinif')
+    if c.kind == 'qrup' or not can_see_class(db, user, c):
+        raise HTTPException(403, 'Bu sinif sizin siniflərinizdən deyil')
+    out = []
+    for s in db.scalars(select(Student).where(Student.class_id == cid, Student.archived_at.is_(None))
+                        .order_by(Student.full_name)):
+        pin = new_pin()
+        acc = db.get(User, s.user_id) if s.user_id else None
+        if acc is None:
+            acc = User(role=Role.student, login=s.portal_code, full_name=s.full_name, school_id=s.school_id,
+                       password_hash='')
+            db.add(acc)
+            db.flush()
+            s.user_id = acc.id
+        acc.password_hash = hash_password(pin)
+        acc.failed_logins, acc.locked_until = 0, None
+        out.append({'full_name': s.full_name, 'portal_code': s.portal_code, 'pin': pin})
+    audit(db, user, 'update', 'class_pins', cid, count=len(out))
+    db.commit()
+    return {'class_name': c.name, 'students': out}

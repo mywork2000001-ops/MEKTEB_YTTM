@@ -190,3 +190,20 @@ def test_roster_import_from_utis(world):
         again = admin.post('/api/import/roster', files={'utis': ('u.xlsx', u.read())}).json()
     assert again['added'] == []                                     # təkrar import şagird təkrarlamır
     assert as_('ilqar').post('/api/import/roster', files={'utis': ('u.xlsx', b'x')}).status_code == 403
+
+
+def test_class_pin_sheet(world):
+    as_, _ = world
+    admin = as_('admin')
+    cid = mk_class(admin).json()['id']
+    join(admin, cid)
+    mk_student(admin, cid)
+    mk_student(admin, cid, name='İkinci Şagird Test qızı', birth='2011-06-06')
+    r = admin.post(f'/api/students/by-class/{cid}/reset-pins').json()
+    assert r['class_name'] == 'X c' and len(r['students']) == 2 and all(len(x['pin']) == 4 for x in r['students'])
+    from fastapi.testclient import TestClient
+    from app.main import app
+    x = r['students'][0]
+    with TestClient(app) as st:
+        assert st.post('/api/auth/login', json={'login': x['portal_code'], 'password': x['pin']}).status_code == 200
+    assert as_('ilqar').post(f'/api/students/by-class/{cid}/reset-pins').status_code == 403
