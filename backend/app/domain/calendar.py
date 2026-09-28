@@ -55,12 +55,14 @@ class ClassSeed:
     parent: str | None = None
     utis_class: str | None = None      # UTİS siyahısında sinif (şagirdlər buradan: Utis_siyahi.xlsx)
     bells: dict[int, str] | None = None   # sinfin öz zəng vaxtları (dərs saatı -> vaxt); yoxdursa məktəbin BELLS
+    split_with: str | None = None      # bölünən qrup: paralel keçilən fənn
 
 
 CLASSES: list[ClassSeed] = [
     ClassSeed('xb', 'X b', 'TOM', 5, 'X-b sinif – bütöv sinif', {2: [3, 7], 3: [1, 4], 4: [2]}, utis_class='10 b'),
     ClassSeed('xb_q', 'X b (riyaziyyat qrupu)', 'TOM', 5, 'X-b sinif – riyaziyyat qrupu', {0: [3, 5], 1: [3, 6, 7]},
-              has_summative=False, parent='xb'),
+              has_summative=False, parent='xb',
+              split_with='Biologiya – Şərqiyə müəllimə'),   # B.e. 3, 5; Ç.a. 3, 6, 7 – məktəb cədvəli, istifadəçi təsdiqi
     ClassSeed('xc', 'X c', 'TOM', 8, 'X-c sinif', {0: [6], 1: [2, 4], 2: [1, 2], 3: [6, 7], 4: [1]}, utis_class='10 c'),
     ClassSeed('xe', 'X e', 'TOM', 7, 'X-e sinif', {0: [2, 7], 1: [1, 5], 2: [6], 3: [5], 4: [6]}, utis_class='10 e'),   # istifadəçi təsdiqi 2026-09-28: X e = UTİS «10 e» (köhnə «X ə» vərəqi 10 ə idi – səhv)
     ClassSeed('xia', 'XI a', 'TOM', 7, 'XI-a sinif', {0: [4], 1: [], 2: [4, 5], 3: [2, 3], 4: [3, 4]}, utis_class='11 a 1'),

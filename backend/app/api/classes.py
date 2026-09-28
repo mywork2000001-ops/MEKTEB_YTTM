@@ -56,7 +56,7 @@ def class_out(db: Session, c: SchoolClass, user: User, mine: set[int] | None):
     if c.kind == 'qrup':
         n = db.scalar(select(func.count()).select_from(GroupMember).where(GroupMember.group_id == c.id))
     return {'id': c.id, 'name': c.name, 'code': c.code, 'kind': c.kind, 'parent_id': c.parent_id,
-            'utis_class': c.utis_class, 'exam_date': c.exam_date, 'bells': c.bells,
+            'utis_class': c.utis_class, 'exam_date': c.exam_date, 'bells': c.bells, 'split_with': c.split_with,
             'archived': c.archived_at is not None, 'students': n, 'can_open': visible,
             'teachers': [{'id': i, 'name': nm, 'subject': sb} for i, nm, sb in teachers],
             'mine': my_ta and {'subject': my_ta.subject, 'weekly_hours': my_ta.weekly_hours, 'slots': my_ta.slots,
@@ -78,6 +78,7 @@ class ClassIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     kind: str = 'TOM'
     parent_id: int | None = None
+    split_with: str | None = Field(None, max_length=120)
     utis_class: str | None = None
     exam_date: dt.date | None = None
     bells: dict[str, str] | None = None
@@ -107,7 +108,7 @@ def create_class(body: ClassIn, user: User = Depends(settings_unlocked), db: Ses
         if p.school_id != sid:
             raise HTTPException(404, 'Ana sinif tapılmadı')
     c = SchoolClass(school_id=sid, year_id=year.id, name=name, code=_unique_code(db, sid, year.id, class_code(name)),
-                    kind=body.kind, parent_id=body.parent_id, utis_class=body.utis_class, exam_date=body.exam_date,
+                    kind=body.kind, parent_id=body.parent_id, split_with=body.split_with, utis_class=body.utis_class, exam_date=body.exam_date,
                     bells=body.bells, created_by=user.id)
     db.add(c)
     db.flush()
@@ -118,6 +119,7 @@ def create_class(body: ClassIn, user: User = Depends(settings_unlocked), db: Ses
 
 class ClassPatch(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=60)
+    split_with: str | None = Field(None, max_length=120)
     utis_class: str | None = None
     exam_date: dt.date | None = None
     bells: dict[str, str] | None = None

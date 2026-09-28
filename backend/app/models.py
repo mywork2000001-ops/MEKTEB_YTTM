@@ -93,6 +93,7 @@ class SchoolClass(Base, Archivable):
     code: Mapped[str] = mapped_column(String(10))                        # portal kodu prefiksi: XE
     kind: Mapped[str] = mapped_column(String(10), default='TOM')         # TOM | adi | qrup
     parent_id: Mapped[int | None] = mapped_column(ForeignKey('classes.id'))   # bölünən qrup -> sinif
+    split_with: Mapped[str | None] = mapped_column(String(120))          # bölünmə: paralel fənn (Biologiya – Şərqiyə m.)
     utis_class: Mapped[str | None] = mapped_column(String(20))           # UTİS: «10 e»
     exam_date: Mapped[dt.date | None] = mapped_column(Date)              # buraxılış/qəbul imtahanı (sayğac)
     bells: Mapped[dict | None] = mapped_column(JSON)                     # sinfin öz zəngi (XI peşə)

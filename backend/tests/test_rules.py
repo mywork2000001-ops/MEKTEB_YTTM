@@ -47,3 +47,10 @@ def test_conflict_detected_without_own_bells():
     from app.domain.calendar import teacher_conflicts
     found = teacher_conflicts(wrong)
     assert any('XI peşə' in x and 'X e' in x for x in found)      # Ç.a. 08:50 X e ilə
+
+
+def test_xb_split_with_biology():
+    from app.domain.calendar import CLASS_BY_CODE
+    q = CLASS_BY_CODE['xb_q']
+    assert q.parent == 'xb' and q.slots == {0: [3, 5], 1: [3, 6, 7]} and 'Biologiya' in q.split_with
+    assert CLASS_BY_CODE['xb'].slots == {2: [3, 7], 3: [1, 4], 4: [2]}

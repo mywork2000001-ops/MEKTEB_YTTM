@@ -75,6 +75,7 @@ def seed(db: Session, utis: str | None = None, login: str = 'hesenov.ferid',
             sc = SchoolClass(school_id=school.id, year_id=year.id, name=c.name, code=CODES[c.code],
                              kind='qrup' if c.parent else c.kind, utis_class=c.utis_class,
                              parent_id=by_code[c.parent].id if c.parent else None,
+                             split_with=c.split_with,
                              bells={str(k): v for k, v in c.bells.items()} if c.bells else None,
                              created_by=admin.id)
             db.add(sc)
