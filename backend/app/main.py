@@ -2,7 +2,11 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import scheduler
 from .api import analytics, auth, bank, chat, classes, exams, journal, plan, portal, school, students, tasks
@@ -35,3 +39,18 @@ app.include_router(analytics.router)
 @app.get('/api/health')
 def health():
     return {'ok': True}
+
+
+# ---------------------------------------------------------------- interfeys (frontend/dist) – tək xidmət kimi yayım
+DIST = Path(__file__).resolve().parents[2] / 'frontend' / 'dist'
+if DIST.is_dir():
+    app.mount('/assets', StaticFiles(directory=DIST / 'assets'), name='assets')
+
+    @app.get('/{path:path}', include_in_schema=False)
+    def spa(path: str):
+        if path.startswith('api/'):
+            raise HTTPException(404, 'Tapılmadı')
+        f = (DIST / path).resolve()
+        if path and f.is_file() and DIST in f.parents:
+            return FileResponse(f)
+        return FileResponse(DIST / 'index.html', headers={'Cache-Control': 'no-cache'})
