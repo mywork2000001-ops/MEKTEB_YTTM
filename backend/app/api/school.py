@@ -49,8 +49,8 @@ def search_schools(q: str = '', user: User = Depends(staff), db: Session = Depen
 class SchoolIn(BaseModel):
     name: str = Field(min_length=3, max_length=300)
     utis: str | None = Field(None, max_length=32)
-    short_name: str | None = None
-    region: str | None = None
+    short_name: str | None = Field(None, max_length=120)
+    region: str | None = Field(None, max_length=120)
     bells: dict[str, str] | None = None
 
 

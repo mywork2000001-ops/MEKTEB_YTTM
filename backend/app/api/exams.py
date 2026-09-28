@@ -33,7 +33,7 @@ class ExamIn(BaseModel):
     date: dt.date
     max_points: float | None = Field(None, gt=0, le=1000)
     items: list[ItemIn] | None = None
-    title: str | None = Field(None, max_length=300)
+    title: str | None = Field(None, max_length=3000)
 
     @model_validator(mode='after')
     def _max(self):

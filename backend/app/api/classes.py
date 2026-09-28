@@ -79,7 +79,7 @@ class ClassIn(BaseModel):
     kind: str = 'TOM'
     parent_id: int | None = None
     split_with: str | None = Field(None, max_length=120)
-    utis_class: str | None = None
+    utis_class: str | None = Field(None, max_length=20)
     exam_date: dt.date | None = None
     bells: dict[str, str] | None = None
 
@@ -120,7 +120,7 @@ def create_class(body: ClassIn, user: User = Depends(settings_unlocked), db: Ses
 class ClassPatch(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=60)
     split_with: str | None = Field(None, max_length=120)
-    utis_class: str | None = None
+    utis_class: str | None = Field(None, max_length=20)
     exam_date: dt.date | None = None
     bells: dict[str, str] | None = None
 

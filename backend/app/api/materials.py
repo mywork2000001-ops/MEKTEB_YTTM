@@ -67,7 +67,7 @@ def _stream(o, db: Session):
 @router.post('/materials/{ta_id}')
 def create_material(ta_id: int, kind: Literal['task', 'video', 'link', 'note'] = Form(...),
                     title: str = Form(..., min_length=2, max_length=200), body: str | None = Form(None),
-                    url: str | None = Form(None), due_at: dt.datetime | None = Form(None),
+                    url: str | None = Form(None, max_length=1000), due_at: dt.datetime | None = Form(None),
                     needs_submission: bool = Form(False), student_ids: str | None = Form(None),
                     file: UploadFile | None = File(None), user: User = Depends(staff), db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)

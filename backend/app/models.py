@@ -146,7 +146,7 @@ class TeachingAssignment(Base, Archivable):
 class BankSource(Base):
     __tablename__ = 'bank_sources'
     key: Mapped[str] = mapped_column(String(32), primary_key=True)       # p007
-    label: Mapped[str] = mapped_column(String(200))
+    label: Mapped[str] = mapped_column(Text)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)         # admin söndürə bilər (məs. TAİM)
     active: Mapped[bool] = mapped_column(Boolean, default=True)          # viktorina-da hələ də var
 
@@ -155,9 +155,9 @@ class BankFile(Base):
     __tablename__ = 'bank_files'
     id: Mapped[int] = mapped_column(primary_key=True)
     source_key: Mapped[str] = mapped_column(ForeignKey('bank_sources.key'))
-    lesson: Mapped[str] = mapped_column(String(300))                     # mənbə daxilində fayl yolu
-    label: Mapped[str] = mapped_column(String(400))
-    url: Mapped[str] = mapped_column(String(600))
+    lesson: Mapped[str] = mapped_column(Text)                            # mənbə daxilində fayl yolu
+    label: Mapped[str] = mapped_column(Text)
+    url: Mapped[str] = mapped_column(Text)
     sha256: Mapped[str | None] = mapped_column(String(64))
     question_count: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -171,14 +171,14 @@ class BankQuestion(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     file_id: Mapped[int] = mapped_column(ForeignKey('bank_files.id'))
     n: Mapped[int] = mapped_column(Integer)                              # fayl daxilində sıra
-    qid: Mapped[str | None] = mapped_column(String(40))                  # mənbədəki sual nömrəsi
+    qid: Mapped[str | None] = mapped_column(Text)                        # mənbədəki sual nömrəsi
     kind: Mapped[str] = mapped_column(String(10))                        # mcq | open
     text: Mapped[dict] = mapped_column(JSON)                             # {"az": ..., "ru": ..., "en": ...}
     options: Mapped[list | None] = mapped_column(JSON)                   # [{"az": ...}, ...]
     correct: Mapped[int | None] = mapped_column(Integer)                 # mcq: indeks
     answer: Mapped[str | None] = mapped_column(Text)                     # open: «a|b» qəbul edilən cavablar
     explanation: Mapped[dict | None] = mapped_column(JSON)
-    image: Mapped[str | None] = mapped_column(String(600))
+    image: Mapped[str | None] = mapped_column(Text)                      # URL və ya data: URI (uzun ola bilər)
     content_hash: Mapped[str] = mapped_column(String(64))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -226,7 +226,7 @@ class PlanLesson(Base):
     assignment_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'))
     seq: Mapped[int] = mapped_column(Integer)
     semester: Mapped[int] = mapped_column(Integer)
-    section: Mapped[str | None] = mapped_column(String(300))
+    section: Mapped[str | None] = mapped_column(Text)
     topic: Mapped[str] = mapped_column(Text)
     standards: Mapped[list | None] = mapped_column(JSON)
     integration: Mapped[str | None] = mapped_column(Text)
@@ -235,7 +235,7 @@ class PlanLesson(Base):
     assessment_type: Mapped[str] = mapped_column(String(12))           # formativ | KSQ | BSQ | diaqnostik
     exam_no: Mapped[int | None] = mapped_column(Integer)
     date: Mapped[dt.date] = mapped_column(Date)                         # rəsmi tarix
-    tt_pages: Mapped[str | None] = mapped_column(String(300))
+    tt_pages: Mapped[str | None] = mapped_column(Text)
     tasks: Mapped[list | None] = mapped_column(JSON)                    # [{kind, label, start, end}]
     __table_args__ = (UniqueConstraint('assignment_id', 'seq'),)
 
@@ -307,7 +307,7 @@ class Exam(Base):
     date: Mapped[dt.date] = mapped_column(Date)
     max_points: Mapped[float] = mapped_column(Float)
     items: Mapped[list | None] = mapped_column(JSON)                   # [{"n":1,"points":1,"standard":"1.2.3"}]
-    title: Mapped[str | None] = mapped_column(String(300))
+    title: Mapped[str | None] = mapped_column(Text)
     __table_args__ = (UniqueConstraint('assignment_id', 'kind', 'semester', 'no'),)
 
 
