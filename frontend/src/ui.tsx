@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ICONS } from './icons-data'
 import { ApiError } from './api'
+import { useT } from './i18n'
 
 export function Icon({ name, className = 'ico' }: { name: string; className?: string }) {
   return <svg className={className} viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: ICONS[name] || '' }} />
@@ -25,7 +26,8 @@ export const longDate = (s: string) => { const d = new Date(s + 'T00:00'); retur
 
 /** Filtrli ekranlarda yuxarıda seçim edilənə qədər aşağı hissə boş qalır. */
 export function PickFirst({ text = 'Yuxarıda seçim edin' }: { text?: string }) {
-  return <div className="empty"><Icon name="info" /><p>{text}</p></div>
+  const t = useT()
+  return <div className="empty"><Icon name="info" /><p>{t(text)}</p></div>
 }
 
 export function Empty({ children }: { children: ReactNode }) {
@@ -127,7 +129,8 @@ export function Field({ label, hint, error, full, children }: { label: string; h
 }
 
 export function Top({ title, sub, actions }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
-  return <div className="top"><div><h1>{title}</h1>{sub && <p>{sub}</p>}</div>{actions && <div className="actions">{actions}</div>}</div>
+  const t = useT()
+  return <div className="top"><div><h1>{typeof title === 'string' ? t(title) : title}</h1>{sub && <p>{sub}</p>}</div>{actions && <div className="actions">{actions}</div>}</div>
 }
 
 export function Stat({ value, label }: { value: ReactNode; label: string }) {

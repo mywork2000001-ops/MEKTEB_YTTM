@@ -3,6 +3,7 @@ import { del, get, post, put } from '../../api'
 import { AsyncBtn, ErrorBox, fmt, fmtDate, gradeTone, isoDate, Loading, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
 import { ATT, HW, LessonSelect, type MyLesson, useMyLessons, usePick } from './common'
 import Exams from './Exams'
+import { useT } from '../../i18n'
 
 type Stud = { id: number; full_name: string; portal_code: string }
 type MarkRow = { student_id: number; kind: 'şifahi' | 'yazılı' | 'test'; grade?: number | null; test_correct?: number | null; test_total?: number | null }
@@ -16,6 +17,7 @@ type Day = { date: string; weekday: string | null; class_name: string; lessons: 
 const TABS = [['day', 'Gündəlik'], ['exams', 'KSQ / BSQ'], ['semester', 'Yarımil'], ['topics', 'Mövzular'], ['summary', 'Xülasə']] as const
 
 export default function Journal() {
+  const t = useT()
   const [lessons, err] = useMyLessons()
   const [ta, setTa] = usePick('journal')
   const [tab, setTab] = useState<(typeof TABS)[number][0]>('day')
@@ -32,7 +34,7 @@ export default function Journal() {
       {!ta || !cur ? <PickFirst /> : (
         <>
           <div className="tabs" role="tablist">
-            {TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}
+            {TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{t(l)}</button>)}
           </div>
           {tab === 'day' && <DayView ta={cur} date={date} setDate={setDate} />}
           {tab === 'exams' && <Exams ta={cur} />}

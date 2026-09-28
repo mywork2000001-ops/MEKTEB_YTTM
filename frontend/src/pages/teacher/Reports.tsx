@@ -3,10 +3,12 @@ import { get } from '../../api'
 import { useAuth } from '../../auth'
 import { ErrorBox, fmt, fmtDate, levelTone, Loading, PickFirst, Pill, riskTone, Seg, Stat, Top, useLoad } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
+import { useT } from '../../i18n'
 
 const TABS = [['overview', 'İcmal'], ['rating', 'Reytinq'], ['levels', 'Güclü / orta / zəif'], ['risk', 'Risk'], ['attendance', 'Davamiyyət'], ['print', 'Çap / PDF']] as const
 
 export default function Reports() {
+  const t = useT()
   const [lessons, err0] = useMyLessons()
   const [ta, setTa] = usePick('reports')
   const [sem, setSem] = useState<'1' | '2' | 'all'>('1')
@@ -23,7 +25,7 @@ export default function Reports() {
       </div>
       {!ta ? <PickFirst /> : loading && !a ? <Loading /> : a && (
         <>
-          <div className="tabs no-print">{TABS.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
+          <div className="tabs no-print">{TABS.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{t(l)}</button>)}</div>
           {tab === 'overview' && <Overview a={a} />}
           {tab === 'rating' && <Rating a={a} />}
           {tab === 'levels' && <Levels a={a} />}

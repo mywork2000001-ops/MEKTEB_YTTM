@@ -3,6 +3,7 @@ import { ApiError, get, patch, post, put, setSettingsToken, settingsToken } from
 import { useAuth } from '../../auth'
 import { AsyncBtn, ErrorBox, Field, Loading, toast, Top, useLoad } from '../../ui'
 import { LookPanel, PasswordPanel } from '../shared'
+import { useT } from '../../i18n'
 
 import SettingsRoster from './SettingsRoster'
 import SettingsAdmin from './SettingsAdmin'
@@ -11,6 +12,7 @@ const Admin = SettingsAdmin
 
 export default function Settings() {
   const { me } = useAuth()
+  const t = useT()
   const admin = me?.role === 'admin'
   const [lock, , , reloadLock] = useLoad<{ has_password: boolean }>(() => get('/api/settings/lock'), [])
   const [unlocked, setUnlocked] = useState(() => !!settingsToken())
@@ -37,7 +39,7 @@ export default function Settings() {
     <>
       <Top title="Tənzimləmələr" sub={admin ? 'Admin: bütün ümumi tənzimləmələr' : 'Yalnız sizə aid tənzimləmələr'}
         actions={lock.has_password ? <button className="btn sm" onClick={() => { setSettingsToken(null); setUnlocked(false) }}>Kilidlə</button> : undefined} />
-      <div className="tabs">{tabs.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="tabs">{tabs.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{t(l)}</button>)}</div>
       <Suspense fallback={<Loading />}>
         {tab === 'look' && <LookPanel />}
         {tab === 'account' && <PasswordPanel student={false} />}

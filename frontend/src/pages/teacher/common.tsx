@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { get } from '../../api'
 import { useLoad } from '../../ui'
+import { useT } from '../../i18n'
 
 export type MyLesson = {
   id: number; class_id: number; class_name: string; kind: string; subject: string; weekly_hours: number
@@ -21,6 +22,8 @@ export function usePick(key: string): [number | null, (v: number | null) => void
 }
 
 export function LessonSelect({ lessons, value, onChange, label = 'Sinif / qrup' }: { lessons?: MyLesson[]; value: number | null; onChange: (v: number | null) => void; label?: string }) {
+  const t = useT()
+  label = t(label)
   return (
     <select className="sel" aria-label={label} value={value ?? ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}>
       <option value="">— {label} seçin —</option>
