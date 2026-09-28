@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import { get, patch, post, setSettingsToken } from './api'
+import { clearOfflineData, get, patch, post, setSettingsToken } from './api'
 import { applyLook, lookString, parseLook, storedLook, type Look } from './prefs'
 import type { Lang } from './i18n'
 
@@ -45,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (l: string, p: string) => {
     const m = await post<Me>('/api/auth/login', { login: l, password: p })
+    if (me && me.id !== m.id) clearOfflineData()
     try { m.weak_password ? sessionStorage.setItem('mk-weak', '1') : sessionStorage.removeItem('mk-weak') } catch { /* noop */ }
     adopt(m)
     return m
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     try { await post('/api/auth/logout') } catch { /* noop */ }
     setSettingsToken(null)
+    clearOfflineData()                        // ortaq cihazda məxfilik: oflayn saxlanan məlumat silinir
     adopt(null)
   }
   const setLook = async (l: Look) => {

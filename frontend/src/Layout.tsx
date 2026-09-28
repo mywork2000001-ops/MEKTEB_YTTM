@@ -1,4 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { flushOutbox, outbox } from './api'
+import { toast } from './ui'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from './auth'
 import { useT } from './i18n'
@@ -39,6 +41,17 @@ export function Layout({ children }: { children: ReactNode }) {
   const nav = useNavigate()
   const loc = useLocation()
   const [more, setMore] = useState(false)
+  const [online, setOnline] = useState(navigator.onLine)
+  const [pending, setPending] = useState(outbox().length)
+  useEffect(() => {
+    const sync = async () => { const r = await flushOutbox(); if (r.sent) toast(`${r.sent} oflayn yazı göndərildi`); if (r.failed) toast(`${r.failed} yazı göndərilmədi (məlumat səhvdir)`) }
+    const on = () => { setOnline(true); sync() }
+    const off = () => setOnline(false)
+    const upd = () => setPending(outbox().length)
+    window.addEventListener('online', on); window.addEventListener('offline', off); window.addEventListener('mk-outbox', upd)
+    sync()
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); window.removeEventListener('mk-outbox', upd) }
+  }, [])
   const student = me?.role === 'student'
   const items = student ? STUDENT_NAV : TEACHER_NAV
   const tabs = student ? STUDENT_TABS : TEACHER_TABS
@@ -71,6 +84,10 @@ export function Layout({ children }: { children: ReactNode }) {
               <span className="tb-uname"><b>{shortName}</b><small>{student ? t('Şagird') : me?.role === 'admin' ? 'Admin' : 'Müəllim'}</small></span>
             </button>
           </div>
+          {(!online || pending > 0) && (
+            <div className="banner" role="status" style={{ background: online ? 'var(--info-soft)' : 'var(--warn-soft)', color: online ? 'var(--info)' : 'var(--warn)' }}>
+              {online ? '' : 'Oflayn rejim – son yüklənən məlumatlar göstərilir. '}{pending > 0 ? `${pending} jurnal yazısı göndərilməyi gözləyir${online ? ' – göndərilir…' : ' (internet qayıdanda avtomatik göndəriləcək)'}.` : ''}
+            </div>)}
           {!student && (() => { try { return sessionStorage.getItem('mk-weak') === '1' } catch { return false } })() && (
             <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>Parolunuz zəifdir (8 simvoldan qısa). Tənzimləmələr → Hesab bölməsində daha uzun parol qoyun.</div>)}
           {children}

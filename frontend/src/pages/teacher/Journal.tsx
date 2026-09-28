@@ -84,7 +84,8 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
   const save = async () => {
     const ms = Object.values(marks).filter(m => (m.kind === 'test' ? m.test_correct != null : m.grade)).map(m =>
       m.kind === 'test' ? { student_id: m.student_id, kind: 'test', test_correct: m.test_correct, test_total: testTotal } : { student_id: m.student_id, kind: m.kind, grade: m.grade })
-    await put(`/api/journal/${ta.id}/entry`, { date, period: lesson.period, topic: topic || null, homework: homework || null, attendance: att, marks: ms, homework_checks: hw })
+    const r = await put(`/api/journal/${ta.id}/entry`, { date, period: lesson.period, topic: topic || null, homework: homework || null, attendance: att, marks: ms, homework_checks: hw })
+    if (r?.queued) { toast('Oflayn – yazı növbəyə düşdü, internet qayıdanda göndəriləcək'); return }
     toast('Yadda saxlanıldı')
     onSaved()
   }

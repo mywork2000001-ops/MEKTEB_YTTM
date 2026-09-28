@@ -54,9 +54,15 @@ export async function api<T = any>(path: string, opts: Opts = {}): Promise<T> {
     body = JSON.stringify(opts.body)
   }
   let res: Response
+  const method = opts.method || (body ? 'POST' : 'GET')
   try {
-    res = await fetch(url.pathname + url.search, { method: opts.method || (body ? 'POST' : 'GET'), headers, body, credentials: 'same-origin' })
+    res = await fetch(url.pathname + url.search, { method, headers, body, credentials: 'same-origin' })
   } catch {
+    // oflayn: jurnal yazısı növbəyə düşür, internet qayıdanda göndərilir
+    if (method === 'PUT' && QUEUEABLE.test(url.pathname) && typeof opts.body === 'object') {
+      outboxAdd({ path: url.pathname, body: opts.body, at: Date.now() })
+      return { queued: true } as T
+    }
     throw new ApiError(0, 'İnternet bağlantısı yoxdur')
   }
   const ct = res.headers.get('content-type') || ''
@@ -74,3 +80,35 @@ export const put = <T = any>(p: string, body?: unknown) => api<T>(p, { method: '
 export const patch = <T = any>(p: string, body?: unknown) => api<T>(p, { method: 'PATCH', body })
 export const del = <T = any>(p: string, body?: unknown, params?: Record<string, unknown>) =>
   api<T>(p, { method: 'DELETE', body, params })
+
+// ---------------------------------------------------------------- oflayn növbə (outbox)
+const QUEUEABLE = /^\/api\/journal\/\d+\/entry$/
+const OUTBOX = 'mk-outbox'
+type Item = { path: string; body: unknown; at: number }
+export function outbox(): Item[] { try { return JSON.parse(localStorage.getItem(OUTBOX) || '[]') } catch { return [] } }
+function save(items: Item[]) { try { localStorage.setItem(OUTBOX, JSON.stringify(items)) } catch { /* noop */ } window.dispatchEvent(new Event('mk-outbox')) }
+function outboxAdd(i: Item) {
+  // eyni dərs üçün köhnə yazı yenisi ilə əvəzlənir
+  const key = (x: Item) => x.path + JSON.stringify([(x.body as any)?.date, (x.body as any)?.period])
+  save([...outbox().filter(x => key(x) !== key(i)), i])
+}
+let flushing = false
+export async function flushOutbox(): Promise<{ sent: number; failed: number }> {
+  if (flushing || !navigator.onLine) return { sent: 0, failed: 0 }
+  flushing = true
+  let sent = 0, failed = 0
+  try {
+    for (const it of outbox()) {
+      try {
+        const r = await fetch(it.path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(it.body), credentials: 'same-origin' })
+        if (r.ok) sent++; else if (r.status >= 400 && r.status < 500) failed++; else break
+        save(outbox().filter(x => x.at !== it.at))
+      } catch { break }
+    }
+  } finally { flushing = false }
+  return { sent, failed }
+}
+export function clearOfflineData() {
+  try { localStorage.removeItem(OUTBOX) } catch { /* noop */ }
+  navigator.serviceWorker?.controller?.postMessage('clear-api')
+}
