@@ -29,7 +29,7 @@ const D: Record<string, [string, string]> = {
   'gün': ['days', 'дн.'], 'Müəllimlərim': ['My teachers', 'Мои учителя'], 'Səhvlərim': ['My mistakes', 'Мои ошибки'],
   'Nailiyyətlər': ['Achievements', 'Достижения'], 'Sinif ortası': ['Class average', 'Среднее по классу'],
   'Mən': ['Me', 'Я'], 'Mesaj yazın…': ['Type a message…', 'Напишите сообщение…'], 'Göndər': ['Send', 'Отправить'],
-  'Daha çox': ['More', 'Ещё'], 'Salam': ['Hello', 'Здравствуйте'],
+  'Daha çox': ['More', 'Ещё'], 'Materiallar': ['Materials', 'Материалы'], 'Salam': ['Hello', 'Здравствуйте'],
 }
 
 export const I18nCtx = createContext<Lang>('az')

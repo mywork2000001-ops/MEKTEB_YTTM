@@ -427,4 +427,42 @@ class IndividualPlan(Base):
     note: Mapped[str | None] = mapped_column(Text)
 
 
+
+# ---------------------------------------------------------------- materiallar: PDF/fayl tapşırıq, video dərs, link
+class Material(Base, Archivable):
+    __tablename__ = 'materials'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'))
+    kind: Mapped[str] = mapped_column(String(10))                      # task | video | link | note
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str | None] = mapped_column(Text)
+    url: Mapped[str | None] = mapped_column(String(1000))               # video/link (YouTube və s.)
+    file_key: Mapped[str | None] = mapped_column(String(120))
+    file_name: Mapped[str | None] = mapped_column(String(200))
+    file_type: Mapped[str | None] = mapped_column(String(80))
+    file_size: Mapped[int | None] = mapped_column(Integer)
+    due_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))   # tapşırığın son vaxtı
+    needs_submission: Mapped[bool] = mapped_column(Boolean, default=False)
+    student_ids: Mapped[list | None] = mapped_column(JSON)              # None = bütün sinif/qrup
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class MaterialSubmission(Base):
+    __tablename__ = 'material_submissions'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    material_id: Mapped[int] = mapped_column(ForeignKey('materials.id', ondelete='CASCADE'))
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'))
+    text: Mapped[str | None] = mapped_column(Text)
+    file_key: Mapped[str | None] = mapped_column(String(120))
+    file_name: Mapped[str | None] = mapped_column(String(200))
+    file_type: Mapped[str | None] = mapped_column(String(80))
+    file_size: Mapped[int | None] = mapped_column(Integer)
+    submitted_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    late: Mapped[bool] = mapped_column(Boolean, default=False)
+    grade: Mapped[int | None] = mapped_column(Integer)
+    comment: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = (UniqueConstraint('material_id', 'student_id'),)
+
+
 from .storage import FileBlob  # noqa: E402,F401 – çat fayllarının bazada saxlanması (Alembic üçün qeydiyyat)

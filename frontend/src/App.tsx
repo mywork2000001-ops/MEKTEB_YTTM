@@ -13,6 +13,7 @@ const T = {
   Plan: lazy(() => import('./pages/teacher/Plan')),
   Timetable: lazy(() => import('./pages/teacher/Timetable')),
   Tasks: lazy(() => import('./pages/teacher/Tasks')),
+  Materials: lazy(() => import('./pages/teacher/Materials')),
   Reports: lazy(() => import('./pages/teacher/Reports')),
   Settings: lazy(() => import('./pages/teacher/Settings')),
 }
@@ -20,6 +21,7 @@ const S = {
   Today: lazy(() => import('./pages/student/Today')),
   Lesson: lazy(() => import('./pages/student/Lesson')),
   Tasks: lazy(() => import('./pages/student/Tasks')),
+  Materials: lazy(() => import('./pages/student/Materials')),
   Plan: lazy(() => import('./pages/student/Plan')),
   Results: lazy(() => import('./pages/student/Results')),
   Analytics: lazy(() => import('./pages/student/Analytics')),
@@ -44,6 +46,7 @@ export default function App() {
                 <Route path="/" element={<S.Today />} />
                 <Route path="/lesson" element={<S.Lesson />} />
                 <Route path="/tasks" element={<S.Tasks />} />
+                <Route path="/materials" element={<S.Materials />} />
                 <Route path="/plan" element={<S.Plan />} />
                 <Route path="/results" element={<S.Results />} />
                 <Route path="/analytics" element={<S.Analytics />} />
@@ -59,6 +62,7 @@ export default function App() {
                 <Route path="/plan" element={<T.Plan />} />
                 <Route path="/timetable" element={<T.Timetable />} />
                 <Route path="/tasks" element={<T.Tasks />} />
+                <Route path="/materials" element={<T.Materials />} />
                 <Route path="/reports" element={<T.Reports />} />
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/settings" element={<T.Settings />} />
