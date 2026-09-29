@@ -54,3 +54,9 @@
 .tt-ptime{font:600 13px/1.2 var(--f-mono)}
 .tt-ptime small{display:block;font-weight:400;font-size:11px;color:var(--muted)}
 @media print{.ttable{min-width:0;font-size:10px}.ttc{background:#fff!important;border-left:2px solid #000}.ttc-h b{color:#000}.tt-break td{background:#eee!important;color:#000}.only-desk{display:block!important}.only-phone{display:none!important}}
+/* Telefonda başlıq düymələri görünsün (maketdə FAB var idi – real tətbiqdə yoxdur) */
+@media (max-width:700px){
+  .top .actions .btn:not(.keep){display:inline-flex}
+  .top .actions{width:100%}
+  .top .actions .btn{flex:1 1 auto;min-height:44px}
+}

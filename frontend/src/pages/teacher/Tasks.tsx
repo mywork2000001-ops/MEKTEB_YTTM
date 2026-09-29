@@ -12,12 +12,12 @@ export default function Tasks() {
   const [lessons, err0] = useMyLessons()
   const [ta, setTa] = usePick('tasks')
   const [list, err, , reload] = useLoad<Task[] | null>(() => (ta ? get(`/api/tasks/${ta}`) : Promise.resolve(null)), [ta])
-  const [creating, setCreating] = useState(false)
+  const [creating, setCreating] = useState<false | 'new' | 'bank'>(false)
   const [open, setOpen] = useState<number | null>(null)
   return (
     <>
       <Top title="Onlayn tapşırıqlar" sub="Vaxtlı testlər: tarix + saat aralığı + həll müddəti; vaxt bitəndə avtomatik təhvil"
-        actions={ta ? <button className="btn primary" onClick={() => setCreating(true)}>+ Yeni tapşırıq</button> : undefined} />
+        actions={ta ? <><button className="btn" onClick={() => setCreating('bank')}>Viktorinadan test əlavə et</button><button className="btn primary" onClick={() => setCreating('new')}>+ Yeni tapşırıq</button></> : undefined} />
       <ErrorBox error={err0 || err} />
       <div className="toolbar"><LessonSelect lessons={lessons} value={ta} onChange={setTa} /></div>
       {!ta ? <PickFirst /> : (
@@ -35,13 +35,13 @@ export default function Tasks() {
           })}
         </div>
       )}
-      {creating && ta && <CreateTask ta={ta} onClose={() => setCreating(false)} onDone={() => { setCreating(false); reload() }} />}
+      {creating && ta && <CreateTask ta={ta} fromBank={creating === 'bank'} onClose={() => setCreating(false)} onDone={() => { setCreating(false); reload() }} />}
       {open && ta && <Results ta={ta} id={open} onClose={() => setOpen(null)} />}
     </>
   )
 }
 
-function CreateTask({ ta, onClose, onDone }: { ta: number; onClose: () => void; onDone: () => void }) {
+function CreateTask({ ta, fromBank = false, onClose, onDone }: { ta: number; fromBank?: boolean; onClose: () => void; onDone: () => void }) {
   const today = new Date().toISOString().slice(0, 10)
   const [f, setF] = useState({ title: `Test – ${today.split('-').reverse().join('.')}`, date: today, from: '15:00', to: '16:00', duration: 40, show: 'after_close', shuffle: true })
   const [sources] = useLoad<any[]>(() => get('/api/bank/sources'), [])
@@ -56,7 +56,20 @@ function CreateTask({ ta, onClose, onDone }: { ta: number; onClose: () => void; 
   const [cq, setCq] = useState({ text: '', options: ['', '', '', ''], correct: 0 })
   const [err, setErr] = useState<unknown>()
   useEffect(() => { setLessons([]); setFile(null); if (src) get(`/api/bank/lessons`, { source: src }).then(setLessons, setErr) }, [src])
-  useEffect(() => { setQs([]); if (file) get('/api/bank/questions', { file_id: file, limit: 200 }).then(r => setQs(r.items), setErr) }, [file])
+  useEffect(() => {
+    setQs([])
+    if (!file) return
+    get('/api/bank/questions', { file_id: file, limit: 200 }).then(r => {
+      setQs(r.items)
+      if (fromBank) {                                   // viktorinadan: testin bütün sualları + ad
+        setPicked(new Map(r.items.map((q: any) => [q.id, q])))
+        const l = lessons.find(x => x.id === file)
+        const s = (sources || []).find(x => x.key === src)
+        if (l) setF(ff => ({ ...ff, title: `${l.label}${s ? ' · ' + s.label.split('·').pop().trim() : ''}`.slice(0, 200) }))
+      }
+    }, setErr)
+  }, [file])
+  const addAll = () => { const m = new Map(picked); qs.forEach(q => m.set(q.id, q)); setPicked(m) }
   const toggle = (q: any) => { const m = new Map(picked); m.has(q.id) ? m.delete(q.id) : m.set(q.id, q); setPicked(m) }
   const random = () => { const m = new Map(picked); [...qs].sort(() => Math.random() - 0.5).slice(0, n).forEach(q => m.set(q.id, q)); setPicked(m) }
   const problem = !f.title.trim() ? 'Tapşırığın adını yazın' : !picked.size && !custom.length ? 'Ən azı 1 sual seçin (test bazasından və ya «Öz sualım»)'
@@ -73,9 +86,30 @@ function CreateTask({ ta, onClose, onDone }: { ta: number; onClose: () => void; 
       onDone()
     } catch (e) { setErr(e) }
   }
+  const bankBlock = (
+        <fieldset><legend>{fromBank ? '1. Viktorinadan test seçin' : 'Test bazasından suallar (viktorina – avtomatik yenilənir)'}</legend>
+          <div className="stack">
+            <select className="sel" value={src} onChange={e => setSrc(e.target.value)}><option value="">— mənbə —</option>
+              {(sources || []).filter(s => s.enabled && s.active).map(s => <option key={s.key} value={s.key}>{s.label} ({s.questions})</option>)}</select>
+            {src && <select className="sel" value={file ?? ''} onChange={e => setFile(e.target.value ? Number(e.target.value) : null)}><option value="">— dərs / variant —</option>
+              {lessons.map(l => <option key={l.id} value={l.id}>{l.label} ({l.questions})</option>)}</select>}
+            {qs.length > 0 && <div className="row"><span className="small">Təsadüfi</span><select className="grade-sel" value={n} onChange={e => setN(Number(e.target.value))}>{[5, 10, 15, 20, 25, 30].map(x => <option key={x}>{x}</option>)}</select><button className="btn sm" onClick={random}>sual seç</button><button className="btn sm primary" onClick={addAll}>Bu testin hamısı ({qs.length})</button>{picked.size > 0 && <button className="btn sm ghost" onClick={() => setPicked(new Map())}>seçimi sıfırla</button>}</div>}
+            <div className="jlist" style={{ maxHeight: 360, overflow: 'auto' }}>
+              {qs.map(q => (
+                <label key={q.id} className="jrow" style={{ gridTemplateColumns: '24px minmax(0,1fr) auto', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={picked.has(q.id)} onChange={() => toggle(q)} />
+                  <span className="small clamp2">{q.n}. <MathText text={ml(q.text)} />{q.image ? ' 🖼' : ''}</span>
+                  <Pill>{q.kind === 'mcq' ? 'variantlı' : 'açıq'}</Pill>
+                </label>))}
+            </div>
+          </div>
+        </fieldset>
+  )
   return (
-    <Drawer title="Yeni tapşırıq" onClose={onClose} footer={<><span className="small muted grow">{picked.size + custom.length} sual seçilib</span><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" onClick={submit}>Yarat</button></>}>
+    <Drawer title={fromBank ? 'Viktorinadan test əlavə et' : 'Yeni tapşırıq'} onClose={onClose} footer={<><span className="small muted grow">{picked.size + custom.length} sual seçilib</span><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" onClick={submit}>Yarat</button></>}>
       <div className="stack">
+        {fromBank && bankBlock}
+        {fromBank && <p className="small muted" style={{ margin: 0 }}>2. Vaxtı və kimə göndəriləcəyini yoxlayın, sonra «Yarat».</p>}
         <div className="fg">
           <Field label="Ad" full><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="məs. Kvadrat tənliklər – test" /></Field>
           <Field label="Tarix"><input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></Field>
@@ -87,23 +121,7 @@ function CreateTask({ ta, onClose, onDone }: { ta: number; onClose: () => void; 
           <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> Sualların sırası hər şagirdə fərqli</label>
         </div>
         <TargetPicker ta={ta} onChange={setTargets} />
-        <fieldset><legend>Test bazasından suallar (viktorina – avtomatik yenilənir)</legend>
-          <div className="stack">
-            <select className="sel" value={src} onChange={e => setSrc(e.target.value)}><option value="">— mənbə —</option>
-              {(sources || []).filter(s => s.enabled && s.active).map(s => <option key={s.key} value={s.key}>{s.label} ({s.questions})</option>)}</select>
-            {src && <select className="sel" value={file ?? ''} onChange={e => setFile(e.target.value ? Number(e.target.value) : null)}><option value="">— dərs / variant —</option>
-              {lessons.map(l => <option key={l.id} value={l.id}>{l.label} ({l.questions})</option>)}</select>}
-            {qs.length > 0 && <div className="row"><span className="small">Təsadüfi</span><select className="grade-sel" value={n} onChange={e => setN(Number(e.target.value))}>{[5, 10, 15, 20, 25, 30].map(x => <option key={x}>{x}</option>)}</select><button className="btn sm" onClick={random}>sual seç</button></div>}
-            <div className="jlist" style={{ maxHeight: 360, overflow: 'auto' }}>
-              {qs.map(q => (
-                <label key={q.id} className="jrow" style={{ gridTemplateColumns: '24px minmax(0,1fr) auto', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={picked.has(q.id)} onChange={() => toggle(q)} />
-                  <span className="small clamp2">{q.n}. <MathText text={ml(q.text)} />{q.image ? ' 🖼' : ''}</span>
-                  <Pill>{q.kind === 'mcq' ? 'variantlı' : 'açıq'}</Pill>
-                </label>))}
-            </div>
-          </div>
-        </fieldset>
+        {!fromBank && bankBlock}
         <fieldset><legend>Öz sualım (variantlı)</legend>
           <div className="stack">
             <textarea className="sel" style={{ minHeight: 60, padding: 10 }} placeholder="Sualın mətni (düstur üçün $x^2$ yaza bilərsiniz)" value={cq.text} onChange={e => setCq({ ...cq, text: e.target.value })} />
