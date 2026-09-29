@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from .domain.rules import (ABSENCE_WARN_PCT, RiskInput, absence_warning, grade_from_points, level, rank,
                            rating_score, risk_score)
-from .models import Attendance, Exam, ExamScore, HomeworkCheck, JournalEntry, Mark, TaskAttempt, OnlineTask
+from .models import (Attendance, Exam, ExamScore, HomeworkCheck, JournalEntry, LevelOverride, Mark, OnlineTask,
+                     TaskAttempt)
 from .services import PlanCtx, roster
 
 HW_W = {'etdi': 1.0, 'qismən': 0.5, 'etmədi': 0.0, 'köçürüb': 0.0}
@@ -80,6 +81,7 @@ def analyze(db: Session, ctx: PlanCtx, p: Period) -> dict:
     mid = p.a + (p.b - p.a) / 2
     first = _collect(db, ctx.ta.id, Period(p.a, mid))
     second = _collect(db, ctx.ta.id, Period(mid + dt.timedelta(days=1), p.b))
+    manual = {o.student_id: o.level for o in db.scalars(select(LevelOverride).where(LevelOverride.assignment_id == ctx.ta.id))}
     rows = []
     for s in studs:
         m = _metrics(s.id, *data)
@@ -88,9 +90,12 @@ def analyze(db: Session, ctx: PlanCtx, p: Period) -> dict:
                                     attendance_pct=m['attendance_pct'], homework_pct=m['homework_pct']))
         base = level(s.score_math)
         cur = level(m['rating']) if m['rating'] is not None else base
+        auto_level = LEVEL_NAMES.get(cur)
         rows.append({'student_id': s.id, 'full_name': s.full_name, 'portal_code': s.portal_code,
-                     'ix_math': s.score_math, 'baseline_level': LEVEL_NAMES.get(base), 'level': LEVEL_NAMES.get(cur),
-                     'level_source': 'nəticələr' if m['rating'] is not None else 'IX sinif balı',
+                     'ix_math': s.score_math, 'baseline_level': LEVEL_NAMES.get(base), 'auto_level': auto_level,
+                     'level': manual.get(s.id, auto_level), 'manual_level': manual.get(s.id),
+                     'level_source': 'müəllim' if s.id in manual else 'nəticələr' if m['rating'] is not None else 'IX sinif balı',
+                     'score_language': s.score_language, 'score_foreign': s.score_foreign,
                      'progress': round(r2 - r1, 1) if r1 is not None and r2 is not None else None,
                      'risk': {'score': risk.score, 'status': risk.status, 'factors': risk.factors}, **m})
     places = {k: pl for k, _, pl in rank([(r['student_id'], r['rating']) for r in rows])}

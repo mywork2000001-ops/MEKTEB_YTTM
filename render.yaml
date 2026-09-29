@@ -16,10 +16,8 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
-      - key: MK_DATABASE_URL
-        fromDatabase:
-          name: muellim-db
-          property: connectionString
+      - key: MK_DATABASE_URL          # Neon (pulsuz, müddətsiz) – dəyər Render panelində (repoya yazılmır)
+        sync: false
       - key: MK_SECRET_KEY
         generateValue: true
       - key: MK_ADMIN_PASSWORD        # ilk açılışda admin (hesenov.ferid) bu parolla yaradılır

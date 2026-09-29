@@ -95,3 +95,17 @@ def test_overview(world):
     c, ta, *_ = setup(world)
     ov = c.get('/api/overview').json()
     assert ov[0]['class_name'] == 'X c' and ov[0]['lessons_written'] == 10 and ov[0]['absence_warnings'] == 1
+
+
+def test_manual_level_override(world):
+    as_, _ = world
+    c, ta, good, weak, new = setup(world)
+    assert c.put(f'/api/analytics/{ta}/levels/{weak}', json={'level': 'Orta', 'note': 'dərsdə fəaldır'}).status_code == 200
+    rows = {r['student_id']: r for r in c.get(f'/api/analytics/{ta}').json()['students']}
+    assert rows[weak]['level'] == 'Orta' and rows[weak]['auto_level'] == 'Zəif' and rows[weak]['level_source'] == 'müəllim'
+    lv = c.get(f'/api/analytics/{ta}/levels').json()
+    assert weak in [x['student_id'] for x in lv['Orta']]
+    c.put(f'/api/analytics/{ta}/levels/{weak}', json={'level': None})
+    rows = {r['student_id']: r for r in c.get(f'/api/analytics/{ta}').json()['students']}
+    assert rows[weak]['level'] == 'Zəif' and rows[weak]['manual_level'] is None
+    assert as_('ilqar').put(f'/api/analytics/{ta}/levels/{weak}', json={'level': 'Güclü'}).status_code == 404

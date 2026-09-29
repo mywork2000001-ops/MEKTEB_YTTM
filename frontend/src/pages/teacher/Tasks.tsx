@@ -43,7 +43,7 @@ export default function Tasks() {
 
 function CreateTask({ ta, onClose, onDone }: { ta: number; onClose: () => void; onDone: () => void }) {
   const today = new Date().toISOString().slice(0, 10)
-  const [f, setF] = useState({ title: '', date: today, from: '15:00', to: '16:00', duration: 40, show: 'after_close', shuffle: true })
+  const [f, setF] = useState({ title: `Test – ${today.split('-').reverse().join('.')}`, date: today, from: '15:00', to: '16:00', duration: 40, show: 'after_close', shuffle: true })
   const [sources] = useLoad<any[]>(() => get('/api/bank/sources'), [])
   const [src, setSrc] = useState('')
   const [lessons, setLessons] = useState<any[]>([])
@@ -52,22 +52,29 @@ function CreateTask({ ta, onClose, onDone }: { ta: number; onClose: () => void; 
   const [picked, setPicked] = useState<Map<number, any>>(new Map())
   const [n, setN] = useState(10)
   const [targets, setTargets] = useState<number[] | null>(null)
+  const [custom, setCustom] = useState<{ text: string; options: string[]; correct: number }[]>([])
+  const [cq, setCq] = useState({ text: '', options: ['', '', '', ''], correct: 0 })
   const [err, setErr] = useState<unknown>()
   useEffect(() => { setLessons([]); setFile(null); if (src) get(`/api/bank/lessons`, { source: src }).then(setLessons, setErr) }, [src])
   useEffect(() => { setQs([]); if (file) get('/api/bank/questions', { file_id: file, limit: 200 }).then(r => setQs(r.items), setErr) }, [file])
   const toggle = (q: any) => { const m = new Map(picked); m.has(q.id) ? m.delete(q.id) : m.set(q.id, q); setPicked(m) }
   const random = () => { const m = new Map(picked); [...qs].sort(() => Math.random() - 0.5).slice(0, n).forEach(q => m.set(q.id, q)); setPicked(m) }
+  const problem = !f.title.trim() ? 'Tapşırığın adını yazın' : !picked.size && !custom.length ? 'Ən azı 1 sual seçin (test bazasından və ya «Öz sualım»)'
+    : f.to <= f.from ? 'Bağlanma saatı açılma saatından sonra olmalıdır' : targets !== null && !targets.length ? '«Kimə» bölməsində şagird seçin' : ''
   const submit = async () => {
+    if (problem) { setErr(new Error(problem)); return }
     try {
       const iso = (t: string) => new Date(`${f.date}T${t}:00`).toISOString()
       await post(`/api/tasks/${ta}`, { title: f.title, opens_at: iso(f.from), closes_at: iso(f.to), duration_min: f.duration,
-        bank_ids: [...picked.keys()], shuffle: f.shuffle, show_answers: f.show, student_ids: targets })
+        bank_ids: [...picked.keys()], shuffle: f.shuffle, show_answers: f.show, student_ids: targets,
+        custom: custom.map(q => { const kept = q.options.map((o, i) => [o.trim(), i] as const).filter(([o]) => o)
+          return { kind: 'mcq', text: q.text, options: kept.map(([o]) => o), correct: kept.findIndex(([, i]) => i === q.correct) } }) })
       toast('Tapşırıq yaradıldı')
       onDone()
     } catch (e) { setErr(e) }
   }
   return (
-    <Drawer title="Yeni tapşırıq" onClose={onClose} footer={<><span className="small muted grow">{picked.size} sual seçilib</span><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" disabled={!f.title || !picked.size || (targets !== null && !targets.length)} onClick={submit}>Yarat</button></>}>
+    <Drawer title="Yeni tapşırıq" onClose={onClose} footer={<><span className="small muted grow">{picked.size + custom.length} sual seçilib</span><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" onClick={submit}>Yarat</button></>}>
       <div className="stack">
         <div className="fg">
           <Field label="Ad" full><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="məs. Kvadrat tənliklər – test" /></Field>
@@ -97,6 +104,21 @@ function CreateTask({ ta, onClose, onDone }: { ta: number; onClose: () => void; 
             </div>
           </div>
         </fieldset>
+        <fieldset><legend>Öz sualım (variantlı)</legend>
+          <div className="stack">
+            <textarea className="sel" style={{ minHeight: 60, padding: 10 }} placeholder="Sualın mətni (düstur üçün $x^2$ yaza bilərsiniz)" value={cq.text} onChange={e => setCq({ ...cq, text: e.target.value })} />
+            {cq.options.map((o, i) => (
+              <label key={i} className="row" style={{ flexWrap: 'nowrap' }}>
+                <input type="radio" name="cq-correct" checked={cq.correct === i} onChange={() => setCq({ ...cq, correct: i })} aria-label={'Düzgün: ' + 'ABCD'[i]} />
+                <b>{'ABCD'[i]})</b><input className="sel grow" value={o} onChange={e => { const x = [...cq.options]; x[i] = e.target.value; setCq({ ...cq, options: x }) }} />
+              </label>))}
+            <button type="button" className="btn sm" disabled={!cq.text.trim() || cq.options.filter(o => o.trim()).length < 2 || !cq.options[cq.correct].trim()}
+              onClick={() => { setCustom([...custom, cq]); setCq({ text: '', options: ['', '', '', ''], correct: 0 }) }}>+ Sualı əlavə et</button>
+            {custom.map((q, i) => <div key={i} className="row small"><span className="grow">{i + 1}. {q.text.slice(0, 80)}</span><button type="button" className="btn ghost sm" onClick={() => setCustom(custom.filter((_, j) => j !== i))}>sil</button></div>)}
+            <p className="small muted" style={{ margin: 0 }}>Radio düyməsi ilə düzgün variantı işarələyin.</p>
+          </div>
+        </fieldset>
+        {problem && <p className="small" style={{ color: 'var(--warn)', margin: 0 }}>{problem}</p>}
         <ErrorBox error={err} />
       </div>
     </Drawer>

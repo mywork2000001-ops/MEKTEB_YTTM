@@ -16,8 +16,9 @@ def make_engine(url: str | None = None):
         url = 'postgresql+psycopg://' + url.split('://', 1)[1]
     if url.startswith('sqlite:///'):
         Path(url.removeprefix('sqlite:///')).parent.mkdir(parents=True, exist_ok=True)
-    eng = create_engine(url, connect_args={'check_same_thread': False} if url.startswith('sqlite') else {},
-                        pool_pre_ping=True)
+    # PostgreSQL: Neon/PgBouncer (tranzaksiya rejimi) server tərəfli hazırlanmış sorğuları dəstəkləmir – söndürülür
+    args = {'check_same_thread': False} if url.startswith('sqlite') else {'prepare_threshold': None}
+    eng = create_engine(url, connect_args=args, pool_pre_ping=True, pool_recycle=300)
     if url.startswith('sqlite'):
         @event.listens_for(eng, 'connect')
         def _fk(conn, _):

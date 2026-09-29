@@ -3,6 +3,7 @@ import { del, get, post, put } from '../../api'
 import { AsyncBtn, ErrorBox, fmt, fmtDate, gradeTone, isoDate, Loading, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
 import { ATT, HW, LessonSelect, type MyLesson, useMyLessons, usePick } from './common'
 import Exams from './Exams'
+import { useNavigate } from 'react-router-dom'
 import { useT } from '../../i18n'
 
 type Stud = { id: number; full_name: string; portal_code: string }
@@ -14,7 +15,7 @@ type Lesson = {
 }
 type Day = { date: string; weekday: string | null; class_name: string; lessons: Lesson[]; students: Stud[] }
 
-const TABS = [['day', 'Gündəlik'], ['exams', 'KSQ / BSQ'], ['semester', 'Yarımil'], ['topics', 'Mövzular'], ['summary', 'Xülasə']] as const
+const TABS = [['day', 'Gündəlik'], ['students', 'Şagirdlər'], ['exams', 'KSQ / BSQ'], ['semester', 'Yarımil'], ['topics', 'Mövzular'], ['summary', 'Xülasə']] as const
 
 export default function Journal() {
   const t = useT()
@@ -37,6 +38,7 @@ export default function Journal() {
             {TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{t(l)}</button>)}
           </div>
           {tab === 'day' && <DayView ta={cur} date={date} setDate={setDate} />}
+          {tab === 'students' && <StudentsLevels ta={cur} />}
           {tab === 'exams' && <Exams ta={cur} />}
           {tab === 'semester' && <Semester ta={cur} />}
           {tab === 'topics' && <Topics ta={cur} />}
@@ -68,6 +70,7 @@ function DayView({ ta, date, setDate }: { ta: MyLesson; date: string; setDate: (
 }
 
 function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; date: string; lesson: Lesson; students: Stud[]; onSaved: () => void }) {
+  const nav = useNavigate()
   const e = lesson.entry
   const [topic, setTopic] = useState(e.topic || '')
   const [homework, setHomework] = useState(e.homework || '')
@@ -162,6 +165,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
       </div>
       <div className="row" style={{ marginTop: 12 }}>
         <AsyncBtn className="btn" onClick={hold}>{lesson.held ? 'Saxlamanı götür' : 'Mövzunu saxla'}</AsyncBtn>
+        <button className="btn" onClick={() => { try { sessionStorage.setItem('mk-pick-tasks', String(ta.id)) } catch { /* noop */ } nav('/tasks') }}>Onlayn test təyin et</button>
         <span className="small muted">«Mövzunu saxla» – mövzu növbəti dərsdə davam edir, plan bir dərs sürüşür (rəsmi plan dəyişmir).</span>
         <AsyncBtn className="btn primary right" onClick={save}>Yadda saxla</AsyncBtn>
       </div>
@@ -226,6 +230,41 @@ function Summary({ ta }: { ta: MyLesson }) {
         <tbody>{d?.students.map((s: any) => (
           <tr key={s.student_id}><td>{s.full_name}</td><td className="r num">{fmt(s.avg_grade, 2)}</td><td className="r num">{s.marks}</td>
             <td className="r num">{fmt(s.test_pct)}</td><td className="r num">{fmt(s.attendance_pct)}</td><td className="r num">{fmt(s.homework_pct)}</td></tr>))}</tbody></table></div>
+    </>
+  )
+}
+
+function StudentsLevels({ ta }: { ta: MyLesson }) {
+  const [a, err, , reload] = useLoad<any>(() => get(`/api/analytics/${ta.id}`), [ta.id])
+  const tone = (l?: string | null) => (l === 'Güclü' ? 'ok' : l === 'Zəif' ? 'bad' : l === 'Orta' ? 'warn' : undefined)
+  const setLevel = async (sid: number, level: string) => {
+    await put(`/api/analytics/${ta.id}/levels/${sid}`, { level: level || null })
+    toast(level ? `Səviyyə: ${level}` : 'Avtomatik səviyyə'); reload()
+  }
+  const rows = [...(a?.students || [])].sort((x: any, y: any) => x.full_name.localeCompare(y.full_name, 'az'))
+  const counts = ['Güclü', 'Orta', 'Zəif'].map(k => [k, rows.filter((r: any) => r.level === k).length] as const)
+  return (
+    <>
+      <ErrorBox error={err} />
+      <div className="row" style={{ marginBottom: 10 }}>
+        {counts.map(([k, n]) => <Pill key={k} tone={tone(k)}>{k}: {n}</Pill>)}
+        <span className="small muted">Avtomatik: nəticələrə görə (yoxdursa IX riyaziyyat balı: ≥70 güclü, 40–70 orta, &lt;40 zəif). Müəllim əl ilə dəyişə bilər.</span>
+      </div>
+      <div className="tbl-wrap"><table style={{ minWidth: 760 }}>
+        <thead><tr><th>Şagird</th><th className="r">Tədris dili</th><th className="r">Riyaziyyat</th><th className="r">Xarici dil</th><th className="r">Yekun</th><th>Avtomatik</th><th>Səviyyə (müəllim)</th></tr></thead>
+        <tbody>{rows.map((r: any) => {
+          const tot = [r.score_language, r.ix_math, r.score_foreign].every((v: any) => v != null) ? r.score_language + r.ix_math + r.score_foreign : null
+          return (
+            <tr key={r.student_id}>
+              <td><b>{r.full_name}</b><span className="sub">{r.portal_code}</span></td>
+              <td className="r num">{fmt(r.score_language)}</td><td className="r num"><b>{fmt(r.ix_math)}</b></td><td className="r num">{fmt(r.score_foreign)}</td>
+              <td className="r num">{fmt(tot)}</td>
+              <td>{r.auto_level ? <Pill tone={tone(r.auto_level)}>{r.auto_level}</Pill> : <span className="muted small">bal yoxdur</span>}</td>
+              <td><select className="grade-sel" value={r.manual_level || ''} onChange={e => setLevel(r.student_id, e.target.value)} aria-label={'Səviyyə: ' + r.full_name}>
+                <option value="">Avtomatik</option><option>Güclü</option><option>Orta</option><option>Zəif</option></select>
+                {r.manual_level && <span className="small muted"> əl ilə</span>}</td>
+            </tr>) })}</tbody></table></div>
+      <p className="small muted">IX sinif ballarını dəyişmək: Tənzimləmələr → Şagirdlər → «IX buraxılış ballarını redaktə et».</p>
     </>
   )
 }

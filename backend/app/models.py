@@ -480,3 +480,13 @@ class InviteLink(Base):
     max_uses: Mapped[int] = mapped_column(Integer, default=40)
     uses: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class LevelOverride(Base):
+    """Müəllimin əl ilə təyin etdiyi səviyyə (güclü/orta/zəif) – öz fənni üzrə; avtomatik səviyyəni əvəz edir."""
+    __tablename__ = 'level_overrides'
+    assignment_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'), primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
+    level: Mapped[str] = mapped_column(String(10))                     # Güclü | Orta | Zəif
+    note: Mapped[str | None] = mapped_column(String(300))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
