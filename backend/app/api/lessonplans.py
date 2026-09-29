@@ -164,6 +164,59 @@ def _full(p: DailyPlan, ctx) -> dict:
 
 
 # ---------------------------------------------------------------- gündəlik planlar
+def _my_assignments(db: Session, user: User):
+    from ..models import SchoolClass, TeachingAssignment
+    return list(db.scalars(select(TeachingAssignment).join(SchoolClass).where(
+        TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None),
+        SchoolClass.archived_at.is_(None)).order_by(SchoolClass.name)))
+
+
+@router.get('/daily-plans-day')
+def day_plans(date: dt.date | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Dərs günü üzrə: müəllimin həmin gün BÜTÜN siniflərdəki dərsləri (saat sırası ilə) və gündəlik planları."""
+    from ..services import today
+    d = date or today()
+    items = []
+    for ta in _my_assignments(db, user):
+        ctx = plan_ctx(db, ta)
+        slots = [s for s in ctx.slots if s.date == d]
+        if not slots:
+            continue
+        saved = {p.period: p for p in db.scalars(select(DailyPlan).where(DailyPlan.assignment_id == ta.id, DailyPlan.date == d))}
+        entries = journal_entries(db, ta.id, d, d)
+        for s in slots:
+            pl = taught_lesson(ctx, s, entries.get((s.date, s.period)))
+            items.append({'ta_id': ta.id, 'class_name': ctx.cls.name, 'subject': ta.subject, 'date': s.date,
+                          'weekday': WEEKDAYS[s.date.weekday()], 'period': s.period, 'time': bell(db, ctx.cls, s.period),
+                          'held': s.held,
+                          'lesson': pl and {'seq': pl.seq, 'topic': pl.topic, 'section': pl.section,
+                                            'standards': pl.standards, 'assessment_type': pl.assessment_type,
+                                            'exam_no': pl.exam_no, 'tt_pages': pl.tt_pages,
+                                            'tasks': dp.tasks_text(pl.tasks)},
+                          'plan': _brief(saved.get(s.period))})
+    items.sort(key=lambda i: (i['period'], i['class_name']))
+    s = user.ai_settings or {}
+    return {'date': d, 'weekday': DAYS_FULL[d.weekday()], 'items': items,
+            'ai': {'configured': bool(s.get('key')), 'provider': s.get('provider'), 'model': s.get('model')}}
+
+
+@router.get('/daily-plans-day/docx')
+def day_docx(date: dt.date, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Günün bütün gündəlik planları bir Word faylında (saat sırası ilə)."""
+    tas = [ta.id for ta in _my_assignments(db, user)]
+    plans = sorted(db.scalars(select(DailyPlan).where(DailyPlan.assignment_id.in_(tas), DailyPlan.date == date)),
+                   key=lambda p: p.period)
+    if not plans:
+        raise HTTPException(404, 'Bu gün üçün hazır gündəlik plan yoxdur')
+    buf = io.BytesIO()
+    build_docx(plans).save(buf)
+    buf.seek(0)
+    from urllib.parse import quote
+    name = f'Gundelik planlar {date:%d.%m.%Y}.docx'
+    return StreamingResponse(buf, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                             headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(name)}"})
+
+
 @router.get('/daily-plans/{ta_id}')
 def list_plans(ta_id: int, view: str = 'week', date: dt.date | None = None, user: User = Depends(staff),
                db: Session = Depends(get_db)):

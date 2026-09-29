@@ -6,7 +6,7 @@ import { LessonSelect, useMyLessons, usePick } from './common'
 import { esc, printDoc } from '../../print'
 
 type Brief = { id: number; updated_at: string; model: string | null; edited: boolean; topic: string }
-type Item = { date: string; weekday: string; period: number; time: string | null; held: boolean; plan: Brief | null
+type Item = { ta_id?: number; class_name?: string; subject?: string; date: string; weekday: string; period: number; time: string | null; held: boolean; plan: Brief | null
   lesson: { seq: number; topic: string; section: string | null; standards: string[] | null; assessment_type: string; exam_no: number | null; tt_pages: string | null; tasks: string } | null }
 type List = { from: string; to: string; class_name: string; subject: string; items: Item[]; ai: { configured: boolean; provider: string | null; model: string | null } }
 type Task = { metn: string; cavab: string }
@@ -74,7 +74,125 @@ async function downloadDocx(ta: number, ids: number[], name: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 30_000)
 }
 
+type Mode = 'day' | 'class'
+const MODES: [Mode, string][] = [['day', 'Dərs günü'], ['class', 'Sinif üzrə']]
+
 export default function DailyPlan() {
+  const [mode, setModeRaw] = useState<Mode>(() => { try { return (localStorage.getItem('mk-daily-mode') as Mode) || 'day' } catch { return 'day' } })
+  const setMode = (m: Mode) => { setModeRaw(m); try { localStorage.setItem('mk-daily-mode', m) } catch { /* */ } }
+  return mode === 'day' ? <DayMode mode={mode} setMode={setMode} /> : <ClassMode mode={mode} setMode={setMode} />
+}
+
+/** Növbəti/əvvəlki dərs günü: B.e.–C. (şənbə, bazar keçilir). */
+const stepDay = (d: string, dir: number) => {
+  const x = new Date(d + 'T00:00')
+  do x.setDate(x.getDate() + dir); while (x.getDay() === 0 || x.getDay() === 6)
+  return isoDate(x)
+}
+type DayList = { date: string; weekday: string; items: Item[]; ai: List['ai'] }
+
+async function fetchDocx(url: string, name: string) {
+  const r = await fetch(url, { credentials: 'same-origin' })
+  if (!r.ok) { let m = 'Word faylı hazırlanmadı'; try { m = (await r.json()).detail || m } catch { /* */ } throw new Error(m) }
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(await r.blob())
+  a.download = name + '.docx'
+  document.body.appendChild(a); a.click(); a.remove()
+  setTimeout(() => URL.revokeObjectURL(a.href), 30_000)
+}
+
+/** Dərs günü üzrə: həmin gün BÜTÜN siniflərdəki dərslər saat sırası ilə – günü bir düymə ilə hazırla, çap et, Word. */
+function DayMode({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
+  const nav = useNavigate()
+  const [date, setDate] = useState(() => { const t = new Date(); return t.getDay() === 0 || t.getDay() === 6 ? stepDay(isoDate(t), 1) : isoDate(t) })
+  const [d, err, loading, reload] = useLoad<DayList>(() => get('/api/daily-plans-day', { date }), [date])
+  const [gen, setGen] = useState<Item | null>(null)
+  const [open, setOpen] = useState<{ ta: number; id: number } | null>(null)
+  const [batch, setBatch] = useState<{ done: number; total: number; failed: number } | null>(null)
+  const missing = d?.items.filter(i => i.lesson && !i.plan) || []
+  const ready = d?.items.filter(i => i.plan) || []
+
+  const runBatch = async () => {
+    let failed = 0
+    setBatch({ done: 0, total: missing.length, failed: 0 })
+    for (let k = 0; k < missing.length; k++) {
+      const i = missing[k]
+      try { await post(`/api/daily-plans/${i.ta_id}/generate`, { date: i.date, period: i.period }) } catch (e) {
+        failed++
+        if (e instanceof ApiError && (e.status === 400 || e.status === 429)) { toast(e.message); setBatch(null); reload(); return }
+      }
+      setBatch({ done: k + 1, total: missing.length, failed })
+      reload()
+    }
+    toast(failed ? `${missing.length - failed} plan hazırlandı, ${failed} alınmadı` : 'Günün planları hazırdır')
+    setBatch(null)
+  }
+  const printAll = async () => {
+    const full = await Promise.all(ready.map(i => get<Full>(`/api/daily-plans/${i.ta_id}/item/${i.plan!.id}`)))
+    printDoc({ title: `Gündəlik planlar – ${fmtDate(date)}`,
+      body: PRINT_CSS + full.map((p, n) => (n ? '<div class="pb"></div>' : '') + planHtml(p)).join('') })
+  }
+
+  return (
+    <>
+      <Top title="Gündəlik plan" sub="Dərs günü üzrə · bütün siniflər · ARTİ strukturu" />
+      <ErrorBox error={err} />
+      <div className="toolbar">
+        <Seg value={mode} onChange={setMode} options={MODES} />
+        <input type="date" value={date} onChange={e => e.target.value && setDate(e.target.value)} aria-label="Tarix" style={{ maxWidth: 170 }} />
+      </div>
+      {loading && !d ? <Loading /> : d && (
+        <>
+          {!d.ai.configured && (
+            <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)', alignItems: 'center' }}>
+              <span className="grow">Gündəlik planı süni intellekt hazırlayır. Bunun üçün öz API açarınızı (Gemini, OpenRouter və s.) bir dəfə daxil edin.</span>
+              <button className="btn sm" onClick={() => nav('/settings?tab=ai')}>Açarı qoş</button>
+            </div>)}
+          <div className="row" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+            <button className="btn sm" onClick={() => setDate(stepDay(date, -1))} aria-label="Əvvəlki gün">‹</button>
+            <b>{d.weekday}, {fmtDate(d.date)}</b>
+            <button className="btn sm" onClick={() => setDate(stepDay(date, 1))} aria-label="Növbəti gün">›</button>
+            <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>Bu gün</button>
+            <span className="right row" style={{ gap: 6 }}>
+              {missing.length > 0 && d.ai.configured && <button className="btn sm primary" disabled={!!batch} onClick={runBatch}>
+                {batch ? `Hazırlanır ${batch.done}/${batch.total}…` : `Günü hazırla (${missing.length})`}</button>}
+              {ready.length > 0 && <>
+                <AsyncBtn className="btn sm" onClick={printAll}>Çap / PDF</AsyncBtn>
+                <AsyncBtn className="btn sm" onClick={() => fetchDocx(`/api/daily-plans-day/docx?date=${date}`, `Gündəlik planlar ${fmtDate(date)}`)}>Word</AsyncBtn>
+              </>}
+            </span>
+          </div>
+          {d.items.length > 0 && <p className="small muted" style={{ marginTop: 0 }}>Bu gün {d.items.length} dərs · hazır plan: {ready.length}/{d.items.length}</p>}
+          {batch && <div className="banner">Planlar bir-bir hazırlanır (hər biri 20–60 saniyə). Səhifəni bağlamayın.{batch.failed ? ` Alınmayan: ${batch.failed}` : ''}</div>}
+          <div className="jlist">
+            {d.items.length === 0 && <div className="empty">Bu gün dərsiniz yoxdur.</div>}
+            {d.items.map(i => (
+              <div className="jrow cols" key={i.ta_id + '-' + i.period} style={{ ['--cols' as any]: '110px minmax(0,1fr) auto', ['--mcols' as any]: 'minmax(0,1fr)' }}>
+                <span className="small"><b>{i.period}-ci saat</b>{i.time ? <span className="muted"> · {i.time}</span> : ''}<br />
+                  <b>{i.class_name}</b>{i.subject && i.subject !== 'Riyaziyyat' ? <span className="muted"> · {i.subject}</span> : ''}</span>
+                <span>{i.lesson ? <><b>{i.lesson.topic}</b>
+                  <span className="sub small muted"> №{i.lesson.seq}{i.lesson.standards?.length ? ' · st. ' + i.lesson.standards.join(', ') : ''}{i.lesson.tasks ? ' · ' + i.lesson.tasks : ''}</span></>
+                  : <span className="muted">Perspektiv planda mövzu yoxdur</span>}</span>
+                <span className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                  {examLabel(i.lesson) && <Pill tone="warn">{examLabel(i.lesson)}</Pill>}
+                  {i.plan ? <>
+                    <Pill tone="ok">hazırdır{i.plan.edited ? ' · redaktə' : ''}</Pill>
+                    <button className="btn sm primary" onClick={() => setOpen({ ta: i.ta_id!, id: i.plan!.id })}>Bax</button>
+                  </> : i.lesson && <button className="btn sm" disabled={!d.ai.configured || !!batch} onClick={() => setGen(i)}>Hazırla</button>}
+                </span>
+              </div>))}
+          </div>
+        </>
+      )}
+      {gen && <Generate ta={gen.ta_id!} item={gen} onClose={() => setGen(null)}
+        onDone={p => { const t = gen.ta_id!; setGen(null); reload(); setOpen({ ta: t, id: p.id }) }} />}
+      {open && <View ta={open.ta} id={open.id} onClose={() => setOpen(null)} onChanged={reload}
+        onRegen={it => { setOpen(null); setGen(it) }} items={(d?.items || []).filter(i => i.ta_id === open.ta)} />}
+    </>
+  )
+}
+
+function ClassMode({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
   const nav = useNavigate()
   const [lessons, err0] = useMyLessons()
   const [ta, setTa] = usePick('daily')
@@ -115,6 +233,7 @@ export default function DailyPlan() {
       <Top title="Gündəlik plan" sub={cur ? `${cur.class_name} · ARTİ strukturu · perspektiv plan əsasında` : 'Əvvəlcə sinif seçin'} />
       <ErrorBox error={err0 || err} />
       <div className="toolbar">
+        <Seg value={mode} onChange={setMode} options={MODES} />
         <LessonSelect lessons={lessons} value={ta} onChange={setTa} />
         {ta && <Seg value={view} onChange={setView} options={[['day', 'Gün'], ['week', 'Həftə']]} />}
       </div>

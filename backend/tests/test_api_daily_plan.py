@@ -99,3 +99,32 @@ def test_normalize_and_parse():
     from app.ai import parse_json
     assert parse_json('```json\n{"a": 1}\n```') == {'a': 1}
     assert parse_json('Budur plan: {"a": {"b": 2}} uğurlar') == {'a': {'b': 2}}
+
+
+def test_day_view_all_classes(world, monkeypatch):
+    admin, ta = _setup(world)
+    # ikinci sinif – eyni gün (Ç.a.) 3-cü saat
+    as_, S = world
+    cid = admin.post('/api/classes', json={'name': 'X c'}).json()['id']
+    admin.post(f'/api/classes/{cid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'slots': {'1': [3]}})
+    with S() as db:
+        ta2 = db.query(TeachingAssignment).filter_by(class_id=cid).one().id
+        db.add(PlanLesson(assignment_id=ta2, seq=1, semester=1, assessment_type='formativ', topic='Başqa mövzu',
+                          date=dt.date(2026, 9, 15)))
+        db.commit()
+    d = admin.get('/api/daily-plans-day', params={'date': '2026-09-15'}).json()
+    assert [(i['period'], i['class_name']) for i in d['items']] == [(1, 'X e'), (3, 'X c'), (5, 'X e')]
+    assert d['weekday'] == 'Çərşənbə axşamı' and not d['ai']['configured']
+    assert admin.get('/api/daily-plans-day', params={'date': '2026-09-16'}).json()['items'] == []
+    assert admin.get('/api/daily-plans-day/docx', params={'date': '2026-09-15'}).status_code == 404
+
+    admin.put('/api/ai/settings', json={'provider': 'openrouter', 'model': 'google/gemini-2.5-flash', 'api_key': 'sk-or-TEST-123456789'})
+    monkeypatch.setattr('app.ai.complete_json', lambda cfg, s, u: FAKE)
+    for i in d['items']:
+        assert admin.post(f"/api/daily-plans/{i['ta_id']}/generate", json={'date': i['date'], 'period': i['period']}).status_code == 200
+    d = admin.get('/api/daily-plans-day', params={'date': '2026-09-15'}).json()
+    assert all(i['plan'] for i in d['items'])
+    w = admin.get('/api/daily-plans-day/docx', params={'date': '2026-09-15'})
+    assert w.status_code == 200 and w.content[:2] == b'PK'
+    # başqa müəllimin günü boşdur
+    assert as_('ilqar').get('/api/daily-plans-day', params={'date': '2026-09-15'}).json()['items'] == []
