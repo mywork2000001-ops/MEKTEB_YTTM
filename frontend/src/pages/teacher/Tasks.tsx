@@ -5,6 +5,7 @@ import { MathText } from '../../MathText'
 import { ConfirmName, Drawer, ErrorBox, fmt, gradeTone, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import TaskEditor from './TaskEditor'
+import { esc, head, mathHtml, printDoc, table } from '../../print'
 
 type Task = { id: number; title: string; opens_at: string; closes_at: string; duration_min: number; questions: number; submitted: number; avg_pct: number | null; student_ids: number[] | null }
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
@@ -43,6 +44,7 @@ export default function Tasks() {
                 <div className="row" style={{ gap: 6 }}>
                   <button className={'btn sm' + (live ? ' primary' : '')} onClick={() => setWatch(t.id)}>{live ? 'Canlı izlə' : 'Nəticələr'}</button>
                   <button className="btn sm" onClick={() => setShare(t)}>Link göndər</button>
+                  <button className="btn sm" onClick={() => paper(ta!, t.id, cls?.class_name || '')}>Kağız variant</button>
                   <button className="btn sm" onClick={() => setEditor({ mode: 'edit', id: t.id })}>Redaktə</button>
                   <button className="btn sm ghost" onClick={() => setDel(t)}>Sil</button>
                 </div>
@@ -57,6 +59,17 @@ export default function Tasks() {
       {share && <Share task={share} cls={cls?.class_name || ''} onClose={() => setShare(null)} />}
     </>
   )
+}
+
+async function paper(ta: number, id: number, cls: string) {
+  const t = await get(`/api/tasks/${ta}/${id}/full`)
+  const L = 'ABCDE'
+  const qs = t.questions_full.map((q: any, i: number) => `<div class="q"><b>${i + 1}.</b> ${mathHtml(ml(q.text))}${q.image ? `<img src="${esc(q.image)}">` : ''}
+    ${q.kind === 'mcq' ? `<div class="opts">${(q.options || []).map((o: any, j: number) => `${L[j]}) ${mathHtml(ml(o))}`).join('<br>')}</div>` : '<div class="opts">Cavab: ______________________</div>'}</div>`).join('')
+  const key = table(['Sual', 'Düzgün cavab'], t.questions_full.map((q: any, i: number) => [i + 1, q.kind === 'mcq' ? L[q.correct] : String(q.answer || '').split('|')[0]]))
+  printDoc({ title: `${t.title} – kağız variant`, body: head(t.title, `${cls} · ${t.questions} sual · ${t.duration_min} dəqiqə`) +
+    '<p>Ad, soyad: ______________________________ &nbsp; Tarix: ____________</p>' + qs +
+    '<div class="pb"></div>' + head(`${t.title} – cavab açarı (müəllim üçün)`) + key })
 }
 
 function Share({ task, cls, onClose }: { task: Task; cls: string; onClose: () => void }) {

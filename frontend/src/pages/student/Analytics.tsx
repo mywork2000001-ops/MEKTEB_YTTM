@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { get } from '../../api'
 import { useT } from '../../i18n'
 import { ErrorBox, fmt, Loading, Top, useLoad } from '../../ui'
+import { fmtD, fmtN, head, printDoc, table } from '../../print'
 
 function Compare({ label, me, avg, max = 100, unit = '%' }: { label: string; me: number | null; avg: number | null; max?: number; unit?: string }) {
   const t = useT()
@@ -21,7 +22,7 @@ export default function Analytics() {
   return (
     <>
       <Top title={t('Analitika')} sub="Öz göstəriciləriniz; sinif ortası adsızdır"
-        actions={<button className="btn no-print" onClick={() => window.print()}>Hesabatım (A4)</button>} />
+        actions={<button className="btn no-print" disabled={!d} onClick={() => d && printDoc({ title: 'Hesabatım', body: head('Şagird hesabatı', `${from ? fmtD(from) : 'ilin əvvəli'} – ${to ? fmtD(to) : 'bu gün'}`) + table(['Fənn', 'Sinif', 'Orta qiymət (mən / sinif)', 'Davamiyyət % (mən / sinif)', 'Ev tapşırığı % (mən / sinif)'], d.subjects.map((s: any) => [s.subject, s.class_name, `${fmtN(s.me.avg_grade, 2)} / ${fmtN(s.class_avg.avg_grade, 2)}`, `${fmtN(s.me.attendance_pct)} / ${fmtN(s.class_avg.attendance_pct)}`, `${fmtN(s.me.homework_pct)} / ${fmtN(s.class_avg.homework_pct)}`])) })}>Hesabatım – çap / PDF</button>} />
       <div className="toolbar no-print">
         <label className="small row">Başlanğıc <input type="date" className="sel" value={from} onChange={e => setFrom(e.target.value)} /></label>
         <label className="small row">Son <input type="date" className="sel" value={to} onChange={e => setTo(e.target.value)} /></label>

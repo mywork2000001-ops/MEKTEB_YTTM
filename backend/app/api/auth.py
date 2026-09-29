@@ -91,6 +91,11 @@ def change_password(body: PasswordIn, response: Response, user: User = Depends(c
     if user.role != Role.student and len(body.new) < 8:
         raise HTTPException(400, 'Parol ən azı 8 simvol olmalıdır')
     user.password_hash = hash_password(body.new)
+    if user.role == Role.student:                      # ilkin PIN artıq etibarsızdır – vərəqədən silinir
+        from ..models import Student
+        st = db.scalar(select(Student).where(Student.user_id == user.id))
+        if st:
+            st.initial_pin = None
     db.add(AuditLog(user_id=user.id, action='update', entity='password', entity_id=str(user.id)))
     db.commit()
     _set_cookie(response, user)

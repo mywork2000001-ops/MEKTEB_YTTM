@@ -48,6 +48,27 @@ def read_session(token: str | None) -> dict | None:
         return None
 
 
+def _fernet():
+    import base64, hashlib
+    from cryptography.fernet import Fernet
+    key = base64.urlsafe_b64encode(hashlib.sha256(('mk-pin:' + settings().secret_key).encode()).digest())
+    return Fernet(key)
+
+
+def pin_encrypt(pin: str) -> str:
+    """İlkin PIN – giriş vərəqəsi çapı üçün serverin açarı ilə şifrələnir (şagird dəyişəndə silinir)."""
+    return _fernet().encrypt(pin.encode()).decode()
+
+
+def pin_decrypt(token: str | None) -> str | None:
+    if not token:
+        return None
+    try:
+        return _fernet().decrypt(token.encode()).decode()
+    except Exception:                                        # noqa: BLE001 – açar dəyişibsə
+        return None
+
+
 def new_pin() -> str:
     return f'{secrets.randbelow(10000):04d}'
 

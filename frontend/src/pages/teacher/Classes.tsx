@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { get, post, put } from '../../api'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, levelTone, Loading, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
 import { usePick } from './common'
+import { fmtD, fmtN, head, printDoc, table } from '../../print'
 
 type Cls = { id: number; name: string; code: string; kind: string; students: number; can_open: boolean; split_with: string | null
   teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number } | null; exam_date: string | null }
@@ -46,7 +47,7 @@ function StudentList({ cls, onOpen }: { cls: Cls; onOpen: (s: Stud) => void }) {
   const list = (rows || []).filter(s => !q || s.full_name.toLowerCase().includes(q.toLowerCase()))
   return (
     <>
-      <h2 className="sec">{cls.name} <small>{rows?.length ?? ''} şagird</small>{cls.kind !== 'qrup' && <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => setInv(true)}>Qeydiyyat linki</button>}</h2>
+      <h2 className="sec">{cls.name} <small>{rows?.length ?? ''} şagird</small><span className="row" style={{ marginLeft: 'auto' }}>{rows && <button className="btn sm" onClick={() => printDoc({ title: `${cls.name} – şagird siyahısı`, body: head(`${cls.name} sinfi – şagird siyahısı`, `${rows.length} şagird`) + table(['№', 'Şagird', 'Doğum tarixi', 'Giriş kodu', 'IX: dil', 'IX: riyaziyyat', 'IX: xarici', 'Yekun'], rows.map((s, i) => [i + 1, s.full_name, fmtD(s.birth_date), s.portal_code, fmtN(s.score_language), fmtN(s.score_math), fmtN(s.score_foreign), fmtN(s.score_total)]), [4, 5, 6, 7]) })}>Çap / PDF</button>}{cls.kind !== 'qrup' && <button className="btn sm" onClick={() => setInv(true)}>Qeydiyyat linki</button>}</span></h2>
       {inv && <Invites cls={cls} onClose={() => setInv(false)} />}
       <ErrorBox error={err} />
       <div className="toolbar"><div className="search"><input placeholder="Şagird axtar" value={q} onChange={e => setQ(e.target.value)} /></div></div>

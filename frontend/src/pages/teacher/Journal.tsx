@@ -3,6 +3,7 @@ import { del, get, post, put } from '../../api'
 import { AsyncBtn, ErrorBox, fmt, fmtDate, gradeTone, isoDate, Loading, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
 import { ATT, HW, LessonSelect, type MyLesson, useMyLessons, usePick } from './common'
 import Exams from './Exams'
+import { fmtN, head, printDoc, table } from '../../print'
 import { useNavigate } from 'react-router-dom'
 import { useT } from '../../i18n'
 
@@ -187,6 +188,7 @@ function Semester({ ta }: { ta: MyLesson }) {
       <div className="row" style={{ marginBottom: 12 }}>
         {[1, 2].map(s => <button key={s} className="chip" aria-pressed={sem === s} onClick={() => setSem(s)}>{s}-ci yarımil</button>)}
         <span className="small muted">{d?.formula}</span>
+        {d && <button className="btn sm right" onClick={() => printDoc({ title: `${ta.class_name} – ${sem}-ci yarımil qiymətləri`, body: head(`${ta.class_name} – ${ta.subject}: ${sem}-ci yarımil`, d.formula) + table(['№', 'Şagird', 'KSQ', 'KSQ orta', 'BSQ', 'Yarımil'], d.students.map((s: any, i: number) => [i + 1, s.full_name, s.ksq.map(([n, g]: [number, number | null]) => `${n}: ${g ?? '—'}`).join('  '), fmtN(s.ksq_avg, 2), s.bsq ?? '—', s.semester_grade ?? '—']), [3, 4, 5]) + '<p class="sign">Müəllim: ____________</p>' })}>Çap / PDF</button>}
       </div>
       <ErrorBox error={err} />
       <div className="tbl-wrap"><table><thead><tr><th>Şagird</th><th>KSQ</th><th className="r">KSQ orta</th><th className="r">BSQ</th><th className="r">Yarımil</th></tr></thead>
@@ -225,7 +227,7 @@ function Summary({ ta }: { ta: MyLesson }) {
   return (
     <>
       <ErrorBox error={err} />
-      {d && <p className="muted small">Yazılmış dərs: {d.lessons_written}</p>}
+      {d && <div className="row"><p className="muted small grow">Yazılmış dərs: {d.lessons_written}</p><button className="btn sm" onClick={() => printDoc({ title: `${ta.class_name} – jurnal xülasəsi`, body: head(`${ta.class_name} – ${ta.subject}: jurnal xülasəsi`, `Yazılmış dərs: ${d.lessons_written}`) + table(['№', 'Şagird', 'Orta qiymət', 'Qiymət sayı', 'Test %', 'Davamiyyət %', 'Ev tapşırığı %'], d.students.map((s: any, i: number) => [i + 1, s.full_name, fmtN(s.avg_grade, 2), s.marks, fmtN(s.test_pct), fmtN(s.attendance_pct), fmtN(s.homework_pct)]), [2, 3, 4, 5, 6]) })}>Çap / PDF</button></div>}
       <div className="tbl-wrap"><table><thead><tr><th>Şagird</th><th className="r">Orta qiymət</th><th className="r">Qiymət sayı</th><th className="r">Test %</th><th className="r">Davamiyyət %</th><th className="r">Ev tapşırığı %</th></tr></thead>
         <tbody>{d?.students.map((s: any) => (
           <tr key={s.student_id}><td>{s.full_name}</td><td className="r num">{fmt(s.avg_grade, 2)}</td><td className="r num">{s.marks}</td>
@@ -248,6 +250,7 @@ function StudentsLevels({ ta }: { ta: MyLesson }) {
       <ErrorBox error={err} />
       <div className="row" style={{ marginBottom: 10 }}>
         {counts.map(([k, n]) => <Pill key={k} tone={tone(k)}>{k}: {n}</Pill>)}
+        <button className="btn sm" onClick={() => printDoc({ title: `${ta.class_name} – şagirdlər və səviyyələr`, body: head(`${ta.class_name} – şagirdlər: IX sinif balları və səviyyə`) + table(['№', 'Şagird', 'Tədris dili', 'Riyaziyyat', 'Xarici dil', 'Səviyyə'], rows.map((r: any, i: number) => [i + 1, r.full_name, fmtN(r.score_language), fmtN(r.ix_math), fmtN(r.score_foreign), (r.level || '—') + (r.manual_level ? ' (müəllim)' : '')]), [2, 3, 4]) })}>Çap / PDF</button>
         <span className="small muted">Avtomatik: nəticələrə görə (yoxdursa IX riyaziyyat balı: ≥70 güclü, 40–70 orta, &lt;40 zəif). Müəllim əl ilə dəyişə bilər.</span>
       </div>
       <div className="tbl-wrap"><table style={{ minWidth: 760 }}>

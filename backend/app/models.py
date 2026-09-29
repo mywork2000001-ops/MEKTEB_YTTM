@@ -112,6 +112,7 @@ class Student(Base, Archivable):
     gender: Mapped[str | None] = mapped_column(String(10))
     portal_code: Mapped[str] = mapped_column(String(16), unique=True)    # XE-001 (bütün müəllimlər üçün eyni)
     user_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'))  # portal hesabı (PIN)
+    initial_pin: Mapped[str | None] = mapped_column(Text)               # şifrələnmiş ilkin PIN (çap üçün); dəyişəndə silinir
     score_language: Mapped[float | None] = mapped_column(Float)          # IX sinif buraxılış balları
     score_math: Mapped[float | None] = mapped_column(Float)
     score_foreign: Mapped[float | None] = mapped_column(Float)

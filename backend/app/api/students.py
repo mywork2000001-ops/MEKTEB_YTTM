@@ -15,7 +15,7 @@ from ..db import get_db
 from ..deps import staff
 from ..domain.rules import level
 from ..models import GroupMember, Role, SchoolClass, Student, User
-from ..security import hash_password, new_pin
+from ..security import hash_password, new_pin, pin_decrypt, pin_encrypt
 from .common import (ConfirmIn, audit, can_see_class, check_confirm, get_or_404, my_class_ids, need_school,
                      settings_unlocked)
 
@@ -103,7 +103,7 @@ def create_student(body: StudentIn, user: User = Depends(settings_unlocked), db:
     acc = User(role=Role.student, login=code, password_hash=hash_password(pin), full_name=name, school_id=sid)
     db.add(acc)
     db.flush()
-    s = Student(school_id=sid, created_by=user.id, portal_code=code, user_id=acc.id,
+    s = Student(school_id=sid, created_by=user.id, portal_code=code, user_id=acc.id, initial_pin=pin_encrypt(pin),
                 **{**body.model_dump(), 'full_name': name})
     db.add(s)
     db.flush()
@@ -165,6 +165,7 @@ def reset_pin(sid_: int, user: User = Depends(settings_unlocked), db: Session = 
         s.user_id = acc.id
     acc.password_hash = hash_password(pin)
     acc.failed_logins, acc.locked_until = 0, None
+    s.initial_pin = pin_encrypt(pin)
     audit(db, user, 'update', 'student_pin', s.id)
     db.commit()
     return {'portal_code': s.portal_code, 'pin': pin}
@@ -213,7 +214,8 @@ def delete_student(sid_: int, body: ConfirmIn, user: User = Depends(settings_unl
 
 
 @router.post('/by-class/{cid}/reset-pins')
-def reset_class_pins(cid: int, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+def reset_class_pins(cid: int, only_missing: bool = False, user: User = Depends(settings_unlocked),
+                     db: Session = Depends(get_db)):
     """Sinfin bütün şagirdlərinə yeni PIN (giriş vərəqələri üçün). PIN-lər yalnız bu cavabda bir dəfə qaytarılır."""
     c = get_or_404(db, SchoolClass, cid, 'Sinif')
     if c.kind == 'qrup' or not can_see_class(db, user, c):
@@ -221,6 +223,8 @@ def reset_class_pins(cid: int, user: User = Depends(settings_unlocked), db: Sess
     out = []
     for s in db.scalars(select(Student).where(Student.class_id == cid, Student.archived_at.is_(None))
                         .order_by(Student.full_name)):
+        if only_missing and s.initial_pin and pin_decrypt(s.initial_pin):
+            continue                                     # ilkin PIN hələ qüvvədədir – toxunulmur
         pin = new_pin()
         acc = db.get(User, s.user_id) if s.user_id else None
         if acc is None:
@@ -231,7 +235,22 @@ def reset_class_pins(cid: int, user: User = Depends(settings_unlocked), db: Sess
             s.user_id = acc.id
         acc.password_hash = hash_password(pin)
         acc.failed_logins, acc.locked_until = 0, None
+        s.initial_pin = pin_encrypt(pin)
         out.append({'full_name': s.full_name, 'portal_code': s.portal_code, 'pin': pin})
     audit(db, user, 'update', 'class_pins', cid, count=len(out))
     db.commit()
     return {'class_name': c.name, 'students': out}
+
+
+@router.get('/by-class/{cid}/login-sheet')
+def login_sheet(cid: int, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    """Giriş vərəqəsi: şagirdin giriş kodu və İLKİN PIN-i (şagird PIN-i dəyişibsə – null)."""
+    c = get_or_404(db, SchoolClass, cid, 'Sinif')
+    if c.kind == 'qrup' or not can_see_class(db, user, c):
+        raise HTTPException(403, 'Bu sinif sizin siniflərinizdən deyil')
+    rows = [{'full_name': s.full_name, 'portal_code': s.portal_code, 'pin': pin_decrypt(s.initial_pin)}
+            for s in db.scalars(select(Student).where(Student.class_id == cid, Student.archived_at.is_(None))
+                                .order_by(Student.full_name))]
+    audit(db, user, 'export', 'login_sheet', cid, count=len(rows))
+    db.commit()
+    return {'class_name': c.name, 'students': rows}

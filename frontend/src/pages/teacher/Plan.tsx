@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { get } from '../../api'
 import { ErrorBox, fmtDate, isoDate, Loading, PickFirst, Pill, Seg, Top, useLoad } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
+import { head, printDoc, table } from '../../print'
 
 type Item = { date: string; weekday: string; period: number; time: string | null; held: boolean; shift: number
   lesson: { seq: number; topic: string; section: string | null; assessment_type: string; exam_no: number | null; official_date: string } | null }
@@ -39,6 +40,7 @@ export default function Plan() {
             <b>{fmtDate(d.from)} – {fmtDate(d.to)}</b>
             <button className="btn sm" onClick={() => setDate(step(date, view, 1))}>›</button>
             <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>Bu gün</button>
+            <button className="btn sm right" onClick={() => printDoc({ title: `${cur?.class_name} – perspektiv plan ${fmtDate(d.from)}–${fmtDate(d.to)}`, body: head(`${cur?.class_name} – ${cur?.subject}: perspektiv plan (işçi)`, `${fmtDate(d.from)} – ${fmtDate(d.to)}`) + table(['Tarix', 'Saat', '№', 'Mövzu', 'Qiymətləndirmə'], d.items.map(i => [`${i.weekday} ${fmtDate(i.date)}`, i.period, i.lesson?.seq ?? '', i.lesson?.topic ?? '—', i.lesson && i.lesson.assessment_type !== 'formativ' ? i.lesson.assessment_type + (i.lesson.exam_no ? '-' + i.lesson.exam_no : '') : ''])) })}>Çap / PDF</button>
             {cur && cur.lag > 0 && <Pill tone="warn">Geriləmə: {cur.lag} dərs</Pill>}
           </div>
           {!d.has_plan && <div className="banner">Bu sinif üçün rəsmi plan yüklənməyib (Tənzimləmələr → Siniflər).</div>}

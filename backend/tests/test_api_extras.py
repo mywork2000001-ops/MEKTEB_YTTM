@@ -78,3 +78,30 @@ def test_security_headers_and_weak_password(world):
         db.commit()
     with TestClient(app) as c:
         assert c.post('/api/auth/login', json={'login': 'ilqar', 'password': '1234'}).json()['weak_password'] is True
+
+
+def test_login_sheet_initial_pins(world):
+    c, cid, _ = mk(world)
+    a = c.post('/api/students', json={'full_name': 'Vərəqə Şagird Bir oğlu', 'class_id': cid}).json()
+    c.post('/api/students', json={'full_name': 'Vərəqə Şagird İki qızı', 'class_id': cid})
+    sheet = c.get(f'/api/students/by-class/{cid}/login-sheet').json()
+    pins = {x['portal_code']: x['pin'] for x in sheet['students']}
+    assert pins[a['portal_code']] == a['initial_pin']                    # ilkin PIN çap üçün oxunur
+    with TestClient(app) as st:                                           # şagird PIN-i dəyişir -> vərəqədə yoxdur
+        st.post('/api/auth/login', json={'login': a['portal_code'], 'password': a['initial_pin']})
+        new = '9876' if a['initial_pin'] != '9876' else '1111'
+        assert st.post('/api/auth/password', json={'old': a['initial_pin'], 'new': new}).status_code == 200
+    sheet = {x['portal_code']: x['pin'] for x in c.get(f'/api/students/by-class/{cid}/login-sheet').json()['students']}
+    assert sheet[a['portal_code']] is None and all(v for k, v in sheet.items() if k != a['portal_code'])
+    r = c.post(f'/api/students/by-class/{cid}/reset-pins?only_missing=true').json()
+    assert [x['portal_code'] for x in r['students']] == [a['portal_code']]  # yalnız çatışmayan yenilənir
+
+
+def test_pdf_render(world):
+    import pytest, os
+    if not os.path.exists('C:/Program Files/Google/Chrome/Application/chrome.exe'):
+        pytest.skip('Chrome yoxdur')
+    c, cid, _ = mk(world)
+    html = '<!doctype html><meta charset="utf-8"><h1>Sınaq sənədi – Əə Şş</h1><img src="http://127.0.0.1:9/x.png">'
+    r = c.post('/api/print/pdf', json={'html': html, 'title': 'Giriş vərəqələri X e'})
+    assert r.status_code == 200 and r.content[:4] == b'%PDF' and 'pdf' in r.headers['content-type']

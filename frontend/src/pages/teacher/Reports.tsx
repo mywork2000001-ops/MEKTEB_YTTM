@@ -3,6 +3,7 @@ import { get } from '../../api'
 import { useAuth } from '../../auth'
 import { ErrorBox, fmt, fmtDate, levelTone, Loading, PickFirst, Pill, riskTone, Seg, Stat, Top, useLoad } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
+import { head, printDoc, table } from '../../print'
 import { useT } from '../../i18n'
 
 const TABS = [['overview', 'İcmal'], ['rating', 'Reytinq'], ['levels', 'Güclü / orta / zəif'], ['risk', 'Risk'], ['attendance', 'Davamiyyət'], ['print', 'Çap / PDF']] as const
@@ -130,7 +131,7 @@ function PrintView({ a, ta, sem }: { a: any; ta: number; sem: string }) {
   return (
     <>
       <div className="row no-print" style={{ marginBottom: 12 }}>
-        <button className="btn primary" onClick={() => window.print()}>Çap et / PDF kimi saxla</button>
+        <button className="btn primary" onClick={() => printDoc({ title: `${a.class_name} – hesabat ${fmtDate(a.from)}–${fmtDate(a.to)}`, body: head(`${a.class_name} sinfi – ${a.subject} fənni üzrə hesabat`, `${fmtDate(a.from)} – ${fmtDate(a.to)}`) + table(['Yer', 'Şagird', 'Orta', 'KSQ %', 'Ev tap. %', 'Davam. %', 'Reytinq', 'Səviyyə', 'Risk'], a.students.map((r: any) => [r.place ?? '', r.full_name, fmt(r.avg_grade, 2), fmt(r.ksq_avg_pct), fmt(r.homework_pct), fmt(r.attendance_pct), fmt(r.rating), r.level || '', r.risk.status]), [2, 3, 4, 5, 6]) + `<p>Orta qiymət: ${fmt(a.overview.avg_grade, 2)} · Davamiyyət: ${fmt(a.overview.avg_attendance)}% · Güclü/orta/zəif: ${a.overview.levels['Güclü']}/${a.overview.levels['Orta']}/${a.overview.levels['Zəif']}</p><p class="sign">Müəllim: ${me?.full_name || ''} ____________</p>` })}>Çap / PDF</button>
         <a className="btn" href={`/api/reports/${ta}/xlsx${sem === 'all' ? '' : '?semester=' + sem}`}>Excel</a>
         <span className="small muted">A4 portret, ağ-qara (Canon üçün)</span>
       </div>

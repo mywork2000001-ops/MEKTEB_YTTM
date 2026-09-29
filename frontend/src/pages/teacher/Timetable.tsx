@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { get } from '../../api'
 import { ErrorBox, fmtDate, isoDate, Loading, Pill, Top, useLoad } from '../../ui'
+import { esc, head, printDoc } from '../../print'
 
 type Cell = { ta_id: number; class_name: string; subject: string; time: string | null; topic: string | null; assessment_type: string | null; held: boolean }
 type Day = { date: string; weekday: string; periods: Record<string, Cell[]> }
@@ -79,7 +80,7 @@ export default function Timetable() {
         <button className="btn sm" onClick={() => shift(-1)}>‹ Əvvəlki</button>
         <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>Bu həftə</button>
         <button className="btn sm" onClick={() => shift(1)}>Növbəti ›</button>
-        <button className="btn sm right" onClick={() => window.print()}>Çap et</button>
+        <button className="btn sm right" disabled={!d} onClick={() => d && printDoc({ landscape: true, title: `Həftəlik dərs cədvəli ${fmtDate(d.days[0].date)}–${fmtDate(d.days[4].date)}`, body: head('Həftəlik dərs cədvəli', `${fmtDate(d.days[0].date)} – ${fmtDate(d.days[4].date)}`) + `<table><thead><tr><th>Vaxt</th>${d.days.map(x => `<th>${esc(DAY_FULL[x.weekday] || x.weekday)}<br>${fmtDate(x.date).slice(0, 5)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => r.kind === 'break' ? `<tr><td class="c">${esc(r.time)}</td><td colspan="5" class="c b">Nahar fasiləsi</td></tr>` : `<tr><td class="c b">${esc(r.time)}</td>${d.days.map(x => { const cs = byTime.get(r.time)?.get(x.date) || []; return `<td>${cs.map(c => `<b>${esc(c.class_name)}</b> (${c.p}-ci)${c.assessment_type === 'KSQ' || c.assessment_type === 'BSQ' ? ' <b>' + c.assessment_type + '</b>' : ''}<br>${esc(c.topic || '')}`).join('<hr>') || '<span class="muted">—</span>'}</td>` }).join('')}</tr>`).join('')}</tbody></table>` })}>Çap / PDF</button>
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : d && (

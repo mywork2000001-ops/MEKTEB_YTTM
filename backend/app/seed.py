@@ -21,7 +21,7 @@ from .importers.utis import read_utis
 from .models import (AcademicYear, Holiday, PlanLesson, Role, School, SchoolClass, Student, TeachingAssignment,
                      User)
 from .services import import_plan
-from .security import hash_password, new_password, new_pin
+from .security import hash_password, new_password, new_pin, pin_encrypt
 
 DESKTOP = Path.home() / 'Desktop' / 'Tom planlama'
 UTIS_XLSX = DESKTOP / 'Utis_siyahi (27).xlsx'
@@ -54,7 +54,7 @@ def add_students(db: Session, sc: SchoolClass, students, created_by: int | None)
         db.add(u)
         db.flush()
         db.add(Student(school_id=sc.school_id, class_id=sc.id, full_name=s.name, birth_date=s.birth_date,
-                       gender=s.gender, portal_code=code, user_id=u.id, score_language=s.score_language,
+                       gender=s.gender, portal_code=code, user_id=u.id, initial_pin=pin_encrypt(pin), score_language=s.score_language,
                        score_math=s.score_math, score_foreign=s.score_foreign, created_by=created_by))
         db.flush()
         out.append((sc.name, s.name, code, pin))

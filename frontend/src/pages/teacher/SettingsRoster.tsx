@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError, del, get, patch, post, put } from '../../api'
 import { useAuth } from '../../auth'
+import { esc, head, printDoc, table } from '../../print'
 import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, Loading, PickFirst, Pill, toast, useLoad } from '../../ui'
 
 type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; split_with: string | null; utis_class: string | null
@@ -263,30 +264,34 @@ function StudentsTab() {
 }
 
 function SlipsButton({ cid }: { cid: number }) {
-  const [ask, setAsk] = useState(false)
-  const esc = (x: string) => x.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!))
-  const run = async () => {
-    const r = await post(`/api/students/by-class/${cid}/reset-pins`)
-    const rows = r.students as { full_name: string; portal_code: string; pin: string }[]
-    const csv = '﻿' + [['Ad', 'Giriş kodu', 'PIN'], ...rows.map(x => [x.full_name, x.portal_code, x.pin])].map(x => x.join(';')).join(String.fromCharCode(10))
-    const w = window.open('', '_blank')
-    if (!w) { toast('Pəncərə açılmadı – brauzerdə açılan pəncərələrə icazə verin'); return }
-    w.document.write(`<!doctype html><meta charset="utf-8"><title>${esc(r.class_name)} – giriş vərəqələri</title>
-      <style>body{font:14px/1.4 Arial,sans-serif;margin:10mm;color:#000}h1{font-size:16px}.g{display:grid;grid-template-columns:1fr 1fr;gap:0}
-      .s{border:1px dashed #000;padding:8mm 6mm;break-inside:avoid}.s b{font-size:15px}.k{font:700 18px monospace;margin-top:4px}
-      .n{font-size:11px;margin-top:6px}@media print{.np{display:none}}</style>
-      <div class="np"><button id="pr">Çap et</button> <a download="${esc(r.class_name)}-giris.csv" href="data:text/csv;charset=utf-8,${encodeURIComponent(csv)}">CSV endir</a></div>
-      <h1>${esc(r.class_name)} – Müəllim köməkçisi: giriş vərəqələri</h1><div class="g">${rows.map(x => `<div class="s"><b>${esc(x.full_name)}</b>
-      <div class="k">Kod: ${esc(x.portal_code)} &nbsp; PIN: ${esc(x.pin)}</div><div class="n">Sayt: ${location.origin} → «Şagird». PIN-i ilk girişdən sonra Tənzimləmələrdə dəyişin.</div></div>`).join('')}</div>`)
-    w.document.close()
-    const b = w.document.getElementById('pr')
-    if (b) b.onclick = () => w.print()          // inline skript CSP ilə bloklanır – kənardan bağlanır
-    setAsk(false)
+  const [missing, setMissing] = useState<number | null>(null)
+  const print = (sheet: { class_name: string; students: { full_name: string; portal_code: string; pin: string | null }[] }) => {
+    const site = location.origin
+    const slips = sheet.students.map(x => `<div class="slip"><div class="n">${esc(x.full_name)}</div>
+      <div class="k">Kod: ${esc(x.portal_code)} &nbsp; PIN: ${esc(x.pin ?? '— (dəyişdirilib)')}</div>
+      <div class="muted">${esc(site)} → «Şagird» → kod və PIN. PIN-i ilk girişdən sonra dəyişin.</div></div>`).join('')
+    printDoc({ title: `${sheet.class_name} – giriş vərəqələri`, body:
+      head(`${sheet.class_name} sinfi – Müəllim köməkçisi: giriş vərəqələri`, 'Kəsib hər şagirdə öz vərəqəsini verin') + `<div class="slips">${slips}</div>` +
+      `<div class="pb"></div>` + head(`${sheet.class_name} – giriş kodları (müəllim nüsxəsi)`) +
+      table(['№', 'Şagird', 'Giriş kodu', 'İlkin PIN'], sheet.students.map((x, i) => [i + 1, x.full_name, x.portal_code, x.pin ?? 'dəyişdirilib'])) })
   }
-  return ask ? (
-    <span className="confirm" style={{ width: 'auto' }}>Sinfin bütün PIN-ləri yenilənəcək (köhnələr işləməyəcək).
-      <AsyncBtn className="btn danger sm" onClick={run}>Davam et</AsyncBtn><button className="btn ghost sm" onClick={() => setAsk(false)}>Ləğv et</button></span>
-  ) : <button className="btn" onClick={() => setAsk(true)}>Giriş vərəqələri (yeni PIN)</button>
+  const run = async () => {
+    const sheet = await get(`/api/students/by-class/${cid}/login-sheet`)
+    const n = sheet.students.filter((x: any) => !x.pin).length
+    if (n) { setMissing(n); return }
+    print(sheet)
+  }
+  const regen = async (all: boolean) => {
+    await post(`/api/students/by-class/${cid}/reset-pins${all ? '' : '?only_missing=true'}`)
+    setMissing(null)
+    print(await get(`/api/students/by-class/${cid}/login-sheet`))
+  }
+  return missing ? (
+    <span className="confirm" style={{ width: 'auto' }}>{missing} şagirdin ilkin PIN-i yoxdur (şagird dəyişib və ya köhnə qeyddir).
+      <AsyncBtn className="btn sm primary" onClick={() => regen(false)}>Yalnız onlara yeni PIN</AsyncBtn>
+      <AsyncBtn className="btn sm" onClick={async () => { setMissing(null); print(await get(`/api/students/by-class/${cid}/login-sheet`)) }}>Olduğu kimi çap et</AsyncBtn>
+      <button className="btn ghost sm" onClick={() => setMissing(null)}>Ləğv et</button></span>
+  ) : <AsyncBtn className="btn" onClick={run}>Giriş vərəqələri (ID + PIN) – çap / PDF</AsyncBtn>
 }
 
 function ScoresEditor({ rows, onDone }: { rows: Stud[]; onDone: () => void }) {
