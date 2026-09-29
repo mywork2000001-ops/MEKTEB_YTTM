@@ -21,6 +21,7 @@ export default function Homeroom() {
   const [cid, setCid] = usePick('homeroom')
   const [sem, setSem] = useState<'1' | '2' | 'all'>('1')
   const [tab, setTab] = useState<(typeof TABS)[number][0]>('overview')
+  const narrow = useNarrow()
   // yalnız bir sinfin rəhbəridirsə – avtomatik seçilir
   useEffect(() => {
     if (!list) return
@@ -32,7 +33,7 @@ export default function Homeroom() {
     <>
       <Top title="Sinif rəhbəri" sub={h ? `${h.class.name} · rəhbər: ${h.class.homeroom?.name || '—'}` : 'Sinif seçin'} />
       <ErrorBox error={err0 || err} />
-      {admin && <div className="row no-print" style={{ marginBottom: 8 }}><label className="check"><input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} />Bütün siniflər (admin baxışı)</label></div>}
+      {admin && (!narrow || tab === 'overview') && <div className="row no-print" style={{ marginBottom: 8 }}><label className="check"><input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} />Bütün siniflər (admin baxışı)</label></div>}
       {list && list.length === 0 ? (
         <Empty>Siz heç bir sinfin rəhbəri deyilsiniz. Tənzimləmələr → Siniflər → sinfi açın → «Mən sinif rəhbəriyəm» (və ya admin təyin edir).</Empty>
       ) : (
@@ -43,7 +44,7 @@ export default function Homeroom() {
                 <option value="">— Sinif seçin —</option>
                 {list.map(c => <option key={c.id} value={c.id}>{c.name}{c.mine ? '' : c.homeroom ? ` · ${c.homeroom.name}` : ' · rəhbər yoxdur'}</option>)}
               </select>)}
-            {cid && <Seg value={sem} onChange={setSem} options={[['1', 'I yarımil'], ['2', 'II yarımil'], ['all', 'Bütün il']]} />}
+            {cid && (!narrow || ['overview', 'lessons', 'grades'].includes(tab)) && <Seg value={sem} onChange={setSem} options={[['1', 'I yarımil'], ['2', 'II yarımil'], ['all', 'Bütün il']]} />}
           </div>
           {!cid ? <PickFirst /> : loading && !h ? <Loading /> : h && (
             <>

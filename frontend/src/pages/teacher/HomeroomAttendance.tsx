@@ -14,11 +14,12 @@ const cls = (s?: string) => ST.find(x => x[0] === s)?.[2] || ''
 
 export default function HomeroomAttendance({ cid, className, onSaved }: { cid: number; className: string; onSaved?: () => void }) {
   const [view, setView] = useState<'day' | 'month'>('day')
+  const narrowTop = useNarrow()
   return (
     <>
       <div className="row no-print" style={{ marginBottom: 12 }}>
         <Seg value={view} onChange={setView} options={[['day', 'Gündəlik qeyd'], ['month', 'Aylıq cədvəl']]} />
-        <span className="small muted">Fənn müəlliminin jurnalı olan dərs kilidlidir (🔒) – əsas mənbə jurnaldır.</span>
+        {!narrowTop && <span className="small muted">Fənn müəlliminin jurnalı olan dərs kilidlidir (🔒) – əsas mənbə jurnaldır.</span>}
       </div>
       {view === 'day' ? <Day cid={cid} onSaved={onSaved} /> : <Month cid={cid} className={className} />}
     </>
@@ -48,6 +49,22 @@ function Day({ cid, onSaved }: { cid: number; onSaved?: () => void }) {
     toast(`Yadda saxlanıldı: ${r.saved}` + (r.locked ? ` · jurnaldan (dəyişmədi): ${r.locked}` : '')); reload(); onSaved?.()
   }
   const absentNow = d ? d.students.filter((s: any) => d.periods.some((p: any) => ['yox', 'üzrlü'].includes(val(s, p.period)?.status || ''))) : []
+  const narrow = useNarrow()
+  const ready = d && d.periods.length > 0 && !d.future
+  if (narrow) return (
+    <>
+      <div className="row no-print" style={{ marginBottom: 10, flexWrap: 'nowrap', gap: 6 }}>
+        <button className="btn" style={{ minWidth: 44 }} onClick={() => step(-1)} aria-label="Əvvəlki gün">‹</button>
+        <input type="date" className="sel grow" style={{ minHeight: 44 }} value={date} max={isoDate(new Date())} onChange={e => setDate(e.target.value)} aria-label="Tarix" />
+        <button className="btn" style={{ minWidth: 44 }} onClick={() => step(1)} aria-label="Növbəti gün">›</button>
+        <button className="btn ghost" onClick={() => setDate(isoDate(new Date()))}>Bu gün</button>
+      </div>
+      <ErrorBox error={err} />
+      {loading && !d ? <Loading /> : d && !ready ? (
+        <Empty>{d.future ? 'Gələcək gündür – davamiyyət dərs günü qeyd olunur.' : `${d.off_reason || 'Bu gün sinfin dərsi yoxdur'} – davamiyyət yazılmır.`}</Empty>
+      ) : d && <DayMobile d={d} val={val} set={set} locked={locked} wholeDay={wholeDay} absentNow={absentNow.length} changed={changed} save={save} />}
+    </>
+  )
   return (
     <>
       <div className="row no-print" style={{ marginBottom: 10 }}>
@@ -99,6 +116,64 @@ function Day({ cid, onSaved }: { cid: number; onSaved?: () => void }) {
         <p className="small muted">Xanaya basın: V (var) → Q (qayıb) → Ü (üzrlü) → G (gecikib) → boş. Üzrlü olanda səbəbi seçin.
           «Bütün gün» – şagird həmin gün heç bir dərsdə olmayıbsa (və ya hamısında olub).</p>
       </>)}
+    </>
+  )
+}
+
+/** Telefon: əvvəl dərs saatı seçilir, sonra şagirdlər üzrə iri V / Q / Ü / G düymələri; «Yadda saxla» aşağıda sabit. */
+function DayMobile({ d, val, set, locked, wholeDay, absentNow, changed, save }: {
+  d: any; val: (s: any, p: number) => Cell; set: (sid: number, p: number, st: string | null, r?: string | null) => void
+  locked: (c: Cell) => boolean; wholeDay: (s: any, st: string) => void; absentNow: number; changed: number; save: () => Promise<void>
+}) {
+  // ilk açılışda – rəhbərin qeyd etməli olduğu ilk saat (jurnalla kilidli saat keçilir)
+  const [per, setPer] = useState<number>(() => (d.periods.find((p: any) => d.students.some((s: any) => !locked(val(s, p.period)))) || d.periods[0]).period)
+  const cur = d.periods.find((p: any) => p.period === per) || d.periods[0]
+  const empty = (p: number) => d.students.filter((s: any) => !val(s, p)).length
+  const fillPeriod = () => d.students.forEach((s: any) => { if (!val(s, cur.period)) set(s.id, cur.period, 'var') })
+  const big = { minWidth: 48, minHeight: 44, fontSize: 16, fontWeight: 700 }
+  return (
+    <>
+      <div className="tabs" role="tablist" aria-label="Dərs saatı" style={{ marginBottom: 10 }}>
+        {d.periods.map((p: any) => (
+          <button key={p.period} role="tab" aria-selected={p.period === cur.period} onClick={() => setPer(p.period)} style={{ minHeight: 48, lineHeight: 1.2 }}>
+            <b>{ord(p.period)}</b>{p.lessons.some((l: any) => l.written) ? ' 🔒' : ''}<br />
+            <small>{p.lessons.map((l: any) => l.subject.split(' ')[0]).join(' / ')}</small>
+            {empty(p.period) > 0 && <small style={{ color: 'var(--warn)' }}> · {empty(p.period)}</small>}
+          </button>))}
+      </div>
+      <div className="small muted" style={{ marginBottom: 8 }}>
+        {cur.time} · {cur.lessons.map((l: any) => `${l.subject}${l.teacher ? ' – ' + l.teacher : ''}`).join('; ')}
+      </div>
+      <div className="row" style={{ marginBottom: 10, gap: 8 }}>
+        <button className="btn" style={{ minHeight: 44 }} onClick={fillPeriod}>Bu saat: boşlar – hamı var</button>
+        {absentNow > 0 && <Pill tone="warn">Bu gün yoxdur: {absentNow}</Pill>}
+      </div>
+      <div className="jlist">{d.students.map((s: any) => {
+        const c = val(s, cur.period)
+        return (
+          <div key={s.id} className="jrow cols" style={{ ['--cols' as any]: '1fr', ['--mcols' as any]: '1fr', gap: 8 }}>
+            <div className="row" style={{ flexWrap: 'nowrap' }}><b className="grow">{s.full_name}</b>
+              {s.phones?.[0] && <a className="btn ghost" style={{ minHeight: 40 }} href={`tel:${s.phones[0].replace(/[^0-9+]/g, '')}`} aria-label={`Valideynə zəng: ${s.full_name}`}>📞</a>}</div>
+            {locked(c) ? <Pill tone="info">Fənn jurnalı: {short(c?.status)} 🔒</Pill> : (
+              <div className="att-btns" role="group" aria-label={`Davamiyyət: ${s.full_name}`} style={{ gap: 8 }}>
+                {ST.map(([v, sh, cl]) => (
+                  <button key={v} className={cl} style={big} aria-pressed={c?.status === v}
+                    onClick={() => set(s.id, cur.period, c?.status === v ? null : v, v === 'üzrlü' ? REASONS[0] : null)}>{sh}</button>))}
+              </div>)}
+            {c?.status === 'üzrlü' && !locked(c) && (
+              <select className="sel w100" style={{ minHeight: 44 }} value={c.reason || ''} aria-label="Üzrlü səbəb" onChange={e => set(s.id, cur.period, 'üzrlü', e.target.value || null)}>
+                <option value="">səbəb seçin</option>{REASONS.map(r => <option key={r}>{r}</option>)}</select>)}
+            <details><summary className="small muted" style={{ cursor: 'pointer', padding: '6px 0' }}>Bütün gün…</summary>
+              <div className="row" style={{ gap: 8, marginTop: 6 }}>
+                <button className="btn" style={{ minHeight: 44 }} onClick={() => wholeDay(s, 'yox')}>Bütün gün qayıb</button>
+                <button className="btn" style={{ minHeight: 44 }} onClick={() => wholeDay(s, 'üzrlü')}>Bütün gün üzrlü</button>
+                <button className="btn" style={{ minHeight: 44 }} onClick={() => wholeDay(s, 'var')}>Bütün gün var</button>
+              </div></details>
+          </div>)
+      })}</div>
+      {changed > 0 && <div style={{ position: 'sticky', bottom: 84, zIndex: 5, marginTop: 12, padding: '8px 0', background: 'var(--bg)' }}>
+        <AsyncBtn className="btn primary w100" onClick={save}>Yadda saxla ({changed})</AsyncBtn>
+      </div>}
     </>
   )
 }
@@ -184,8 +259,8 @@ export function ClassTimetable({ cid }: { cid: number }) {
             <span>
               {lk.map((c: any, i: number) => <div key={i} className="small" style={{ background: 'var(--sunk)', borderRadius: 8, padding: '8px 10px', marginBottom: 4 }}><b>{c.subject}</b> 🔒<br /><span className="muted">{c.teacher}</span></div>)}
               {(lk.length === 0 || onlyGroup) && <>
-                <input className="sel w100" placeholder={onlyGroup ? 'paralel fənn' : 'fənn (boş – dərs yoxdur)'} value={v.subject} onChange={e => upd(k, 'subject', e.target.value)} aria-label={`fənn ${t.weekdays[day]} ${ord(p.period)} saat`} />
-                {v.subject && <input className="sel w100" style={{ marginTop: 6 }} placeholder="müəllim (istəyə görə)" value={v.teacher} onChange={e => upd(k, 'teacher', e.target.value)} />}</>}
+                <input className="sel w100" style={{ minHeight: 44 }} placeholder={onlyGroup ? 'paralel fənn' : 'fənn (boş – dərs yoxdur)'} value={v.subject} onChange={e => upd(k, 'subject', e.target.value)} aria-label={`fənn ${t.weekdays[day]} ${ord(p.period)} saat`} />
+                {v.subject && <input className="sel w100" style={{ marginTop: 6, minHeight: 44 }} placeholder="müəllim (istəyə görə)" value={v.teacher} onChange={e => upd(k, 'teacher', e.target.value)} />}</>}
             </span>
           </div>)
       })}</div>
