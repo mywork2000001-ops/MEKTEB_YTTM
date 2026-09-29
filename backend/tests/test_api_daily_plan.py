@@ -60,6 +60,14 @@ def test_ai_settings_and_daily_plan(world, monkeypatch):
     assert 'MÖVZU: Mövzu 3' in pr['user'] and '1.1.4' in pr['user'] and 'Ev tapşırığı (E): № 21–36' in pr['user']
     assert 'Əvvəlki dərsin mövzusu: Mövzu 2' in pr['user'] and 'KSQ-1 – 3 dərs sonra' in pr['user']
     assert 'Qrup işi olsun' in pr['user'] and 'ARTİ' in pr['system'] and '45 dəqiqə' in pr['system']
+    assert 'növ: TOM' in pr['user']
+    # sinfin səviyyə tərkibi (adlar yox): 3 şagird – 1 orta, 2 zəif → zəif sinif göstərişi
+    sids = [admin.post('/api/students', json={'full_name': f'Şagird Plan{i} qızı', 'class_id': admin.get('/api/my/lessons').json()[0]['class_id']}).json()['id']
+            for i in range(3)]
+    for sid, lv in zip(sids, ('Orta', 'Zəif', 'Zəif')):
+        assert admin.put(f'/api/analytics/{ta}/levels/{sid}', json={'level': lv}).status_code == 200
+    pr2 = admin.post(f'/api/daily-plans/{ta}/prompt', json={'date': '2026-09-22', 'period': 1}).json()['user']
+    assert 'orta – 1, zəif – 2' in pr2 and 'əksəriyyəti zəifdir' in pr2 and 'Plan0' not in pr2
 
     # yuva yoxdur
     assert admin.post(f'/api/daily-plans/{ta}/generate', json={'date': '2026-09-16', 'period': 1}).status_code == 404

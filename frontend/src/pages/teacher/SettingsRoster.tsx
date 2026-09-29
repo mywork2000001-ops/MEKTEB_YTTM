@@ -465,7 +465,7 @@ function RosterImport({ onDone }: { onDone: () => void }) {
       <summary style={{ cursor: 'pointer', fontWeight: 600 }}>UTİS siyahısından şagird idxalı (admin)</summary>
       <div className="stack" style={{ marginTop: 10 }}>
         <p className="small muted">Siniflər «UTİS sinfi» sahəsinə görə uyğunlaşdırılır (məs. X e = 10 e). Uşaq İD, şəxsiyyət vəsiqəsi, pinkod saxlanmır; mövcud şagirdlər təkrarlanmır.</p>
-        <label className="f">UTİS faylı (.xlsx)<input type="file" accept=".xlsx" onChange={e => setUtis(e.target.files?.[0] || null)} /></label>
+        <label className="f">UTİS faylı (.xlsx və ya .pdf)<input type="file" accept=".xlsx,.pdf" onChange={e => setUtis(e.target.files?.[0] || null)} /></label>
         <label className="f">DİM buraxılış balları (.xlsx, istəyə görə)<input type="file" accept=".xlsx" onChange={e => setDim(e.target.files?.[0] || null)} /></label>
         <AsyncBtn className="btn primary" disabled={!utis} onClick={async () => {
           const fd = new FormData(); fd.append('utis', utis!); if (dim) fd.append('dim', dim)

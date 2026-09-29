@@ -63,7 +63,63 @@ def class_label(utis_cls: str) -> str:
     return f'{roman} {parts[1]}' if len(parts) > 1 else roman
 
 
+import re
+
+# UTİS PDF sətri: «2 Axundzadə Tural Niyaməddin oğlu 2790244 16/05/2010 11 p /AA7295003 7u5xnaf»
+PDF_ROW = re.compile(r'^\s*(\d+)\s+(\S+)\s+(\S+)\s+(.+?)\s+\d{6,8}\s+(\d{2}/\d{2}/\d{4})\s+(\d{1,2}\s+\S+(?:\s+\d)?)\s+\S*/\S+\s+\S+\s*$')
+
+
+def pdf_gender(father: str) -> str | None:
+    f = father.lower()
+    if f.endswith('qızı') or f.endswith('ovna') or f.endswith('evna'):
+        return 'Qız'
+    if f.endswith('oğlu') or f.endswith('oviç') or f.endswith('eviç'):
+        return 'Oğlan'
+    return None
+
+
+def parse_utis_pdf_lines(lines: list[str]) -> UtisRoster:
+    """UTİS PDF ixracının mətn sətirləri -> siniflər. Uşaq İD, seriya/nömrə və pinkod GÖTÜRÜLMÜR."""
+    classes, warnings = {}, []
+    for ln in lines:
+        m = PDF_ROW.match(ln)
+        if not m:
+            continue
+        _, last, first, father, birth, cls = m.groups()
+        cls = ' '.join(cls.split())
+        name = ' '.join(f'{last} {first} {father}'.split())
+        try:
+            bd = _date(birth)
+        except ValueError as e:
+            warnings.append(f'{name}: {e}')
+            bd = None
+        lst = classes.setdefault(cls, [])
+        lst.append(ImportedStudent(len(lst) + 1, name, pdf_gender(father), bd, None, None, None, class_name=cls))
+    if not classes:
+        raise ValueError('PDF-də UTİS şagird sətirləri tapılmadı (gözlənilən: № Soyadı Adı Atasının adı Uşaq İD Doğum tarixi Sinif …)')
+    return UtisRoster(classes, [], warnings)
+
+
+def read_utis_pdf(src) -> UtisRoster:
+    from pypdf import PdfReader
+    text = '\n'.join((p.extract_text() or '') for p in PdfReader(_src(src)).pages)
+    return parse_utis_pdf_lines(text.splitlines())
+
+
+def is_pdf(src) -> bool:
+    if isinstance(src, (str, Path)):
+        with open(src, 'rb') as f:
+            head = f.read(5)
+    else:
+        pos = src.tell()
+        head = src.read(5)
+        src.seek(pos)
+    return head == b'%PDF-'
+
+
 def read_utis(path: str | Path, dim_path: str | Path | None = None) -> UtisRoster:
+    if is_pdf(path):
+        return read_utis_pdf(path)
     rows = _rows(path)
     hi = next(i for i, r in enumerate(rows) if r and any(norm_head(v) == 'soyadı' for v in r))
     head = [norm_head(v) for v in rows[hi]]

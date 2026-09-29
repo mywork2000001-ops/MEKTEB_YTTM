@@ -96,7 +96,13 @@ def user_prompt(c: dict) -> str:
     """c – `lessonplans._context` nəticəsi (hamısı perspektiv plandan və jurnaldan)."""
     L = [f"GÜNDƏLİK DƏRS PLANI ÜÇÜN MƏLUMAT (perspektiv plandan – dəyişdirilməz)",
          f"Məktəb: {c['school']}", f"Müəllim: {c['teacher']}", f"Fənn: {c['subject']}",
-         f"Sinif: {c['class_name']}{' (bölünən qrup)' if c.get('group') else ''}; şagird sayı: {c['students']}",
+         f"Sinif: {c['class_name']}{' (bölünən qrup)' if c.get('group') else ''}; şagird sayı: {c['students']}; "
+         f"növ: {'TOM (buraxılış/qəbul imtahanına hazırlıq)' if c.get('kind') == 'TOM' else 'adi sinif (TOM deyil – DİM test toplusu əsas deyil)'}",
+         *([f"Sinfin səviyyə tərkibi: {', '.join(f'{k.lower()} – {v}' for k, v in c['levels'].items())}"] if c.get('levels') else []),
+         *(["DİQQƏT: sinfin əksəriyyəti zəifdir – əsas bacarıqların təkrarı (5–7 dəq), addım-addım nümunə, sadə dil, "
+            "tapşırıqlar üç pillədə (nümunə üzrə → oxşar → tətbiq), qısa məcburi ev tapşırığı + könüllü hissə; "
+            "güclü/orta şagird cüt işində köməkçi olsun."]
+           if c.get('levels') and c['levels'].get('Zəif', 0) * 2 > sum(c['levels'].values()) else []),
          f"Tarix: {c['date_text']} ({c['weekday']}), {c['period']}-ci dərs saatı{(' ' + c['time']) if c.get('time') else ''}; dərsin müddəti {c['minutes']} dəqiqə",
          f"Yarımil: {c['semester']}; perspektiv plan üzrə dərs № {c['seq']} / {c['total']}",
          f"Bölmə: {c['section'] or '—'}" + (f" (bölmənin {c['section_pos']}-ci dərsi, cəmi {c['section_len']})" if c.get('section_len') else ''),

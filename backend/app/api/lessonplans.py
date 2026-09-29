@@ -117,6 +117,19 @@ def _slot(ctx, d: dt.date, period: int):
     return s
 
 
+def _composition(db: Session, ctx) -> dict | None:
+    """Sinfin səviyyə tərkibi (müəllimin əl ilə təyini və ya nəticələr/IX balı) – diferensial yanaşma üçün. Adlar yoxdur."""
+    try:
+        from collections import Counter
+        from ..analytics import analyze
+        from .analytics import _period
+        rows = analyze(db, ctx, _period(ctx, None, None, None))['students']
+        cnt = Counter(r['level'] or 'Məlum deyil' for r in rows)
+        return {k: cnt[k] for k in ('Güclü', 'Orta', 'Zəif', 'Məlum deyil') if cnt[k]}
+    except Exception:                                                    # noqa: BLE001 – plan yenə hazırlansın
+        return None
+
+
 def _context(db: Session, user: User, ctx, s, notes: str | None) -> tuple[dict, object]:
     entry = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ctx.ta.id, JournalEntry.date == s.date,
                                                  JournalEntry.period == s.period))
@@ -142,7 +155,7 @@ def _context(db: Session, user: User, ctx, s, notes: str | None) -> tuple[dict, 
     if hw_t:
         hw_nums = [str(hw_t.get('start'))] + ([str(hw_t['end'])] if hw_t.get('end') and hw_t.get('end') != hw_t.get('start') else [])
         hw = f"{pl.tt_pages + ', ' if pl.tt_pages else ''}№ {'–'.join(hw_nums)}"
-    c = {'school': header_school(user), 'teacher': user.full_name, 'subject': ctx.ta.subject,
+    c = {'kind': ctx.cls.kind, 'levels': _composition(db, ctx), 'school': header_school(user), 'teacher': user.full_name, 'subject': ctx.ta.subject,
          'class_name': ctx.cls.name, 'group': ctx.cls.kind == 'qrup', 'students': len(roster(db, ctx.ta)),
          'date': s.date.isoformat(), 'date_text': s.date.strftime('%d.%m.%Y'), 'weekday': DAYS_FULL[s.date.weekday()],
          'period': s.period, 'time': bell(db, ctx.cls, s.period), 'minutes': dp.LESSON_MIN,

@@ -110,6 +110,9 @@ def seed(db: Session, utis: str | None = None, login: str = 'M-001',
             db.add(sc)
             db.flush()
             report['created'].append(f'sinif {c.name}')
+        elif c.utis_class and not sc.utis_class:
+            sc.utis_class = c.utis_class                  # mövcud sinif sonradan UTİS-ə bağlanır (XI peşə ↔ «11 p»)
+            report['created'].append(f'{c.name} ↔ UTİS {c.utis_class}')
         by_code[c.code] = sc
         ta = _one(db, TeachingAssignment, teacher_id=admin.id, class_id=sc.id, subject='Riyaziyyat')
         if not ta:

@@ -70,7 +70,7 @@ def test_utis_roster_merges_scores_without_secrets():
     assert not any(x in n for n in names for x in ('id', 'pin', 'seriya'))
     assert class_label('11 a 1') == 'XI a' and class_label('10 ə') == 'X ə'
     for c in CLASSES:
-        if c.utis_class:
+        if c.utis_class and c.code != 'xip':          # XI peşə – məktəbin öz UTİS PDF ixracından («11 p»)
             assert c.utis_class in u.classes, c.code
     assert len(u.classes['10 e']) == 18
 

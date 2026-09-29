@@ -68,7 +68,7 @@ CLASSES: list[ClassSeed] = [
     ClassSeed('xia', 'XI a', 'TOM', 7, 'XI-a sinif', {0: [4], 1: [], 2: [4, 5], 3: [2, 3], 4: [3, 4]}, utis_class='11 a 1'),
     # XI peşə – öz zəng vaxtları (istifadəçi, 28.09.2026): 1-ci saat 08:00–08:45, 2-ci saat 08:50–09:35
     ClassSeed('xip', 'XI peşə sinfi', 'adi', 4, 'XI peşə sinfi', {0: [1, 2], 1: [1], 2: [1]},
-              bells={1: '08:00–08:45', 2: '08:50–09:35'}),
+              bells={1: '08:00–08:45', 2: '08:50–09:35'}, utis_class='11 p'),   # UTİS 27.09.2026: «11 p» – 14 şagird
 ]
 CLASS_BY_CODE = {c.code: c for c in CLASSES}
 
