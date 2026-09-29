@@ -320,7 +320,7 @@ function Grid({ ta }: { ta: MyLesson }) {
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : d && (d.columns.length === 0 ? <div className="empty">Bu ayda dərs yoxdur.</div> : <>
-        <div className="tbl-wrap"><table style={{ minWidth: 0 }}>
+        <div className="tbl-wrap"><table className="sticky-first" style={{ minWidth: 0 }}>
           <thead><tr><th style={{ textAlign: 'left' }}>Şagird</th>{d.columns.map((c: any, i: number) => (
             <th key={i} title={`${ord(c.period)} saat · ${c.topic || ''}`} style={{ opacity: c.future ? 0.5 : 1, textAlign: 'center', background: c.assessment ? 'var(--warn-soft)' : undefined }}>
               {fmtDate(c.date).slice(0, 5)}{c.assessment && <><br /><small>{c.assessment}</small></>}{!c.written && !c.future && <><br /><small style={{ color: 'var(--bad)' }}>yazılmayıb</small></>}</th>))}

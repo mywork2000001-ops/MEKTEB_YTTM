@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import staff
 from ..domain.rules import ABSENCE_WARN_PCT, absence_warning
-from ..models import (Attendance, ClassEvent, JournalEntry, Role, SchoolClass, Student, TeachingAssignment, User)
+from ..models import ClassEvent, Role, SchoolClass, Student, TeachingAssignment, User
 from ..performance import CATEGORIES, category, lesson_counts, metrics, subject_grades
 from ..services import own_assignment, plan_ctx, roster, today
 from .common import audit, get_or_404, settings_unlocked
@@ -126,7 +126,6 @@ def homeroom_summary(cid: int, semester: int | None = None, user: User = Depends
                             .order_by(Student.full_name)))
     sids = {s.id for s in studs}
     subjects, grid = [], {s.id: {} for s in studs}
-    entries_by_ta: dict[int, dict[int, JournalEntry]] = {}
     for ta in _assignments(db, c):
         ctx = plan_ctx(db, ta)
         members = [s.id for s in roster(db, ta) if s.id in sids]
@@ -139,30 +138,23 @@ def homeroom_summary(cid: int, semester: int | None = None, user: User = Depends
                          'group': ctx.cls.name if ctx.cls.id != c.id else None, 'students': len(members),
                          'lessons': lesson_counts(db, ctx, t, sem),
                          'performance': metrics([g[sid]['grade'] for sid in members])})
-        a, b = (ctx.year.start, ctx.year.end) if sem is None else \
-            ((ctx.year.start, ctx.year.sem1_end) if sem == 1 else (ctx.year.sem2_start, ctx.year.end))
-        entries_by_ta[ta.id] = {e.id: e for e in db.scalars(select(JournalEntry).where(
-            JournalEntry.assignment_id == ta.id, JournalEntry.date >= a, JournalEntry.date <= b))}
-    # davamiyyət – bütün fənlər üzrə
-    all_entries = {eid: (ta, e) for ta, es in entries_by_ta.items() for eid, e in es.items()}
-    att: dict[int, list[tuple[str, dt.date]]] = {s: [] for s in sids}
-    for x in db.scalars(select(Attendance).where(Attendance.entry_id.in_(list(all_entries)),
-                                                 Attendance.student_id.in_(list(sids)))):
-        att[x.student_id].append((x.status, all_entries[x.entry_id][1].date))
+    # davamiyyət – bütün fənlər üzrə: fənn jurnalı + sinif rəhbərinin qeydi (homeroom_att.merged)
+    from .homeroom_att import OUT, merged, student_stats
+    from ..models import AcademicYear
+    yr = db.get(AcademicYear, c.year_id)
+    ra, rb = (yr.start, yr.end) if sem is None else ((yr.start, yr.sem1_end) if sem == 1 else (yr.sem2_start, yr.end))
+    days, rec = merged(db, c, ra, rb)
     rows = []
     for s in studs:
         gl = [grid[s.id].get(sub['ta_id']) for sub in subjects]
-        a = att[s.id]
-        missed = sum(st in ('yox', 'üzrlü') for st, _ in a)
+        st = student_stats(days, rec, s.id)
         known = [x for x in gl if x is not None]
         rows.append({'student_id': s.id, 'full_name': s.full_name, 'portal_code': s.portal_code,
                      'birth_date': s.birth_date, 'grades': {str(k): v for k, v in grid[s.id].items()},
                      'avg': round(sum(known) / len(known), 2) if known else None, 'category': category(gl),
-                     'lessons': len(a), 'missed': missed, 'unexcused': sum(st == 'yox' for st, _ in a),
-                     'excused': sum(st == 'üzrlü' for st, _ in a), 'late': sum(st == 'gecikdi' for st, _ in a),
-                     'missed_pct': round(missed * 100 / len(a), 1) if a else None,
-                     'absence_warning': absence_warning(missed, len(a)),
-                     'absent_today': any(st in ('yox', 'üzrlü') and d == t for st, d in a),
+                     **{k: st[k] for k in ('lessons', 'missed', 'unexcused', 'excused', 'late', 'missed_pct',
+                                           'absence_warning', 'max_absent_days', 'consecutive_warning')},
+                     'absent_today': any((rec.get((t, p, s.id)) or ('',))[0] in OUT for p in days.get(t, [])),
                      'guardians': s.guardians or []})
     graded = [r for r in rows if r['category']]
     cats = {k: sum(r['category'] == k for r in rows) for k in CATEGORIES}

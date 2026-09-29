@@ -64,3 +64,7 @@
 /* .jrow qlobal olaraq 2 sütuna məcbur edilir (!important); öz sütunları olan sətirlər üçün: className="jrow cols" + --cols */
 .jrow.cols{grid-template-columns:var(--cols)!important}
 @media (max-width:700px){.jrow.cols{grid-template-columns:var(--mcols,1fr)!important}}
+
+/* sürüşən cədvəldə şagird adı sabit qalsın (sinif rəhbərinin davamiyyəti, jurnal səhifəsi) */
+.sticky-first th:first-child,.sticky-first td:first-child{position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:1px 0 0 var(--line)}
+@media (max-width:700px){.sticky-first td:first-child{max-width:132px;white-space:normal!important;font-size:13px}}

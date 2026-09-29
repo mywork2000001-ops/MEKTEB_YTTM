@@ -508,3 +508,27 @@ class ClassEvent(Base):
     note: Mapped[str | None] = mapped_column(Text)
     absent_ids: Mapped[list | None] = mapped_column(JSON)              # iştirak etməyən şagirdlər
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ClassLesson(Base):
+    """Sinfin həftəlik dərs cədvəli (bütün fənlər, 1–8-ci saat) – sinif rəhbəri doldurur; sistemdəki müəllimlərin
+    dərsləri onların bağlılığından avtomatik gəlir (burada saxlanmır)."""
+    __tablename__ = 'class_lessons'
+    class_id: Mapped[int] = mapped_column(ForeignKey('classes.id', ondelete='CASCADE'), primary_key=True)
+    weekday: Mapped[int] = mapped_column(Integer, primary_key=True)          # 0 = B.e. … 4 = C.
+    period: Mapped[int] = mapped_column(Integer, primary_key=True)           # 1–8
+    subject: Mapped[str] = mapped_column(String(80))
+    teacher: Mapped[str | None] = mapped_column(String(120))
+
+
+class HomeroomAttendance(Base):
+    """Sinif rəhbərinin davamiyyət qeydi (dərs saatı üzrə). Fənn müəlliminin jurnalı olan dərsdə jurnal əsasdır."""
+    __tablename__ = 'homeroom_attendance'
+    class_id: Mapped[int] = mapped_column(ForeignKey('classes.id', ondelete='CASCADE'), primary_key=True)
+    date: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+    period: Mapped[int] = mapped_column(Integer, primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
+    status: Mapped[str] = mapped_column(String(10))                    # var | yox | üzrlü | gecikdi
+    reason: Mapped[str | None] = mapped_column(String(120))            # üzrlü səbəb: arayış, ailə, tədbir …
+    marked_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)

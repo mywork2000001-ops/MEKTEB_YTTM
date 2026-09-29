@@ -6,8 +6,9 @@ import { esc, head, printDoc, table } from '../../print'
 import { AsyncBtn, Drawer, Empty, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, PickFirst, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
 import { usePick } from './common'
 import { LessonCountTable, PerfStats } from './Reports'
+import HomeroomAttendance, { ClassTimetable } from './HomeroomAttendance'
 
-const TABS = [['overview', 'İcmal'], ['lessons', 'Dərslər'], ['grades', 'Qiymət cədvəli'], ['attendance', 'Davamiyyət'],
+const TABS = [['overview', 'İcmal'], ['lessons', 'Dərslər'], ['grades', 'Qiymət cədvəli'], ['attendance', 'Davamiyyət'], ['timetable', 'Dərs cədvəli'],
   ['parents', 'Valideynlər'], ['events', 'Rəhbərin jurnalı'], ['print', 'Çap / PDF']] as const
 const CAT_TONE: Record<string, 'ok' | 'info' | 'warn' | 'bad'> = { 'Əlaçı': 'ok', 'Zərbəçi': 'info', 'Bir «3»-lü': 'warn', '«3»-lü': 'warn', 'Geridə qalan': 'bad' }
 
@@ -50,7 +51,11 @@ export default function Homeroom() {
               {tab === 'overview' && <Overview h={h} />}
               {tab === 'lessons' && <Lessons h={h} />}
               {tab === 'grades' && <Grades h={h} />}
-              {tab === 'attendance' && <Attendance h={h} />}
+              {tab === 'attendance' && <>
+                <HomeroomAttendance cid={h.class.id} className={h.class.name} onSaved={reload} />
+                <h2 style={{ margin: '20px 0 8px', fontSize: 16 }}>Dövr üzrə (seçilmiş yarımil)</h2>
+                <Attendance h={h} /></>}
+              {tab === 'timetable' && <ClassTimetable cid={h.class.id} />}
               {tab === 'parents' && <Parents h={h} reload={reload} />}
               {tab === 'events' && <Events cid={cid} students={h.students} />}
               {tab === 'print' && <PrintView h={h} sem={sem} />}
