@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { get } from '../../api'
 import { useT } from '../../i18n'
+import { examLabel } from './Plan'
 import { ErrorBox, fmtDate, gradeTone, isoDate, Loading, longDate, Pill, useLoad, WD } from '../../ui'
 
 export default function Today() {
@@ -17,7 +18,7 @@ export default function Today() {
       <section className="hero">
         <div className="hero-txt">
           <div className="hero-date">{WD[now.getDay()]} · {longDate(isoDate(now))}</div>
-          <h1>{t('Salam')}, {me.full_name.split(' ')[1]}!</h1>
+          <h1>{t('Salam')}, {me.full_name.split(' ')[1] || me.full_name}!</h1>
           <p>«{me.motivation}»</p>
           {me.personal && <p style={{ opacity: 0.95 }}>{me.personal}</p>}
         </div>
@@ -29,9 +30,9 @@ export default function Today() {
           <h2>{t('Dərs')} <small>{me.class_name}</small></h2>
           {!day ? <Loading /> : day.lessons.length === 0 ? <p className="muted">Bu gün dərs yoxdur.</p> : (
             <ol className="timeline">{day.lessons.map((l: any, i: number) => (
-              <li key={i}><time>{l.time}</time><span><b>{l.subject}</b> · {l.topic || '—'}
+              <li key={i}><time>{l.time}</time><span><b>{l.subject}</b> · {l.topic || '—'}{examLabel(l) && <> <Pill tone="warn">{examLabel(l)}</Pill></>}
                 {l.homework && <><br /><span className="small">Ev tapşırığı: <b>{l.homework}</b></span></>}
-                {l.marks.map((m: any, j: number) => <> <Pill key={j} tone={gradeTone(m.grade)}>{m.grade}</Pill></>)}</span></li>))}</ol>)}
+                {l.marks.map((m: any, j: number) => <span key={j}> <Pill tone={gradeTone(m.grade)}>{m.grade}</Pill></span>)}</span></li>))}</ol>)}
           <button className="btn sm" onClick={() => nav('/lesson')}>Ətraflı</button>
         </section>
         <section className="panel">

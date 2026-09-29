@@ -56,6 +56,22 @@ def plan_ctx(db: Session, ta: TeachingAssignment) -> PlanCtx:
     return PlanCtx(ta, cls, year, lessons, wp, unfit)
 
 
+def taught_lesson(ctx: PlanCtx, slot, entry) -> PlanLesson | None:
+    """Dərsin plan mövzusu: jurnal yazılıbsa – yazılan anda qeyd olunan plan dərsi (sonradan «Mövzunu saxla»
+    və ya planın yenidən yüklənməsi keçmiş dərsləri dəyişməsin), yoxdursa – işçi plan üzrə."""
+    if entry is not None and entry.plan_lesson_id:
+        pl = next((l for l in ctx.lessons if l.id == entry.plan_lesson_id), None)
+        if pl:
+            return pl
+    return ctx.lesson_for(slot) if slot else None
+
+
+def journal_entries(db: Session, ta_id: int, a: dt.date, b: dt.date) -> dict:
+    from .models import JournalEntry
+    return {(e.date, e.period): e for e in db.scalars(select(JournalEntry).where(
+        JournalEntry.assignment_id == ta_id, JournalEntry.date >= a, JournalEntry.date <= b))}
+
+
 def lesson_out(pl: PlanLesson | None) -> dict | None:
     if pl is None:
         return None

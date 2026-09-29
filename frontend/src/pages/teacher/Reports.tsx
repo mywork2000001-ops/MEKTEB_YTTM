@@ -157,14 +157,15 @@ function PrintView({ a, ta, sem }: { a: any; ta: number; sem: string }) {
 export function LessonCountTable({ rows, first }: { rows: { label: string; l: any }[]; first: string }) {
   return (
     <div className="tbl-wrap"><table>
-      <thead><tr><th>{first}</th><th className="r">Həftədə</th><th className="r">Planda</th><th className="r">Cədvəldə</th><th className="r">Keçilməli idi</th><th className="r">Jurnalda yazılıb</th><th className="r">Yazılmayıb</th><th className="r">Keçilən mövzu</th><th className="r">Qalan</th><th className="r">Geriləmə</th></tr></thead>
+      <thead><tr><th>{first}</th><th className="r">Həftədə</th><th className="r">Planda</th><th className="r">Cədvəldə</th><th className="r">Keçilməli idi</th><th className="r">Jurnalda yazılıb</th><th className="r">Yazılmayıb</th><th className="r">Keçilən mövzu</th><th className="r">Qalan</th><th className="r">Geriləmə</th><th className="r" title="cədvəl üzrə tarix = plandakı tarix">Planla tarix</th></tr></thead>
       <tbody>{rows.map(({ label, l }) => (
         <tr key={label}><td>{label}</td><td className="r num">{l.weekly_hours}</td><td className="r num">{l.plan_total}</td>
           <td className="r num">{l.timetable_total}{l.unfit ? <> <Pill tone="bad">sığmır: {l.unfit}</Pill></> : null}</td>
           <td className="r num">{l.due}</td><td className="r num"><b>{l.written}</b></td>
           <td className="r num">{l.missing ? <Pill tone="warn">{l.missing}</Pill> : 0}</td>
           <td className="r num">{l.covered}</td><td className="r num">{l.remaining}</td>
-          <td className="r num">{l.lag ? <Pill tone={l.lag > 3 ? 'bad' : 'warn'}>{l.lag} dərs</Pill> : 0}</td></tr>))}</tbody>
+          <td className="r num">{l.lag ? <Pill tone={l.lag > 3 ? 'bad' : 'warn'}>{l.lag} dərs</Pill> : 0}</td>
+          <td className="r">{l.date_mismatch ? <Pill tone="bad" >{l.date_mismatch} fərq</Pill> : <Pill tone="ok">uyğun</Pill>}</td></tr>))}</tbody>
     </table></div>
   )
 }
@@ -182,6 +183,11 @@ function LessonCounts({ ta }: { ta: number }) {
         <Stat value={y.remaining} label="qalan mövzu" /><Stat value={y.lag} label="geriləmə (dərs)" />
       </div></section>
       <LessonCountTable first="Dövr" rows={[{ label: 'I yarımil', l: r.semesters[0] }, { label: 'II yarımil', l: r.semesters[1] }, { label: 'Bütün il', l: y }]} />
+      {y.date_mismatch > 0 && (
+        <section className="panel" style={{ marginTop: 12 }}><h2>Cədvəl perspektiv planla uyğun deyil<small>{y.date_mismatch}</small></h2>
+          <div className="row" style={{ gap: 6 }}>{y.mismatch_list.map((m: any) => <Pill key={m.seq} tone="bad">№{m.seq}: planda {fmtDate(m.plan_date)}, cədvəldə {fmtDate(m.date)} · {m.period}-ci saat</Pill>)}</div>
+          <p className="small muted" style={{ margin: '8px 0 0' }}>Həftəlik cədvəl (Tənzimləmələr → Siniflər → Cədvəl) planın tərtib olunduğu cədvəldən fərqlidir və ya bayram günləri dəyişib. Şagirdlər mövzuları cədvələ görə görür.</p>
+        </section>)}
       {y.missing_list.length > 0 && (
         <section className="panel" style={{ marginTop: 12 }}><h2>Yazılmamış dərslər<small>{y.missing}</small></h2>
           <div className="row" style={{ gap: 6 }}>{y.missing_list.map((m: any) => <Pill key={m.date + m.period} tone="warn">{fmtDate(m.date)} · {m.period}-ci saat</Pill>)}</div>

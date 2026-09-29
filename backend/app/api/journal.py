@@ -15,7 +15,7 @@ from ..deps import staff
 from ..domain.plan import slot_at
 from ..domain.rules import summative_grade
 from ..models import Attendance, HomeworkCheck, JournalEntry, Mark, User
-from ..services import lesson_out, own_assignment, plan_ctx, roster, today
+from ..services import lesson_out, own_assignment, plan_ctx, roster, taught_lesson, today
 from .common import audit
 from .plan import WEEKDAYS, bell
 
@@ -57,7 +57,7 @@ def day(ta_id: int, date: dt.date | None = None, user: User = Depends(staff), db
         e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == d,
                                                  JournalEntry.period == s.period))
         lessons.append({'period': s.period, 'time': bell(db, ctx.cls, s.period), 'held': s.held, 'shift': s.shift,
-                        'plan': lesson_out(ctx.lesson_for(s)), 'entry': _entry_payload(db, e),
+                        'plan': lesson_out(taught_lesson(ctx, s, e)), 'entry': _entry_payload(db, e),
                         'homework_to_check': _prev_homework(db, ta.id, d, s.period)})
     return {'date': d, 'weekday': WEEKDAYS[d.weekday()] if d.weekday() < 5 else None,
             'class_name': ctx.cls.name, 'subject': ta.subject, 'lessons': lessons,
@@ -114,7 +114,7 @@ def save_entry(ta_id: int, body: EntryIn, user: User = Depends(staff), db: Sessi
         raise HTTPException(400, 'Dərsdə olmayan şagirdə qiymət yazıla bilməz')
     e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == body.date,
                                              JournalEntry.period == body.period))
-    pl = ctx.lesson_for(s)
+    pl = taught_lesson(ctx, s, e)          # düzəliş zamanı yazılmış mövzu dəyişmir
     if e is None:
         e = JournalEntry(assignment_id=ta.id, date=body.date, period=body.period)
         db.add(e)

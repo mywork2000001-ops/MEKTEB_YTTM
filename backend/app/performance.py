@@ -39,6 +39,9 @@ def lesson_counts(db: Session, ctx: PlanCtx, today: dt.date, sem: int | None = N
     plan = [pl for pl in ctx.lessons if sem is None or pl.semester == sem]
     seqs = {pl.id for pl in plan}
     covered = {ctx.lessons[s.index].id for s in due if s.index is not None} & seqs
+    # perspektiv planla uyğunluq: «saxla» olmayan yuvada tarix plandakı tarixlə eyni olmalıdır
+    mism = [(s, ctx.lessons[s.index]) for s in slots if s.index is not None and s.shift == 0
+            and ctx.lessons[s.index].date != s.date]
     cur = next((s for s in ctx.slots if s.date >= today), None)
     last = ctx.slots[-1] if ctx.slots else None
     return {
@@ -54,6 +57,9 @@ def lesson_counts(db: Session, ctx: PlanCtx, today: dt.date, sem: int | None = N
         'held': sum(s.held for s in due),                     # «Mövzunu saxla»
         'lag': (cur or last).shift if (cur or last) else 0,   # geriləmə (dərs)
         'unfit': len(ctx.unfit) if sem is None else sum(ctx.lessons[i].semester == sem for i in ctx.unfit),
+        'date_mismatch': len(mism),                           # cədvəl plandan fərqlənir (0 olmalıdır)
+        'mismatch_list': [{'seq': pl.seq, 'plan_date': pl.date, 'date': s.date, 'period': s.period}
+                          for s, pl in mism[:10]],
         'ksq': sum(pl.assessment_type == 'KSQ' for pl in plan),
         'bsq': len({pl.exam_no for pl in plan if pl.assessment_type == 'BSQ'}),
     }

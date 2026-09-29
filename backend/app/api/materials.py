@@ -167,7 +167,8 @@ def _student(db: Session, u: User) -> Student:
 def _my_materials(db: Session, s: Student) -> list[Material]:
     groups = set(db.scalars(select(GroupMember.group_id).where(GroupMember.student_id == s.id)))
     ta_ids = list(db.scalars(select(TeachingAssignment.id).join(SchoolClass).where(
-        SchoolClass.id.in_(groups | {s.class_id}), TeachingAssignment.archived_at.is_(None))))
+        SchoolClass.id.in_(groups | {s.class_id}), SchoolClass.archived_at.is_(None),
+        TeachingAssignment.archived_at.is_(None))))
     return [m for m in db.scalars(select(Material).where(Material.assignment_id.in_(ta_ids), Material.archived_at.is_(None))
                                   .order_by(Material.created_at.desc()))
             if m.student_ids is None or s.id in m.student_ids]

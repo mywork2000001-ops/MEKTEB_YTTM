@@ -31,6 +31,7 @@ def test_lesson_counts(world, monkeypatch):
     assert [m['date'] for m in y['missing_list']] == ['2026-09-29', '2026-09-30']
     assert y['covered'] == 12 and y['remaining'] == 28
     assert r['semesters'][0]['plan_total'] == 40 and r['semesters'][1]['plan_total'] == 0
+    assert y['date_mismatch'] == 39 and y['mismatch_list'][0]['seq'] == 2   # planda hamısı 15.09 yazılıb
 
 
 def test_performance(world):

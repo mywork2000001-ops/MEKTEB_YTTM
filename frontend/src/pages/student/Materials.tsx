@@ -46,7 +46,7 @@ function Card({ m, onDone }: { m: any; onDone: () => void }) {
           {!locked && (
             <>
               <textarea className="sel" style={{ minHeight: 70, padding: 10 }} placeholder="Cavabınız (istəyə görə)" value={text} onChange={e => setText(e.target.value)} />
-              <input type="file" accept="image/*,application/pdf" capture="environment" onChange={e => setFile(e.target.files?.[0] || null)} />
+              <input type="file" accept="image/*,application/pdf" onChange={e => setFile(e.target.files?.[0] || null)} />
               <AsyncBtn className="btn primary" disabled={!text.trim() && !file} onClick={async () => {
                 const fd = new FormData(); if (text.trim()) fd.append('text', text); if (file) fd.append('file', file)
                 const r = await api(`/api/portal/materials/${m.id}/submit`, { method: 'POST', form: fd })

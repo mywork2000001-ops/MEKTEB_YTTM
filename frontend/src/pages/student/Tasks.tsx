@@ -55,6 +55,8 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
   const [left, setLeft] = useState(0)
   const offset = useRef(0)
   const dirty = useRef<Record<string, any>>({})
+  const ansRef = useRef<Record<string, any>>({})
+  useEffect(() => { ansRef.current = ans }, [ans])
   useEffect(() => {
     post(`/api/portal/tasks/${id}/start`).then(r => {
       offset.current = Date.parse(r.server_time) - Date.now()     // cihazın saatı səhv olsa da, server vaxtı əsasdır
@@ -71,7 +73,11 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
     tick()
     const iv = setInterval(tick, 1000)
     const sv = setInterval(flush, 5000)
-    return () => { clearInterval(iv); clearInterval(sv) }
+    // tətbiqdən çıxanda / ekran bağlananda son cavablar dərhal göndərilsin
+    const hide = () => { if (document.visibilityState === 'hidden') flush() }
+    document.addEventListener('visibilitychange', hide)
+    window.addEventListener('pagehide', flush)
+    return () => { clearInterval(iv); clearInterval(sv); document.removeEventListener('visibilitychange', hide); window.removeEventListener('pagehide', flush); flush() }
   }, [d])
   const flush = async () => {
     const pending = dirty.current
@@ -85,8 +91,10 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
   const finish = async (auto = false) => {
     if (finished.current) return
     finished.current = true
+    dirty.current = {}                                   // hamısı təhvildə gedir – sonra ayrıca saxlama olmasın
     try {
-      const r = await post(`/api/portal/tasks/${id}/submit`, auto ? undefined : { answers: { ...ans } })
+      // vaxt bitəndə də son cavablar göndərilir (server 10 san. gecikməni qəbul edir)
+      const r = await post(`/api/portal/tasks/${id}/submit`, { answers: { ...ansRef.current } })
       toast(auto ? `Vaxt bitdi – təhvil verildi: ${r.correct}/${r.total}` : `Təhvil verildi: ${r.correct}/${r.total} → ${r.grade}`)
     } catch (e) { if (!(e instanceof ApiError && e.status === 409)) toast('Xəta: ' + (e as Error).message) }
     onDone()

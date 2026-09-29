@@ -227,3 +227,47 @@ def test_task_edit_and_multi_source(world, clock):
     s.post(f'/api/portal/tasks/{tid}/start')
     assert admin.patch(f'/api/tasks/{ta}/{tid}', json={'questions': keep[:1]}).status_code == 409
     assert admin.patch(f'/api/tasks/{ta}/{tid}', json={'title': 'Son ad'}).status_code == 200
+
+
+def test_student_lessons_follow_plan(world, clock):
+    """Şagirdin «Dərs» və «Plan» bölməsi perspektiv planla dəqiq üst-üstə düşür."""
+    as_, S = world
+    admin, ta, cid, st, ids = setup(world)
+    with S() as db:
+        pl = db.query(PlanLesson).filter_by(assignment_id=ta, seq=6).one()
+        pl.assessment_type, pl.exam_no, pl.tt_pages, pl.section = 'KSQ', 2, 's. 40–42', 'II bölmə'
+        db.commit()
+    s1 = student_client(st[0]['portal_code'], st[0]['initial_pin'])
+    admin.put(f'/api/journal/{ta}/entry', json={'date': '2026-09-29', 'period': 1, 'attendance': {st[0]['id']: 'var'}})
+    p = s1.get('/api/portal/plan', params={'view': 'week', 'date': '2026-09-29'}).json()['items']
+    assert [(i['period'], i['topic'], i['plan_seq'], i['taught']) for i in p] == \
+        [(1, 'Kvadrat tənliklər', 5, True), (5, 'Mövzu 6', 6, False)]
+    assert p[1]['assessment_type'] == 'KSQ' and p[1]['exam_no'] == 2 and p[1]['tt_pages'] == 's. 40–42'
+    assert p[1]['section'] == 'II bölmə' and p[1]['official_date'] == '2026-09-15'
+
+    # sonradan keçmiş dərsdə «Mövzunu saxla»: yazılmış dərsin mövzusu dəyişmir, yazılmamışlar sürüşür
+    assert admin.post(f'/api/plan/{ta}/hold', json={'date': '2026-09-22', 'period': 1}).status_code == 200
+    d = s1.get('/api/portal/day', params={'date': '2026-09-29'}).json()['lessons']
+    assert d[0]['topic'] == 'Kvadrat tənliklər' and d[0]['taught']          # jurnalda yazılan saxlanır
+    assert d[1]['topic'] == 'Kvadrat tənliklər' and d[1]['shift'] == 1       # işçi plan bir dərs sürüşüb
+    jd = admin.get(f'/api/journal/{ta}/day', params={'date': '2026-09-29'}).json()['lessons']
+    assert jd[0]['plan']['topic'] == 'Kvadrat tənliklər'                      # müəllimin jurnalında da eyni
+
+    # cədvəl dəyişsə də, köhnə jurnal yazısı şagirddə itmir
+    with S() as db:
+        db.get(TeachingAssignment, ta).slots = {'2': [1]}
+        db.commit()
+    d = s1.get('/api/portal/day', params={'date': '2026-09-29'}).json()['lessons']
+    assert len(d) == 1 and d[0]['off_schedule'] and d[0]['topic'] == 'Kvadrat tənliklər'
+
+
+def test_submit_keeps_last_answers_at_deadline(world, clock):
+    admin, ta, cid, st, ids = setup(world)
+    t = mk_task(admin, ta, ids).json()
+    s = student_client(st[0]['portal_code'], st[0]['initial_pin'])
+    clock.t = dt.datetime(2026, 9, 29, 15, 30, tzinfo=UTC)
+    r = s.post(f'/api/portal/tasks/{t["id"]}/start').json()
+    by_text = {q['text']['az']: q['index'] for q in r['questions']}
+    clock.t = dt.datetime(2026, 9, 29, 16, 0, 3, tzinfo=UTC)                 # vaxt 3 san. əvvəl bitib (şəbəkə)
+    res = s.post(f'/api/portal/tasks/{t["id"]}/submit', json={'answers': {str(by_text['2+2=?']): 1}}).json()
+    assert res['correct'] == 1 and res['auto_submitted']

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { get } from '../../api'
 import { useT } from '../../i18n'
+import { examLabel, PlanNotes } from './Plan'
 import { ErrorBox, fmtDate, gradeTone, isoDate, Loading, Pill, Top, useLoad } from '../../ui'
 
 const ATT: Record<string, [string, any]> = { var: ['dərsdə idim', 'ok'], yox: ['qayıb', 'bad'], 'üzrlü': ['üzrlü', 'warn'], gecikdi: ['gecikdim', 'info'] }
@@ -20,8 +21,10 @@ export default function Lesson() {
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : d?.lessons.length === 0 ? <div className="empty">Bu gün dərs yoxdur.</div> : d?.lessons.map((l: any, i: number) => (
         <section key={i} className="panel" style={{ marginBottom: 12 }}>
-          <h2>{l.subject} <small>{l.time} · {l.teacher}</small>{l.assessment_type && ['KSQ', 'BSQ'].includes(l.assessment_type) && <Pill tone="warn">{l.assessment_type}</Pill>}</h2>
-          <p style={{ margin: '0 0 8px' }}><b>{t('Mövzu')}:</b> {l.topic || '—'}</p>
+          <h2>{l.subject} <small>{l.time} · {l.teacher}</small>{examLabel(l) && <Pill tone="warn">{examLabel(l)}</Pill>}</h2>
+          {l.section && <p className="small muted" style={{ margin: '0 0 4px' }}>{l.section}</p>}
+          <p style={{ margin: '0 0 8px' }}><b>{t('Mövzu')}:</b> {l.topic || '—'}{l.plan_seq && <span className="small muted"> · planda №{l.plan_seq}</span>}</p>
+          <PlanNotes l={l} />
           <p style={{ margin: '0 0 8px' }}><b>{t('Ev tapşırığı')}:</b> {l.homework || '—'}</p>
           <div className="row">
             {l.attendance && <Pill tone={ATT[l.attendance]?.[1]}>{ATT[l.attendance]?.[0]}</Pill>}

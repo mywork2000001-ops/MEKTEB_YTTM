@@ -17,11 +17,12 @@ from ..domain.plan import view_range
 from ..domain.rules import grade_from_points, semester_grade
 from ..models import (Attendance, Exam, ExamScore, GroupMember, HomeworkCheck, JournalEntry, Mark, OnlineTask, Role,
                       SchoolClass, Student, TaskAttempt, TeachingAssignment, User, now)
-from ..services import plan_ctx, roster, today
+from ..services import journal_entries, plan_ctx, roster, taught_lesson, today
 from .plan import WEEKDAYS, bell
 from .tasks import aware, expire_due, finalize
 
 router = APIRouter(prefix='/api/portal', tags=['portal'])
+SUBMIT_GRACE = dt.timedelta(seconds=10)     # vaxt bitən anda göndərilən son cavablar üçün (şəbəkə gecikməsi)
 student_only = require(Role.student)
 
 MOTIVATION = [
@@ -78,6 +79,24 @@ def me(user: User = Depends(student_only), db: Session = Depends(get_db)):
             'motivation': motivation, 'personal': personal, 'language': user.language, 'theme': user.theme}
 
 
+def _plan_fields(pl, sl, e) -> dict:
+    """Perspektiv plandan şagirdə lazım olanlar: bölmə, KSQ/BSQ nömrəsi, dərslik səhifələri, rəsmi tarix."""
+    return {'topic': e.topic if e is not None and e.topic else pl.topic if pl else None,
+            'plan_topic': pl.topic if pl else None, 'section': pl.section if pl else None,
+            'assessment_type': pl.assessment_type if pl else None, 'exam_no': pl.exam_no if pl else None,
+            'tt_pages': pl.tt_pages if pl else None, 'official_date': pl.date if pl else None,
+            'plan_seq': pl.seq if pl else None, 'held': bool(sl and sl.held), 'shift': sl.shift if sl else 0,
+            'taught': e is not None, 'off_schedule': sl is None}
+
+
+def _slots_with_entries(ctx, a: dt.date, b: dt.date, entries: dict) -> list:
+    """Cədvəl yuvaları + cədvəldən kənar qalmış jurnal yazıları (cədvəl sonradan dəyişibsə, itməsin)."""
+    items = [(x.date, x.period, x) for x in ctx.slots if a <= x.date <= b]
+    have = {(d, p) for d, p, _ in items}
+    items += [(d, p, None) for (d, p) in entries if (d, p) not in have]
+    return sorted(items, key=lambda x: (x[0], x[1]))
+
+
 @router.get('/day')
 def day(date: dt.date | None = None, user: User = Depends(student_only), db: Session = Depends(get_db)):
     s = me_student(db, user)
@@ -85,13 +104,12 @@ def day(date: dt.date | None = None, user: User = Depends(student_only), db: Ses
     lessons = []
     for ta, c in my_assignments(db, s):
         ctx = plan_ctx(db, ta)
-        for sl in (x for x in ctx.slots if x.date == d):
-            e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == d,
-                                                     JournalEntry.period == sl.period))
-            pl = ctx.lesson_for(sl)
-            item = {'period': sl.period, 'time': bell(db, c, sl.period), 'subject': ta.subject, 'class_name': c.name,
-                    'teacher': _teacher(db, ta), 'topic': (e.topic if e and e.topic else pl.topic if pl else None),
-                    'assessment_type': pl.assessment_type if pl else None, 'homework': e.homework if e else None,
+        entries = journal_entries(db, ta.id, d, d)
+        for _, period, sl in _slots_with_entries(ctx, d, d, entries):
+            e = entries.get((d, period))
+            pl = taught_lesson(ctx, sl, e)
+            item = {'date': d, 'period': period, 'time': bell(db, c, period), 'subject': ta.subject, 'class_name': c.name,
+                    'teacher': _teacher(db, ta), **_plan_fields(pl, sl, e), 'homework': e.homework if e else None,
                     'attendance': None, 'marks': [], 'homework_check': None}
             if e:
                 a = db.get(Attendance, (e.id, s.id))
@@ -118,13 +136,13 @@ def plan(view: str = 'week', date: dt.date | None = None, user: User = Depends(s
             a, b = view_range(view, d, ctx.year.sem1_end, ctx.year.sem2_start, ctx.year.start, ctx.year.end)
         except ValueError:
             raise HTTPException(400, 'görünüş: day, week, month, semester')
-        for sl in ctx.slots:
-            if a <= sl.date <= b:
-                pl = ctx.lesson_for(sl)
-                items.append({'date': sl.date, 'weekday': WEEKDAYS[sl.date.weekday()], 'period': sl.period,
-                              'time': bell(db, c, sl.period), 'subject': ta.subject, 'class_name': c.name,
-                              'topic': pl.topic if pl else None, 'section': pl.section if pl else None,
-                              'assessment_type': pl.assessment_type if pl else None})
+        entries = journal_entries(db, ta.id, a, b)
+        for d_, period, sl in _slots_with_entries(ctx, a, b, entries):
+            e = entries.get((d_, period))
+            pl = taught_lesson(ctx, sl, e)
+            items.append({'date': d_, 'weekday': WEEKDAYS[d_.weekday()], 'period': period,
+                          'time': bell(db, c, period), 'subject': ta.subject, 'class_name': c.name,
+                          **_plan_fields(pl, sl, e), 'homework': e.homework if e else None})
     items.sort(key=lambda x: (x['date'], x['time'] or '', x['period']))
     return {'view': view, 'items': items}
 
@@ -251,7 +269,7 @@ def submit(task_id: int, body: AnswersIn | None = None, user: User = Depends(stu
     a = _open_attempt(db, s, t)
     at = now()
     late = at >= aware(a.deadline)
-    if body and not late:
+    if body and at < aware(a.deadline) + SUBMIT_GRACE:
         n = len(t.questions)
         a.answers = {**(a.answers or {}), **{k: v for k, v in body.answers.items() if k.isdigit() and int(k) < n}}
     finalize(db, t, a, at, auto=late)
