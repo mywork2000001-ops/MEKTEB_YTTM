@@ -2,14 +2,15 @@ import { useEffect, useState } from 'react'
 import { api, ApiError, del, get, patch, post, put } from '../../api'
 import { useAuth } from '../../auth'
 import { esc, head, printDoc, table } from '../../print'
-import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, Loading, PickFirst, Pill, toast, useLoad, ord } from '../../ui'
+import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, isoDate, Loading, PickFirst, Pill, toast, useLoad, ord } from '../../ui'
 
 type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; split_with: string | null; utis_class: string | null
   exam_date: string | null; bells: Record<string, string> | null; students: number; can_open: boolean; archived: boolean
   homeroom: { id: number; name: string } | null
   teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number; slots: Record<string, number[]>; has_summative: boolean } | null }
 type Stud = { id: number; full_name: string; birth_date: string | null; gender: string | null; class_id: number; class_name: string; portal_code: string
-  score_language: number | null; score_math: number | null; score_foreign: number | null; archived: boolean }
+  score_language: number | null; score_math: number | null; score_foreign: number | null; archived: boolean
+  left_reason?: string | null; left_on?: string | null }
 const DAYS = ['B.e.', 'Ç.a.', 'Ç.', 'C.a.', 'C.']
 
 export default function SettingsRoster({ tab }: { tab: 'classes' | 'students' | 'archive' }) {
@@ -444,8 +445,8 @@ function StudentForm({ s, classId, classes, onClose, onDone }: { s: Stud | null;
         {s && <LoginFields s={s} onChanged={() => onDone()} />}
         <ErrorBox error={err} />
         {s && (confirm
-          ? <ConfirmName name={s.full_name} action="Arxivə göndər" onCancel={() => setConfirm(false)} onConfirm={async typed => { await post(`/api/students/${s.id}/archive`, { confirm: typed }); toast('Arxivə göndərildi'); onDone() }} />
-          : <button className="btn danger" onClick={() => setConfirm(true)}>Arxivə göndər</button>)}
+          ? <Leave s={s} onCancel={() => setConfirm(false)} onDone={onDone} />
+          : <button className="btn danger" onClick={() => setConfirm(true)}>Məktəbdən getdi – passiv et</button>)}
       </div>
     </Drawer>
   )
@@ -482,6 +483,31 @@ function RosterImport({ onDone }: { onDone: () => void }) {
   )
 }
 
+const LEAVE_REASONS = ['Başqa məktəbə köçdü', 'Başqa şəhərə / rayona köçdü', 'Xaricə getdi', 'Təhsilini dayandırdı', 'Səhv əlavə olunub', 'Digər']
+
+/** Məktəbdən gedən şagird: passiv olur (qiymətləri, jurnal tarixçəsi qalır, portala giriş bağlanır). Geri qaytarmaq və ya silmək – «Arxiv»də. */
+function Leave({ s, onCancel, onDone }: { s: Stud; onCancel: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState(LEAVE_REASONS[0])
+  const [note, setNote] = useState('')
+  const [date, setDate] = useState(isoDate(new Date()))
+  return (
+    <div className="panel" style={{ margin: 0, borderColor: 'var(--bad-soft)' }}>
+      <b>Məktəbdən getdi – passiv et</b>
+      <p className="small muted" style={{ margin: '4px 0 10px' }}>Şagird siyahılardan, jurnaldan və portaldan çıxır; qiymətləri və tarixçəsi silinmir. «Arxiv» bölməsindən geri qaytarmaq və ya həmişəlik silmək olar.</p>
+      <div className="fg">
+        <Field label="Səbəb"><select value={reason} onChange={e => setReason(e.target.value)}>{LEAVE_REASONS.map(r => <option key={r}>{r}</option>)}</select></Field>
+        <Field label="Getdiyi tarix"><input type="date" value={date} onChange={e => setDate(e.target.value)} /></Field>
+        <Field label="Qeyd (istəyə görə)" full><input value={note} maxLength={200} placeholder="məs. Bərdə şəhər 2 nömrəli məktəb" onChange={e => setNote(e.target.value)} /></Field>
+      </div>
+      <ConfirmName name={s.full_name} action="Passiv et" onCancel={onCancel}
+        onConfirm={async typed => {
+          await post(`/api/students/${s.id}/archive`, { confirm: typed, reason: note.trim() ? `${reason}: ${note.trim()}` : reason, left_on: date || null })
+          toast('Şagird passiv edildi (Arxiv)'); onDone()
+        }} />
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------- arxiv
 function ArchiveTab() {
   const [classes, e1, , r1] = useLoad<Cls[]>(() => get('/api/classes', { archived: true }), [])
@@ -503,7 +529,8 @@ function ArchiveTab() {
       <h2 className="sec">Şagirdlər</h2>
       <div className="jlist">{(studs || []).map(s => (
         <div className="jrow cols" key={s.id} style={{ ['--cols' as any]: '1fr', ['--mcols' as any]: '1fr', gap: 8 }}>
-          <div className="row"><b className="grow">{s.full_name}</b><span className="small muted">{s.class_name}</span>
+          <div className="row"><span className="grow"><b>{s.full_name}</b><span className="small muted"> · {s.class_name}</span>
+            {(s.left_reason || s.left_on) && <span className="small muted" style={{ display: 'block' }}>Passiv{s.left_on ? ` ${fmtDate(s.left_on)}` : ''}{s.left_reason ? ` – ${s.left_reason}` : ''}</span>}</span>
             <AsyncBtn className="btn sm" ok="Geri qaytarıldı" onClick={async () => { await post(`/api/students/${s.id}/restore`); reload() }}>Geri qaytar</AsyncBtn>
             <button className="btn sm danger" onClick={() => setConfirm('s' + s.id)}>Həmişəlik sil</button></div>
           {confirm === 's' + s.id && <ConfirmName name={s.full_name} action="Həmişəlik sil" onCancel={() => setConfirm(null)} onConfirm={async typed => { await del(`/api/students/${s.id}`, { confirm: typed }); toast('Silindi'); reload() }} />}

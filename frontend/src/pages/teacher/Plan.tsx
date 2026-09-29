@@ -5,7 +5,15 @@ import { LessonSelect, useMyLessons, usePick } from './common'
 import { head, printDoc, table } from '../../print'
 
 type Item = { date: string; weekday: string; period: number; time: string | null; held: boolean; shift: number
-  lesson: { seq: number; topic: string; section: string | null; assessment_type: string; exam_no: number | null; official_date: string } | null }
+  lesson: { seq: number; topic: string; section: string | null; assessment_type: string; exam_no: number | null; official_date: string
+    standards?: string[] | null; tt_pages?: string | null } | null }
+const DAYS = ['Bazar', 'Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə']
+/** «IV BÖLMƏ – FAİZ. NİSBƏT» -> «IV bölmə – Faiz. Nisbət» (böyük hərflərlə yazılmış bölmə adı oxunaqlı olsun) */
+const sectionText = (s: string) => s.replace(/\s+/g, ' ').trim().split(' – ').map((part, i) => {
+  if (i === 0) return part.replace(/BÖLMƏ/i, 'bölmə')
+  const low = part.toLocaleLowerCase('az')
+  return low.replace(/(^|[.!?]\s+)(\p{L})/gu, (_, a, c) => a + c.toLocaleUpperCase('az'))
+}).join(' – ')
 
 const step = (d: string, view: string, dir: number) => {
   const x = new Date(d + 'T00:00')
@@ -51,15 +59,22 @@ export default function Plan() {
               const showDate = i.date !== lastDate
               lastDate = i.date
               const today = i.date === isoDate(new Date())
+              const l = i.lesson
+              const meta = l ? [`№${l.seq}`, l.section && sectionText(l.section), l.standards?.length ? 'altst. ' + l.standards.join(', ') : '',
+                l.tt_pages || '', i.shift ? `rəsmi tarix ${fmtDate(l.official_date)}` : ''].filter(Boolean) : []
               return (
-                <div className="jrow cols" key={i.date + i.period} style={{ ['--cols' as any]: '92px 64px minmax(0,1fr) auto', ['--mcols' as any]: '64px minmax(0,1fr)', background: today ? 'var(--accent-soft)' : undefined }}>
-                  <span className="small">{showDate ? <b>{i.weekday} {fmtDate(i.date).slice(0, 5)}</b> : ''}</span>
-                  <span className="small muted">{i.period}-ci<br />{i.time}</span>
-                  <span>{i.lesson ? <><b>{i.lesson.topic}</b><span className="sub small muted"> №{i.lesson.seq}{i.shift ? ` · rəsmi tarix ${fmtDate(i.lesson.official_date)}` : ''}</span></> : <span className="muted">—</span>}</span>
-                  <span className="row">
-                    {i.lesson && i.lesson.assessment_type !== 'formativ' && <Pill tone="warn">{i.lesson.assessment_type}{i.lesson.exam_no ? '-' + i.lesson.exam_no : ''}</Pill>}
-                    {i.held && <Pill tone="info">saxlanılıb</Pill>}
-                  </span>
+                <div key={i.date + i.period}>
+                  {showDate && <div className={'plan-day' + (today ? ' today' : '')}>{DAYS[new Date(i.date + 'T00:00').getDay()]}, {fmtDate(i.date)}{today ? ' · bu gün' : ''}</div>}
+                  <div className="plan-row">
+                    <span className="plan-when"><b>{i.period}-ci saat</b>{i.time && <span className="muted">{i.time}</span>}</span>
+                    <span className="plan-what">
+                      {l ? <><span className="plan-topic">{l.topic}</span><span className="plan-meta">{meta.join(' · ')}</span></> : <span className="muted">Perspektiv planda mövzu yoxdur</span>}
+                    </span>
+                    {l && (l.assessment_type !== 'formativ' || i.held) && <span className="plan-tags">
+                      {l.assessment_type !== 'formativ' && <Pill tone="warn">{l.assessment_type}{l.exam_no ? '-' + l.exam_no : ''}</Pill>}
+                      {i.held && <Pill tone="info">mövzu davam edir</Pill>}
+                    </span>}
+                  </div>
                 </div>)
             })}
           </div>

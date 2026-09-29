@@ -122,6 +122,8 @@ class Student(Base, Archivable):
     score_math: Mapped[float | None] = mapped_column(Float)
     score_foreign: Mapped[float | None] = mapped_column(Float)
     guardians: Mapped[list | None] = mapped_column(JSON)                 # [{name, relation, phone}] – yalnız sinif rəhbəri/admin görür
+    left_reason: Mapped[str | None] = mapped_column(String(300))         # passiv: «başqa məktəbə köçdü» və s.
+    left_on: Mapped[dt.date | None] = mapped_column(Date)                # məktəbdən getdiyi tarix
     created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
     __table_args__ = (UniqueConstraint('school_id', 'full_name', 'birth_date', name='uq_student_person'),)
     cls: Mapped[SchoolClass] = relationship(back_populates='students', foreign_keys=[class_id])

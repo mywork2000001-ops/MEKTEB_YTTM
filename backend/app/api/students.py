@@ -29,7 +29,9 @@ def student_out(s: Student, cls_name: str | None = None):
     return {'id': s.id, 'full_name': s.full_name, 'birth_date': s.birth_date, 'gender': s.gender,
             'class_id': s.class_id, 'class_name': cls_name, 'portal_code': s.portal_code,
             'score_language': s.score_language, 'score_math': s.score_math, 'score_foreign': s.score_foreign,
-            'score_total': total, 'level': level(s.score_math), 'archived': s.archived_at is not None}
+            'score_total': total, 'level': level(s.score_math), 'archived': s.archived_at is not None,
+            'left_reason': s.left_reason, 'left_on': s.left_on,
+            'archived_at': s.archived_at}
 
 
 @router.get('')
@@ -188,15 +190,24 @@ def reset_pin(sid_: int, body: PinIn | None = None, user: User = Depends(setting
     return {'portal_code': s.portal_code, 'pin': pin}
 
 
+class LeaveIn(ConfirmIn):
+    reason: str | None = Field(None, max_length=300)       # «başqa məktəbə köçdü», «təhsilini dayandırdı» …
+    left_on: dt.date | None = None
+
+
 @router.post('/{sid_}/archive')
-def archive_student(sid_: int, body: ConfirmIn, user: User = Depends(settings_unlocked),
+def archive_student(sid_: int, body: LeaveIn, user: User = Depends(settings_unlocked),
                     db: Session = Depends(get_db)):
+    """Passiv et (məktəbdən gedib): siyahılardan, jurnaldan və portaldan çıxır, qiymətləri və tarixçəsi QALIR;
+    «Arxiv»dən geri qaytarmaq və ya həmişəlik silmək olar."""
     s = _student_for_write(db, user, sid_)
     check_confirm(s.full_name, body.confirm)
     s.archived_at = dt.datetime.now(dt.timezone.utc)
+    s.left_reason = (body.reason or '').strip() or None
+    s.left_on = body.left_on or dt.date.today()
     if s.user_id:
         db.get(User, s.user_id).archived_at = s.archived_at      # portala giriş bağlanır
-    audit(db, user, 'archive', 'student', s.id)
+    audit(db, user, 'archive', 'student', s.id, reason=s.left_reason)
     db.commit()
     return {'ok': True}
 
@@ -205,6 +216,7 @@ def archive_student(sid_: int, body: ConfirmIn, user: User = Depends(settings_un
 def restore_student(sid_: int, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
     s = _student_for_write(db, user, sid_)
     s.archived_at = None
+    s.left_reason, s.left_on = None, None
     if s.user_id:
         db.get(User, s.user_id).archived_at = None
     audit(db, user, 'restore', 'student', s.id)
@@ -225,7 +237,19 @@ def delete_student(sid_: int, body: ConfirmIn, user: User = Depends(settings_unl
     db.delete(s)
     db.flush()
     if acc:
-        db.delete(acc)
+        from ..models import AuditLog, ChatMessage, ChatReport
+        used = (db.scalar(select(ChatMessage.id).where(ChatMessage.sender_id == acc.id).limit(1))
+                or db.scalar(select(ChatReport.id).where(ChatReport.reporter_id == acc.id).limit(1))
+                or db.scalar(select(AuditLog.id).where(AuditLog.user_id == acc.id).limit(1)))
+        if used:
+            # çat mesajları/jurnal qeydləri başqalarının yazışmasında qalır – hesab silinmir, anonimləşdirilir
+            import secrets as _s
+            acc.full_name, acc.login = 'Silinmiş şagird', f'silinib-{acc.id}'
+            acc.password_hash = hash_password(_s.token_urlsafe(24))
+            acc.avatar = acc.avatar_type = acc.avatar_v = None
+            acc.archived_at = acc.archived_at or dt.datetime.now(dt.timezone.utc)
+        else:
+            db.delete(acc)
     db.commit()
     return {'ok': True}
 
