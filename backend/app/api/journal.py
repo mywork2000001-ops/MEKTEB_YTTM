@@ -39,10 +39,10 @@ def _entry_payload(db: Session, e: JournalEntry | None) -> dict:
 
 
 def _prev_homework(db: Session, ta_id: int, d: dt.date, period: int) -> str | None:
-    """Yoxlanılacaq ev tapşırığı – əvvəlki yazılmış dərsdə verilən."""
+    """Yoxlanılacaq ev tapşırığı – ƏVVƏLKİ GÜNLƏRDƏ verilən sonuncu (eyni gün 1-ci saatda verilən ev tapşırığı
+    həmin gün 5-ci saatda yoxlanılmır – şagirdin evdə etməyə vaxtı olmayıb)."""
     e = db.scalar(select(JournalEntry).where(
-        JournalEntry.assignment_id == ta_id, JournalEntry.homework.is_not(None),
-        (JournalEntry.date < d) | ((JournalEntry.date == d) & (JournalEntry.period < period)))
+        JournalEntry.assignment_id == ta_id, JournalEntry.homework.is_not(None), JournalEntry.date < d)
         .order_by(JournalEntry.date.desc(), JournalEntry.period.desc()))
     return e.homework if e else None
 
@@ -109,9 +109,13 @@ def save_entry(ta_id: int, body: EntryIn, user: User = Depends(staff), db: Sessi
     extra = (set(body.attendance) | {m.student_id for m in body.marks} | set(body.homework_checks)) - ids
     if extra:
         raise HTTPException(400, f'Bu şagirdlər bu sinifdə/qrupda deyil: {sorted(extra)}')
-    absent_marked = [m.student_id for m in body.marks if body.attendance.get(m.student_id) == 'yox']
-    if absent_marked:
-        raise HTTPException(400, 'Dərsdə olmayan şagirdə qiymət yazıla bilməz')
+    if body.date > today() and (body.attendance or body.marks or body.homework_checks):
+        raise HTTPException(400, 'Gələcək dərs üçün yalnız mövzu və ev tapşırığı yazılır (davamiyyət və qiymət – dərs günü)')
+    absent = {k for k, v in body.attendance.items() if v in ('yox', 'üzrlü')}
+    if any(m.student_id in absent for m in body.marks):
+        raise HTTPException(400, 'Dərsdə olmayan şagirdə (qayıb və ya üzrlü) qiymət yazıla bilməz')
+    # dərsdə olmayan şagirdin ev tapşırığı yoxlanılmır – «etmədi» kimi yazılmasın (ev tapşırığı faizini korlamasın)
+    body.homework_checks = {k: v for k, v in body.homework_checks.items() if k not in absent}
     e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == body.date,
                                              JournalEntry.period == body.period))
     pl = taught_lesson(ctx, s, e)          # düzəliş zamanı yazılmış mövzu dəyişmir

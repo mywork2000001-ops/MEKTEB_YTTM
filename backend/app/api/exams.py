@@ -78,9 +78,25 @@ def list_exams(ta_id: int, user: User = Depends(staff), db: Session = Depends(ge
     return {'has_summative': ta.has_summative, 'exams': [exam_out(e) for e in created], 'planned': uniq}
 
 
+def _check_exam(db: Session, ta, body: ExamIn, exam_id: int | None = None):
+    """Metodik qaydalar: tarix seçilən yarımilin içində; hər yarımildə bir BSQ (nömrəsi yarımilə bərabər)."""
+    y = plan_ctx(db, ta).year
+    a, b = (y.start, y.sem1_end) if body.semester == 1 else (y.sem2_start, y.end)
+    if not a <= body.date <= b:
+        raise HTTPException(400, f'{body.semester}-ci yarımil {a:%d.%m.%Y} – {b:%d.%m.%Y}: tarix bu aralıqda olmalıdır')
+    if body.kind == 'BSQ':
+        if body.no != body.semester:
+            raise HTTPException(400, f'{body.semester}-ci yarımilin BSQ-si BSQ-{body.semester} olmalıdır')
+        other = db.scalar(select(Exam).where(Exam.assignment_id == ta.id, Exam.kind == 'BSQ', Exam.semester == body.semester,
+                                             Exam.id != (exam_id or 0)))
+        if other:
+            raise HTTPException(409, f'{body.semester}-ci yarımildə BSQ artıq var')
+
+
 @router.post('/{ta_id}')
 def create_exam(ta_id: int, body: ExamIn, user: User = Depends(staff), db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)
+    _check_exam(db, ta, body)
     if not ta.has_summative:
         raise HTTPException(400, 'Bu qrupda KSQ/BSQ keçirilmir (bütöv sinifdə keçirilir)')
     if db.scalar(select(Exam).where(Exam.assignment_id == ta.id, Exam.kind == body.kind,
@@ -98,8 +114,9 @@ def create_exam(ta_id: int, body: ExamIn, user: User = Depends(staff), db: Sessi
 
 @router.patch('/{ta_id}/{exam_id}')
 def update_exam(ta_id: int, exam_id: int, body: ExamIn, user: User = Depends(staff), db: Session = Depends(get_db)):
-    own_assignment(db, user, ta_id)
+    ta = own_assignment(db, user, ta_id)
     e = _exam(db, ta_id, exam_id)
+    _check_exam(db, ta, body, e.id)
     has_scores = db.scalar(select(ExamScore).where(ExamScore.exam_id == e.id, ExamScore.points.is_not(None)))
     if has_scores and (body.max_points != e.max_points or (body.items and len(body.items) != len(e.items or []))):
         raise HTTPException(409, 'Nəticələr yazılıb – maksimal bal və tapşırıq sayı dəyişdirilə bilməz')

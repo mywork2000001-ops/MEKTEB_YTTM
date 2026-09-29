@@ -109,3 +109,31 @@ def test_manual_level_override(world):
     rows = {r['student_id']: r for r in c.get(f'/api/analytics/{ta}').json()['students']}
     assert rows[weak]['level'] == 'Zəif' and rows[weak]['manual_level'] is None
     assert as_('ilqar').put(f'/api/analytics/{ta}/levels/{weak}', json={'level': 'Güclü'}).status_code == 404
+
+
+def test_journal_methodology_rules(world, monkeypatch):
+    """Metodist: üzrlüyə qiymət yox; gələcəyə yalnız mövzu/ev tapşırığı; qayıbın ev tapşırığı yoxlanmır;
+    eyni gün verilən ev tapşırığı həmin gün yoxlanmır; KSQ tarixi yarımil içində; yarımildə bir BSQ."""
+    monkeypatch.setattr('app.api.journal.today', lambda: dt.date(2026, 9, 29))
+    c, ta, good, weak, new = setup(world)
+    put = lambda **b: c.put(f'/api/journal/{ta}/entry', json=b)
+    assert put(date='2026-09-29', period=1, attendance={weak: 'üzrlü'},
+               marks=[{'student_id': weak, 'kind': 'şifahi', 'grade': 4}]).status_code == 400
+    assert put(date='2026-10-01', period=1, attendance={good: 'var'}).status_code == 400
+    assert put(date='2026-10-01', period=1, homework='S 1–5').status_code == 200
+    r = put(date='2026-09-29', period=1, homework='E 3', attendance={weak: 'yox', good: 'var'},
+            homework_checks={weak: 'etmədi', good: 'etdi'}).json()
+    assert r['homework_checks'] == {str(good): 'etdi'}
+    with world[1]() as db:                                   # ikinci saat həmin gün – ev tapşırığı hələ yoxlanmır
+        tao = db.get(TeachingAssignment, ta)
+        tao.slots = {**tao.slots, '1': [1, 5]}
+        db.commit()
+    day = c.get(f'/api/journal/{ta}/day', params={'date': '2026-09-29'}).json()['lessons']
+    assert day[1]['homework_to_check'] != 'E 3'
+    nxt = c.get(f'/api/journal/{ta}/day', params={'date': '2026-09-30'}).json()['lessons']
+    assert nxt[0]['homework_to_check'] == 'E 3'
+    ex = lambda **b: c.post(f'/api/exams/{ta}', json={'max_points': 20, **b}).status_code
+    assert ex(kind='KSQ', no=5, semester=1, date='2027-03-01') == 400
+    assert ex(kind='BSQ', no=2, semester=1, date='2027-01-20') == 400
+    assert ex(kind='BSQ', no=1, semester=1, date='2027-01-20') == 200
+    assert ex(kind='BSQ', no=1, semester=1, date='2027-01-21') == 409

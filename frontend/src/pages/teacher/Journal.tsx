@@ -90,7 +90,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
   const save = async () => {
     const ms = Object.values(marks).filter(m => (m.kind === 'test' ? m.test_correct != null : m.grade)).map(m =>
       m.kind === 'test' ? { student_id: m.student_id, kind: 'test', test_correct: m.test_correct, test_total: testTotal } : { student_id: m.student_id, kind: m.kind, grade: m.grade })
-    const r = await put(`/api/journal/${ta.id}/entry`, { date, period: lesson.period, topic: topic || null, homework: homework || null, attendance: att, marks: ms, homework_checks: hw })
+    const r = await put(`/api/journal/${ta.id}/entry`, { date, period: lesson.period, topic: topic || null, homework: homework || null, ...(future ? { attendance: {}, marks: [], homework_checks: {} } : { attendance: att, marks: ms, homework_checks: hw }) })
     if (r?.queued) { toast('Oflayn – yazı növbəyə düşdü, internet qayıdanda göndəriləcək'); return }
     toast('Yadda saxlanıldı')
     onSaved()
@@ -102,7 +102,9 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
   }
   const taskText = (kind: string) => (lesson.plan?.tasks || []).filter(t => t.kind === kind)
     .map(t => `${t.label ? t.label + ' ' : ''}${t.start === t.end ? '№' + t.start : t.start + '–' + t.end}`).join('; ')
-  const present = students.filter(s => att[s.id] !== 'yox').length
+  const out = (v?: string) => v === 'yox' || v === 'üzrlü'          // dərsdə yoxdur – qiymət və ev tapşırığı yoxlanmır
+  const present = students.filter(s => !out(att[s.id])).length
+  const future = date > isoDate(new Date())
   const isExam = lesson.plan && ['KSQ', 'BSQ'].includes(lesson.plan.assessment_type)
 
   return (
@@ -123,6 +125,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
           <span className="row" style={{ flexWrap: 'nowrap' }}><input className="grow" value={homework} onChange={x => setHomework(x.target.value)} placeholder="məs. S 1–10, E 11–20" />
             {taskText('ev') && <button type="button" className="btn sm" onClick={() => setHomework(taskText('ev'))} title="Plandakı ev tapşırığı">Plandan</button>}</span></label>
       </div>
+      {future ? <p className="small muted">Gələcək dərs: indi yalnız mövzu və ev tapşırığı yazılır. Davamiyyət və qiymət dərs günü qeyd olunur.</p> : <>
       <div className="row" style={{ marginBottom: 10 }}>
         <span className="small muted">İştirak: {present}/{students.length}</span>
         <label className="small row">Testdə sual sayı
@@ -135,12 +138,12 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
       <div className="jlist">
         {students.map(s => {
           const m = marks[s.id]
-          const absent = att[s.id] === 'yox'
+          const absent = out(att[s.id])
           return (
             <div className="jrow" key={s.id} style={{ gridTemplateColumns: 'minmax(0,1fr) auto auto auto' }}>
               <span><b>{s.full_name}</b><span className="sub small muted"> {s.portal_code}</span></span>
               <div className="att-btns" role="group" aria-label="Davamiyyət">
-                {ATT.map(([v, short, cls]) => <button key={v} className={cls} title={v} aria-pressed={att[s.id] === v} onClick={() => { setAtt({ ...att, [s.id]: v }); if (v === 'yox') setMark(s.id, null) }}>{short}</button>)}
+                {ATT.map(([v, short, cls]) => <button key={v} className={cls} title={v} aria-pressed={att[s.id] === v} onClick={() => { setAtt({ ...att, [s.id]: v }); if (out(v)) { setMark(s.id, null); if (hw[s.id]) { const n = { ...hw }; delete n[s.id]; setHw(n) } } }}>{short}</button>)}
               </div>
               <div className="row" aria-label="Qiymət">
                 <select className="grade-sel" disabled={absent} value={m?.kind || 'şifahi'} onChange={x => setMark(s.id, { kind: x.target.value as MarkRow['kind'] })}>
@@ -158,12 +161,12 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
                 )}
                 {m?.kind === 'test' && m.test_correct != null && <Pill tone={gradeTone(autoGrade(m.test_correct, testTotal))}>{Math.round(m.test_correct * 100 / testTotal)}% → {autoGrade(m.test_correct, testTotal)}</Pill>}
               </div>
-              <select className="grade-sel" value={hw[s.id] || ''} onChange={x => { const n = { ...hw }; if (x.target.value) n[s.id] = x.target.value; else delete n[s.id]; setHw(n) }} aria-label="Ev tapşırığı">
+              <select className="grade-sel" disabled={absent} value={hw[s.id] || ''} onChange={x => { const n = { ...hw }; if (x.target.value) n[s.id] = x.target.value; else delete n[s.id]; setHw(n) }} aria-label="Ev tapşırığı">
                 <option value="">ev tap. —</option>{HW.map(h => <option key={h}>{h}</option>)}
               </select>
             </div>)
         })}
-      </div>
+      </div></>}
       <div className="row" style={{ marginTop: 12 }}>
         <AsyncBtn className="btn" onClick={hold}>{lesson.held ? 'Saxlamanı götür' : 'Mövzunu saxla'}</AsyncBtn>
         <button className="btn" onClick={() => { try { sessionStorage.setItem('mk-pick-tasks', String(ta.id)) } catch { /* noop */ } nav('/tasks') }}>Onlayn test təyin et</button>

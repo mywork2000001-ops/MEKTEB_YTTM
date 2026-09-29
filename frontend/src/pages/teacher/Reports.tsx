@@ -137,7 +137,7 @@ function PrintView({ a, ta, sem }: { a: any; ta: number; sem: string }) {
         <a className="btn" href={`/api/reports/${ta}/xlsx${sem === 'all' ? '' : '?semester=' + sem}`}>Excel</a>
         <span className="small muted">A4 portret, ağ-qara (Canon üçün)</span>
       </div>
-      <div className="paper" style={{ background: '#fff', color: '#000', padding: '12mm', maxWidth: '210mm', fontFamily: 'Times New Roman, serif' }}>
+      <div className="paper-wrap"><div className="paper" style={{ background: '#fff', color: '#000', padding: '12mm', maxWidth: '210mm', boxSizing: 'border-box', overflowX: 'auto', fontFamily: 'Times New Roman, serif' }}>
         <p style={{ textAlign: 'center', margin: 0, fontWeight: 700 }}>Tərtər şəhər Rafiq Nuriyev adına 6 nömrəli tam orta ümumtəhsil məktəbi</p>
         <p style={{ textAlign: 'center', margin: '4px 0 12px' }}>{a.class_name} sinfi – {a.subject} fənni üzrə hesabat ({fmtDate(a.from)} – {fmtDate(a.to)})</p>
         <table style={{ minWidth: 0, width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -148,7 +148,7 @@ function PrintView({ a, ta, sem }: { a: any; ta: number; sem: string }) {
         </table>
         <p style={{ marginTop: 16, fontSize: 12 }}>Orta qiymət: {fmt(a.overview.avg_grade, 2)} · Davamiyyət: {fmt(a.overview.avg_attendance)}% · Güclü/orta/zəif: {a.overview.levels['Güclü']}/{a.overview.levels['Orta']}/{a.overview.levels['Zəif']}</p>
         <p style={{ marginTop: 24, fontSize: 12 }}>Müəllim: {me?.full_name} ____________</p>
-      </div>
+      </div></div>
     </>
   )
 }

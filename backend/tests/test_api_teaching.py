@@ -81,9 +81,9 @@ def test_journal_entry_rules(world):
     assert c.put(f'/api/journal/{ta}/entry', json=bad).status_code == 400          # dərsdə olmayana qiymət
     assert c.put(f'/api/journal/{ta}/entry', json=dict(body, period=5)).status_code == 400   # cədvəldə yoxdur
     assert c.put(f'/api/journal/{ta}/entry', json=dict(body, attendance={999: 'var'}, marks=[])).status_code == 400
-    # növbəti dərsdə ev tapşırığının yoxlanması
+    # eyni gün növbəti saatda ev tapşırığı hələ yoxlanmır (metodik qayda – evdə etməyə vaxt olmayıb)
     nxt = c.get(f'/api/journal/{ta}/day', params={'date': '2026-09-16'}).json()['lessons'][1]
-    assert nxt['homework_to_check'] == 'S 1–10'
+    assert nxt['homework_to_check'] is None
     r = c.put(f'/api/journal/{ta}/entry', json={'date': '2026-09-16', 'period': 4,
                                                 'homework_checks': {a: 'etdi', b: 'köçürüb'}})
     assert r.json()['homework_checks'] == {str(a): 'etdi', str(b): 'köçürüb'}
