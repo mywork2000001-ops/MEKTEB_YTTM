@@ -46,8 +46,11 @@ def levels(ta_id: int, semester: int | None = None, user: User = Depends(staff),
     """Güclü / orta / zəif – nəticələrə görə avtomatik (nəticə yoxdursa IX sinif balı)."""
     ctx = plan_ctx(db, own_assignment(db, user, ta_id))
     rows = analyze(db, ctx, _period(ctx, None, None, semester))['students']
-    return {k: [{'student_id': r['student_id'], 'full_name': r['full_name'], 'rating': r['rating'],
-                 'source': r['level_source']} for r in rows if r['level'] == k] for k in ('Güclü', 'Orta', 'Zəif')}
+    out = {k: [{'student_id': r['student_id'], 'full_name': r['full_name'], 'rating': r['rating'],
+                'source': r['level_source']} for r in rows if r['level'] == k] for k in ('Güclü', 'Orta', 'Zəif')}
+    out['Məlum deyil'] = [{'student_id': r['student_id'], 'full_name': r['full_name'], 'rating': None, 'source': None}
+                          for r in rows if r['level'] is None]          # nə nəticə, nə IX balı var
+    return out
 
 
 @router.get('/analytics/{ta_id}/attendance')

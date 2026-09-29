@@ -51,7 +51,7 @@ def test_rating_levels_risk(world):
     assert rows[weak]['absence_warning'] and not rows[good]['absence_warning']
     assert a['overview']['levels'] == {'Güclü': 1, 'Orta': 1, 'Zəif': 1}
     lv = c.get(f'/api/analytics/{ta}/levels').json()
-    assert [x['full_name'] for x in lv['Zəif']] == ['Zəif Şagird qızı']
+    assert [x['full_name'] for x in lv['Zəif']] == ['Zəif Şagird qızı'] and lv['Məlum deyil'] == []
 
 
 def test_attendance_heatmap(world):

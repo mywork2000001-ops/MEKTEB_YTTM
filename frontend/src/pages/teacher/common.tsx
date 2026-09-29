@@ -41,7 +41,7 @@ export function TargetPicker({ ta, onChange }: { ta: number; onChange: (ids: num
   const [levels] = useLoad<Record<string, LevelRow[]>>(() => get(`/api/analytics/${ta}/levels`), [ta])
   const [mode, setMode] = useState<'all' | 'Güclü' | 'Orta' | 'Zəif' | 'pick'>('all')
   const [picked, setPicked] = useState<Set<number>>(new Set())
-  const all = levels ? [...levels['Güclü'], ...levels['Orta'], ...levels['Zəif']].sort((a, b) => a.full_name.localeCompare(b.full_name, 'az')) : []
+  const all = levels ? Object.values(levels).flat().sort((a, b) => a.full_name.localeCompare(b.full_name, 'az')) : []
   const apply = (m: typeof mode, p = picked) => {
     setMode(m)
     if (m === 'all') onChange(null)

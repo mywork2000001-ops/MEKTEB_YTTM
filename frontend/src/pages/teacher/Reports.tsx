@@ -81,8 +81,8 @@ function Rating({ a }: { a: any }) {
 function Levels({ a }: { a: any }) {
   return (
     <div className="grid g3">
-      {['Güclü', 'Orta', 'Zəif'].map(k => {
-        const rows = a.students.filter((r: any) => r.level === k)
+      {['Güclü', 'Orta', 'Zəif', 'Məlum deyil'].map(k => {
+        const rows = a.students.filter((r: any) => (r.level || 'Məlum deyil') === k)
         return (
           <section key={k} className="panel"><h2><Pill tone={levelTone(k)}>{k}</Pill><small>{rows.length}</small></h2>
             <ol style={{ margin: 0, paddingLeft: 18 }}>{rows.map((r: any) => <li key={r.student_id}>{r.full_name} <span className="small muted">{r.rating != null ? fmt(r.rating) : 'IX: ' + fmt(r.ix_math)}{r.baseline_level && r.baseline_level !== k ? ` (əvvəl: ${r.baseline_level})` : ''}</span></li>)}</ol>
