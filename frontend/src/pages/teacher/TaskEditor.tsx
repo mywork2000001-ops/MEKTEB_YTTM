@@ -102,7 +102,7 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
               {qs.map((q, i) => editing === q.key && !locked ? (
                 <QEdit key={q.key} q={q} onCancel={() => setEditing(null)} onSave={nq => { setQs(qs.map(x => x.key === q.key ? nq : x)); setEditing(null) }} />
               ) : (
-                <div key={q.key} className="jrow" style={{ gridTemplateColumns: '28px minmax(0,1fr) auto' }}>
+                <div key={q.key} className="jrow cols" style={{ ['--cols' as any]: '28px minmax(0,1fr) auto', ['--mcols' as any]: '28px minmax(0,1fr)' }}>
                   <span className="num muted">{i + 1}.</span>
                   <span className="small"><span className="clamp2"><MathText text={q.text} /></span>
                     <span className="muted">{q.raw ? `${q.source || ''}${q.lesson ? ' · ' + q.lesson : ''}` : 'redaktə olunub / öz sualım'}{q.image ? ' · 🖼' : ''}</span></span>
@@ -182,7 +182,7 @@ function BankPicker({ has, add, remove, onTitle, disabled, first }: { has: (k: s
                     <button type="button" className="btn sm ghost" onClick={() => add(items)}>hamısı ({items.length})</button>
                   </div>
                   {items.map(q => (
-                    <label key={q.key} className="jrow" style={{ gridTemplateColumns: '24px minmax(0,1fr) auto', cursor: 'pointer' }}>
+                    <label key={q.key} className="jrow cols" style={{ ['--cols' as any]: '24px minmax(0,1fr) auto', ['--mcols' as any]: '1fr', cursor: 'pointer' }}>
                       <input type="checkbox" checked={has(q.key)} onChange={() => (has(q.key) ? remove(q.key) : add([q]))} />
                       <span className="small clamp2"><MathText text={q.text} />{q.image ? ' 🖼' : ''}</span>
                       <Pill>{q.kind === 'mcq' ? 'variantlı' : 'açıq'}</Pill>
@@ -206,7 +206,7 @@ function QEdit({ q, onSave, onCancel }: { q: Q; onSave: (q: Q) => void; onCancel
   }
   const preview = useMemo(() => x.text, [x.text])
   return (
-    <div className="jrow" style={{ gridTemplateColumns: '1fr', gap: 8, background: 'var(--surface-2)' }}>
+    <div className="jrow cols" style={{ ['--cols' as any]: '1fr', ['--mcols' as any]: '1fr', gap: 8, background: 'var(--surface-2)' }}>
       <div className="row"><b className="grow">Sualı redaktə et</b>
         <select className="grade-sel" value={x.kind} onChange={e => setX({ ...x, kind: e.target.value as Q['kind'] })}><option value="mcq">variantlı</option><option value="open">açıq cavab</option></select></div>
       <textarea className="sel" style={{ minHeight: 70, padding: 10 }} value={x.text} onChange={e => setX({ ...x, text: e.target.value })} />

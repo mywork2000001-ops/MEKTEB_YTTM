@@ -136,6 +136,67 @@ def save_entry(ta_id: int, body: EntryIn, user: User = Depends(staff), db: Sessi
     return {'id': e.id, **_entry_payload(db, e)}
 
 
+CELL_ATT = {'yox': 'q', 'üzrlü': 'ü', 'gecikdi': 'g'}
+
+
+@router.get('/{ta_id}/grid')
+def grid(ta_id: int, month: str | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Klassik jurnal səhifəsi (ay üzrə): sətir – şagird, sütun – dərs (tarix, saat). Xanada: formativ qiymətlər,
+    «q» qayıb / «ü» üzrlü / «g» gecikmə, həmin gün keçirilən KSQ/BSQ qiyməti. İkinci hissə – mövzu və ev tapşırığı."""
+    from ..domain.rules import grade_from_points
+    from ..models import Exam, ExamScore
+    from ..services import journal_entries, taught_lesson
+    ta = own_assignment(db, user, ta_id)
+    ctx = plan_ctx(db, ta)
+    try:
+        y, m = map(int, (month or today().strftime('%Y-%m')).split('-'))
+        a = dt.date(y, m, 1)
+    except ValueError:
+        raise HTTPException(400, 'ay: YYYY-MM')
+    b = (a.replace(year=a.year + 1, month=1) if a.month == 12 else a.replace(month=a.month + 1)) - dt.timedelta(days=1)
+    entries = journal_entries(db, ta.id, a, b)
+    keys = sorted({(s.date, s.period) for s in ctx.slots if a <= s.date <= b} | set(entries))
+    slots = {(s.date, s.period): s for s in ctx.slots}
+    eids = [e.id for e in entries.values()]
+    att = {(x.entry_id, x.student_id): x.status for x in db.scalars(select(Attendance).where(Attendance.entry_id.in_(eids)))}
+    mk: dict = {}
+    for x in db.scalars(select(Mark).where(Mark.entry_id.in_(eids))):
+        mk.setdefault((x.entry_id, x.student_id), []).append(x.grade)
+    exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.date >= a, Exam.date <= b)))
+    ex_first = {}
+    for k in keys:                                     # KSQ/BSQ qiyməti həmin günün ilk dərs sütununa
+        ex_first.setdefault(k[0], k)
+    ex_cell: dict = {}
+    for ex in exams:
+        col = ex_first.get(ex.date)
+        for sc in db.scalars(select(ExamScore).where(ExamScore.exam_id == ex.id)):
+            if col and sc.points is not None and not sc.absent:
+                ex_cell[(col, sc.student_id)] = f'{ex.kind}-{ex.no}: {grade_from_points(sc.points, ex.max_points)}'
+    cols = []
+    for k in keys:
+        e = entries.get(k)
+        pl = taught_lesson(ctx, slots.get(k), e)
+        cols.append({'date': k[0], 'period': k[1], 'written': e is not None, 'topic': (e.topic if e and e.topic else pl.topic if pl else None),
+                     'seq': pl.seq if pl else None, 'assessment': (f"{pl.assessment_type}-{pl.exam_no}" if pl and pl.exam_no else
+                                                                  pl.assessment_type if pl and pl.assessment_type != 'formativ' else None),
+                     'homework': e.homework if e else None, 'future': k[0] > today()})
+    rows = []
+    for s in roster(db, ta):
+        cells = []
+        for k in keys:
+            e = entries.get(k)
+            c = {'marks': [], 'att': None, 'exam': ex_cell.get((k, s.id))}
+            if e:
+                c['marks'] = mk.get((e.id, s.id), [])
+                c['att'] = CELL_ATT.get(att.get((e.id, s.id)))
+            cells.append(c)
+        g = [x for c in cells for x in c['marks']]
+        rows.append({'student_id': s.id, 'full_name': s.full_name, 'cells': cells,
+                     'avg': round(sum(g) / len(g), 2) if g else None, 'missed': sum(c['att'] in ('q', 'ü') for c in cells)})
+    return {'month': f'{a:%Y-%m}', 'from': a, 'to': b, 'class_name': ctx.cls.name, 'subject': ta.subject,
+            'year_start': ctx.year.start, 'year_end': ctx.year.end, 'columns': cols, 'rows': rows}
+
+
 @router.get('/{ta_id}/summary')
 def summary(ta_id: int, semester: int | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Şagird üzrə: formativ orta, davamiyyət %, ev tapşırığı icrası %, testlər."""
@@ -160,7 +221,7 @@ def summary(ta_id: int, semester: int | None = None, user: User = Depends(staff)
         out.append({'student_id': s.id, 'full_name': s.full_name,
                     'avg_grade': round(sum(g) / len(g), 2) if g else None, 'marks': len(g),
                     'tests': len(t), 'test_pct': round(sum(m.test_correct for m in t) * 100 / sum(m.test_total for m in t), 1) if t else None,
-                    'lessons': len(a), 'absent': a.count('yox') + a.count('üzrlü'),
+                    'lessons': len(a), 'absent': a.count('yox') + a.count('üzrlü'), 'late': a.count('gecikdi'),
                     'attendance_pct': round((len(a) - a.count('yox') - a.count('üzrlü')) * 100 / len(a), 1) if a else None,
                     'homework_pct': round(sum(h) * 100 / len(h), 1) if h else None})
     return {'lessons_written': len(eids), 'students': out}

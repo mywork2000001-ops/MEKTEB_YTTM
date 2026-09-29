@@ -29,14 +29,19 @@ export default function Exams({ ta }: { ta: MyLesson }) {
         })}
         {d && !d.planned.length && <div className="empty">Planda KSQ/BSQ yoxdur (plan yüklənməyib?).</div>}
       </div>
-      {create && <CreateExam ta={ta} p={create} onClose={() => setCreate(null)} onDone={id => { setCreate(null); reload(); setOpen(id) }} />}
+      {create && <CreateExam ta={ta} p={create} prev={(d?.planned || []).filter(x => x.semester === create.semester && x.date < create.date).map(x => x.date).sort().pop() || null} onClose={() => setCreate(null)} onDone={id => { setCreate(null); reload(); setOpen(id) }} />}
       {open && <Scores ta={ta} examId={open} onClose={() => { setOpen(null); reload() }} />}
     </>
   )
 }
 
-function CreateExam({ ta, p, onClose, onDone }: { ta: MyLesson; p: Planned; onClose: () => void; onDone: (id: number) => void }) {
+function CreateExam({ ta, p, prev, onClose, onDone }: { ta: MyLesson; p: Planned; prev: string | null; onClose: () => void; onDone: (id: number) => void }) {
   const [mode, setMode] = useState<'total' | 'items'>('items')
+  const [plan] = useLoad<any[]>(() => get(`/api/plan/${ta.id}/official`), [ta.id])
+  // bu summativin əhatə etdiyi mövzuların standartları: əvvəlki KSQ/BSQ-dan bu günə qədər (eyni yarımil)
+  const stds = [...new Set((plan || []).filter(l => l.semester === p.semester && l.official_date <= p.date && (!prev || l.official_date > prev))
+    .flatMap(l => l.standards || []))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+  const [itemStd, setItemStd] = useState<Record<number, string>>({})
   const [max, setMax] = useState(20)
   const [n, setN] = useState(10)
   const [pts, setPts] = useState(2)
@@ -45,7 +50,7 @@ function CreateExam({ ta, p, onClose, onDone }: { ta: MyLesson; p: Planned; onCl
   const submit = async () => {
     try {
       const body: any = { kind: p.kind, no: p.no, semester: p.semester, date, title: p.topic }
-      if (mode === 'items') body.items = Array.from({ length: n }, (_, i) => ({ n: i + 1, points: pts }))
+      if (mode === 'items') body.items = Array.from({ length: n }, (_, i) => ({ n: i + 1, points: pts, standard: itemStd[i + 1] || null }))
       else body.max_points = max
       const e = await post<Exam>(`/api/exams/${ta.id}`, body)
       toast(`${p.kind}-${p.no} hazırlandı`)
@@ -62,6 +67,12 @@ function CreateExam({ ta, p, onClose, onDone }: { ta: MyLesson; p: Planned; onCl
             <Field label="Tapşırıq sayı"><select value={n} onChange={e => setN(Number(e.target.value))}>{Array.from({ length: 40 }, (_, i) => <option key={i + 1}>{i + 1}</option>)}</select></Field>
             <Field label="Hər tapşırığın balı"><select value={pts} onChange={e => setPts(Number(e.target.value))}>{[0.5, 1, 1.5, 2, 2.5, 3, 4, 5].map(v => <option key={v}>{v}</option>)}</select></Field>
             <p className="full small muted">Maksimal bal: <b>{n * pts}</b></p>
+            {stds.length > 0 && <fieldset className="full"><legend>Tapşırıq → məzmun standartı <span className="hint">(standart təhlili üçün)</span></legend>
+              <div className="fg">{Array.from({ length: n }, (_, i) => (
+                <Field key={i} label={`№${i + 1}`}><select value={itemStd[i + 1] || ''} onChange={e => setItemStd({ ...itemStd, [i + 1]: e.target.value })}>
+                  <option value="">—</option>{stds.map(s => <option key={s}>{s}</option>)}</select></Field>))}</div>
+              <p className="small muted" style={{ margin: 0 }}>Standartlar bu summativin əhatə etdiyi mövzulardan (perspektiv plan) götürülüb.</p>
+            </fieldset>}
           </div>
         ) : <Field label="Maksimal bal"><input type="number" min={1} value={max} onChange={e => setMax(Number(e.target.value))} /></Field>}
         <ErrorBox error={err} />
@@ -77,7 +88,7 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
     if (!d) return
     setRows(Object.fromEntries(d.rows.map((r: any) => [r.student_id, {
       points: r.points == null ? '' : String(r.points), absent: r.absent,
-      marks: d.exam.items ? (r.item_marks || d.exam.items.map(() => 0)) : null }])))
+      marks: r.item_marks || null }])))                       // null = hələ daxil edilməyib (0 bal deyil!)
   }, [d])
   const items = d?.exam.items as Exam['items']
   const save = async () => {
@@ -103,7 +114,7 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
               if (!v) return null
               const set = (x: Partial<typeof v>) => setRows({ ...rows, [r.student_id]: { ...v, ...x } })
               return (
-                <div className="jrow" key={r.student_id} style={{ gridTemplateColumns: '1fr', gap: 6 }}>
+                <div className="jrow cols" key={r.student_id} style={{ ['--cols' as any]: '1fr', ['--mcols' as any]: '1fr', gap: 6 }}>
                   <div className="row"><b className="grow">{r.full_name}</b>
                     {r.grade != null && <Pill tone={gradeTone(r.grade)}>{fmt(r.pct)}% → {r.grade}</Pill>}
                     <label className="check small"><input type="checkbox" checked={v.absent} onChange={e => set({ absent: e.target.checked })} /> yox idi</label>
@@ -112,8 +123,10 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
                     <div className="att-btns">
                       {items.map((it, i) => (
                         <button key={i} className={v.marks?.[i] ? 'var' : 'yox'} aria-pressed title={`${it.n}: ${it.points} bal`}
-                          onClick={() => { const m = [...(v.marks || [])]; m[i] = m[i] ? 0 : 1; set({ marks: m }) }}>{it.n}{v.marks?.[i] ? '✓' : '✗'}</button>))}
-                      <span className="small muted">{(v.marks || []).reduce((a, m, i) => a + m * items[i].points, 0)} bal</span>
+                          onClick={() => { const m = [...(v.marks || items.map(() => 0))]; m[i] = m[i] ? 0 : 1; set({ marks: m }) }}>{it.n}{v.marks ? (v.marks[i] ? '✓' : '✗') : '·'}</button>))}
+                      {v.marks ? <span className="small muted">{v.marks.reduce((a, m, i) => a + m * items[i].points, 0)} bal</span>
+                        : <button className="btn sm ghost" onClick={() => set({ marks: items.map(() => 0) })}>daxil et</button>}
+                      {v.marks && <button className="btn sm ghost" onClick={() => set({ marks: null })} title="Nəticəni sil (hələ yazmayıb)">təmizlə</button>}
                     </div>
                   ) : (
                     <input className="sel" inputMode="decimal" style={{ maxWidth: 140 }} placeholder={`0–${d.exam.max_points}`} value={v.points} onChange={e => set({ points: e.target.value })} aria-label="Bal" />

@@ -60,3 +60,7 @@
   .top .actions{width:100%}
   .top .actions .btn{flex:1 1 auto;min-height:44px}
 }
+
+/* .jrow qlobal olaraq 2 sütuna məcbur edilir (!important); öz sütunları olan sətirlər üçün: className="jrow cols" + --cols */
+.jrow.cols{grid-template-columns:var(--cols)!important}
+@media (max-width:700px){.jrow.cols{grid-template-columns:var(--mcols,1fr)!important}}

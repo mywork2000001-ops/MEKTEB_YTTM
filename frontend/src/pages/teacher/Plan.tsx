@@ -52,7 +52,7 @@ export default function Plan() {
               lastDate = i.date
               const today = i.date === isoDate(new Date())
               return (
-                <div className="jrow" key={i.date + i.period} style={{ gridTemplateColumns: '92px 64px minmax(0,1fr) auto', background: today ? 'var(--accent-soft)' : undefined }}>
+                <div className="jrow cols" key={i.date + i.period} style={{ ['--cols' as any]: '92px 64px minmax(0,1fr) auto', ['--mcols' as any]: '64px minmax(0,1fr)', background: today ? 'var(--accent-soft)' : undefined }}>
                   <span className="small">{showDate ? <b>{i.weekday} {fmtDate(i.date).slice(0, 5)}</b> : ''}</span>
                   <span className="small muted">{i.period}-ci<br />{i.time}</span>
                   <span>{i.lesson ? <><b>{i.lesson.topic}</b><span className="sub small muted"> №{i.lesson.seq}{i.shift ? ` · rəsmi tarix ${fmtDate(i.lesson.official_date)}` : ''}</span></> : <span className="muted">—</span>}</span>

@@ -64,8 +64,25 @@ def plan_view(ta_id: int, view: str = 'week', date: dt.date | None = None, user:
 
 @router.get('/plan/{ta_id}/official')
 def official(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Rəsmi plan + icrası: hər mövzunun jurnalda keçildiyi tarixlər və işçi plana görə nəzərdə tutulan tarix."""
+    from ..models import JournalEntry
     ctx = plan_ctx(db, own_assignment(db, user, ta_id))
-    return [lesson_out(pl) for pl in ctx.lessons]
+    taught: dict[int, list] = {}
+    for e in db.scalars(select(JournalEntry).where(JournalEntry.assignment_id == ctx.ta.id,
+                                                   JournalEntry.plan_lesson_id.is_not(None)).order_by(JournalEntry.date)):
+        taught.setdefault(e.plan_lesson_id, []).append(e.date)
+    work: dict[int, dt.date] = {}
+    for s in ctx.slots:
+        if s.index is not None:
+            work.setdefault(s.index, s.date)
+    t = today()
+    out = []
+    for i, pl in enumerate(ctx.lessons):
+        d = taught.get(pl.id, [])
+        wd = work.get(i)
+        out.append({**lesson_out(pl), 'taught_dates': d, 'working_date': wd,
+                    'status': 'keçilib' if d else 'gecikir' if wd and wd < t else 'gözlənilir'})
+    return out
 
 
 @router.post('/plan/{ta_id}/import')

@@ -80,7 +80,7 @@ function Submissions({ ta, id, onClose }: { ta: number; id: number; onClose: () 
     <Drawer title={d?.material.title || 'Cavablar'} onClose={onClose}>
       <ErrorBox error={err} />
       <div className="jlist">{d?.rows.map((r: any) => (
-        <div key={r.student_id} className="jrow" style={{ gridTemplateColumns: '1fr', gap: 6 }}>
+        <div key={r.student_id} className="jrow cols" style={{ ['--cols' as any]: '1fr', ['--mcols' as any]: '1fr', gap: 6 }}>
           <div className="row"><b className="grow">{r.full_name}</b>
             {!r.submission ? <Pill>təhvil verməyib</Pill> : <>{r.submission.late && <Pill tone="warn">gecikib</Pill>}<span className="small muted">{fmtDate(r.submission.submitted_at)}</span></>}</div>
           {r.submission && <>

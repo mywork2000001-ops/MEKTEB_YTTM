@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { useT } from '../../i18n'
 
 type Stud = { id: number; full_name: string; portal_code: string }
-type MarkRow = { student_id: number; kind: 'şifahi' | 'yazılı' | 'test'; grade?: number | null; test_correct?: number | null; test_total?: number | null }
+type MarkRow = { student_id: number; kind: 'şifahi' | 'yazılı' | 'test'; grade?: number | null; test_correct?: number | null; test_total?: number | null; comment?: string | null }
 type Lesson = {
   period: number; time: string | null; held: boolean; shift: number; homework_to_check: string | null
   plan: { topic: string; assessment_type: string; section: string | null; resources: string | null; seq: number; standards: string[] | null; tasks: { kind: string; label: string; start: number; end: number }[] | null } | null
@@ -16,7 +16,7 @@ type Lesson = {
 }
 type Day = { date: string; weekday: string | null; class_name: string; lessons: Lesson[]; students: Stud[] }
 
-const TABS = [['day', 'Gündəlik'], ['students', 'Şagirdlər'], ['exams', 'KSQ / BSQ'], ['semester', 'Yarımil'], ['topics', 'Mövzular'], ['summary', 'Xülasə']] as const
+const TABS = [['day', 'Gündəlik'], ['grid', 'Jurnal səhifəsi'], ['students', 'Şagirdlər'], ['exams', 'KSQ / BSQ'], ['semester', 'Yarımil'], ['topics', 'Mövzular'], ['summary', 'Xülasə']] as const
 
 export default function Journal() {
   const t = useT()
@@ -39,6 +39,7 @@ export default function Journal() {
             {TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{t(l)}</button>)}
           </div>
           {tab === 'day' && <DayView ta={cur} date={date} setDate={setDate} />}
+          {tab === 'grid' && <Grid ta={cur} />}
           {tab === 'students' && <StudentsLevels ta={cur} />}
           {tab === 'exams' && <Exams ta={cur} />}
           {tab === 'semester' && <Semester ta={cur} />}
@@ -75,11 +76,12 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
   const e = lesson.entry
   const [topic, setTopic] = useState(e.topic || '')
   const [homework, setHomework] = useState(e.homework || '')
+  const [note, setNote] = useState(e.note || '')
   const [att, setAtt] = useState<Record<string, string>>(() => e.exists ? e.attendance : Object.fromEntries(students.map(s => [s.id, 'var'])))
   const [marks, setMarks] = useState<Record<string, MarkRow>>(() => Object.fromEntries(e.marks.map(m => [m.student_id, m])))
   const [hw, setHw] = useState<Record<string, string>>(e.homework_checks)
   const [testTotal, setTestTotal] = useState<number>(() => e.marks.find(m => m.kind === 'test')?.test_total || 10)
-  useEffect(() => { setTopic(e.topic || ''); setHomework(e.homework || '') }, [e.topic, e.homework])
+  useEffect(() => { setTopic(e.topic || ''); setHomework(e.homework || ''); setNote(e.note || '') }, [e.topic, e.homework, e.note])
 
   const setMark = (sid: number, m: Partial<MarkRow> | null) => setMarks(prev => {
     const n = { ...prev }
@@ -89,8 +91,8 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
   })
   const save = async () => {
     const ms = Object.values(marks).filter(m => (m.kind === 'test' ? m.test_correct != null : m.grade)).map(m =>
-      m.kind === 'test' ? { student_id: m.student_id, kind: 'test', test_correct: m.test_correct, test_total: testTotal } : { student_id: m.student_id, kind: m.kind, grade: m.grade })
-    const r = await put(`/api/journal/${ta.id}/entry`, { date, period: lesson.period, topic: topic || null, homework: homework || null, ...(future ? { attendance: {}, marks: [], homework_checks: {} } : { attendance: att, marks: ms, homework_checks: hw }) })
+      m.kind === 'test' ? { student_id: m.student_id, kind: 'test', test_correct: m.test_correct, test_total: testTotal, comment: m.comment || null } : { student_id: m.student_id, kind: m.kind, grade: m.grade, comment: m.comment || null })
+    const r = await put(`/api/journal/${ta.id}/entry`, { date, period: lesson.period, topic: topic || null, homework: homework || null, note: note.trim() || null, ...(future ? { attendance: {}, marks: [], homework_checks: {} } : { attendance: att, marks: ms, homework_checks: hw }) })
     if (r?.queued) { toast('Oflayn – yazı növbəyə düşdü, internet qayıdanda göndəriləcək'); return }
     toast('Yadda saxlanıldı')
     onSaved()
@@ -120,10 +122,13 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
         </label>
         {lesson.plan?.standards?.length ? <p className="full small" style={{ margin: 0 }}>Standartlar: <b>{lesson.plan.standards.join(', ')}</b></p> : null}
         {lesson.plan?.resources && <p className="full small muted" style={{ margin: 0 }}>Resurslar: {lesson.plan.resources}</p>}
+        {isExam && <p className="full small" style={{ margin: 0, color: 'var(--warn)' }}>Bu dərs {lesson.plan!.assessment_type} günüdür: nəticələr «KSQ / BSQ» tabında yazılır. Summativ dərsdə formativ qiymət adətən qoyulmur.</p>}
         {taskText('sinif') && <p className="full small" style={{ margin: 0 }}>Sinifdə: <b>{taskText('sinif')}</b>{taskText('mustaqil') ? <> · müstəqil: {taskText('mustaqil')}</> : null}</p>}
         <label className="f full">Ev tapşırığı
           <span className="row" style={{ flexWrap: 'nowrap' }}><input className="grow" value={homework} onChange={x => setHomework(x.target.value)} placeholder="məs. S 1–10, E 11–20" />
             {taskText('ev') && <button type="button" className="btn sm" onClick={() => setHomework(taskText('ev'))} title="Plandakı ev tapşırığı">Plandan</button>}</span></label>
+        <label className="f full">Dərs qeydi <span className="hint">istəyə görə: dərsin gedişi, fərdi iş, tədbir</span>
+          <input value={note} onChange={x => setNote(x.target.value)} maxLength={2000} placeholder="məs. Qrup işi; 3 şagirdlə əlavə iş" /></label>
       </div>
       {future ? <p className="small muted">Gələcək dərs: indi yalnız mövzu və ev tapşırığı yazılır. Davamiyyət və qiymət dərs günü qeyd olunur.</p> : <>
       <div className="row" style={{ marginBottom: 10 }}>
@@ -140,7 +145,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
           const m = marks[s.id]
           const absent = out(att[s.id])
           return (
-            <div className="jrow" key={s.id} style={{ gridTemplateColumns: 'minmax(0,1fr) auto auto auto' }}>
+            <div className="jrow cols" key={s.id} style={{ ['--cols' as any]: 'minmax(160px,1fr) auto auto auto' }}>
               <span><b>{s.full_name}</b><span className="sub small muted"> {s.portal_code}</span></span>
               <div className="att-btns" role="group" aria-label="Davamiyyət">
                 {ATT.map(([v, short, cls]) => <button key={v} className={cls} title={v} aria-pressed={att[s.id] === v} onClick={() => { setAtt({ ...att, [s.id]: v }); if (out(v)) { setMark(s.id, null); if (hw[s.id]) { const n = { ...hw }; delete n[s.id]; setHw(n) } } }}>{short}</button>)}
@@ -160,6 +165,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
                   </select>
                 )}
                 {m?.kind === 'test' && m.test_correct != null && <Pill tone={gradeTone(autoGrade(m.test_correct, testTotal))}>{Math.round(m.test_correct * 100 / testTotal)}% → {autoGrade(m.test_correct, testTotal)}</Pill>}
+                {m && (m.grade || m.test_correct != null) && <input className="sel" style={{ maxWidth: 220, minHeight: 36 }} maxLength={300} placeholder="rəy (istəyə görə)" value={m.comment || ''} onChange={x => setMark(s.id, { comment: x.target.value })} aria-label={'Rəy: ' + s.full_name} />}
               </div>
               <select className="grade-sel" disabled={absent} value={hw[s.id] || ''} onChange={x => { const n = { ...hw }; if (x.target.value) n[s.id] = x.target.value; else delete n[s.id]; setHw(n) }} aria-label="Ev tapşırığı">
                 <option value="">ev tap. —</option>{HW.map(h => <option key={h}>{h}</option>)}
@@ -207,18 +213,30 @@ function Semester({ ta }: { ta: MyLesson }) {
 function Topics({ ta }: { ta: MyLesson }) {
   const [rows, err] = useLoad<any[]>(() => get(`/api/plan/${ta.id}/official`), [ta.id])
   const [q, setQ] = useState('')
-  const list = useMemo(() => (rows || []).filter(r => !q || r.topic.toLowerCase().includes(q.toLowerCase())), [rows, q])
+  const [st, setSt] = useState<'' | 'keçilib' | 'gecikir' | 'gözlənilir'>('')
+  const list = useMemo(() => (rows || []).filter(r => (!q || r.topic.toLowerCase().includes(q.toLowerCase())) && (!st || r.status === st)), [rows, q, st])
+  const cnt = (k: string) => (rows || []).filter(r => r.status === k).length
+  const due = cnt('keçilib') + cnt('gecikir')
   return (
     <>
       <ErrorBox error={err} />
       {rows && !rows.length && <div className="empty">Rəsmi plan yüklənməyib – Tənzimləmələr → Siniflər → Plan yüklə.</div>}
-      {rows && rows.length > 0 && <div className="toolbar"><div className="search"><input placeholder="Mövzu axtar" value={q} onChange={e => setQ(e.target.value)} /></div></div>}
+      {rows && rows.length > 0 && <>
+        <div className="kpis" style={{ marginBottom: 10 }}>
+          <div className="kpi"><b>{cnt('keçilib')} / {rows.length}</b><span>keçilib (jurnalda)</span></div>
+          <div className="kpi"><b>{due ? Math.round(cnt('keçilib') * 100 / due) : 100}%</b><span>bu günə qədər plan icrası</span></div>
+          <div className="kpi"><b>{cnt('gecikir')}</b><span>vaxtı keçib, yazılmayıb</span></div>
+        </div>
+        <div className="toolbar"><div className="search"><input placeholder="Mövzu axtar" value={q} onChange={e => setQ(e.target.value)} /></div>
+          {([['', 'Hamısı'], ['keçilib', 'Keçilib'], ['gecikir', 'Gecikir'], ['gözlənilir', 'Gözlənilir']] as const).map(([k, l]) => <button key={k} className="chip" aria-pressed={st === k} onClick={() => setSt(k)}>{l}</button>)}</div></>}
       <div className="jlist">
         {list.map(r => (
-          <div className="jrow" key={r.id} style={{ gridTemplateColumns: '48px minmax(0,1fr) auto' }}>
+          <div className="jrow cols" key={r.id} style={{ ['--cols' as any]: '48px minmax(0,1fr) auto', ['--mcols' as any]: '40px minmax(0,1fr)' }}>
             <span className="num muted">№{r.seq}</span>
-            <span><b>{r.topic}</b><span className="sub small muted"> {r.section}</span>{r.resources && <span className="sub small muted"><br />{r.resources}</span>}</span>
-            <span className="row">{r.assessment_type !== 'formativ' && <Pill tone="warn">{r.assessment_type}{r.exam_no ? '-' + r.exam_no : ''}</Pill>}<span className="small">{fmtDate(r.official_date)}</span></span>
+            <span><b>{r.topic}</b><span className="sub small muted"> {r.section}</span>{r.resources && <span className="sub small muted"><br />{r.resources}</span>}
+              <span className="sub small"><br />{r.taught_dates.length ? <>Keçilib: {r.taught_dates.map(fmtDate).join(', ')}</> : r.working_date ? <>İşçi plan: {fmtDate(r.working_date)}</> : 'ilə sığmır'}</span></span>
+            <span className="row">{r.assessment_type !== 'formativ' && <Pill tone="warn">{r.assessment_type}{r.exam_no ? '-' + r.exam_no : ''}</Pill>}
+              <Pill tone={r.status === 'keçilib' ? 'ok' : r.status === 'gecikir' ? 'bad' : undefined}>{r.status}</Pill><span className="small">{fmtDate(r.official_date)}</span></span>
           </div>))}
       </div>
     </>
@@ -226,11 +244,13 @@ function Topics({ ta }: { ta: MyLesson }) {
 }
 
 function Summary({ ta }: { ta: MyLesson }) {
-  const [d, err] = useLoad<any>(() => get(`/api/journal/${ta.id}/summary`), [ta.id])
+  const [sem, setSem] = useState<'1' | '2' | 'all'>('1')
+  const [d, err] = useLoad<any>(() => get(`/api/journal/${ta.id}/summary`, sem === 'all' ? {} : { semester: sem }), [ta.id, sem])
   return (
     <>
       <ErrorBox error={err} />
-      {d && <div className="row"><p className="muted small grow">Yazılmış dərs: {d.lessons_written}</p><button className="btn sm" onClick={() => printDoc({ title: `${ta.class_name} – jurnal xülasəsi`, body: head(`${ta.class_name} – ${ta.subject}: jurnal xülasəsi`, `Yazılmış dərs: ${d.lessons_written}`) + table(['№', 'Şagird', 'Orta qiymət', 'Qiymət sayı', 'Test %', 'Davamiyyət %', 'Ev tapşırığı %'], d.students.map((s: any, i: number) => [i + 1, s.full_name, fmtN(s.avg_grade, 2), s.marks, fmtN(s.test_pct), fmtN(s.attendance_pct), fmtN(s.homework_pct)]), [2, 3, 4, 5, 6]) })}>Çap / PDF</button></div>}
+      <div className="row" style={{ marginBottom: 8 }}>{([['1', 'I yarımil'], ['2', 'II yarımil'], ['all', 'Bütün il']] as const).map(([k, l]) => <button key={k} className="chip" aria-pressed={sem === k} onClick={() => setSem(k)}>{l}</button>)}</div>
+      {d && <div className="row"><p className="muted small grow">Yazılmış dərs: {d.lessons_written}</p><button className="btn sm" onClick={() => printDoc({ title: `${ta.class_name} – jurnal xülasəsi`, body: head(`${ta.class_name} – ${ta.subject}: jurnal xülasəsi (${sem === 'all' ? 'bütün il' : sem + '-ci yarımil'})`, `Yazılmış dərs: ${d.lessons_written}`) + table(['№', 'Şagird', 'Orta qiymət', 'Qiymət sayı', 'Test %', 'Davamiyyət %', 'Ev tapşırığı %'], d.students.map((s: any, i: number) => [i + 1, s.full_name, fmtN(s.avg_grade, 2), s.marks, fmtN(s.test_pct), fmtN(s.attendance_pct), fmtN(s.homework_pct)]), [2, 3, 4, 5, 6]) })}>Çap / PDF</button></div>}
       <div className="tbl-wrap"><table><thead><tr><th>Şagird</th><th className="r">Orta qiymət</th><th className="r">Qiymət sayı</th><th className="r">Test %</th><th className="r">Davamiyyət %</th><th className="r">Ev tapşırığı %</th></tr></thead>
         <tbody>{d?.students.map((s: any) => (
           <tr key={s.student_id}><td>{s.full_name}</td><td className="r num">{fmt(s.avg_grade, 2)}</td><td className="r num">{s.marks}</td>
@@ -271,6 +291,58 @@ function StudentsLevels({ ta }: { ta: MyLesson }) {
                 {r.manual_level && <span className="small muted"> əl ilə</span>}</td>
             </tr>) })}</tbody></table></div>
       <p className="small muted">IX sinif ballarını dəyişmək: Tənzimləmələr → Şagirdlər → «IX buraxılış ballarını redaktə et».</p>
+    </>
+  )
+}
+
+/** Klassik jurnal səhifəsi: ay üzrə şagird × dərs cədvəli + mövzu və ev tapşırığı siyahısı; A4 albom çapı. */
+function Grid({ ta }: { ta: MyLesson }) {
+  const [month, setMonth] = useState(() => isoDate(new Date()).slice(0, 7))
+  const [d, err, loading] = useLoad<any>(() => get(`/api/journal/${ta.id}/grid`, { month }), [ta.id, month])
+  const step = (n: number) => { const [y, m] = month.split('-').map(Number); const x = new Date(y, m - 1 + n, 1); setMonth(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}`) }
+  const MN = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'İyun', 'İyul', 'Avqust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr']
+  const title = `${MN[Number(month.slice(5)) - 1]} ${month.slice(0, 4)}`
+  const cellText = (c: any) => [...c.marks, c.att, c.exam && c.exam.split(': ')[1]].filter(Boolean).join(' ')
+  const print = () => printDoc({
+    landscape: true, title: `${ta.class_name} – jurnal ${title}`,
+    body: head(`${ta.class_name} – ${ta.subject}: jurnal səhifəsi`, title) +
+      table(['№', 'Şagird', ...d.columns.map((c: any) => fmtDate(c.date).slice(0, 5)), 'Orta', 'Buraxıb'],
+        d.rows.map((r: any, i: number) => [i + 1, r.full_name, ...r.cells.map(cellText), fmtN(r.avg, 2), r.missed || ''])) +
+      '<h2>Keçilən mövzular və ev tapşırıqları</h2>' +
+      table(['Tarix', 'Saat', '№', 'Mövzu', 'Ev tapşırığı'], d.columns.filter((c: any) => c.written).map((c: any) => [fmtDate(c.date), c.period, c.seq ?? '', (c.assessment ? c.assessment + ' · ' : '') + (c.topic || ''), c.homework || ''])) +
+      '<p>q – qayıb, ü – üzrlü, g – gecikmə; KSQ/BSQ qiyməti həmin günün sütunundadır.</p><p class="sign">Müəllim: ____________</p>',
+  })
+  return (
+    <>
+      <div className="row no-print" style={{ marginBottom: 10 }}>
+        <button className="btn sm" onClick={() => step(-1)}>‹</button><b>{title}</b><button className="btn sm" onClick={() => step(1)}>›</button>
+        {d && d.columns.length > 0 && <button className="btn sm right" onClick={print}>Çap / PDF</button>}
+      </div>
+      <ErrorBox error={err} />
+      {loading && !d ? <Loading /> : d && (d.columns.length === 0 ? <div className="empty">Bu ayda dərs yoxdur.</div> : <>
+        <div className="tbl-wrap"><table style={{ minWidth: 0 }}>
+          <thead><tr><th style={{ textAlign: 'left' }}>Şagird</th>{d.columns.map((c: any, i: number) => (
+            <th key={i} title={`${c.period}-ci saat · ${c.topic || ''}`} style={{ opacity: c.future ? 0.5 : 1, textAlign: 'center', background: c.assessment ? 'var(--warn-soft)' : undefined }}>
+              {fmtDate(c.date).slice(0, 5)}{c.assessment && <><br /><small>{c.assessment}</small></>}{!c.written && !c.future && <><br /><small style={{ color: 'var(--bad)' }}>yazılmayıb</small></>}</th>))}
+            <th className="r">Orta</th><th className="r">Buraxıb</th></tr></thead>
+          <tbody>{d.rows.map((r: any) => (
+            <tr key={r.student_id}><td style={{ whiteSpace: 'nowrap' }}>{r.full_name}</td>
+              {r.cells.map((c: any, i: number) => (
+                <td key={i} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                  {c.marks.map((g: number, j: number) => <b key={j} style={{ color: `var(--${gradeTone(g)})`, marginRight: 2 }}>{g}</b>)}
+                  {c.att && <span style={{ color: c.att === 'q' ? 'var(--bad)' : c.att === 'ü' ? 'var(--warn)' : 'var(--info)' }}>{c.att}</span>}
+                  {c.exam && <Pill tone="warn">{c.exam.split(': ')[1]}</Pill>}</td>))}
+              <td className="r num">{fmt(r.avg, 2)}</td><td className="r num">{r.missed || ''}</td></tr>))}</tbody>
+        </table></div>
+        <section className="panel" style={{ marginTop: 12 }}><h2>Keçilən mövzular və ev tapşırıqları</h2>
+          <div className="jlist">{d.columns.filter((c: any) => c.written).map((c: any, i: number) => (
+            <div key={i} className="jrow cols" style={{ ['--cols' as any]: '100px minmax(0,1fr)', ['--mcols' as any]: '84px minmax(0,1fr)' }}>
+              <span className="small">{fmtDate(c.date)}<br /><span className="muted">{c.period}-ci saat{c.seq ? ` · №${c.seq}` : ''}</span></span>
+              <span>{c.assessment && <Pill tone="warn">{c.assessment}</Pill>} {c.topic}{c.homework && <span className="sub small"><br />Ev tapşırığı: <b>{c.homework}</b></span>}</span>
+            </div>))}</div>
+        </section>
+        <p className="small muted">q – qayıb, ü – üzrlü, g – gecikmə. Sarı sütun – KSQ/BSQ günü (qiymət nəticələrdən).</p>
+      </>)}
     </>
   )
 }

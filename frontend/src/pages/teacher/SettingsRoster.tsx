@@ -435,7 +435,7 @@ function ArchiveTab() {
       <ErrorBox error={e1 || e2} />
       <h2 className="sec">Siniflər</h2>
       <div className="jlist">{(classes || []).map(c => (
-        <div className="jrow" key={c.id} style={{ gridTemplateColumns: '1fr', gap: 8 }}>
+        <div className="jrow cols" key={c.id} style={{ ['--cols' as any]: '1fr', ['--mcols' as any]: '1fr', gap: 8 }}>
           <div className="row"><b className="grow">{c.name}</b>
             <AsyncBtn className="btn sm" ok="Geri qaytarıldı" onClick={async () => { await post(`/api/classes/${c.id}/restore`); reload() }}>Geri qaytar</AsyncBtn>
             <button className="btn sm danger" onClick={() => setConfirm('c' + c.id)}>Həmişəlik sil</button></div>
@@ -444,7 +444,7 @@ function ArchiveTab() {
         {classes?.length === 0 && <div className="empty">Arxivdə sinif yoxdur.</div>}</div>
       <h2 className="sec">Şagirdlər</h2>
       <div className="jlist">{(studs || []).map(s => (
-        <div className="jrow" key={s.id} style={{ gridTemplateColumns: '1fr', gap: 8 }}>
+        <div className="jrow cols" key={s.id} style={{ ['--cols' as any]: '1fr', ['--mcols' as any]: '1fr', gap: 8 }}>
           <div className="row"><b className="grow">{s.full_name}</b><span className="small muted">{s.class_name}</span>
             <AsyncBtn className="btn sm" ok="Geri qaytarıldı" onClick={async () => { await post(`/api/students/${s.id}/restore`); reload() }}>Geri qaytar</AsyncBtn>
             <button className="btn sm danger" onClick={() => setConfirm('s' + s.id)}>Həmişəlik sil</button></div>

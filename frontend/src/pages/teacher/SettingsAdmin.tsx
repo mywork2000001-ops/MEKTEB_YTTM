@@ -20,7 +20,7 @@ function Teachers() {
         <h2>Müəllimlər</h2>
         <ErrorBox error={err} />
         <div className="jlist">{(rows || []).map(t => (
-          <div key={t.id} className="jrow" style={{ gridTemplateColumns: '1fr', gap: 6 }}>
+          <div key={t.id} className="jrow cols" style={{ ['--cols' as any]: '1fr', ['--mcols' as any]: '1fr', gap: 6 }}>
             <div className="row"><b className="grow">{t.full_name}</b><span className="mono small">{t.login}</span>
               {t.role === 'admin' ? <Pill tone="acc">admin</Pill> : t.archived ? <Pill>arxivdə</Pill> : <Pill tone="ok">{(t.subjects || []).join(', ') || 'müəllim'}</Pill>}</div>
             {t.role === 'teacher' && (
@@ -95,7 +95,7 @@ function Bank() {
       <section className="panel">
         <h2>Mənbələr</h2>
         <div className="jlist">{(sources || []).map(s => (
-          <label key={s.key} className="jrow" style={{ gridTemplateColumns: 'auto minmax(0,1fr) auto', cursor: 'pointer' }}>
+          <label key={s.key} className="jrow cols" style={{ ['--cols' as any]: 'auto minmax(0,1fr) auto', ['--mcols' as any]: 'auto minmax(0,1fr) auto', cursor: 'pointer' }}>
             <input type="checkbox" checked={s.enabled} onChange={async e => { await patch(`/api/bank/sources/${s.key}`, { enabled: e.target.checked }); reloadS() }} />
             <span>{s.label}{!s.active && <span className="small muted"> · viktorina-dan çıxarılıb</span>}</span>
             <span className="num small">{s.questions}</span>

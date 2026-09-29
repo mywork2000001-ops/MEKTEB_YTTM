@@ -137,3 +137,32 @@ def test_journal_methodology_rules(world, monkeypatch):
     assert ex(kind='BSQ', no=2, semester=1, date='2027-01-20') == 400
     assert ex(kind='BSQ', no=1, semester=1, date='2027-01-20') == 200
     assert ex(kind='BSQ', no=1, semester=1, date='2027-01-21') == 409
+
+
+def test_journal_grid_plan_execution_and_feedback(world, monkeypatch):
+    """Jurnal səhifəsi (ay), planın icrası, formativ rəy və dərs qeydi, yazmayan şagird KSQ-də «2» almır."""
+    monkeypatch.setattr('app.api.journal.today', lambda: dt.date(2026, 9, 30))
+    monkeypatch.setattr('app.api.plan.today', lambda: dt.date(2026, 10, 1))      # 30.09 yazılmayıb – gecikir
+    c, ta, good, weak, new = setup(world)
+    r = c.put(f'/api/journal/{ta}/entry', json={'date': '2026-09-29', 'period': 1, 'note': 'Qrup işi',
+                                                'attendance': {good: 'var', weak: 'gecikdi', new: 'var'},
+                                                'marks': [{'student_id': good, 'kind': 'şifahi', 'grade': 5,
+                                                           'comment': 'Həlli əsaslandırdı'}]}).json()
+    assert r['note'] == 'Qrup işi' and r['marks'][0]['comment'] == 'Həlli əsaslandırdı'
+    g = c.get(f'/api/journal/{ta}/grid', params={'month': '2026-09'}).json()
+    assert len(g['columns']) == 12 and g['columns'][-1]['written'] is False      # 30.09 yazılmayıb
+    rows = {x['student_id']: x for x in g['rows']}
+    assert rows[weak]['cells'][0]['att'] == 'q' and rows[weak]['cells'][-2]['att'] == 'g'
+    assert rows[weak]['missed'] == 5 and rows[good]['cells'][-2]['marks'] == [5]
+    assert c.get(f'/api/journal/{ta}/grid', params={'month': 'x'}).status_code == 400
+    off = c.get(f'/api/plan/{ta}/official').json()
+    st = [x['status'] for x in off]
+    assert st.count('keçilib') == 11 and st.count('gecikir') == 1 and off[0]['taught_dates'] == ['2026-09-15']
+    # KSQ: tapşırıq qeydi olmayan şagird – «daxil edilməyib», qiymət yoxdur (0 bal/«2» deyil)
+    k = c.post(f'/api/exams/{ta}', json={'kind': 'KSQ', 'no': 2, 'semester': 1, 'date': '2026-10-01',
+                                         'items': [{'n': 1, 'points': 2, 'standard': '1.2.5'}, {'n': 2, 'points': 2}]}).json()
+    res = c.put(f'/api/exams/{ta}/{k["id"]}/scores', json=[{'student_id': good, 'item_marks': [1, 1]},
+                                                          {'student_id': new, 'item_marks': None}]).json()
+    rr = {x['student_id']: x for x in res['rows']}
+    assert rr[good]['grade'] == 5 and rr[new]['grade'] is None and rr[new]['points'] is None
+    assert res['standards'] == [{'standard': '1.2.5', 'pct': 100.0}]

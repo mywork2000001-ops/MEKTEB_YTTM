@@ -35,7 +35,7 @@ export default function Tasks() {
             const now = Date.now(), o = Date.parse(t.opens_at), c = Date.parse(t.closes_at)
             const live = now >= o && now < c
             return (
-              <div className="jrow" key={t.id} style={{ gridTemplateColumns: 'minmax(0,1fr)', gap: 8 }}>
+              <div className="jrow cols" key={t.id} style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 8 }}>
                 <div className="row">
                   <b className="grow">{t.title}</b>
                   {now < o ? <Pill>gözlənilir</Pill> : live ? <Pill tone="ok">● açıqdır</Pill> : <Pill tone="info">bağlanıb</Pill>}
