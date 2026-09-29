@@ -7,14 +7,14 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import staff
 from ..domain.answers import check
 from ..domain.rules import summative_grade
-from ..models import BankFile, BankQuestion, BankSource, OnlineTask, TaskAttempt, User, now
+from ..models import BankFile, BankQuestion, BankSource, OnlineTask, TaskAttempt, TeachingAssignment, User, now
 from ..services import own_assignment, roster
 from .common import audit, get_or_404
 
@@ -56,7 +56,11 @@ class CustomQ(BaseModel):
     correct: int | None = None
     answer: str | None = None
     explanation: str | None = None
-    image: str | None = None
+    image: str | None = Field(None, max_length=5_000_000)       # data: URI şəkillər ola bilər
+    bank_id: int | None = None                  # redaktə olunmuş bank sualı – mənbə izi saxlanır
+    source: str | None = Field(None, max_length=40)
+    lesson: str | None = Field(None, max_length=400)
+    raw: dict | None = None                     # dəyişdirilməmiş sualın orijinal surəti (AZ/RU/EN tərcümələri qalsın)
 
     @model_validator(mode='after')
     def _v(self):
@@ -106,6 +110,18 @@ def _snapshot(db: Session, ids: list[int]) -> list[dict]:
              'explanation': q.explanation} for q, f in (rows[i] for i in ids)]
 
 
+RAW_KEYS = ('bank_id', 'source', 'lesson', 'kind', 'text', 'options', 'correct', 'answer', 'image', 'explanation', 'edited')
+
+
+def custom_snapshot(q: 'CustomQ') -> dict:
+    if q.raw and q.raw.get('kind') in ('mcq', 'open') and isinstance(q.raw.get('text'), dict):
+        return {k: q.raw[k] for k in RAW_KEYS if k in q.raw}
+    return {'bank_id': q.bank_id, 'source': q.source or 'müəllim', 'lesson': q.lesson, 'kind': q.kind,
+            'text': {'az': q.text}, 'options': [{'az': o} for o in q.options] if q.options else None,
+            'correct': q.correct if q.kind == 'mcq' else None, 'answer': q.answer if q.kind == 'open' else None,
+            'image': q.image, 'explanation': {'az': q.explanation} if q.explanation else None, 'edited': True}
+
+
 def task_out(t: OnlineTask) -> dict:
     return {'id': t.id, 'title': t.title, 'description': t.description, 'opens_at': aware(t.opens_at),
             'closes_at': aware(t.closes_at), 'duration_min': t.duration_min, 'questions': len(t.questions),
@@ -120,10 +136,7 @@ def create_task(ta_id: int, body: TaskIn, user: User = Depends(staff), db: Sessi
         bad = set(body.student_ids) - {s.id for s in roster(db, ta)}
         if bad or not body.student_ids:
             raise HTTPException(400, 'Şagirdlər bu sinifdən/qrupdan seçilməlidir')
-    qs = _snapshot(db, body.bank_ids) + [
-        {'bank_id': None, 'source': 'müəllim', 'lesson': None, 'kind': q.kind, 'text': {'az': q.text},
-         'options': [{'az': o} for o in q.options] if q.options else None, 'correct': q.correct, 'answer': q.answer,
-         'image': q.image, 'explanation': {'az': q.explanation} if q.explanation else None} for q in body.custom]
+    qs = _snapshot(db, body.bank_ids) + [custom_snapshot(q) for q in body.custom]
     t = OnlineTask(assignment_id=ta.id, title=body.title, description=body.description,
                    opens_at=aware(body.opens_at), closes_at=aware(body.closes_at), duration_min=body.duration_min,
                    questions=qs, shuffle=body.shuffle, show_answers=body.show_answers,
@@ -161,7 +174,11 @@ def task_results(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
     for s in targets:
         a = atts.get(s.id)
         status = 'başlamayıb' if not a else ('təhvil verib' if a.submitted_at else 'həll edir')
-        rows.append({'student_id': s.id, 'full_name': s.full_name, 'status': status,
+        answered = sum(1 for v in (a.answers or {}).values() if v not in (None, '')) if a else 0
+        rows.append({'student_id': s.id, 'full_name': s.full_name, 'portal_code': s.portal_code, 'status': status,
+                     'answered': answered, 'started_at': aware(a.started_at) if a else None,
+                     'deadline': aware(a.deadline) if a else None,
+                     'submitted_at': aware(a.submitted_at) if a and a.submitted_at else None,
                      'auto_submitted': bool(a and a.auto_submitted), 'correct': a.correct if a else None,
                      'total': a.total if a else None, 'grade': a.grade if a else None,
                      'pct': round(a.correct * 100 / a.total, 1) if a and a.submitted_at and a.total else None})
@@ -171,7 +188,8 @@ def task_results(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
         ok = sum(check(q, (a.answers or {}).get(str(i))) for a in done)
         per_q.append({'index': i, 'text': q['text'], 'kind': q['kind'], 'correct': ok, 'of': len(done),
                       'pct': round(ok * 100 / len(done), 1) if done else None})
-    return {'task': task_out(t), 'rows': rows, 'questions': per_q}
+    summary = {k: sum(r['status'] == k for r in rows) for k in ('başlamayıb', 'həll edir', 'təhvil verib')}
+    return {'task': task_out(t), 'rows': rows, 'questions': per_q, 'summary': summary, 'server_time': now()}
 
 
 @router.post('/{ta_id}/{task_id}/archive')
@@ -184,3 +202,65 @@ def archive_task(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
     audit(db, user, 'archive', 'task', t.id)
     db.commit()
     return {'ok': True}
+
+
+def _own_task(db: Session, user: User, ta_id: int, task_id: int) -> OnlineTask:
+    ta = own_assignment(db, user, ta_id)
+    t = get_or_404(db, OnlineTask, task_id, 'Tapşırıq')
+    if t.assignment_id != ta.id or t.archived_at:
+        raise HTTPException(404, 'Tapşırıq tapılmadı')
+    return t
+
+
+@router.get('/{ta_id}/{task_id}/full')
+def task_full(ta_id: int, task_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Redaktə üçün: tapşırıq + sualların tam surəti (düzgün cavablarla – yalnız müəllimə)."""
+    t = _own_task(db, user, ta_id, task_id)
+    started = db.scalar(select(func.count()).select_from(TaskAttempt).where(TaskAttempt.task_id == t.id)) or 0
+    return {**task_out(t), 'questions_full': t.questions, 'started': started}
+
+
+class TaskPatch(BaseModel):
+    title: str | None = Field(None, min_length=2, max_length=200)
+    description: str | None = Field(None, max_length=2000)
+    opens_at: dt.datetime | None = None
+    closes_at: dt.datetime | None = None
+    duration_min: int | None = Field(None, ge=1, le=300)
+    shuffle: bool | None = None
+    show_answers: Literal['after_close', 'after_submit', 'never'] | None = None
+    student_ids: list[int] | None = None
+    all_students: bool = False                   # True – «hamı» (student_ids = None)
+    questions: list[CustomQ] | None = None       # tam siyahı (yalnız heç kim başlamayıbsa)
+
+
+@router.patch('/{ta_id}/{task_id}')
+def update_task(ta_id: int, task_id: int, body: TaskPatch, user: User = Depends(staff), db: Session = Depends(get_db)):
+    t = _own_task(db, user, ta_id, task_id)
+    ta = db.get(TeachingAssignment, t.assignment_id)
+    data = body.model_dump(exclude_unset=True)
+    o = aware(body.opens_at) if body.opens_at else aware(t.opens_at)
+    c = aware(body.closes_at) if body.closes_at else aware(t.closes_at)
+    d = body.duration_min or t.duration_min
+    if c <= o:
+        raise HTTPException(400, 'Bağlanma vaxtı açılmadan sonra olmalıdır')
+    if d > (c - o).total_seconds() / 60:
+        raise HTTPException(400, 'Həll müddəti açıq qalma aralığından uzun ola bilməz')
+    if body.questions is not None:
+        if db.scalar(select(func.count()).select_from(TaskAttempt).where(TaskAttempt.task_id == t.id)):
+            raise HTTPException(409, 'Şagirdlər artıq başlayıb – suallar dəyişdirilə bilməz (ad və vaxt dəyişə bilər)')
+        if not body.questions or len(body.questions) > 100:
+            raise HTTPException(400, '1–100 sual olmalıdır')
+        t.questions = [custom_snapshot(q) for q in body.questions]
+    if body.all_students:
+        t.student_ids = None
+    elif 'student_ids' in data and body.student_ids is not None:
+        if not body.student_ids or set(body.student_ids) - {s.id for s in roster(db, ta)}:
+            raise HTTPException(400, 'Şagirdlər bu sinifdən/qrupdan seçilməlidir')
+        t.student_ids = body.student_ids
+    for k in ('title', 'description', 'duration_min', 'shuffle', 'show_answers'):
+        if k in data and data[k] is not None:
+            setattr(t, k, data[k])
+    t.opens_at, t.closes_at = o, c
+    audit(db, user, 'update', 'task', t.id, fields=sorted(data))
+    db.commit()
+    return task_out(t)

@@ -6,7 +6,7 @@ import { Field, Seg } from '../ui'
 export default function Join({ token }: { token: string }) {
   const [info, setInfo] = useState<{ school: string; class_name: string } | null>(null)
   const [err, setErr] = useState('')
-  const [f, setF] = useState({ full_name: '', birth_date: '', gender: 'Qız' as 'Qız' | 'Oğlan' })
+  const [f, setF] = useState({ full_name: '', gender: 'Qız' as 'Qız' | 'Oğlan' })
   const [done, setDone] = useState<{ portal_code: string; pin: string; full_name: string; class_name: string } | null>(null)
   const [busy, setBusy] = useState(false)
   useEffect(() => { get(`/api/join/${token}`).then(setInfo, e => setErr(e instanceof ApiError ? e.message : 'Xəta')) }, [token])
@@ -24,13 +24,12 @@ export default function Join({ token }: { token: string }) {
           <div className="stack">
             <p>Qeydiyyat tamamlandı, <b>{done.full_name}</b>!</p>
             <dl className="kv"><dt>Giriş kodu</dt><dd className="mono" style={{ fontSize: 22 }}>{done.portal_code}</dd><dt>PIN</dt><dd className="mono" style={{ fontSize: 22 }}>{done.pin}</dd></dl>
-            <p className="small" style={{ color: 'var(--bad)' }}>Bu məlumatı indi yazın və ya şəklini çəkin – bir daha göstərilməyəcək. PIN-i sonra Tənzimləmələrdə dəyişə bilərsiniz.</p>
-            <a className="btn primary" href="/">Daxil ol</a>
+            <p className="small" style={{ color: 'var(--bad)' }}>Siz artıq daxil olmusunuz. Başqa cihazdan girmək üçün kodu və PIN-i yazın və ya şəklini çəkin – bir daha göstərilməyəcək.</p>
+            <a className="btn primary" href="/">Davam et</a>
           </div>
         ) : info ? (
           <form className="stack" onSubmit={submit}>
-            <Field label="Soyadı, adı, ata adı" hint="məs. Əliyeva Aysel Rəşad qızı"><input value={f.full_name} onChange={e => setF({ ...f, full_name: e.target.value })} required minLength={5} autoComplete="name" /></Field>
-            <Field label="Doğum tarixi"><input type="date" value={f.birth_date} onChange={e => setF({ ...f, birth_date: e.target.value })} required /></Field>
+            <Field label="Soyadınız və adınız" hint="məs. Əliyeva Aysel"><input value={f.full_name} onChange={e => setF({ ...f, full_name: e.target.value })} required minLength={3} autoComplete="name" autoFocus /></Field>
             <Seg value={f.gender} onChange={g => setF({ ...f, gender: g })} options={[['Qız', 'Qız'], ['Oğlan', 'Oğlan']]} label="Cins" />
             {err && <div className="err" role="alert">{err}</div>}
             <button className="btn primary" disabled={busy}>{busy ? '…' : 'Qeydiyyatdan keç'}</button>

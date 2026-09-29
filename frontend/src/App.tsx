@@ -70,6 +70,7 @@ export default function App() {
                 <Route path="/" element={<S.Today />} />
                 <Route path="/lesson" element={<S.Lesson />} />
                 <Route path="/tasks" element={<S.Tasks />} />
+                <Route path="/t/:id" element={<S.Tasks />} />
                 <Route path="/materials" element={<S.Materials />} />
                 <Route path="/plan" element={<S.Plan />} />
                 <Route path="/results" element={<S.Results />} />
@@ -86,6 +87,7 @@ export default function App() {
                 <Route path="/plan" element={<T.Plan />} />
                 <Route path="/timetable" element={<T.Timetable />} />
                 <Route path="/tasks" element={<T.Tasks />} />
+                <Route path="/t/:id" element={<Navigate to="/tasks" replace />} />
                 <Route path="/materials" element={<T.Materials />} />
                 <Route path="/reports" element={<T.Reports />} />
                 <Route path="/chat" element={<Chat />} />

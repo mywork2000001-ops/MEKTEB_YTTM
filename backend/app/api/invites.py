@@ -7,7 +7,7 @@ from __future__ import annotations
 import datetime as dt
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -89,13 +89,13 @@ def join_info(token: str, db: Session = Depends(get_db)):
 
 class JoinIn(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    full_name: str = Field(min_length=5, max_length=200)
-    birth_date: dt.date
+    full_name: str = Field(min_length=3, max_length=200)          # ad və soyad kifayətdir
+    birth_date: dt.date | None = None
     gender: str | None = Field(None, pattern='^(Qız|Oğlan)$')
 
 
 @router.post('/join/{token}')
-def join(token: str, body: JoinIn, request: Request, db: Session = Depends(get_db)):
+def join(token: str, body: JoinIn, request: Request, response: Response, db: Session = Depends(get_db)):
     ip = request.client.host if request.client else '?'
     t = now().timestamp()
     hits = [x for x in _attempts.get(ip, []) if t - x < 600]
@@ -106,13 +106,16 @@ def join(token: str, body: JoinIn, request: Request, db: Session = Depends(get_d
     if not _valid(l):
         raise HTTPException(410, 'Link etibarsızdır və ya müddəti bitib – müəlliminizdən yeni link istəyin')
     name = ' '.join(body.full_name.split())
-    if len(name.split()) < 3:
-        raise HTTPException(400, 'Soyadı, adı və ata adını tam yazın (məs. Əliyeva Aysel Rəşad qızı)')
-    if not dt.date(1990, 1, 1) <= body.birth_date <= dt.date.today():
+    if len(name.split()) < 2:
+        raise HTTPException(400, 'Adınızı və soyadınızı yazın (məs. Əliyeva Aysel)')
+    if body.birth_date and not dt.date(1990, 1, 1) <= body.birth_date <= dt.date.today():
         raise HTTPException(400, 'Doğum tarixi düzgün deyil')
     c = db.get(SchoolClass, l.class_id)
-    if db.scalar(select(Student).where(Student.school_id == c.school_id, Student.full_name.ilike(name),
-                                       Student.birth_date == body.birth_date)):
+    dup = select(Student).where(Student.school_id == c.school_id, Student.class_id == c.id,
+                                Student.full_name.ilike(name + '%'), Student.archived_at.is_(None))
+    if body.birth_date:
+        dup = dup.where((Student.birth_date == body.birth_date) | Student.birth_date.is_(None))
+    if db.scalar(dup):
         raise HTTPException(409, 'Siz artıq qeydiyyatdasınız – giriş kodunuzu və PIN-i müəlliminizdən soruşun')
 
     class _S:                                   # add_students() gözlədiyi forma
@@ -127,4 +130,9 @@ def join(token: str, body: JoinIn, request: Request, db: Session = Depends(get_d
     db.add(AuditLog(action='self_register', entity='invite', entity_id=str(l.id), details={'name': name, 'class': c.name}))
     db.commit()
     _, _, code, pin = rows[0]
-    return {'full_name': name, 'class_name': c.name, 'portal_code': code, 'pin': pin}
+    acc = db.scalar(select(User).where(User.login == code))
+    from ..security import SESSION_COOKIE, SESSION_MAX_AGE, make_session
+    from ..config import settings
+    response.set_cookie(SESSION_COOKIE, make_session(acc.id, acc.password_hash), max_age=SESSION_MAX_AGE,
+                        httponly=True, samesite='lax', secure=settings().cookie_secure)   # dərhal daxil olur
+    return {'full_name': name, 'class_name': c.name, 'portal_code': code, 'pin': pin, 'logged_in': True}

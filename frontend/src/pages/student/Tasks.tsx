@@ -1,5 +1,6 @@
 // Şagird: vaxtlı tapşırıqlar. Taymer serverin vaxtına görə; cavablar avtomatik saxlanılır; vaxt bitəndə avtomatik təhvil.
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError, get, post, put } from '../../api'
 import { useT } from '../../i18n'
 import { AsyncBtn, Drawer, ErrorBox, gradeTone, Loading, Pill, toast, Top, useLoad } from '../../ui'
@@ -10,8 +11,19 @@ const hm = (s: string) => new Date(s).toLocaleString('az-AZ', { day: '2-digit', 
 
 export default function Tasks() {
   const t = useT()
+  const { id: linkId } = useParams()
+  const nav = useNavigate()
   const [list, err, loading, reload] = useLoad<any[]>(() => get('/api/portal/tasks'), [])
   const [solving, setSolving] = useState<number | null>(null)
+  // test linki (/t/:id): açıqdırsa birbaşa başlanır
+  useEffect(() => {
+    if (!linkId || !list) return
+    const x = list.find(q => q.id === Number(linkId))
+    if (!x) toast('Bu test sizin üçün deyil və ya silinib')
+    else if (x.status === 'açıq' || x.status === 'həll edilir') setSolving(x.id)
+    else toast(x.status === 'gözlənilir' ? `Test hələ açılmayıb: ${new Date(x.opens_at).toLocaleString('az-AZ')}` : `Test: ${x.status}`)
+    nav('/tasks', { replace: true })
+  }, [linkId, list])
   const [review, setReview] = useState<number | null>(null)
   if (solving) return <Solver id={solving} onDone={() => { setSolving(null); reload() }} />
   return (

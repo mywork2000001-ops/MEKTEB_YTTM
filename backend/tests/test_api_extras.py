@@ -26,12 +26,16 @@ def test_self_registration_link(world):
     r = anon.post(f"/api/join/{link['token']}", json=body).json()
     assert r['portal_code'] == 'XE-002' and len(r['pin']) == 4                                   # növbəti nömrə
     assert anon.post(f"/api/join/{link['token']}", json=body).status_code == 409                # təkrar
-    assert anon.post(f"/api/join/{link['token']}", json={**body, 'full_name': 'Tək Ad'}).status_code in (400, 422)
+    assert anon.post(f"/api/join/{link['token']}", json={**body, 'full_name': 'Təkad'}).status_code in (400, 422)
+    # yalnız ad + soyad, doğum tarixi yox → dərhal daxil olur
+    with TestClient(app) as kid:
+        r2 = kid.post(f"/api/join/{link['token']}", json={'full_name': 'Məmmədov Tural'})
+        assert r2.status_code == 200 and r2.json()['logged_in'] and kid.get('/api/auth/me').json()['role'] == 'student'
     assert anon.post(f"/api/join/{link['token']}", json={**body, 'pinkod': 'x'}).status_code == 422   # rəsmi İD qəbul edilmir
     with TestClient(app) as st:
         assert st.post('/api/auth/login', json={'login': 'xe-002', 'password': r['pin']}).status_code == 200
     lst = c.get(f'/api/classes/{cid}/invites').json()
-    assert lst[0]['uses'] == 1 and lst[0]['registered'] == ['Əliyeva Aysel Rəşad qızı']
+    assert lst[0]['uses'] == 2 and lst[0]['registered'][-1] == 'Əliyeva Aysel Rəşad qızı'
     c.post(f"/api/invites/{link['id']}/revoke")
     assert anon.get(f"/api/join/{link['token']}").status_code == 410
     assert anon.get('/api/join/yanlis-token').status_code == 410

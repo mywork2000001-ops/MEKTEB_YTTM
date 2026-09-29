@@ -201,3 +201,29 @@ def test_chat_files_in_database_storage(world, clock, monkeypatch):
     assert got.status_code == 200 and got.content == blob
     from app.storage import upload_limit
     assert upload_limit() == 50 * 1024 ** 2
+
+
+def test_task_edit_and_multi_source(world, clock):
+    admin, ta, cid, st, ids = setup(world)
+    edited = {'kind': 'mcq', 'text': '2+2=? (redaktə)', 'options': ['3', '4', '5'], 'correct': 1, 'bank_id': ids[0], 'source': 'p012', 'lesson': 'ÜSİ-1'}
+    r = admin.post(f'/api/tasks/{ta}', json={'title': 'Qarışıq', 'opens_at': '2026-09-29T15:00:00Z', 'closes_at': '2026-09-29T16:00:00Z',
+                                            'duration_min': 30, 'bank_ids': ids[1:], 'custom': [edited]})
+    assert r.status_code == 200 and r.json()['questions'] == 3
+    tid = r.json()['id']
+    full = admin.get(f'/api/tasks/{ta}/{tid}/full').json()
+    qs = full['questions_full']
+    ed = next(q for q in qs if q.get('edited'))
+    assert ed['text'] == {'az': '2+2=? (redaktə)'} and ed['bank_id'] == ids[0] and ed['source'] == 'p012'
+    # vaxt və ad dəyişir; sual siyahısı yenilənir (raw – toxunulmamış sual olduğu kimi qalır)
+    keep = [{'kind': q['kind'], 'text': q['text']['az'], 'options': [o['az'] for o in q['options']] if q['options'] else None,
+             'correct': q['correct'], 'answer': q['answer'], 'raw': q} for q in qs[:2]]
+    r = admin.patch(f'/api/tasks/{ta}/{tid}', json={'title': 'Yeni ad', 'closes_at': '2026-09-29T17:00:00Z', 'questions': keep})
+    assert r.status_code == 200 and r.json()['title'] == 'Yeni ad' and r.json()['questions'] == 2
+    assert admin.get(f'/api/tasks/{ta}/{tid}/full').json()['questions_full'][0] == qs[0]
+    assert admin.patch(f'/api/tasks/{ta}/{tid}', json={'duration_min': 500}).status_code == 422
+    # şagird başlayandan sonra suallar dəyişmir, ad dəyişir
+    clock.t = dt.datetime(2026, 9, 29, 15, 10, tzinfo=UTC)
+    s = student_client(st[0]['portal_code'], st[0]['initial_pin'])
+    s.post(f'/api/portal/tasks/{tid}/start')
+    assert admin.patch(f'/api/tasks/{ta}/{tid}', json={'questions': keep[:1]}).status_code == 409
+    assert admin.patch(f'/api/tasks/{ta}/{tid}', json={'title': 'Son ad'}).status_code == 200
