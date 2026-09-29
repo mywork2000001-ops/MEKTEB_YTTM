@@ -121,6 +121,7 @@ class StudentPatch(BaseModel):
     score_language: float | None = Field(None, ge=0, le=100)
     score_math: float | None = Field(None, ge=0, le=100)
     score_foreign: float | None = Field(None, ge=0, le=100)
+    portal_code: str | None = Field(None, min_length=3, max_length=16, pattern=r'^[A-Za-z0-9\-]+$')   # giriş ID-si
 
 
 def _student_for_write(db: Session, user: User, sid_: int) -> Student:
@@ -140,6 +141,16 @@ def update_student(sid_: int, body: StudentPatch, user: User = Depends(settings_
         data['full_name'] = ' '.join(data['full_name'].split())
     if 'full_name' in data or 'birth_date' in data:
         _dup(db, s.school_id, data.get('full_name', s.full_name), data.get('birth_date', s.birth_date), s.id)
+    if 'portal_code' in data:
+        code = data['portal_code'].upper()
+        if code != s.portal_code:
+            taken = db.scalar(select(Student.id).where(func.upper(Student.portal_code) == code, Student.id != s.id)) or \
+                db.scalar(select(User.id).where(func.upper(User.login) == code, User.id != (s.user_id or 0)))
+            if taken:
+                raise HTTPException(409, f'«{code}» giriş kodu artıq istifadə olunur')
+            if s.user_id:
+                db.get(User, s.user_id).login = code          # şagird yeni kodla daxil olur
+        data['portal_code'] = code
     if 'class_id' in data and data['class_id'] != s.class_id:
         _class_for_write(db, user, data['class_id'])
         db.query(GroupMember).filter(GroupMember.student_id == s.id).delete()   # köhnə sinfin qruplarından çıxır
@@ -152,10 +163,16 @@ def update_student(sid_: int, body: StudentPatch, user: User = Depends(settings_
     return student_out(s, db.get(SchoolClass, s.class_id).name)
 
 
+class PinIn(BaseModel):
+    pin: str | None = Field(None, pattern=r'^\d{4}$')        # boş – təsadüfi PIN
+
+
 @router.post('/{sid_}/reset-pin')
-def reset_pin(sid_: int, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+def reset_pin(sid_: int, body: PinIn | None = None, user: User = Depends(settings_unlocked),
+              db: Session = Depends(get_db)):
+    """Yeni PIN: müəllim özü yazır (4 rəqəm) və ya təsadüfi yaradılır. Vərəqədə çap üçün ilkin PIN kimi saxlanır."""
     s = _student_for_write(db, user, sid_)
-    pin = new_pin()
+    pin = body.pin if body and body.pin else new_pin()
     acc = db.get(User, s.user_id) if s.user_id else None
     if acc is None:
         acc = User(role=Role.student, login=s.portal_code, full_name=s.full_name, school_id=s.school_id,
@@ -240,6 +257,54 @@ def reset_class_pins(cid: int, only_missing: bool = False, user: User = Depends(
     audit(db, user, 'update', 'class_pins', cid, count=len(out))
     db.commit()
     return {'class_name': c.name, 'students': out}
+
+
+@router.post('/login-sheets')
+def login_sheets_all(fill_missing: bool = True, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    """Bütün siniflərim üçün giriş vərəqələri bir sənəddə. fill_missing: ilkin PIN-i olmayan (heç vaxt verilməyən və
+    ya itən) şagirdlərə yeni PIN yaradılır; şagirdin özünün dəyişdiyi PIN-ə toxunulmur deyə vərəqədə «dəyişdirilib» qalır
+    – yalnız hesabı olmayan və ya ilkin PIN-i heç saxlanmayan şagirdlərə verilir."""
+    from .common import my_class_ids
+    mine = my_class_ids(db, user)
+    st = select(SchoolClass).where(SchoolClass.school_id == user.school_id, SchoolClass.archived_at.is_(None),
+                                   SchoolClass.kind != 'qrup')
+    if mine is not None:
+        st = st.where(SchoolClass.id.in_(mine))
+    out, created = [], 0
+    for c in db.scalars(st.order_by(SchoolClass.name)):
+        rows = []
+        for s in db.scalars(select(Student).where(Student.class_id == c.id, Student.archived_at.is_(None))
+                            .order_by(Student.full_name)):
+            pin = pin_decrypt(s.initial_pin)
+            acc = db.get(User, s.user_id) if s.user_id else None
+            if fill_missing and pin is None and (acc is None or _pin_unknown(db, s)):
+                pin = new_pin()
+                if acc is None:
+                    acc = User(role=Role.student, login=s.portal_code, full_name=s.full_name, school_id=s.school_id,
+                               password_hash='')
+                    db.add(acc)
+                    db.flush()
+                    s.user_id = acc.id
+                acc.password_hash = hash_password(pin)
+                acc.failed_logins, acc.locked_until = 0, None
+                s.initial_pin = pin_encrypt(pin)
+                created += 1
+            rows.append({'full_name': s.full_name, 'portal_code': s.portal_code, 'pin': pin})
+        if rows:
+            out.append({'class_name': c.name, 'students': rows})
+    audit(db, user, 'export', 'login_sheets_all', None, classes=len(out), new_pins=created)
+    db.commit()
+    return {'classes': out, 'new_pins': created}
+
+
+def _pin_unknown(db: Session, s: Student) -> bool:
+    """PIN heç kimə məlum deyil (məs. UTİS importundan sonra vərəqə çap olunmayıb) – yenisini vermək təhlükəsizdir.
+    Şagird özü qeydiyyatdan keçibsə (created_by boş – PIN ekranda göstərilib) və ya heç olmasa bir dəfə daxil olubsa /
+    PIN-ini dəyişibsə, PIN-i bilir – ona toxunulmur (hesabından kənarda qalmasın)."""
+    from ..models import AuditLog
+    if s.created_by is None:
+        return False
+    return not db.scalar(select(AuditLog.id).where(AuditLog.user_id == s.user_id).limit(1))
 
 
 @router.get('/by-class/{cid}/login-sheet')

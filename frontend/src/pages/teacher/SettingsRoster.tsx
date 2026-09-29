@@ -270,6 +270,8 @@ function StudentsTab() {
         {cid && <SlipsButton cid={cid} />}
         {cid && <button className="btn" aria-pressed={scores} onClick={() => setScores(!scores)}>{scores ? 'Siyahıya qayıt' : 'IX buraxılış ballarını redaktə et'}</button>}
       </div>
+      <div className="row" style={{ marginBottom: 12 }}><AllSlipsButton />
+        <span className="small muted">Şagirdin ID və PIN-ini dəyişmək: sinfi seçin → şagirdi açın → «Giriş məlumatları».</span></div>
       {me?.role === 'admin' && <RosterImport onDone={reload} />}
       <ErrorBox error={err} />
       {!cid ? <PickFirst /> : scores ? <ScoresEditor rows={rows || []} onDone={() => { reload(); setScores(false) }} /> : (
@@ -295,18 +297,38 @@ function StudentsTab() {
   )
 }
 
+type Sheet = { class_name: string; students: { full_name: string; portal_code: string; pin: string | null }[] }
+
+/** Bir sinfin giriş vərəqələri (kəsilən kartlar) + müəllim nüsxəsi (cədvəl). */
+function sheetBody(sheet: Sheet): string {
+  const site = location.origin
+  const slips = sheet.students.map(x => `<div class="slip"><div class="n">${esc(x.full_name)} <span class="muted">· ${esc(sheet.class_name)}</span></div>
+    <div class="k">ID: ${esc(x.portal_code)} &nbsp; PIN: ${esc(x.pin ?? '— (şagird bilir)')}</div>
+    <div class="muted">${esc(site)} → «Şagird» → ID və PIN. PIN-i ilk girişdən sonra dəyişin.</div></div>`).join('')
+  return head(`${sheet.class_name} sinfi – Müəllim köməkçisi: giriş vərəqələri`, 'Kəsib hər şagirdə öz vərəqəsini verin') + `<div class="slips">${slips}</div>` +
+    `<div class="pb"></div>` + head(`${sheet.class_name} – giriş kodları (müəllim nüsxəsi)`) +
+    table(['№', 'Şagird', 'ID (giriş kodu)', 'PIN'], sheet.students.map((x, i) => [i + 1, x.full_name, x.portal_code, x.pin ?? 'şagird bilir / dəyişib']))
+}
+
+/** Bütün siniflərim üçün bir sənəd: PIN-i heç kimə məlum olmayanlara PIN avtomatik yaradılır, hər sinif ayrı səhifədə. */
+function AllSlipsButton() {
+  const [info, setInfo] = useState<string | null>(null)
+  return (
+    <span className="row">
+      <AsyncBtn className="btn primary" onClick={async () => {
+        const r = await post<{ classes: Sheet[]; new_pins: number }>('/api/students/login-sheets')
+        if (!r.classes.length) { setInfo('Siniflərinizdə şagird yoxdur.'); return }
+        setInfo(`${r.classes.length} sinif, ${r.classes.reduce((a, c) => a + c.students.length, 0)} şagird` + (r.new_pins ? ` · ${r.new_pins} şagirdə yeni PIN verildi` : ''))
+        printDoc({ title: 'Giriş vərəqələri – bütün siniflər', body: r.classes.map(sheetBody).join('<div class="pb"></div>') })
+      }}>Giriş vərəqələri – bütün siniflər (ID + PIN)</AsyncBtn>
+      {info && <span className="small muted">{info}</span>}
+    </span>
+  )
+}
+
 function SlipsButton({ cid }: { cid: number }) {
   const [missing, setMissing] = useState<number | null>(null)
-  const print = (sheet: { class_name: string; students: { full_name: string; portal_code: string; pin: string | null }[] }) => {
-    const site = location.origin
-    const slips = sheet.students.map(x => `<div class="slip"><div class="n">${esc(x.full_name)}</div>
-      <div class="k">Kod: ${esc(x.portal_code)} &nbsp; PIN: ${esc(x.pin ?? '— (dəyişdirilib)')}</div>
-      <div class="muted">${esc(site)} → «Şagird» → kod və PIN. PIN-i ilk girişdən sonra dəyişin.</div></div>`).join('')
-    printDoc({ title: `${sheet.class_name} – giriş vərəqələri`, body:
-      head(`${sheet.class_name} sinfi – Müəllim köməkçisi: giriş vərəqələri`, 'Kəsib hər şagirdə öz vərəqəsini verin') + `<div class="slips">${slips}</div>` +
-      `<div class="pb"></div>` + head(`${sheet.class_name} – giriş kodları (müəllim nüsxəsi)`) +
-      table(['№', 'Şagird', 'Giriş kodu', 'İlkin PIN'], sheet.students.map((x, i) => [i + 1, x.full_name, x.portal_code, x.pin ?? 'dəyişdirilib'])) })
-  }
+  const print = (sheet: Sheet) => printDoc({ title: `${sheet.class_name} – giriş vərəqələri`, body: sheetBody(sheet) })
   const run = async () => {
     const sheet = await get(`/api/students/by-class/${cid}/login-sheet`)
     const n = sheet.students.filter((x: any) => !x.pin).length
@@ -356,6 +378,32 @@ function ScoresEditor({ rows, onDone }: { rows: Stud[]; onDone: () => void }) {
   )
 }
 
+/** Şagirdin giriş məlumatları: ID (giriş kodu) və PIN – müəllim özü yazır və ya təsadüfi yaradır. */
+function LoginFields({ s, onChanged }: { s: Stud; onChanged: () => void }) {
+  const [code, setCode] = useState(s.portal_code)
+  const [pin, setPin] = useState('')
+  const [shown, setShown] = useState<string | null>(null)
+  const setPinReq = async (value: string | null) => {
+    const r = await post(`/api/students/${s.id}/reset-pin`, value ? { pin: value } : {})
+    setShown(r.pin); setPin('')
+  }
+  return (
+    <fieldset><legend>Giriş məlumatları</legend>
+      <div className="fg">
+        <Field label="Giriş kodu (ID)" hint="hərf, rəqəm, «-»">
+          <span className="row" style={{ flexWrap: 'nowrap' }}><input value={code} maxLength={16} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))} />
+            <AsyncBtn className="btn sm" disabled={code === s.portal_code || code.length < 3} ok="Giriş kodu dəyişdi"
+              onClick={async () => { await patch(`/api/students/${s.id}`, { portal_code: code }); onChanged() }}>Saxla</AsyncBtn></span></Field>
+        <Field label="Yeni PIN" hint="4 rəqəm; boş – təsadüfi">
+          <span className="row" style={{ flexWrap: 'nowrap' }}><input inputMode="numeric" value={pin} maxLength={4} placeholder="••••" onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} />
+            <AsyncBtn className="btn sm" disabled={pin.length > 0 && pin.length < 4} onClick={() => setPinReq(pin || null)}>{pin ? 'Təyin et' : 'Təsadüfi'}</AsyncBtn></span></Field>
+      </div>
+      {shown && <p className="small" style={{ margin: '6px 0 0' }}>Yeni PIN: <b style={{ fontFamily: 'monospace', fontSize: 16 }}>{shown}</b> – giriş vərəqəsində də çap olunacaq. Şagirdin köhnə PIN-i artıq işləmir.</p>}
+      <p className="small muted" style={{ margin: '6px 0 0' }}>Kod dəyişəndə şagird yeni kodla daxil olur (köhnə kod işləmir).</p>
+    </fieldset>
+  )
+}
+
 function StudentForm({ s, classId, classes, onClose, onDone }: { s: Stud | null; classId: number; classes: Cls[]; onClose: () => void; onDone: (pin?: { code: string; pin: string; name: string }) => void }) {
   const [f, setF] = useState({ full_name: s?.full_name || '', class_id: s?.class_id || classId, birth_date: s?.birth_date || '', gender: s?.gender || '',
     score_language: s?.score_language ?? '', score_math: s?.score_math ?? '', score_foreign: s?.score_foreign ?? '' })
@@ -384,6 +432,7 @@ function StudentForm({ s, classId, classes, onClose, onDone }: { s: Stud | null;
           <Field label="IX: Xarici dil"><input inputMode="decimal" value={f.score_foreign} onChange={e => setF({ ...f, score_foreign: e.target.value })} /></Field>
         </div>
         <p className="small muted">Uşaq İD, pinkod və şəxsiyyət vəsiqəsi daxil edilmir və saxlanmır.</p>
+        {s && <LoginFields s={s} onChanged={() => onDone()} />}
         <ErrorBox error={err} />
         {s && (confirm
           ? <ConfirmName name={s.full_name} action="Arxivə göndər" onCancel={() => setConfirm(false)} onConfirm={async typed => { await post(`/api/students/${s.id}/archive`, { confirm: typed }); toast('Arxivə göndərildi'); onDone() }} />
