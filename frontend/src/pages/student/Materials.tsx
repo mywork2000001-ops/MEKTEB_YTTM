@@ -46,7 +46,11 @@ function Card({ m, onDone }: { m: any; onDone: () => void }) {
           {!locked && (
             <>
               <textarea className="sel" style={{ minHeight: 70, padding: 10 }} placeholder="Cavabınız (istəyə görə)" value={text} onChange={e => setText(e.target.value)} />
-              <input type="file" accept="image/*,application/pdf" onChange={e => setFile(e.target.files?.[0] || null)} />
+              {/* brauzerin öz düyməsi telefonun dilində («Выберите файл») çıxır – Azərbaycan dilində öz düyməmiz */}
+              <label className="btn" style={{ alignSelf: 'flex-start', cursor: 'pointer' }}>
+                <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={e => setFile(e.target.files?.[0] || null)} />
+                📷 {file ? 'Başqa şəkil / fayl seç' : 'Şəkil və ya fayl seç'}</label>
+              {file && <span className="small">Seçildi: <b>{file.name}</b></span>}
               <AsyncBtn className="btn primary" disabled={!text.trim() && !file} onClick={async () => {
                 const fd = new FormData(); if (text.trim()) fd.append('text', text); if (file) fd.append('file', file)
                 const r = await api(`/api/portal/materials/${m.id}/submit`, { method: 'POST', form: fd })
