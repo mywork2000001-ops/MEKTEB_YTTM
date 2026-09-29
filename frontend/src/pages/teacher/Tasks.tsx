@@ -7,7 +7,7 @@ import { LessonSelect, useMyLessons, usePick } from './common'
 import TaskEditor from './TaskEditor'
 import { esc, head, mathHtml, printDoc, table } from '../../print'
 
-type Task = { id: number; title: string; opens_at: string; closes_at: string; duration_min: number; questions: number; submitted: number; avg_pct: number | null; student_ids: number[] | null }
+type Task = { id: number; title: string; created_at?: string | null; opens_at: string; closes_at: string; duration_min: number; questions: number; submitted: number; avg_pct: number | null; student_ids: number[] | null }
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 const dt = (s: string) => new Date(s).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const hm = (s: string) => new Date(s).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
@@ -40,7 +40,7 @@ export default function Tasks() {
                   <b className="grow">{t.title}</b>
                   {now < o ? <Pill>gözlənilir</Pill> : live ? <Pill tone="ok">● açıqdır</Pill> : <Pill tone="info">bağlanıb</Pill>}
                 </div>
-                <span className="small muted">{dt(t.opens_at)} – {hm(t.closes_at)} · {t.duration_min} dəq · {t.questions} sual · {t.student_ids ? `${t.student_ids.length} şagird` : 'bütün sinif'} · {t.submitted} təhvil · orta {fmt(t.avg_pct)}%</span>
+                <span className="small muted">{dt(t.opens_at)} – {hm(t.closes_at)} · {t.duration_min} dəq · {t.questions} sual · {t.student_ids ? `${t.student_ids.length} şagird` : 'bütün sinif'} · {t.submitted} təhvil · orta {fmt(t.avg_pct)}%{t.created_at ? ` · yaradılıb: ${dt(t.created_at)}` : ''}</span>
                 <div className="row" style={{ gap: 6 }}>
                   <button className={'btn sm' + (live ? ' primary' : '')} onClick={() => setWatch(t.id)}>{live ? 'Canlı izlə' : 'Nəticələr'}</button>
                   <button className="btn sm" onClick={() => setShare(t)}>Link göndər</button>

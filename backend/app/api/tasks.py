@@ -126,7 +126,8 @@ def task_out(t: OnlineTask) -> dict:
     return {'id': t.id, 'title': t.title, 'description': t.description, 'opens_at': aware(t.opens_at),
             'closes_at': aware(t.closes_at), 'duration_min': t.duration_min, 'questions': len(t.questions),
             'shuffle': t.shuffle, 'show_answers': t.show_answers, 'student_ids': t.student_ids,
-            'archived': t.archived_at is not None}
+            'archived': t.archived_at is not None,
+            'created_at': aware(t.created_at) if t.created_at else None}   # kim/nə vaxt – təsadüfi yaradılanı tanımaq üçün
 
 
 @router.post('/{ta_id}')
