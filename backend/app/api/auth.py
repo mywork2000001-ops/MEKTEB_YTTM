@@ -1,7 +1,7 @@
 """Giriş / çıxış. Müəllim: login + parol; şagird: portal kodu (XE-001) + 4 rəqəmli PIN."""
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -10,7 +10,7 @@ from ..config import settings
 from ..db import get_db
 from ..deps import current_user
 from ..models import AuditLog, Role, User
-from ..security import (LOCK_MINUTES, MAX_FAILED, SESSION_COOKIE, SESSION_MAX_AGE, hash_password, is_locked,
+from ..security import (LOCK_MINUTES, MAX_FAILED, SESSION_COOKIE, SESSION_MAX_AGE, SESSION_RENEW_AFTER, read_qr_token, session_age, hash_password, is_locked,
                         make_session, verify_password)
 
 router = APIRouter(prefix='/api/auth', tags=['auth'])
@@ -71,8 +71,31 @@ def logout(response: Response):
 
 
 @router.get('/me', response_model=MeOut)
-def me(user: User = Depends(current_user)):
+def me(response: Response, user: User = Depends(current_user),
+       token: str | None = Cookie(None, alias=SESSION_COOKIE)):
+    """Sürüşən sessiya: istifadə olunduqca yenilənir – telefonda yenidən daxil olmaq lazım gəlmir."""
+    age = session_age(token)
+    if age is not None and age > SESSION_RENEW_AFTER:
+        _set_cookie(response, user)
     return _me(user)
+
+
+class QrIn(BaseModel):
+    token: str = Field(min_length=10, max_length=300)
+
+
+@router.post('/qr', response_model=MeOut)
+def qr_login(body: QrIn, response: Response, db: Session = Depends(get_db)):
+    """Giriş vərəqəsindəki QR kod – şagird kodu və PIN yazmadan daxil olur."""
+    data = read_qr_token(body.token)
+    u = db.get(User, data['u']) if data else None
+    if not u or u.archived_at or u.role != Role.student or u.password_hash[-12:] != data.get('p'):
+        raise HTTPException(401, 'QR kod etibarsızdır (PIN dəyişdirilib və ya vərəqə köhnədir) – kod və PIN ilə daxil olun')
+    u.failed_logins, u.locked_until = 0, None
+    db.add(AuditLog(user_id=u.id, action='login', entity='user', entity_id=str(u.id), details={'via': 'qr'}))
+    db.commit()
+    _set_cookie(response, u)
+    return _me(u)
 
 
 class PasswordIn(BaseModel):

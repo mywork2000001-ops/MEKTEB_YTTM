@@ -15,7 +15,7 @@ from ..db import get_db
 from ..deps import staff
 from ..domain.rules import level
 from ..models import GroupMember, Role, SchoolClass, Student, User
-from ..security import hash_password, new_pin, pin_decrypt, pin_encrypt
+from ..security import hash_password, make_qr_token, new_pin, pin_decrypt, pin_encrypt
 from .common import (ConfirmIn, audit, can_see_class, check_confirm, get_or_404, my_class_ids, need_school,
                      settings_unlocked)
 
@@ -253,7 +253,7 @@ def reset_class_pins(cid: int, only_missing: bool = False, user: User = Depends(
         acc.password_hash = hash_password(pin)
         acc.failed_logins, acc.locked_until = 0, None
         s.initial_pin = pin_encrypt(pin)
-        out.append({'full_name': s.full_name, 'portal_code': s.portal_code, 'pin': pin})
+        out.append({'full_name': s.full_name, 'portal_code': s.portal_code, 'pin': pin, 'qr': _qr(db, s, pin)})
     audit(db, user, 'update', 'class_pins', cid, count=len(out))
     db.commit()
     return {'class_name': c.name, 'students': out}
@@ -289,12 +289,20 @@ def login_sheets_all(fill_missing: bool = True, user: User = Depends(settings_un
                 acc.failed_logins, acc.locked_until = 0, None
                 s.initial_pin = pin_encrypt(pin)
                 created += 1
-            rows.append({'full_name': s.full_name, 'portal_code': s.portal_code, 'pin': pin})
+            rows.append({'full_name': s.full_name, 'portal_code': s.portal_code, 'pin': pin, 'qr': _qr(db, s, pin)})
         if rows:
             out.append({'class_name': c.name, 'students': rows})
     audit(db, user, 'export', 'login_sheets_all', None, classes=len(out), new_pins=created)
     db.commit()
     return {'classes': out, 'new_pins': created}
+
+
+def _qr(db: Session, s: Student, pin: str | None) -> str | None:
+    """Vərəqədəki QR (avtomatik giriş) – yalnız ilkin PIN məlum olanda: PIN-ini özü dəyişən şagirdin əvəzinə daxil olunmasın."""
+    if not pin or not s.user_id:
+        return None
+    acc = db.get(User, s.user_id)
+    return make_qr_token(acc.id, acc.password_hash) if acc else None
 
 
 def _pin_unknown(db: Session, s: Student) -> bool:
@@ -313,7 +321,8 @@ def login_sheet(cid: int, user: User = Depends(settings_unlocked), db: Session =
     c = get_or_404(db, SchoolClass, cid, 'Sinif')
     if c.kind == 'qrup' or not can_see_class(db, user, c):
         raise HTTPException(403, 'Bu sinif sizin siniflərinizdən deyil')
-    rows = [{'full_name': s.full_name, 'portal_code': s.portal_code, 'pin': pin_decrypt(s.initial_pin)}
+    rows = [{'full_name': s.full_name, 'portal_code': s.portal_code, 'pin': pin_decrypt(s.initial_pin),
+             'qr': _qr(db, s, pin_decrypt(s.initial_pin))}
             for s in db.scalars(select(Student).where(Student.class_id == cid, Student.archived_at.is_(None))
                                 .order_by(Student.full_name))]
     audit(db, user, 'export', 'login_sheet', cid, count=len(rows))

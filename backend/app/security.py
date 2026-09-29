@@ -14,7 +14,9 @@ _ph = PasswordHasher()
 # Şagird PIN-i (4 rəqəm) üçün yüngül parametrlər: onlayn təxmini hesab kilidi qoruyur; pulsuz serverdə 76 PIN tez hazırlanır
 _ph_pin = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
 SESSION_COOKIE = 'mk_session'
-SESSION_MAX_AGE = 60 * 60 * 24 * 14           # 14 gün
+SESSION_MAX_AGE = 60 * 60 * 24 * 180          # 180 gün – hər istifadədə yenilənir (telefonda bir dəfə daxil ol)
+SESSION_RENEW_AFTER = 60 * 60 * 24             # sessiya 1 gündən köhnədirsə, /me zamanı yenisi verilir
+QR_MAX_AGE = 60 * 60 * 24 * 365                # giriş vərəqəsindəki QR bir tədris ili etibarlıdır
 MAX_FAILED = 5                                 # 5 səhv cəhd -> 15 dəqiqə kilid
 LOCK_MINUTES = 15
 
@@ -44,6 +46,33 @@ def read_session(token: str | None) -> dict | None:
         return None
     try:
         return _ser().loads(token, max_age=SESSION_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return None
+
+
+def session_age(token: str | None) -> float | None:
+    """Sessiyanın yaşı (saniyə) – yeniləmə üçün."""
+    if not token:
+        return None
+    try:
+        _, ts = _ser().loads(token, max_age=SESSION_MAX_AGE, return_timestamp=True)
+        return (dt.datetime.now(dt.timezone.utc) - ts).total_seconds()
+    except (BadSignature, SignatureExpired):
+        return None
+
+
+def _qr() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(settings().secret_key, salt='mk-qr-login')
+
+
+def make_qr_token(user_id: int, pw_hash: str) -> str:
+    """Giriş vərəqəsindəki QR: kamera ilə oxunur → avtomatik giriş. PIN dəyişəndə etibarsız olur (hash barmaq izi)."""
+    return _qr().dumps({'u': user_id, 'p': pw_hash[-12:]})
+
+
+def read_qr_token(token: str) -> dict | None:
+    try:
+        return _qr().loads(token, max_age=QR_MAX_AGE)
     except (BadSignature, SignatureExpired):
         return None
 

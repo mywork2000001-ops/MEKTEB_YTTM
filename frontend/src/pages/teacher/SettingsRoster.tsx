@@ -297,14 +297,23 @@ function StudentsTab() {
   )
 }
 
-type Sheet = { class_name: string; students: { full_name: string; portal_code: string; pin: string | null }[] }
+type Sheet = { class_name: string; students: { full_name: string; portal_code: string; pin: string | null; qr?: string | null }[] }
 
-/** Bir sinfin giriş vərəqələri (kəsilən kartlar) + müəllim nüsxəsi (cədvəl). */
-function sheetBody(sheet: Sheet): string {
+/** QR kod (SVG): telefon kamerası ilə oxunur → /q/<token> → avtomatik giriş (kod və PIN yazmadan). */
+async function qrSvg(token: string): Promise<string> {
+  const QR = await import('qrcode')
+  return QR.toString(`${location.origin}/q/${token}`, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' })
+}
+
+/** Bir sinfin giriş vərəqələri (kəsilən kartlar, QR ilə) + müəllim nüsxəsi (cədvəl). */
+async function sheetBody(sheet: Sheet): Promise<string> {
   const site = location.origin
-  const slips = sheet.students.map(x => `<div class="slip"><div class="n">${esc(x.full_name)} <span class="muted">· ${esc(sheet.class_name)}</span></div>
+  const qrs = await Promise.all(sheet.students.map(x => (x.qr ? qrSvg(x.qr) : Promise.resolve(''))))
+  const slips = sheet.students.map((x, i) => `<div class="slip" style="display:flex;gap:4mm;align-items:center">
+    <div style="flex:1;min-width:0"><div class="n">${esc(x.full_name)} <span class="muted">· ${esc(sheet.class_name)}</span></div>
     <div class="k">ID: ${esc(x.portal_code)} &nbsp; PIN: ${esc(x.pin ?? '— (şagird bilir)')}</div>
-    <div class="muted">${esc(site)} → «Şagird» → ID və PIN. PIN-i ilk girişdən sonra dəyişin.</div></div>`).join('')
+    <div class="muted">${qrs[i] ? 'Telefonun kamerasını QR-a tutun – avtomatik daxil olursunuz. Və ya: ' : ''}${esc(site)} → «Şagird» → ID və PIN.</div></div>
+    ${qrs[i] ? `<div style="width:24mm;height:24mm;flex:none">${qrs[i].replace('<svg ', '<svg style="width:24mm;height:24mm" ')}</div>` : ''}</div>`).join('')
   return head(`${sheet.class_name} sinfi – Müəllim köməkçisi: giriş vərəqələri`, 'Kəsib hər şagirdə öz vərəqəsini verin') + `<div class="slips">${slips}</div>` +
     `<div class="pb"></div>` + head(`${sheet.class_name} – giriş kodları (müəllim nüsxəsi)`) +
     table(['№', 'Şagird', 'ID (giriş kodu)', 'PIN'], sheet.students.map((x, i) => [i + 1, x.full_name, x.portal_code, x.pin ?? 'şagird bilir / dəyişib']))
@@ -319,7 +328,7 @@ function AllSlipsButton() {
         const r = await post<{ classes: Sheet[]; new_pins: number }>('/api/students/login-sheets')
         if (!r.classes.length) { setInfo('Siniflərinizdə şagird yoxdur.'); return }
         setInfo(`${r.classes.length} sinif, ${r.classes.reduce((a, c) => a + c.students.length, 0)} şagird` + (r.new_pins ? ` · ${r.new_pins} şagirdə yeni PIN verildi` : ''))
-        printDoc({ title: 'Giriş vərəqələri – bütün siniflər', body: r.classes.map(sheetBody).join('<div class="pb"></div>') })
+        printDoc({ title: 'Giriş vərəqələri – bütün siniflər', body: (await Promise.all(r.classes.map(sheetBody))).join('<div class="pb"></div>') })
       }}>Giriş vərəqələri – bütün siniflər (ID + PIN)</AsyncBtn>
       {info && <span className="small muted">{info}</span>}
     </span>
@@ -328,7 +337,7 @@ function AllSlipsButton() {
 
 function SlipsButton({ cid }: { cid: number }) {
   const [missing, setMissing] = useState<number | null>(null)
-  const print = (sheet: Sheet) => printDoc({ title: `${sheet.class_name} – giriş vərəqələri`, body: sheetBody(sheet) })
+  const print = async (sheet: Sheet) => printDoc({ title: `${sheet.class_name} – giriş vərəqələri`, body: await sheetBody(sheet) })
   const run = async () => {
     const sheet = await get(`/api/students/by-class/${cid}/login-sheet`)
     const n = sheet.students.filter((x: any) => !x.pin).length

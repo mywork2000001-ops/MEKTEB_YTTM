@@ -5,6 +5,7 @@ import { I18nCtx, type Lang } from './i18n'
 import { Layout } from './Layout'
 import Login from './pages/Login'
 import Join from './pages/Join'
+import QrLogin from './pages/QrLogin'
 import { Loading, ToastHost } from './ui'
 
 // Yeni yayımdan sonra açıq səhifə köhnə hissəni (chunk) tapmırsa – bir dəfə avtomatik yenilənir (ağ ekran olmasın)
@@ -58,6 +59,8 @@ export default function App() {
   const lang: Lang = me?.language || guestLang
   const join = location.pathname.match(/^\/join\/([\w-]+)$/)
   if (join) return <I18nCtx.Provider value={lang}><Join token={join[1]} /><ToastHost /></I18nCtx.Provider>
+  const qr = location.pathname.match(/^\/q\/([\w.-]+)$/)          // giriş vərəqəsindəki QR – avtomatik giriş
+  if (qr) return <I18nCtx.Provider value={lang}><QrLogin token={qr[1]} /></I18nCtx.Provider>
   if (!ready) return <Loading />
   return (
     <I18nCtx.Provider value={lang}>
