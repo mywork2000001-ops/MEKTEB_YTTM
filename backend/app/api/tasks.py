@@ -150,10 +150,12 @@ def create_task(ta_id: int, body: TaskIn, user: User = Depends(staff), db: Sessi
 
 
 @router.get('/{ta_id}')
-def list_tasks(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+def list_tasks(ta_id: int, archived: bool = False, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """archived=true – silinmiş (arxivdəki) testlər: geri qaytarmaq və ya yenidən göndərmək üçün."""
     ta = own_assignment(db, user, ta_id)
     out = []
-    for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, OnlineTask.archived_at.is_(None))
+    flt = OnlineTask.archived_at.is_not(None) if archived else OnlineTask.archived_at.is_(None)
+    for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, flt)
                         .order_by(OnlineTask.opens_at.desc())):
         expire_due(db, t)
         done = db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.submitted_at.is_not(None))).all()
@@ -201,6 +203,75 @@ def archive_task(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
         raise HTTPException(404, 'Tapşırıq tapılmadı')
     t.archived_at = now()
     audit(db, user, 'archive', 'task', t.id)
+    db.commit()
+    return {'ok': True}
+
+
+@router.post('/{ta_id}/{task_id}/restore')
+def restore_task(ta_id: int, task_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Silinmiş testi geri qaytarır (nəticələr və cəhdlər itmir)."""
+    own_assignment(db, user, ta_id)
+    t = get_or_404(db, OnlineTask, task_id, 'Tapşırıq')
+    if t.assignment_id != ta_id:
+        raise HTTPException(404, 'Tapşırıq tapılmadı')
+    t.archived_at = None
+    audit(db, user, 'restore', 'task', t.id)
+    db.commit()
+    return task_out(t)
+
+
+class CopyIn(BaseModel):
+    target_ta_id: int                              # eyni və ya başqa sinif/qrup (müəllimin öz dərsi)
+    opens_at: dt.datetime
+    closes_at: dt.datetime
+    duration_min: int | None = Field(None, ge=1, le=300)    # boş – əvvəlki müddət
+    title: str | None = Field(None, min_length=2, max_length=200)
+    student_ids: list[int] | None = None           # boş – bütün sinif/qrup
+
+
+@router.post('/{ta_id}/{task_id}/copy')
+def copy_task(ta_id: int, task_id: int, body: CopyIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Yenidən göndər: testin surəti (eyni suallar) yeni vaxtla həmin və ya başqa sinfə. Köhnə nəticələr yerində qalır,
+    şagirdlər yeni testi təzədən həll edir. Silinmiş testdən də surət çıxarmaq olar."""
+    own_assignment(db, user, ta_id)
+    src = get_or_404(db, OnlineTask, task_id, 'Tapşırıq')
+    if src.assignment_id != ta_id:
+        raise HTTPException(404, 'Tapşırıq tapılmadı')
+    target = own_assignment(db, user, body.target_ta_id)
+    o, c = aware(body.opens_at), aware(body.closes_at)
+    dur = body.duration_min or src.duration_min
+    if c <= o:
+        raise HTTPException(400, 'Bağlanma vaxtı açılmadan sonra olmalıdır')
+    if c <= now():
+        raise HTTPException(400, 'Bağlanma vaxtı keçmişdədir – gələcək vaxt seçin')
+    if dur > (c - o).total_seconds() / 60:
+        raise HTTPException(400, f'Həll müddəti ({dur} dəq) açıq qalma aralığından uzun ola bilməz')
+    if body.student_ids is not None:
+        bad = set(body.student_ids) - {x.id for x in roster(db, target)}
+        if bad or not body.student_ids:
+            raise HTTPException(400, 'Şagirdlər seçilən sinifdən/qrupdan olmalıdır')
+    import copy as _copy
+    t = OnlineTask(assignment_id=target.id, title=body.title or src.title, description=src.description,
+                   opens_at=o, closes_at=c, duration_min=dur, questions=_copy.deepcopy(src.questions),
+                   shuffle=src.shuffle, show_answers=src.show_answers, student_ids=body.student_ids, created_by=user.id)
+    db.add(t)
+    db.flush()
+    audit(db, user, 'create', 'task', t.id, copied_from=src.id, target_ta=target.id)
+    db.commit()
+    return task_out(t)
+
+
+@router.delete('/{ta_id}/{task_id}/attempts/{student_id}')
+def reset_attempt(ta_id: int, task_id: int, student_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Bir şagirdə təkrar icazə: cəhdi silinir, test açıq olduğu müddətdə yenidən başlaya bilər."""
+    t = _own_task(db, user, ta_id, task_id)
+    if now() >= aware(t.closes_at):
+        raise HTTPException(409, 'Test bağlanıb – şagirdə «Yenidən göndər» ilə yeni vaxt verin')
+    a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == student_id))
+    if not a:
+        raise HTTPException(404, 'Şagird bu testə başlamayıb')
+    db.delete(a)
+    audit(db, user, 'delete', 'task_attempt', t.id, student_id=student_id)
     db.commit()
     return {'ok': True}
 

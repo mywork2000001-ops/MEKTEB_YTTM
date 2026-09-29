@@ -1,9 +1,9 @@
 // Onlayn tapşırıqlar (müəllim): yaratma / viktorinadan test / redaktə / link kimi göndərmə / silmə / canlı izləmə.
 import { useEffect, useState } from 'react'
-import { get, post } from '../../api'
+import { del as apiDel, get, post } from '../../api'
 import { MathText } from '../../MathText'
-import { AsyncBtn, ConfirmName, Drawer, ErrorBox, fmt, fmtDate, gradeTone, isoDate, PickFirst, Pill, toast, Top, useLoad, ord } from '../../ui'
-import { LessonSelect, useMyLessons, usePick } from './common'
+import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, PickFirst, Pill, Seg, toast, Top, useLoad, ord } from '../../ui'
+import { LessonSelect, type MyLesson, useMyLessons, usePick } from './common'
 import TaskEditor from './TaskEditor'
 import { esc, head, mathHtml, printDoc, table } from '../../print'
 
@@ -16,7 +16,9 @@ export const taskLink = (id: number) => `${location.origin}/t/${id}`
 export default function Tasks() {
   const [lessons, err0] = useMyLessons()
   const [ta, setTa] = usePick('tasks')
-  const [list, err, , reload] = useLoad<Task[] | null>(() => (ta ? get(`/api/tasks/${ta}`) : Promise.resolve(null)), [ta])
+  const [view, setView] = useState<'active' | 'archived'>('active')
+  const [list, err, , reload] = useLoad<Task[] | null>(() => (ta ? get(`/api/tasks/${ta}`, view === 'archived' ? { archived: true } : {}) : Promise.resolve(null)), [ta, view])
+  const [resend, setResend] = useState<Task | null>(null)
   const [editor, setEditor] = useState<null | { mode: 'new' | 'bank' | 'edit'; id?: number }>(null)
   const [watch, setWatch] = useState<number | null>(null)
   const [share, setShare] = useState<Task | null>(null)
@@ -27,10 +29,11 @@ export default function Tasks() {
       <Top title="Onlayn tapşırıqlar" sub="Vaxtlı testlər: tarix + saat aralığı + həll müddəti; vaxt bitəndə avtomatik təhvil"
         actions={ta ? <><button className="btn" onClick={() => setEditor({ mode: 'bank' })}>Viktorinadan test əlavə et</button><button className="btn primary" onClick={() => setEditor({ mode: 'new' })}>+ Yeni tapşırıq</button></> : undefined} />
       <ErrorBox error={err0 || err} />
-      <div className="toolbar"><LessonSelect lessons={lessons} value={ta} onChange={setTa} /></div>
+      <div className="toolbar"><LessonSelect lessons={lessons} value={ta} onChange={setTa} />
+        {ta && <Seg value={view} onChange={setView} options={[['active', 'Testlər'], ['archived', 'Silinənlər']]} />}</div>
       {!ta ? <PickFirst /> : (
         <div className="jlist">
-          {list?.length === 0 && <div className="empty">Hələ tapşırıq yoxdur.</div>}
+          {list?.length === 0 && <div className="empty">{view === 'archived' ? 'Silinmiş test yoxdur.' : 'Hələ tapşırıq yoxdur.'}</div>}
           {list?.map(t => {
             const now = Date.now(), o = Date.parse(t.opens_at), c = Date.parse(t.closes_at)
             const live = now >= o && now < c
@@ -41,15 +44,23 @@ export default function Tasks() {
                   {now < o ? <Pill>gözlənilir</Pill> : live ? <Pill tone="ok">● açıqdır</Pill> : <Pill tone="info">bağlanıb</Pill>}
                 </div>
                 <span className="small muted">{dt(t.opens_at)} – {hm(t.closes_at)} · {t.duration_min} dəq · {t.questions} sual · {t.student_ids ? `${t.student_ids.length} şagird` : 'bütün sinif'} · {t.submitted} təhvil · orta {fmt(t.avg_pct)}%{t.created_at ? ` · yaradılıb: ${dt(t.created_at)}` : ''}</span>
+                {view === 'archived' ? (
+                  <div className="row" style={{ gap: 6 }}>
+                    <AsyncBtn className="btn sm primary" ok="Test geri qaytarıldı" onClick={async () => { await post(`/api/tasks/${ta}/${t.id}/restore`); reload() }}>Geri qaytar</AsyncBtn>
+                    <button className="btn sm" onClick={() => setResend(t)}>Yenidən göndər</button>
+                    <button className="btn sm" onClick={() => setWatch(t.id)}>Nəticələr</button>
+                  </div>
+                ) : (
                 <div className="row" style={{ gap: 6 }}>
                   <button className={'btn sm' + (live ? ' primary' : '')} onClick={() => setWatch(t.id)}>{live ? 'Canlı izlə' : 'Nəticələr'}</button>
                   <button className="btn sm" onClick={() => setShare(t)}>Link göndər</button>
+                  <button className="btn sm" onClick={() => setResend(t)}>Yenidən göndər</button>
                   <button className="btn sm" onClick={() => paper(ta!, t.id, cls?.class_name || '')}>Kağız variant</button>
                   <button className="btn sm" onClick={() => setEditor({ mode: 'edit', id: t.id })}>Redaktə</button>
                   <button className="btn sm ghost" onClick={() => setDel(t)}>Sil</button>
-                </div>
+                </div>)}
                 {del?.id === t.id && <ConfirmName name={t.title} action="Sil" onCancel={() => setDel(null)}
-                  onConfirm={async () => { await post(`/api/tasks/${ta}/${t.id}/archive`); toast('Tapşırıq silindi (arxiv)'); setDel(null); reload() }} />}
+                  onConfirm={async () => { await post(`/api/tasks/${ta}/${t.id}/archive`); toast('Test silindi – «Silinənlər»dən geri qaytarmaq olar'); setDel(null); reload() }} />}
               </div>)
           })}
         </div>
@@ -57,7 +68,43 @@ export default function Tasks() {
       {editor && ta && <TaskEditor ta={ta} taskId={editor.id} fromBank={editor.mode === 'bank'} onClose={() => setEditor(null)} onDone={() => { setEditor(null); reload() }} />}
       {watch && ta && <Watch ta={ta} id={watch} onClose={() => { setWatch(null); reload() }} />}
       {share && <Share task={share} cls={cls?.class_name || ''} onClose={() => setShare(null)} />}
+      {resend && ta && <Resend ta={ta} task={resend} lessons={lessons || []} onClose={() => setResend(null)}
+        onDone={(t, sameClass) => { setResend(null); if (sameClass) { setView('active'); reload() } setShare(t) }} />}
     </>
+  )
+}
+
+const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+
+/** Yenidən göndər: eyni suallarla surət – yeni vaxt, həmin və ya başqa sinif/qrup. Köhnə nəticələr yerində qalır. */
+function Resend({ ta, task, lessons, onClose, onDone }: { ta: number; task: Task; lessons: MyLesson[]; onClose: () => void; onDone: (t: Task, sameClass: boolean) => void }) {
+  const start = new Date(); start.setMinutes(Math.ceil(start.getMinutes() / 5) * 5 + 5, 0, 0)
+  const end = new Date(start.getTime() + Math.max(task.duration_min + 10, 60) * 60000)
+  const [f, setF] = useState({ target: ta, opens: localInput(start), closes: localInput(end), duration: task.duration_min, title: task.title })
+  const [err, setErr] = useState<unknown>()
+  const save = async () => {
+    try {
+      const t = await post<Task>(`/api/tasks/${ta}/${task.id}/copy`, { target_ta_id: f.target, opens_at: new Date(f.opens).toISOString(),
+        closes_at: new Date(f.closes).toISOString(), duration_min: f.duration, title: f.title })
+      toast('Test yenidən göndərildi'); onDone(t, f.target === ta)
+    } catch (e) { setErr(e) }
+  }
+  return (
+    <Drawer title="Testi yenidən göndər" onClose={onClose}
+      footer={<><button className="btn" onClick={onClose}>Ləğv et</button><AsyncBtn className="btn primary" onClick={save}>Göndər</AsyncBtn></>}>
+      <div className="stack">
+        <p className="small muted">Eyni {task.questions} sualla yeni test yaradılır. Köhnə testin nəticələri yerində qalır; şagirdlər yenisini təzədən həll edir.</p>
+        <div className="fg">
+          <Field label="Sinif / qrup" full><select value={f.target} onChange={e => setF({ ...f, target: Number(e.target.value) })}>
+            {lessons.map(l => <option key={l.id} value={l.id}>{l.class_name}{l.subject !== 'Riyaziyyat' ? ` · ${l.subject}` : ''}{l.id === ta ? ' (həmin sinif)' : ''}</option>)}</select></Field>
+          <Field label="Ad" full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
+          <Field label="Açılır"><input type="datetime-local" value={f.opens} onChange={e => setF({ ...f, opens: e.target.value })} /></Field>
+          <Field label="Bağlanır"><input type="datetime-local" value={f.closes} onChange={e => setF({ ...f, closes: e.target.value })} /></Field>
+          <Field label="Həll müddəti (dəq)"><input type="number" min={1} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+        </div>
+        <ErrorBox error={err} />
+      </div>
+    </Drawer>
   )
 }
 
@@ -156,7 +203,9 @@ function Watch({ ta, id, onClose }: { ta: number; id: number; onClose: () => voi
               </span>
               <span className="row">{r.status === 'təhvil verib'
                 ? <><span className="small">{r.correct}/{r.total}</span><Pill tone={gradeTone(r.grade)}>{fmt(r.pct, 0)}% → {r.grade}</Pill></>
-                : <Pill tone={r.status === 'həll edir' ? 'info' : undefined}>{r.status}</Pill>}</span>
+                : <Pill tone={r.status === 'həll edir' ? 'info' : undefined}>{r.status}</Pill>}
+                {live && r.status !== 'başlamayıb' && <AsyncBtn className="btn sm ghost" ok="Təkrar icazə verildi"
+                  onClick={async () => { await apiDel(`/api/tasks/${ta}/${id}/attempts/${r.student_id}`); reload() }}>Təkrar icazə</AsyncBtn>}</span>
             </div>))}
             {rows.length === 0 && <div className="empty">Uyğun şagird yoxdur.</div>}
           </div>
