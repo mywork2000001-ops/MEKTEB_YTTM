@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { ApiError, get, patch, post, put, setSettingsToken, settingsToken } from '../../api'
 import { useAuth } from '../../auth'
-import { AsyncBtn, ErrorBox, Field, Loading, toast, Top, useLoad } from '../../ui'
+import { AsyncBtn, ErrorBox, Field, Loading, toast, Top, useLoad, ord } from '../../ui'
 import { LookPanel, PasswordPanel } from '../shared'
 import { useT } from '../../i18n'
 
@@ -117,7 +117,7 @@ function SchoolPanel({ admin }: { admin: boolean }) {
           </div>
           <h3 className="small muted" style={{ margin: '14px 0 6px' }}>Dərs vaxtları (bütün məktəb)</h3>
           <div className="fg">{Array.from({ length: 8 }, (_, i) => String(i + 1)).map(k => (
-            <Field key={k} label={`${k}-ci saat`}><input value={f.bells[k] || ''} placeholder="08:50–09:35" onChange={e => setF({ ...f, bells: { ...f.bells, [k]: e.target.value } })} /></Field>))}</div>
+            <Field key={k} label={`${ord(k)} saat`}><input value={f.bells[k] || ''} placeholder="08:50–09:35" onChange={e => setF({ ...f, bells: { ...f.bells, [k]: e.target.value } })} /></Field>))}</div>
           <AsyncBtn className="btn primary" ok="Yadda saxlanıldı" onClick={async () => {
             const bells = Object.fromEntries(Object.entries(f.bells).filter(([, v]) => v))
             await patch(`/api/schools/${school.id}`, { name: f.name, utis: f.utis || null, short_name: f.short_name || null, region: f.region || null, bells }); reload()

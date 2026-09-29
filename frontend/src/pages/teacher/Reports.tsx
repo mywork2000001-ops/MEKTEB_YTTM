@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { get } from '../../api'
 import { useAuth } from '../../auth'
-import { ErrorBox, fmt, fmtDate, gradeTone, levelTone, Loading, PickFirst, Pill, riskTone, Seg, Stat, Top, useLoad } from '../../ui'
+import { ErrorBox, fmt, fmtDate, gradeTone, levelTone, Loading, PickFirst, Pill, riskTone, Seg, Stat, Top, useLoad, ord } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { head, printDoc, table } from '../../print'
 import { useT } from '../../i18n'
@@ -117,7 +117,7 @@ function Attendance({ ta, params }: { ta: number; params: Record<string, string>
         <>
           <div className="legend" style={{ marginBottom: 8 }}><span><i className="c var" style={{ width: 12, height: 12, display: 'inline-block', borderRadius: 3, background: 'var(--ok-soft)' }} /> var</span><span style={{ color: 'var(--bad)' }}>■ yox</span><span style={{ color: 'var(--warn)' }}>■ üzrlü</span><span style={{ color: 'var(--info)' }}>■ gecikdi</span><span>Hədd: {m.limit_pct}%</span></div>
           <div className="tbl-wrap"><table className="heat" style={{ minWidth: 0 }}>
-            <thead><tr><th>Şagird</th><th className="r">Buraxıb</th>{m.columns.map((c: any, i: number) => <th key={i} title={`${fmtDate(c.date)} · ${c.period}-ci saat`}>{fmtDate(c.date).slice(0, 5)}</th>)}</tr></thead>
+            <thead><tr><th>Şagird</th><th className="r">Buraxıb</th>{m.columns.map((c: any, i: number) => <th key={i} title={`${fmtDate(c.date)} · ${ord(c.period)} saat`}>{fmtDate(c.date).slice(0, 5)}</th>)}</tr></thead>
             <tbody>{m.rows.map((r: any) => (
               <tr key={r.student_id}><td style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>{r.full_name}</td>
                 <td className="r">{r.warning ? <Pill tone="bad">{fmt(r.missed_pct, 0)}%</Pill> : `${fmt(r.missed_pct, 0)}%`}</td>
@@ -185,12 +185,12 @@ function LessonCounts({ ta }: { ta: number }) {
       <LessonCountTable first="Dövr" rows={[{ label: 'I yarımil', l: r.semesters[0] }, { label: 'II yarımil', l: r.semesters[1] }, { label: 'Bütün il', l: y }]} />
       {y.date_mismatch > 0 && (
         <section className="panel" style={{ marginTop: 12 }}><h2>Cədvəl perspektiv planla uyğun deyil<small>{y.date_mismatch}</small></h2>
-          <div className="row" style={{ gap: 6 }}>{y.mismatch_list.map((m: any) => <Pill key={m.seq} tone="bad">№{m.seq}: planda {fmtDate(m.plan_date)}, cədvəldə {fmtDate(m.date)} · {m.period}-ci saat</Pill>)}</div>
+          <div className="row" style={{ gap: 6 }}>{y.mismatch_list.map((m: any) => <Pill key={m.seq} tone="bad">№{m.seq}: planda {fmtDate(m.plan_date)}, cədvəldə {fmtDate(m.date)} · {ord(m.period)} saat</Pill>)}</div>
           <p className="small muted" style={{ margin: '8px 0 0' }}>Həftəlik cədvəl (Tənzimləmələr → Siniflər → Cədvəl) planın tərtib olunduğu cədvəldən fərqlidir və ya bayram günləri dəyişib. Şagirdlər mövzuları cədvələ görə görür.</p>
         </section>)}
       {y.missing_list.length > 0 && (
         <section className="panel" style={{ marginTop: 12 }}><h2>Yazılmamış dərslər<small>{y.missing}</small></h2>
-          <div className="row" style={{ gap: 6 }}>{y.missing_list.map((m: any) => <Pill key={m.date + m.period} tone="warn">{fmtDate(m.date)} · {m.period}-ci saat</Pill>)}</div>
+          <div className="row" style={{ gap: 6 }}>{y.missing_list.map((m: any) => <Pill key={m.date + m.period} tone="warn">{fmtDate(m.date)} · {ord(m.period)} saat</Pill>)}</div>
           <p className="small muted" style={{ margin: '8px 0 0' }}>Cədvələ görə dərs olub, amma jurnalda qeyd yoxdur. Jurnalda həmin günü açıb yazın.</p>
         </section>)}
       <p className="small muted">«Keçilən mövzu» işçi plana görədir («Mövzunu saxla» nəzərə alınır). «Cədvəldə» – həftəlik cədvəl və bayramlara görə dövrdəki dərs saatları.</p>

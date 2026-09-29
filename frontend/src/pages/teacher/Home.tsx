@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { get } from '../../api'
 import { useAuth } from '../../auth'
 import { useT } from '../../i18n'
-import { ErrorBox, fmt, Icon, isoDate, longDate, Pill, Stat, useLoad, WD } from '../../ui'
+import { ErrorBox, fmt, Icon, isoDate, longDate, Pill, Stat, useLoad, WD, ord } from '../../ui'
 
 type Cell = { ta_id: number; class_name: string; subject: string; time: string | null; topic: string | null; assessment_type: string | null }
 type TT = { days: { date: string; weekday: string; periods: Record<string, Cell[]> }[] }
@@ -55,10 +55,10 @@ export default function Home() {
           <div className="clk-time">{hh}:{mm}<span>:{ss}</span></div>
           <div className="clk-date">{longDate(today)}</div>
           {cur ? (
-            <div className="clk-st lesson"><b>{cur.period}-ci saat · {cur.class_name}</b><span>{cur.time} · {cur.topic || '—'}</span>
+            <div className="clk-st lesson"><b>{ord(cur.period)} saat · {cur.class_name}</b><span>{cur.time} · {cur.topic || '—'}</span>
               <div className="clk-bar"><i style={{ width: pct + '%' }} /></div></div>
           ) : next ? (
-            <div className="clk-st"><b>Növbəti: {next.period}-ci saat · {next.class_name}</b><span>{next.time}</span></div>
+            <div className="clk-st"><b>Növbəti: {ord(next.period)} saat · {next.class_name}</b><span>{next.time}</span></div>
           ) : (
             <div className="clk-st"><b>{lessons.length ? 'Bugünkü dərslər bitdi' : 'Bu gün dərs yoxdur'}</b></div>
           )}
@@ -73,7 +73,7 @@ export default function Home() {
               {lessons.map(l => (
                 <li key={l.ta_id + '-' + l.period} className={span(l.time) && mins >= span(l.time)![1] ? 'done' : ''}>
                   <time>{l.time}</time>
-                  <span><b>{l.period}-ci saat · {l.class_name}</b> {l.assessment_type && ['KSQ', 'BSQ'].includes(l.assessment_type) && <Pill tone="warn">{l.assessment_type}</Pill>}<br />
+                  <span><b>{ord(l.period)} saat · {l.class_name}</b> {l.assessment_type && ['KSQ', 'BSQ'].includes(l.assessment_type) && <Pill tone="warn">{l.assessment_type}</Pill>}<br />
                     <span className="muted small">{l.topic || 'Plan yüklənməyib'}</span></span>
                 </li>))}
             </ol>
@@ -86,7 +86,7 @@ export default function Home() {
               <div key={c.ta_id} className="row" style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--line)', paddingBottom: 8 }}>
                 <span className="ctag">{c.class_name}</span>
                 <span className="row small">
-                  <span>orta {fmt(c.avg_grade, 2)}</span>
+                  <span>{c.avg_grade != null ? <>orta qiymət <b>{fmt(c.avg_grade, 2)}</b></> : <span className="muted">qiymət yoxdur</span>}</span>
                   {c.risk?.['Qırmızı'] > 0 && <Pill tone="bad">risk {c.risk['Qırmızı']}</Pill>}
                   {c.absence_warnings > 0 && <Pill tone="warn"><Icon name="bell" className="ico" /> 25%+ {c.absence_warnings}</Pill>}
                 </span>

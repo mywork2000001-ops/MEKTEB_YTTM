@@ -152,6 +152,13 @@ def _minutes(t: str) -> tuple[int, int]:
     return f(a), f(b)
 
 
+def ordinal(n: int) -> str:
+    """Azərbaycan sıra sayı: 1-ci, 3-cü, 6-cı, 9-cu, 10-cu."""
+    last = {1: 'ci', 2: 'ci', 3: 'cü', 4: 'cü', 5: 'ci', 6: 'cı', 7: 'ci', 8: 'ci', 9: 'cu'}
+    tens = {0: 'cı', 10: 'cu', 20: 'ci', 30: 'cu', 40: 'cı', 50: 'ci', 60: 'cı', 70: 'ci', 80: 'ci', 90: 'cı'}
+    return f'{n}-{last[n % 10] if n % 10 else ("cü" if n and n % 100 == 0 else tens[n % 100])}'
+
+
 def teacher_conflicts(classes: list[ClassSeed]) -> list[str]:
     """Müəllimin həftəlik cədvəlində real vaxt üzrə üst-üstə düşən dərslər. Bölünən qrup (parent) öz sinfi ilə
     eyni anda ola bilməz; boş siyahı = toqquşma yoxdur."""
@@ -162,6 +169,6 @@ def teacher_conflicts(classes: list[ClassSeed]) -> list[str]:
                 a, b = _minutes(bell_time(c, p))
                 for wd2, a2, b2, c2, p2 in busy:
                     if wd2 == wd and a < b2 and a2 < b:
-                        out.append(f'{WEEKDAYS[wd]} {c2.name} ({p2}-ci saat) ↔ {c.name} ({p}-ci saat)')
+                        out.append(f'{WEEKDAYS[wd]} {c2.name} ({ordinal(p2)} saat) ↔ {c.name} ({ordinal(p)} saat)')
                 busy.append((wd, a, b, c, p))
     return out

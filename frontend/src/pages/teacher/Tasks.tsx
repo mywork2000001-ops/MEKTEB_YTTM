@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { get, post } from '../../api'
 import { MathText } from '../../MathText'
-import { AsyncBtn, ConfirmName, Drawer, ErrorBox, fmt, fmtDate, gradeTone, isoDate, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
+import { AsyncBtn, ConfirmName, Drawer, ErrorBox, fmt, fmtDate, gradeTone, isoDate, PickFirst, Pill, toast, Top, useLoad, ord } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import TaskEditor from './TaskEditor'
 import { esc, head, mathHtml, printDoc, table } from '../../print'
@@ -106,11 +106,11 @@ function ToJournal({ ta, id, opens }: { ta: number; id: number; opens: string })
         <select className="sel" value={period} onChange={e => setPeriod(e.target.value === '' ? '' : Number(e.target.value))} aria-label="Dərs saatı">
           {lessons.length === 0 && <option value="">bu gün dərs yoxdur</option>}
           {lessons.map(l => <option key={l.period} value={l.period} disabled={['KSQ', 'BSQ'].includes(l.plan?.assessment_type)}>
-            {l.period}-ci saat · {(l.entry?.topic || l.plan?.topic || '').slice(0, 40)}{['KSQ', 'BSQ'].includes(l.plan?.assessment_type) ? ` (${l.plan.assessment_type} – olmaz)` : ''}</option>)}
+            {ord(l.period)} saat · {(l.entry?.topic || l.plan?.topic || '').slice(0, 40)}{['KSQ', 'BSQ'].includes(l.plan?.assessment_type) ? ` (${l.plan.assessment_type} – olmaz)` : ''}</option>)}
         </select>
         <AsyncBtn className="btn primary" disabled={period === ''} onClick={async () => setRes(await post(`/api/tasks/${ta}/${id}/to-journal`, { date, period }))}>Köçür</AsyncBtn>
       </div>
-      {res && <p className="small" style={{ margin: '8px 0 0' }}>{fmtDate(res.date)}, {res.period}-ci saat: <b>{res.copied}</b> yeni, <b>{res.updated}</b> yeniləndi
+      {res && <p className="small" style={{ margin: '8px 0 0' }}>{fmtDate(res.date)}, {ord(res.period)} saat: <b>{res.copied}</b> yeni, <b>{res.updated}</b> yeniləndi
         {res.skipped.length > 0 && <> · ötürüldü: {res.skipped.map((s: any) => `${s.full_name} (${s.reason})`).join(', ')}</>}</p>}
       <p className="small muted" style={{ margin: '6px 0 0' }}>Qiymət: düzgün / sual → faiz → qiymət. Həmin dərsdə olmayan şagird ötürülür; təkrar köçürmə köhnəni yeniləyir.</p>
     </section>

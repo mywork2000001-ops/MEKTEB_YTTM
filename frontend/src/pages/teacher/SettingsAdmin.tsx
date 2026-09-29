@@ -85,7 +85,7 @@ function Bank() {
               <dt>Son yenilənmə</dt><dd>{st.last_update ? `${when(st.last_update.finished)} · +${st.last_update.added} ~${st.last_update.updated} −${st.last_update.deactivated}` : '—'}</dd>
             </dl>
             {st.last?.message && <pre className="small" style={{ whiteSpace: 'pre-wrap', color: 'var(--bad)' }}>{st.last.message}</pre>}
-            <p className="small muted">Viktorina-da suallar dəyişəndə sistem özü yenilənir; əl ilə yeniləməyə ehtiyac yoxdur.</p>
+            <p className="small muted">Viktorinada suallar dəyişəndə sistem özü yenilənir; əl ilə yeniləməyə ehtiyac yoxdur.</p>
             <div className="row">
               <AsyncBtn className="btn primary" disabled={polling} onClick={() => sync(false)}>{polling ? 'Yenilənir…' : 'İndi yoxla'}</AsyncBtn>
               <AsyncBtn className="btn" disabled={polling} onClick={() => sync(true)}>Hamısını yenidən oxu</AsyncBtn>
@@ -97,7 +97,7 @@ function Bank() {
         <div className="jlist">{(sources || []).map(s => (
           <label key={s.key} className="jrow cols" style={{ ['--cols' as any]: 'auto minmax(0,1fr) auto', ['--mcols' as any]: 'auto minmax(0,1fr) auto', cursor: 'pointer' }}>
             <input type="checkbox" checked={s.enabled} onChange={async e => { await patch(`/api/bank/sources/${s.key}`, { enabled: e.target.checked }); reloadS() }} />
-            <span>{s.label}{!s.active && <span className="small muted"> · viktorina-dan çıxarılıb</span>}</span>
+            <span>{s.label}{!s.active && <span className="small muted"> · viktorinadan çıxarılıb</span>}</span>
             <span className="num small">{s.questions}</span>
           </label>))}</div>
         <p className="small muted">Söndürülən mənbənin sualları tapşırıq yaradarkən görünmür.</p>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, ApiError, del, get, patch, post, put } from '../../api'
 import { useAuth } from '../../auth'
 import { esc, head, printDoc, table } from '../../print'
-import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, Loading, PickFirst, Pill, toast, useLoad } from '../../ui'
+import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, Loading, PickFirst, Pill, toast, useLoad, ord } from '../../ui'
 
 type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; split_with: string | null; utis_class: string | null
   exam_date: string | null; bells: Record<string, string> | null; students: number; can_open: boolean; archived: boolean
@@ -63,7 +63,7 @@ function PlansUpload({ onDone }: { onDone: () => void }) {
   const [res, setRes] = useState<any[] | null>(null)
   return (
     <details className="panel" style={{ marginBottom: 12 }}>
-      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Rəsmi perspektiv planları yüklə (bir dəfəyə hamısı)</summary>
+      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Rəsmi perspektiv planları yüklə (hamısı birlikdə)</summary>
       <div className="stack" style={{ marginTop: 10 }}>
         <p className="small muted">Word (.docx) fayllarını seçin – fayl adına görə sinfə özü bağlanır (məs. «X-e sinif – Riyaziyyat perspektiv plan…» → X e). Jurnal qeydləri qorunur.</p>
         <input type="file" accept=".docx" multiple onChange={e => setFiles(Array.from(e.target.files || []))} />
@@ -185,7 +185,7 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
         <div className="tbl-wrap"><table style={{ minWidth: 0 }}><thead><tr><th>Saat</th>{DAYS.map(d => <th key={d}>{d}</th>)}</tr></thead>
           <tbody>{Array.from({ length: 9 }, (_, p) => (
             <tr key={p}><th className="small">{p}</th>{DAYS.map((_, d) => (
-              <td key={d} style={{ textAlign: 'center' }}><input type="checkbox" aria-label={`${DAYS[d]} ${p}-ci saat`} checked={(slots[d] || []).includes(p)} onChange={() => toggle(d, p)} /></td>))}</tr>))}</tbody></table></div>
+              <td key={d} style={{ textAlign: 'center' }}><input type="checkbox" aria-label={`${DAYS[d]} ${ord(p)} saat`} checked={(slots[d] || []).includes(p)} onChange={() => toggle(d, p)} /></td>))}</tr>))}</tbody></table></div>
         <ErrorBox error={err} />
         {cls.mine && (leave
           ? <ConfirmName name={cls.name} action="Dərsdən çıx" onCancel={() => setLeave(false)} onConfirm={async () => { await api(`/api/classes/${cls.id}/leave`, { method: 'POST', params: { subject: cls.mine!.subject } }); toast('Dərsdən çıxdınız'); onDone() }} />
@@ -404,18 +404,18 @@ function RosterImport({ onDone }: { onDone: () => void }) {
   }
   return (
     <details className="panel" style={{ marginBottom: 14 }}>
-      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>UTİS siyahısından şagird import (admin)</summary>
+      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>UTİS siyahısından şagird idxalı (admin)</summary>
       <div className="stack" style={{ marginTop: 10 }}>
-        <p className="small muted">Siniflər «UTİS sinfi» sahəsinə görə eşləşdirilir (məs. X e = 10 e). Uşaq İD, şəxsiyyət vəsiqəsi, pinkod saxlanmır; mövcud şagirdlər təkrarlanmır.</p>
+        <p className="small muted">Siniflər «UTİS sinfi» sahəsinə görə uyğunlaşdırılır (məs. X e = 10 e). Uşaq İD, şəxsiyyət vəsiqəsi, pinkod saxlanmır; mövcud şagirdlər təkrarlanmır.</p>
         <label className="f">UTİS faylı (.xlsx)<input type="file" accept=".xlsx" onChange={e => setUtis(e.target.files?.[0] || null)} /></label>
         <label className="f">DİM buraxılış balları (.xlsx, istəyə görə)<input type="file" accept=".xlsx" onChange={e => setDim(e.target.files?.[0] || null)} /></label>
         <AsyncBtn className="btn primary" disabled={!utis} onClick={async () => {
           const fd = new FormData(); fd.append('utis', utis!); if (dim) fd.append('dim', dim)
           const r = await api('/api/import/roster', { method: 'POST', form: fd }); setRes(r); onDone()
           toast(`${r.added.length} şagird əlavə olundu`)
-        }}>Import et</AsyncBtn>
+        }}>İdxal et</AsyncBtn>
         {res && (<>
-          <p className="small">Eşləşən siniflər: <b>{res.matched_classes.join(', ') || '—'}</b> · əlavə: <b>{res.added.length}</b>{res.without_scores ? ` · balı olmayan: ${res.without_scores}` : ''}</p>
+          <p className="small">Uyğunlaşdırılan siniflər: <b>{res.matched_classes.join(', ') || '—'}</b> · əlavə: <b>{res.added.length}</b>{res.without_scores ? ` · balı olmayan: ${res.without_scores}` : ''}</p>
           {res.added.length > 0 && <><button className="btn" onClick={csv}>Giriş kodları və PIN-lər (CSV)</button>
             <p className="small muted">PIN-lər yalnız indi göstərilir – faylı yükləyin, çap edib paylayın.</p></>}
         </>)}

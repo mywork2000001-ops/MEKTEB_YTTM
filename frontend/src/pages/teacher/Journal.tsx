@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { del, get, post, put } from '../../api'
-import { AsyncBtn, ErrorBox, fmt, fmtDate, gradeTone, isoDate, Loading, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
+import { AsyncBtn, ErrorBox, fmt, fmtDate, gradeTone, isoDate, Loading, PickFirst, Pill, toast, Top, useLoad, ord } from '../../ui'
 import { ATT, HW, LessonSelect, type MyLesson, useMyLessons, usePick } from './common'
 import Exams from './Exams'
 import { fmtN, head, printDoc, table } from '../../print'
@@ -111,7 +111,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
 
   return (
     <section className="panel" style={{ marginBottom: 16 }}>
-      <h2 style={{ flexWrap: 'wrap' }}>{lesson.period}-ci saat <small>{lesson.time}</small>
+      <h2 style={{ flexWrap: 'wrap' }}>{ord(lesson.period)} saat <small>{lesson.time}</small>
         {isExam && <Pill tone="warn">{lesson.plan!.assessment_type}</Pill>}
         {lesson.shift > 0 && <Pill tone="warn">geriləmə: {lesson.shift} dərs</Pill>}
         {e.exists && <Pill tone="ok">yazılıb</Pill>}
@@ -322,7 +322,7 @@ function Grid({ ta }: { ta: MyLesson }) {
       {loading && !d ? <Loading /> : d && (d.columns.length === 0 ? <div className="empty">Bu ayda dərs yoxdur.</div> : <>
         <div className="tbl-wrap"><table style={{ minWidth: 0 }}>
           <thead><tr><th style={{ textAlign: 'left' }}>Şagird</th>{d.columns.map((c: any, i: number) => (
-            <th key={i} title={`${c.period}-ci saat · ${c.topic || ''}`} style={{ opacity: c.future ? 0.5 : 1, textAlign: 'center', background: c.assessment ? 'var(--warn-soft)' : undefined }}>
+            <th key={i} title={`${ord(c.period)} saat · ${c.topic || ''}`} style={{ opacity: c.future ? 0.5 : 1, textAlign: 'center', background: c.assessment ? 'var(--warn-soft)' : undefined }}>
               {fmtDate(c.date).slice(0, 5)}{c.assessment && <><br /><small>{c.assessment}</small></>}{!c.written && !c.future && <><br /><small style={{ color: 'var(--bad)' }}>yazılmayıb</small></>}</th>))}
             <th className="r">Orta</th><th className="r">Buraxıb</th></tr></thead>
           <tbody>{d.rows.map((r: any) => (
@@ -337,7 +337,7 @@ function Grid({ ta }: { ta: MyLesson }) {
         <section className="panel" style={{ marginTop: 12 }}><h2>Keçilən mövzular və ev tapşırıqları</h2>
           <div className="jlist">{d.columns.filter((c: any) => c.written).map((c: any, i: number) => (
             <div key={i} className="jrow cols" style={{ ['--cols' as any]: '100px minmax(0,1fr)', ['--mcols' as any]: '84px minmax(0,1fr)' }}>
-              <span className="small">{fmtDate(c.date)}<br /><span className="muted">{c.period}-ci saat{c.seq ? ` · №${c.seq}` : ''}</span></span>
+              <span className="small">{fmtDate(c.date)}<br /><span className="muted">{ord(c.period)} saat{c.seq ? ` · №${c.seq}` : ''}</span></span>
               <span>{c.assessment && <Pill tone="warn">{c.assessment}</Pill>} {c.topic}{c.homework && <span className="sub small"><br />Ev tapşırığı: <b>{c.homework}</b></span>}</span>
             </div>))}</div>
         </section>

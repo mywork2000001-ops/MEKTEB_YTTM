@@ -37,8 +37,9 @@ export default function Plan() {
       <Top title={t('Plan')} sub="Sinfinin perspektiv planı" />
       <div className="toolbar">
         <Seg value={view} onChange={setView} options={[['day', t('Gün')], ['week', t('Həftə')], ['month', t('Ay')], ['semester', t('Yarımil')]]} />
-        <button className="btn sm" onClick={() => step(-1)}>‹</button><button className="btn sm" onClick={() => step(1)}>›</button>
-        <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>{t('Bu gün')}</button>
+        <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+          <button className="btn sm" onClick={() => step(-1)} aria-label="Əvvəlki">‹</button><button className="btn sm" onClick={() => step(1)} aria-label="Növbəti">›</button>
+          <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>{t('Bu gün')}</button></span>
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : (

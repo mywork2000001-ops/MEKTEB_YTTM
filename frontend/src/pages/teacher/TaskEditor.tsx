@@ -91,7 +91,7 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
           <Field label="Açılır"><input type="time" value={f.from} onChange={e => setF({ ...f, from: e.target.value })} /></Field>
           <Field label="Bağlanır"><input type="time" value={f.to} onChange={e => setF({ ...f, to: e.target.value })} /></Field>
           <Field label="Düzgün cavablar görünsün" full><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
-            <option value="after_close">tapşırıq bağlanandan sonra</option><option value="after_submit">təhvil verəndən dərhal sonra</option><option value="never">heç vaxt</option></select></Field>
+            <option value="after_close">tapşırıq bağlandıqdan sonra</option><option value="after_submit">təhvil verdikdən dərhal sonra</option><option value="never">heç vaxt</option></select></Field>
           <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> Sualların sırası hər şagirdə fərqli</label>
         </div>
         <TargetPicker ta={ta} onChange={setTargets} />

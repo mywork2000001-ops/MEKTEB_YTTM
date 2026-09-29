@@ -21,7 +21,7 @@ export default function Exams({ ta }: { ta: MyLesson }) {
         {(d?.planned || []).map(p => {
           const e = byKey.get(`${p.kind}-${p.semester}-${p.no}`)
           return (
-            <div className="jrow" key={`${p.kind}${p.semester}${p.no}`}>
+            <div className="jrow cols" key={`${p.kind}${p.semester}${p.no}`} style={{ ['--cols' as any]: 'minmax(0,1fr) auto auto', ['--mcols' as any]: 'minmax(0,1fr) auto' }}>
               <span><b>{p.kind}-{p.no}</b> <span className="muted small">({p.semester}-ci yarımil) · {fmtDate(p.date)}</span><span className="sub small muted"><br />{p.topic}</span></span>
               {e ? <Pill tone="ok">{e.max_points} bal{e.items ? ` · ${e.items.length} tapşırıq` : ''}</Pill> : <Pill>yaradılmayıb</Pill>}
               {e ? <button className="btn sm primary" onClick={() => setOpen(e.id)}>Nəticələr</button> : <button className="btn sm" onClick={() => setCreate(p)}>Hazırla</button>}

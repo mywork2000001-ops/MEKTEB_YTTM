@@ -2,7 +2,7 @@
 // nahar fasiləsi ayrıca sətir, boş saat «Sərbəst», hər sinfin sabit rəngi, içində perspektiv plandan mövzu.
 import { useMemo, useState } from 'react'
 import { get } from '../../api'
-import { ErrorBox, fmtDate, isoDate, Loading, Pill, Top, useLoad } from '../../ui'
+import { ErrorBox, fmtDate, isoDate, Loading, Pill, Top, useLoad, ord } from '../../ui'
 import { esc, head, printDoc } from '../../print'
 
 type Cell = { ta_id: number; class_name: string; subject: string; time: string | null; topic: string | null; assessment_type: string | null; held: boolean }
@@ -31,7 +31,7 @@ export default function Timetable() {
     for (const day of d?.days || []) {
       for (const [p, cells] of Object.entries(day.periods)) {
         for (const c of cells) {
-          const t = c.time || `${p}-ci saat`
+          const t = c.time || `${ord(p)} saat`
           times.add(t)
           if (!byTime.has(t)) byTime.set(t, new Map())
           const m = byTime.get(t)!
@@ -62,7 +62,7 @@ export default function Timetable() {
   const weekTotal = [...totals.values()].reduce((a, b) => a + b, 0)
   const CellBox = ({ c }: { c: Cell & { p: number } }) => (
     <div className="ttc" style={{ ['--cc' as any]: colors[c.class_name] }}>
-      <div className="ttc-h"><b>{c.class_name}</b><span>{c.p}-ci saat</span></div>
+      <div className="ttc-h"><b>{c.class_name}</b><span>{ord(c.p)} saat</span></div>
       {c.subject !== 'Riyaziyyat' && <div className="small">{c.subject}</div>}
       <div className="ttc-t">{c.topic || <span className="muted">plan yüklənməyib</span>}</div>
       {(c.assessment_type === 'KSQ' || c.assessment_type === 'BSQ' || c.held) && (
@@ -80,7 +80,7 @@ export default function Timetable() {
         <button className="btn sm" onClick={() => shift(-1)}>‹ Əvvəlki</button>
         <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>Bu həftə</button>
         <button className="btn sm" onClick={() => shift(1)}>Növbəti ›</button>
-        <button className="btn sm right" disabled={!d} onClick={() => d && printDoc({ landscape: true, title: `Həftəlik dərs cədvəli ${fmtDate(d.days[0].date)}–${fmtDate(d.days[4].date)}`, body: head('Həftəlik dərs cədvəli', `${fmtDate(d.days[0].date)} – ${fmtDate(d.days[4].date)}`) + `<table><thead><tr><th>Vaxt</th>${d.days.map(x => `<th>${esc(DAY_FULL[x.weekday] || x.weekday)}<br>${fmtDate(x.date).slice(0, 5)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => r.kind === 'break' ? `<tr><td class="c">${esc(r.time)}</td><td colspan="5" class="c b">Nahar fasiləsi</td></tr>` : `<tr><td class="c b">${esc(r.time)}</td>${d.days.map(x => { const cs = byTime.get(r.time)?.get(x.date) || []; return `<td>${cs.map(c => `<b>${esc(c.class_name)}</b> (${c.p}-ci)${c.assessment_type === 'KSQ' || c.assessment_type === 'BSQ' ? ' <b>' + c.assessment_type + '</b>' : ''}<br>${esc(c.topic || '')}`).join('<hr>') || '<span class="muted">—</span>'}</td>` }).join('')}</tr>`).join('')}</tbody></table>` })}>Çap / PDF</button>
+        <button className="btn sm right" disabled={!d} onClick={() => d && printDoc({ landscape: true, title: `Həftəlik dərs cədvəli ${fmtDate(d.days[0].date)}–${fmtDate(d.days[4].date)}`, body: head('Həftəlik dərs cədvəli', `${fmtDate(d.days[0].date)} – ${fmtDate(d.days[4].date)}`) + `<table><thead><tr><th>Vaxt</th>${d.days.map(x => `<th>${esc(DAY_FULL[x.weekday] || x.weekday)}<br>${fmtDate(x.date).slice(0, 5)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => r.kind === 'break' ? `<tr><td class="c">${esc(r.time)}</td><td colspan="5" class="c b">Nahar fasiləsi</td></tr>` : `<tr><td class="c b">${esc(r.time)}</td>${d.days.map(x => { const cs = byTime.get(r.time)?.get(x.date) || []; return `<td>${cs.map(c => `<b>${esc(c.class_name)}</b> (${ord(c.p)})${c.assessment_type === 'KSQ' || c.assessment_type === 'BSQ' ? ' <b>' + c.assessment_type + '</b>' : ''}<br>${esc(c.topic || '')}`).join('<hr>') || '<span class="muted">—</span>'}</td>` }).join('')}</tr>`).join('')}</tbody></table>` })}>Çap / PDF</button>
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : d && (

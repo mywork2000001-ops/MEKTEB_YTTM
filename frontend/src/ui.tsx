@@ -17,6 +17,13 @@ export const levelTone = (l?: string | null) => (l === 'Güclü' ? 'ok' : l === 
 export const riskTone = (s?: string) => (s === 'Qırmızı' ? 'bad' : s === 'Sarı' ? 'warn' : 'ok')
 export const gradeTone = (g?: number | null) => (g == null ? undefined : g >= 5 ? 'ok' : g === 4 ? 'info' : g === 3 ? 'warn' : 'bad')
 
+/** Azərbaycan sıra sayı: 1-ci, 2-ci, 3-cü, 4-cü, 5-ci, 6-cı, 7-ci, 8-ci, 9-cu, 10-cu, 20-ci, 40-cı, 100-cü. */
+export const ord = (v: number | string) => {
+  const n = Number(v)
+  const last: Record<number, string> = { 1: 'ci', 2: 'ci', 3: 'cü', 4: 'cü', 5: 'ci', 6: 'cı', 7: 'ci', 8: 'ci', 9: 'cu' }
+  const tens: Record<number, string> = { 0: 'cı', 10: 'cu', 20: 'ci', 30: 'cu', 40: 'cı', 50: 'ci', 60: 'cı', 70: 'ci', 80: 'ci', 90: 'cı' }
+  return `${n}-${n % 10 ? last[n % 10] : n % 100 === 0 && n ? 'cü' : tens[n % 100]}`
+}
 export const fmt = (v: number | null | undefined, d = 1) => (v == null ? '—' : v.toFixed(d).replace('.', ','))
 export const fmtDate = (s?: string | null) => (s ? s.slice(0, 10).split('-').reverse().join('.') : '—')
 export const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
