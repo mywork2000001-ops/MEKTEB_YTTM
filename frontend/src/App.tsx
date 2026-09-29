@@ -34,6 +34,7 @@ const T = {
   Classes: lazy(() => import('./pages/teacher/Classes')),
   Journal: lazy(() => import('./pages/teacher/Journal')),
   Plan: lazy(() => import('./pages/teacher/Plan')),
+  DailyPlan: lazy(() => import('./pages/teacher/DailyPlan')),
   Timetable: lazy(() => import('./pages/teacher/Timetable')),
   Tasks: lazy(() => import('./pages/teacher/Tasks')),
   Materials: lazy(() => import('./pages/teacher/Materials')),
@@ -89,6 +90,7 @@ export default function App() {
                 <Route path="/classes" element={<T.Classes />} />
                 <Route path="/journal" element={<T.Journal />} />
                 <Route path="/plan" element={<T.Plan />} />
+                <Route path="/daily" element={<T.DailyPlan />} />
                 <Route path="/timetable" element={<T.Timetable />} />
                 <Route path="/tasks" element={<T.Tasks />} />
                 <Route path="/t/:id" element={<Navigate to="/tasks" replace />} />

@@ -54,6 +54,7 @@ class User(Base, Archivable):
     language: Mapped[str] = mapped_column(String(2), default='az')
     theme: Mapped[str | None] = mapped_column(String(20))
     settings_password_hash: Mapped[str | None] = mapped_column(String(255))   # Tənzimləmələr kilidi (boş = yoxdur)
+    ai_settings: Mapped[dict | None] = mapped_column(JSON)               # {provider, model, base_url, key(şifrəli)} – müəllimin öz açarı
     failed_logins: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -253,6 +254,26 @@ class PlanHold(Base):
     reason: Mapped[str | None] = mapped_column(String(300))
     created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
     __table_args__ = (UniqueConstraint('assignment_id', 'date', 'period'),)
+
+
+class DailyPlan(Base):
+    """Gündəlik dərs planı (ARTİ): perspektiv planın bir dərs yuvası üçün süni intellektlə hazırlanır, müəllim redaktə edir."""
+    __tablename__ = 'daily_plans'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'))
+    date: Mapped[dt.date] = mapped_column(Date)
+    period: Mapped[int] = mapped_column(Integer)
+    plan_lesson_id: Mapped[int | None] = mapped_column(ForeignKey('plan_lessons.id', ondelete='SET NULL'))
+    topic: Mapped[str] = mapped_column(Text)
+    content: Mapped[dict] = mapped_column(JSON)
+    notes: Mapped[str | None] = mapped_column(Text)                     # müəllimin əlavə istəyi
+    provider: Mapped[str | None] = mapped_column(String(30))
+    model: Mapped[str | None] = mapped_column(String(120))
+    edited: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+    __table_args__ = (UniqueConstraint('assignment_id', 'date', 'period', name='uq_daily_plan_slot'),)
 
 
 # ---------------------------------------------------------------- jurnal

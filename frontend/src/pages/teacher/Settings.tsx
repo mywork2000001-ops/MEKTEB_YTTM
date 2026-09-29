@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useState } from 'react'
-import { ApiError, get, patch, post, put, setSettingsToken, settingsToken } from '../../api'
+import { ApiError, del, get, patch, post, put, setSettingsToken, settingsToken } from '../../api'
 import { useAuth } from '../../auth'
 import { AsyncBtn, ErrorBox, Field, Loading, toast, Top, useLoad, ord } from '../../ui'
 import { LookPanel, PasswordPanel } from '../shared'
@@ -16,7 +16,7 @@ export default function Settings() {
   const admin = me?.role === 'admin'
   const [lock, , , reloadLock] = useLoad<{ has_password: boolean }>(() => get('/api/settings/lock'), [])
   const [unlocked, setUnlocked] = useState(() => !!settingsToken())
-  const [tab, setTab] = useState('look')
+  const [tab, setTab] = useState(() => new URLSearchParams(location.search).get('tab') || 'look')
   // 15 dəqiqədən sonra avtomatik kilid (server də açarı qəbul etmir)
   useEffect(() => {
     if (!unlocked) return
@@ -33,7 +33,7 @@ export default function Settings() {
   if (lock.has_password && !unlocked) return <Unlock onDone={() => setUnlocked(true)} />
 
   const tabs: [string, string][] = [['look', 'Görünüş'], ['account', 'Hesab'], ['school', 'Məktəb'], ['classes', 'Siniflər'],
-    ['students', 'Şagirdlər'], ['archive', 'Arxiv'], ['lock', 'Kilid'],
+    ['students', 'Şagirdlər'], ['archive', 'Arxiv'], ['ai', 'Süni intellekt'], ['lock', 'Kilid'],
     ...(admin ? [['teachers', 'Müəllimlər'], ['bank', 'Test bazası'], ['audit', 'Audit jurnalı']] as [string, string][] : [])]
   return (
     <>
@@ -45,6 +45,7 @@ export default function Settings() {
         {tab === 'account' && <PasswordPanel student={false} />}
         {tab === 'school' && <SchoolPanel admin={admin} />}
         {(tab === 'classes' || tab === 'students' || tab === 'archive') && <Roster tab={tab} />}
+        {tab === 'ai' && <AiPanel />}
         {tab === 'lock' && <LockPanel has={lock.has_password} onChange={reloadLock} />}
         {(tab === 'teachers' || tab === 'bank' || tab === 'audit') && <Admin tab={tab} />}
       </Suspense>
@@ -124,5 +125,44 @@ function SchoolPanel({ admin }: { admin: boolean }) {
           }}>Yadda saxla</AsyncBtn>
         </section>)}
     </div>
+  )
+}
+
+type AiProv = { id: string; label: string; models: string[]; key_url?: string; hint?: string; custom: boolean }
+type AiState = { provider: string | null; model: string | null; base_url: string | null; has_key: boolean; key_mask: string | null; providers: AiProv[] }
+
+/** Müəllimin öz API açarı: gündəlik planları süni intellekt hazırlayır. Açar şifrəli saxlanır, geri göstərilmir. */
+function AiPanel() {
+  const [s, err, , reload] = useLoad<AiState>(() => get('/api/ai/settings'), [])
+  const [f, setF] = useState<{ provider: string; model: string; api_key: string; base_url: string } | null>(null)
+  const [test, setTest] = useState<string | null>(null)
+  if (!s) return <><ErrorBox error={err} /><Loading /></>
+  const v = f || { provider: s.provider || 'gemini', model: s.model || s.providers.find(p => p.id === (s.provider || 'gemini'))?.models[0] || '', api_key: '', base_url: s.base_url || '' }
+  const prov = s.providers.find(p => p.id === v.provider) || s.providers[0]
+  const set = (patch: Partial<typeof v>) => setF({ ...v, ...patch })
+  const sameProv = s.has_key && s.provider === v.provider
+  return (
+    <section className="panel" style={{ maxWidth: 640 }}>
+      <h2>Süni intellekt <small>gündəlik planlar üçün</small></h2>
+      <p className="small muted" style={{ marginTop: 0 }}>Gündəlik planları seçdiyiniz xidmət sizin öz API açarınızla hazırlayır. Açar serverdə şifrəli saxlanır, heç kimə göstərilmir və yalnız seçilmiş xidmətə göndərilir.
+        Şagirdlərin adları göndərilmir – yalnız perspektiv plandakı dərs məlumatı.</p>
+      {s.has_key && <div className="banner" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>Qoşulub: {s.providers.find(p => p.id === s.provider)?.label} · {s.model} · açar {s.key_mask}</div>}
+      <div className="fg">
+        <Field label="Xidmət (provayder)"><select value={v.provider} onChange={e => { const np = s.providers.find(p => p.id === e.target.value)!; set({ provider: np.id, model: np.models[0] || '', api_key: '' }) }}>
+          {s.providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></Field>
+        <Field label="Model" hint="Siyahıdan seçin və ya adını yazın"><input list="ai-models" value={v.model} onChange={e => set({ model: e.target.value })} />
+          <datalist id="ai-models">{prov.models.map(m => <option key={m} value={m} />)}</datalist></Field>
+        {prov.custom && <Field label="Ünvan (base URL)" hint="OpenAI-uyğun, https://…/v1" full><input value={v.base_url} placeholder="https://api.mistral.ai/v1" onChange={e => set({ base_url: e.target.value })} /></Field>}
+        <Field label="API açarı" hint={sameProv ? 'Boş saxlasanız, köhnə açar qalır' : prov.hint} full>
+          <input type="password" autoComplete="off" value={v.api_key} placeholder={sameProv ? s.key_mask || '' : 'Açarı buraya yapışdırın'} onChange={e => set({ api_key: e.target.value.trim() })} /></Field>
+      </div>
+      {prov.key_url && <p className="small">Açarı haradan almalı: <a href={prov.key_url} target="_blank" rel="noreferrer">{prov.key_url.replace('https://', '')}</a>{prov.hint && !sameProv ? '' : prov.hint ? ' · ' + prov.hint : ''}</p>}
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <AsyncBtn className="btn primary" ok="Yadda saxlandı" onClick={async () => { await put('/api/ai/settings', { ...v, api_key: v.api_key || null, base_url: v.base_url || null }); setF(null); setTest(null); reload() }}>Yadda saxla</AsyncBtn>
+        {s.has_key && <AsyncBtn className="btn" onClick={async () => { setTest('Yoxlanılır…'); try { const r = await post<{ reply: string; model: string }>('/api/ai/test'); setTest('İşləyir ✓ (' + r.model + ': «' + r.reply + '»)') } catch (e) { setTest((e as Error).message) } }}>Yoxla</AsyncBtn>}
+        {s.has_key && <AsyncBtn className="btn ghost" ok="Açar silindi" onClick={async () => { await del('/api/ai/settings'); setF(null); setTest(null); reload() }}>Açarı sil</AsyncBtn>}
+      </div>
+      {test && <p className="small" style={{ marginBottom: 0 }}>{test}</p>}
+    </section>
   )
 }

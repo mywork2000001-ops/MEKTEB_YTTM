@@ -13,6 +13,7 @@ export const TEACHER_NAV: NavItem[] = [
   { to: '/classes', icon: 'classes', label: 'Siniflər və qruplar', short: 'Siniflər' },
   { to: '/journal', icon: 'journal', label: 'Jurnal' },
   { to: '/plan', icon: 'plan', label: 'Perspektiv plan', short: 'Plan' },
+  { to: '/daily', icon: 'edit', label: 'Gündəlik plan', short: 'Gündəlik' },
   { to: '/timetable', icon: 'topics', label: 'Həftəlik cədvəl', short: 'Cədvəl' },
   { to: '/tasks', icon: 'online', label: 'Onlayn tapşırıqlar', short: 'Tapşırıq' },
   { to: '/materials', icon: 'clip', label: 'Materiallar' },

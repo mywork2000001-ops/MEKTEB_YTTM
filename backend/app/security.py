@@ -77,11 +77,25 @@ def read_qr_token(token: str) -> dict | None:
         return None
 
 
-def _fernet():
+def _fernet(purpose: str = 'mk-pin'):
     import base64, hashlib
     from cryptography.fernet import Fernet
-    key = base64.urlsafe_b64encode(hashlib.sha256(('mk-pin:' + settings().secret_key).encode()).digest())
+    key = base64.urlsafe_b64encode(hashlib.sha256((purpose + ':' + settings().secret_key).encode()).digest())
     return Fernet(key)
+
+
+def secret_encrypt(text: str) -> str:
+    """Müəllimin API açarı – serverin açarı ilə şifrələnir, heç vaxt geri göstərilmir (yalnız son 4 simvol)."""
+    return _fernet('mk-ai-key').encrypt(text.encode()).decode()
+
+
+def secret_decrypt(token: str | None) -> str | None:
+    if not token:
+        return None
+    try:
+        return _fernet('mk-ai-key').decrypt(token.encode()).decode()
+    except Exception:                                        # noqa: BLE001 – açar dəyişibsə
+        return None
 
 
 def pin_encrypt(pin: str) -> str:

@@ -90,3 +90,19 @@
   .chat-room .msgs{max-height:none;min-height:0;overflow:auto;border-radius:0}
   .chat-input{flex:none}
 }
+
+/* Gündəlik plan (ARTİ): ekranda oxunaqlı, cədvəllər telefonda sürüşür */
+.drawer:has(.dplan-wide){width:min(980px,100%)}
+.dplan{font:14px/1.5 "Times New Roman",Times,serif;color:var(--ink);overflow-x:auto}
+.dplan .sch{text-align:center;font-weight:700;margin:0}
+.dplan h1{text-align:center;font-size:17px;margin:4px 0 12px}
+.dplan h2{font-size:15px;margin:16px 0 6px}
+.dplan table{border-collapse:collapse;width:100%;min-width:0;margin-bottom:6px}
+.dplan th,.dplan td{border:1px solid var(--line);padding:5px 7px;vertical-align:top;text-align:left}
+.dplan thead th,.dplan .dp-kv th{background:var(--sunk);font-weight:700}
+.dplan .dp-kv th{width:26%}
+.dplan .c{text-align:center}
+.dplan ul,.dplan ol{margin:2px 0 2px 18px;padding:0}
+.dplan p{margin:4px 0}
+.dplan thead + tbody td,.dplan table:has(thead){min-width:0}
+@media (max-width:700px){.dplan table:has(thead){min-width:560px}.dplan{font-size:13px}}
