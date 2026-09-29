@@ -22,6 +22,7 @@ from .plan import WEEKDAYS, bell
 router = APIRouter(prefix='/api/journal', tags=['journal'])
 ATT = ('var', 'yox', 'üzrlü', 'gecikdi')
 HW = ('etdi', 'qismən', 'etmədi', 'köçürüb')
+SUMMATIVE = ('KSQ', 'BSQ')          # summativ dərsdə formativ qiymət qoyulmur (metodik qayda)
 
 
 def _entry_payload(db: Session, e: JournalEntry | None) -> dict:
@@ -119,6 +120,8 @@ def save_entry(ta_id: int, body: EntryIn, user: User = Depends(staff), db: Sessi
     e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == body.date,
                                              JournalEntry.period == body.period))
     pl = taught_lesson(ctx, s, e)          # düzəliş zamanı yazılmış mövzu dəyişmir
+    if pl and pl.assessment_type in SUMMATIVE and body.marks:
+        raise HTTPException(400, f'{pl.assessment_type} günü formativ qiymət yazılmır – nəticələr «KSQ / BSQ» bölməsində')
     if e is None:
         e = JournalEntry(assignment_id=ta.id, date=body.date, period=body.period)
         db.add(e)

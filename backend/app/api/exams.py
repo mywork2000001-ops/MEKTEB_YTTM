@@ -14,7 +14,7 @@ from ..db import get_db
 from ..deps import staff
 from ..domain.rules import grade_from_points, semester_grade
 from ..models import Exam, ExamScore, User
-from ..services import own_assignment, plan_ctx, roster
+from ..services import own_assignment, plan_ctx, roster, today
 from .common import audit, get_or_404
 
 router = APIRouter(prefix='/api/exams', tags=['exams'])
@@ -133,14 +133,29 @@ class ScoreIn(BaseModel):
     points: float | None = Field(None, ge=0)
     item_marks: list[int] | None = None            # 1 = ✓, 0 = ✗
     absent: bool = False
+    taken_on: dt.date | None = None                # üzrlü səbəbdən sonradan yazıb (tarix)
 
 
 def _row(e: Exam, sc: ExamScore | None) -> dict:
     if not sc or sc.absent or sc.points is None:
         return {'points': None, 'pct': None, 'grade': None, 'absent': bool(sc and sc.absent),
-                'item_marks': sc.item_marks if sc else None}
+                'item_marks': sc.item_marks if sc else None, 'taken_on': None}
     return {'points': sc.points, 'pct': round(sc.points * 100 / e.max_points, 1),
-            'grade': grade_from_points(sc.points, e.max_points), 'absent': False, 'item_marks': sc.item_marks}
+            'grade': grade_from_points(sc.points, e.max_points), 'absent': False, 'item_marks': sc.item_marks,
+            'taken_on': sc.taken_on}
+
+
+def _check_taken_on(db: Session, ta, e: Exam, s: ScoreIn, pts):
+    """«Sonradan yazdı»: yalnız nəticə varsa; imtahan günündən sonra, bu gündən gec olmayaraq, həmin yarımil içində."""
+    if s.taken_on is None:
+        return
+    if s.absent or pts is None:
+        raise HTTPException(400, '«Sonradan yazdı» tarixi yalnız nəticə yazılanda qeyd olunur')
+    y = plan_ctx(db, ta).year
+    end = y.sem1_end if e.semester == 1 else y.end
+    if not e.date < s.taken_on <= min(end, today()):
+        raise HTTPException(400, f'Sonradan yazma tarixi {e.date:%d.%m.%Y}-dən sonra, yarımilin sonuna ({end:%d.%m.%Y}) '
+                                 'və bu günə qədər olmalıdır')
 
 
 @router.put('/{ta_id}/{exam_id}/scores')
@@ -159,8 +174,10 @@ def save_scores(ta_id: int, exam_id: int, body: list[ScoreIn], user: User = Depe
             pts = round(sum(it['points'] * m for it, m in zip(e.items, s.item_marks)), 2)
         if pts is not None and pts > e.max_points:
             raise HTTPException(400, f'Bal maksimal baldan ({e.max_points}) çox ola bilməz')
+        _check_taken_on(db, ta, e, s, pts)
         sc = db.get(ExamScore, (e.id, s.student_id)) or ExamScore(exam_id=e.id, student_id=s.student_id)
         sc.points, sc.item_marks, sc.absent = (None if s.absent else pts), (None if s.absent else s.item_marks), s.absent
+        sc.taken_on = s.taken_on
         db.merge(sc)
     audit(db, user, 'update', 'exam_scores', e.id, count=len(body))
     db.commit()

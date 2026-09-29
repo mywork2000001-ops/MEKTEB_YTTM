@@ -212,6 +212,65 @@ def _own_task(db: Session, user: User, ta_id: int, task_id: int) -> OnlineTask:
     return t
 
 
+class ToJournalIn(BaseModel):
+    date: dt.date | None = None          # boş – testin açıldığı gün (Bakı vaxtı)
+    period: int | None = Field(None, ge=0, le=9)
+
+
+@router.post('/{ta_id}/{task_id}/to-journal')
+def to_journal(ta_id: int, task_id: int, body: ToJournalIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Onlayn testin nəticəsi bir düymə ilə formativ «test» qiyməti kimi jurnala: düzgün / sual → faiz → qiymət.
+    Seçilən dərsdə qayıb/üzrlü olan şagird ötürülür; KSQ/BSQ dərsinə və gələcək dərsə köçürülmür."""
+    from zoneinfo import ZoneInfo
+    from ..domain.plan import slot_at
+    from ..models import Attendance, JournalEntry, Mark
+    from ..services import SCHOOL_TZ, plan_ctx, taught_lesson, today
+    from .journal import SUMMATIVE
+    t = _own_task(db, user, ta_id, task_id)
+    ta = db.get(TeachingAssignment, t.assignment_id)
+    ctx = plan_ctx(db, ta)
+    d = body.date or aware(t.opens_at).astimezone(ZoneInfo(SCHOOL_TZ)).date()
+    day = [s for s in ctx.slots if s.date == d]
+    s = slot_at(ctx.slots, d, body.period) if body.period is not None else (day[0] if day else None)
+    if not s:
+        raise HTTPException(400, f'{d:%d.%m.%Y} tarixində bu sinifdə dərs yoxdur – dərsi (tarix və saat) seçin')
+    if d > today():
+        raise HTTPException(400, 'Gələcək dərsə qiymət yazılmır')
+    e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == d,
+                                             JournalEntry.period == s.period))
+    pl = taught_lesson(ctx, s, e)
+    if pl and pl.assessment_type in SUMMATIVE:
+        raise HTTPException(400, f'{pl.assessment_type} dərsinə formativ qiymət köçürülmür – başqa dərs seçin')
+    if e is None:
+        e = JournalEntry(assignment_id=ta.id, date=d, period=s.period, plan_lesson_id=pl.id if pl else None)
+        db.add(e)
+        db.flush()
+    out_ids = {a.student_id for a in db.scalars(select(Attendance).where(
+        Attendance.entry_id == e.id, Attendance.status.in_(('yox', 'üzrlü'))))}
+    names = {x.id: x.full_name for x in roster(db, ta)}
+    copied, updated, skipped = 0, 0, []
+    for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.submitted_at.is_not(None))):
+        if a.student_id not in names or not a.total:
+            continue
+        if a.student_id in out_ids:
+            skipped.append({'full_name': names[a.student_id], 'reason': 'həmin dərsdə olmayıb'})
+            continue
+        m = db.scalar(select(Mark).where(Mark.entry_id == e.id, Mark.student_id == a.student_id, Mark.kind == 'test'))
+        if m:
+            updated += 1
+        else:
+            m = Mark(entry_id=e.id, student_id=a.student_id, kind='test')
+            db.add(m)
+            copied += 1
+        m.test_correct, m.test_total = a.correct, a.total
+        m.grade = summative_grade(a.correct * 100 / a.total)
+        m.comment = f'Onlayn test: {t.title}'[:300]
+    audit(db, user, 'update', 'journal', e.id, from_task=t.id, copied=copied, updated=updated)
+    db.commit()
+    return {'date': d, 'period': s.period, 'topic': (e.topic or (pl.topic if pl else None)), 'copied': copied,
+            'updated': updated, 'skipped': skipped}
+
+
 @router.get('/{ta_id}/{task_id}/full')
 def task_full(ta_id: int, task_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Redaktə üçün: tapşırıq + sualların tam surəti (düzgün cavablarla – yalnız müəllimə)."""

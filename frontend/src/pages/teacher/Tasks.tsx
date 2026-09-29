@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { get, post } from '../../api'
 import { MathText } from '../../MathText'
-import { ConfirmName, Drawer, ErrorBox, fmt, gradeTone, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
+import { AsyncBtn, ConfirmName, Drawer, ErrorBox, fmt, fmtDate, gradeTone, isoDate, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import TaskEditor from './TaskEditor'
 import { esc, head, mathHtml, printDoc, table } from '../../print'
@@ -91,6 +91,32 @@ function Share({ task, cls, onClose }: { task: Task; cls: string; onClose: () =>
   )
 }
 
+/** Təhvil verilmiş nəticələr formativ «test» qiyməti kimi seçilən dərsə (defolt – testin açıldığı gün). */
+function ToJournal({ ta, id, opens }: { ta: number; id: number; opens: string }) {
+  const [date, setDate] = useState(() => isoDate(new Date(opens)))
+  const [day] = useLoad<any>(() => get(`/api/journal/${ta}/day`, { date }), [ta, date])
+  const [period, setPeriod] = useState<number | ''>('')
+  const [res, setRes] = useState<any>(null)
+  useEffect(() => { setPeriod(day?.lessons?.[0]?.period ?? '') }, [day])
+  const lessons = (day?.lessons || []) as any[]
+  return (
+    <section className="panel"><h2>Jurnala köçür <small>formativ «test» qiyməti</small></h2>
+      <div className="row">
+        <input type="date" className="sel" value={date} max={isoDate(new Date())} onChange={e => { setDate(e.target.value); setRes(null) }} aria-label="Dərs günü" />
+        <select className="sel" value={period} onChange={e => setPeriod(e.target.value === '' ? '' : Number(e.target.value))} aria-label="Dərs saatı">
+          {lessons.length === 0 && <option value="">bu gün dərs yoxdur</option>}
+          {lessons.map(l => <option key={l.period} value={l.period} disabled={['KSQ', 'BSQ'].includes(l.plan?.assessment_type)}>
+            {l.period}-ci saat · {(l.entry?.topic || l.plan?.topic || '').slice(0, 40)}{['KSQ', 'BSQ'].includes(l.plan?.assessment_type) ? ` (${l.plan.assessment_type} – olmaz)` : ''}</option>)}
+        </select>
+        <AsyncBtn className="btn primary" disabled={period === ''} onClick={async () => setRes(await post(`/api/tasks/${ta}/${id}/to-journal`, { date, period }))}>Köçür</AsyncBtn>
+      </div>
+      {res && <p className="small" style={{ margin: '8px 0 0' }}>{fmtDate(res.date)}, {res.period}-ci saat: <b>{res.copied}</b> yeni, <b>{res.updated}</b> yeniləndi
+        {res.skipped.length > 0 && <> · ötürüldü: {res.skipped.map((s: any) => `${s.full_name} (${s.reason})`).join(', ')}</>}</p>}
+      <p className="small muted" style={{ margin: '6px 0 0' }}>Qiymət: düzgün / sual → faiz → qiymət. Həmin dərsdə olmayan şagird ötürülür; təkrar köçürmə köhnəni yeniləyir.</p>
+    </section>
+  )
+}
+
 // ---------------------------------------------------------------- canlı izləmə və nəticələr
 function Watch({ ta, id, onClose }: { ta: number; id: number; onClose: () => void }) {
   const [d, err, , reload] = useLoad<any>(() => get(`/api/tasks/${ta}/${id}`), [ta, id])
@@ -134,6 +160,7 @@ function Watch({ ta, id, onClose }: { ta: number; id: number; onClose: () => voi
             </div>))}
             {rows.length === 0 && <div className="empty">Uyğun şagird yoxdur.</div>}
           </div>
+          {d.summary['təhvil verib'] > 0 && <ToJournal ta={ta} id={id} opens={d.task.opens_at} />}
           {d.questions.length > 0 && d.summary['təhvil verib'] > 0 && (
             <section className="panel"><h2>Suallar üzrə</h2>
               {d.questions.map((x: any) => (

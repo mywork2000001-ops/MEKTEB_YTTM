@@ -92,7 +92,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
   const save = async () => {
     const ms = Object.values(marks).filter(m => (m.kind === 'test' ? m.test_correct != null : m.grade)).map(m =>
       m.kind === 'test' ? { student_id: m.student_id, kind: 'test', test_correct: m.test_correct, test_total: testTotal, comment: m.comment || null } : { student_id: m.student_id, kind: m.kind, grade: m.grade, comment: m.comment || null })
-    const r = await put(`/api/journal/${ta.id}/entry`, { date, period: lesson.period, topic: topic || null, homework: homework || null, note: note.trim() || null, ...(future ? { attendance: {}, marks: [], homework_checks: {} } : { attendance: att, marks: ms, homework_checks: hw }) })
+    const r = await put(`/api/journal/${ta.id}/entry`, { date, period: lesson.period, topic: topic || null, homework: homework || null, note: note.trim() || null, ...(future ? { attendance: {}, marks: [], homework_checks: {} } : { attendance: att, marks: isExam ? [] : ms, homework_checks: hw }) })
     if (r?.queued) { toast('Oflayn – yazı növbəyə düşdü, internet qayıdanda göndəriləcək'); return }
     toast('Yadda saxlanıldı')
     onSaved()
@@ -122,7 +122,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
         </label>
         {lesson.plan?.standards?.length ? <p className="full small" style={{ margin: 0 }}>Standartlar: <b>{lesson.plan.standards.join(', ')}</b></p> : null}
         {lesson.plan?.resources && <p className="full small muted" style={{ margin: 0 }}>Resurslar: {lesson.plan.resources}</p>}
-        {isExam && <p className="full small" style={{ margin: 0, color: 'var(--warn)' }}>Bu dərs {lesson.plan!.assessment_type} günüdür: nəticələr «KSQ / BSQ» tabında yazılır. Summativ dərsdə formativ qiymət adətən qoyulmur.</p>}
+        {isExam && <p className="full small" style={{ margin: 0, color: 'var(--warn)' }}>Bu dərs {lesson.plan!.assessment_type} günüdür: formativ qiymət yazılmır, yalnız davamiyyət və ev tapşırığı. Nəticələr «KSQ / BSQ» tabında.</p>}
         {taskText('sinif') && <p className="full small" style={{ margin: 0 }}>Sinifdə: <b>{taskText('sinif')}</b>{taskText('mustaqil') ? <> · müstəqil: {taskText('mustaqil')}</> : null}</p>}
         <label className="f full">Ev tapşırığı
           <span className="row" style={{ flexWrap: 'nowrap' }}><input className="grow" value={homework} onChange={x => setHomework(x.target.value)} placeholder="məs. S 1–10, E 11–20" />
@@ -151,16 +151,16 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
                 {ATT.map(([v, short, cls]) => <button key={v} className={cls} title={v} aria-pressed={att[s.id] === v} onClick={() => { setAtt({ ...att, [s.id]: v }); if (out(v)) { setMark(s.id, null); if (hw[s.id]) { const n = { ...hw }; delete n[s.id]; setHw(n) } } }}>{short}</button>)}
               </div>
               <div className="row" aria-label="Qiymət">
-                <select className="grade-sel" disabled={absent} value={m?.kind || 'şifahi'} onChange={x => setMark(s.id, { kind: x.target.value as MarkRow['kind'] })}>
+                <select className="grade-sel" disabled={absent || !!isExam} value={m?.kind || 'şifahi'} onChange={x => setMark(s.id, { kind: x.target.value as MarkRow['kind'] })}>
                   <option value="şifahi">şifahi</option><option value="yazılı">yazılı</option><option value="test">test</option>
                 </select>
                 {m?.kind === 'test' ? (
-                  <select className="grade-sel" disabled={absent} value={m.test_correct ?? ''} onChange={x => setMark(s.id, { test_correct: x.target.value === '' ? null : Number(x.target.value) })} aria-label="Düzgün cavab sayı">
+                  <select className="grade-sel" disabled={absent || !!isExam} value={m.test_correct ?? ''} onChange={x => setMark(s.id, { test_correct: x.target.value === '' ? null : Number(x.target.value) })} aria-label="Düzgün cavab sayı">
                     <option value="">düzgün</option>
                     {Array.from({ length: testTotal + 1 }, (_, i) => <option key={i} value={i}>{i}/{testTotal}</option>)}
                   </select>
                 ) : (
-                  <select className="grade-sel" disabled={absent} value={m?.grade ?? ''} onChange={x => setMark(s.id, x.target.value ? { grade: Number(x.target.value) } : null)} aria-label="Qiymət">
+                  <select className="grade-sel" disabled={absent || !!isExam} value={m?.grade ?? ''} onChange={x => setMark(s.id, x.target.value ? { grade: Number(x.target.value) } : null)} aria-label="Qiymət">
                     <option value="">—</option>{[5, 4, 3, 2].map(g => <option key={g}>{g}</option>)}
                   </select>
                 )}

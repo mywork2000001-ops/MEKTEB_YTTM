@@ -83,23 +83,25 @@ function CreateExam({ ta, p, prev, onClose, onDone }: { ta: MyLesson; p: Planned
 
 function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose: () => void }) {
   const [d, err, , reload] = useLoad<any>(() => get(`/api/exams/${ta.id}/${examId}`), [ta.id, examId])
-  const [rows, setRows] = useState<Record<number, { points: string; marks: number[] | null; absent: boolean }>>({})
+  const [rows, setRows] = useState<Record<number, { points: string; marks: number[] | null; absent: boolean; later: boolean; taken_on: string }>>({})
   useEffect(() => {
     if (!d) return
     setRows(Object.fromEntries(d.rows.map((r: any) => [r.student_id, {
       points: r.points == null ? '' : String(r.points), absent: r.absent,
+      later: !!r.taken_on, taken_on: r.taken_on || '',
       marks: r.item_marks || null }])))                       // null = hələ daxil edilməyib (0 bal deyil!)
   }, [d])
   const items = d?.exam.items as Exam['items']
   const save = async () => {
     const body = Object.entries(rows).map(([sid, r]) => r.absent ? { student_id: Number(sid), absent: true }
-      : items ? { student_id: Number(sid), item_marks: r.marks } : { student_id: Number(sid), points: r.points === '' ? null : Number(r.points.replace(',', '.')) })
+      : { student_id: Number(sid), taken_on: r.later && r.taken_on && (items ? r.marks : r.points !== '') ? r.taken_on : null,
+          ...(items ? { item_marks: r.marks } : { points: r.points === '' ? null : Number(r.points.replace(',', '.')) }) })
     await put(`/api/exams/${ta.id}/${examId}/scores`, body)
     reload()
   }
   return (
     <Drawer title={d ? `${d.exam.kind}-${d.exam.no} · ${fmtDate(d.exam.date)} · ${d.exam.max_points} bal` : 'Nəticələr'} onClose={onClose}
-      footer={<>{d && <button className="btn" onClick={() => printDoc({ title: `${ta.class_name} – ${d.exam.kind}-${d.exam.no} nəticələri`, body: head(`${ta.class_name} – ${d.exam.kind}-${d.exam.no} (${d.exam.semester}-ci yarımil)`, `${fmtDate(d.exam.date)} · maksimal bal ${d.exam.max_points} · orta ${fmt(d.summary.avg_pct)}%`) + table(['№', 'Şagird', 'Bal', '%', 'Qiymət'], d.rows.map((r: any, i: number) => [i + 1, r.full_name, r.absent ? 'yox idi' : fmt(r.points), fmt(r.pct), r.grade ?? '—']), [2, 3, 4]) + (d.items?.length ? '<h2>Tapşırıq təhlili</h2>' + table(['Tapşırıq', 'Bal', 'Standart', 'Həll %'], d.items.map((it: any) => [it.n, it.points, it.standard || '', fmt(it.pct, 0)]), [1, 3]) : '') })}>Çap / PDF</button>}<AsyncBtn className="btn primary" onClick={save} ok="Nəticələr yadda saxlanıldı">Yadda saxla</AsyncBtn></>}>
+      footer={<>{d && <button className="btn" onClick={() => printDoc({ title: `${ta.class_name} – ${d.exam.kind}-${d.exam.no} nəticələri`, body: head(`${ta.class_name} – ${d.exam.kind}-${d.exam.no} (${d.exam.semester}-ci yarımil)`, `${fmtDate(d.exam.date)} · maksimal bal ${d.exam.max_points} · orta ${fmt(d.summary.avg_pct)}%`) + table(['№', 'Şagird', 'Bal', '%', 'Qiymət'], d.rows.map((r: any, i: number) => [i + 1, r.full_name + (r.taken_on ? ` (sonradan: ${fmtDate(r.taken_on)})` : ''), r.absent ? 'yox idi' : fmt(r.points), fmt(r.pct), r.grade ?? '—']), [2, 3, 4]) + (d.items?.length ? '<h2>Tapşırıq təhlili</h2>' + table(['Tapşırıq', 'Bal', 'Standart', 'Həll %'], d.items.map((it: any) => [it.n, it.points, it.standard || '', fmt(it.pct, 0)]), [1, 3]) : '') })}>Çap / PDF</button>}<AsyncBtn className="btn primary" onClick={save} ok="Nəticələr yadda saxlanıldı">Yadda saxla</AsyncBtn></>}>
       <ErrorBox error={err} />
       {d && (
         <>
@@ -117,12 +119,15 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
                 <div className="jrow cols" key={r.student_id} style={{ ['--cols' as any]: '1fr', ['--mcols' as any]: '1fr', gap: 6 }}>
                   <div className="row"><b className="grow">{r.full_name}</b>
                     {r.grade != null && <Pill tone={gradeTone(r.grade)}>{fmt(r.pct)}% → {r.grade}</Pill>}
-                    <label className="check small"><input type="checkbox" checked={v.absent} onChange={e => set({ absent: e.target.checked })} /> yox idi</label>
+                    {r.taken_on && <Pill tone="info">sonradan: {fmtDate(r.taken_on)}</Pill>}
+                    <label className="check small"><input type="checkbox" checked={v.absent} onChange={e => set({ absent: e.target.checked, later: false })} /> yox idi</label>
+                    {!v.absent && <label className="check small" title="Üzrlü səbəbdən imtahan günü olmayıb, sonradan yazıb"><input type="checkbox" checked={v.later} onChange={e => set({ later: e.target.checked })} /> sonradan yazdı</label>}
+                    {!v.absent && v.later && <input type="date" className="sel" style={{ maxWidth: 160 }} min={d.exam.date} value={v.taken_on} onChange={e => set({ taken_on: e.target.value })} aria-label="Yazdığı tarix" />}
                   </div>
                   {!v.absent && (items ? (
                     <div className="att-btns">
                       {items.map((it, i) => (
-                        <button key={i} className={v.marks?.[i] ? 'var' : 'yox'} aria-pressed title={`${it.n}: ${it.points} bal`}
+                        <button key={i} className={v.marks ? (v.marks[i] ? 'var' : 'yox') : ''} aria-pressed={!!v.marks} title={`${it.n}: ${it.points} bal`}
                           onClick={() => { const m = [...(v.marks || items.map(() => 0))]; m[i] = m[i] ? 0 : 1; set({ marks: m }) }}>{it.n}{v.marks ? (v.marks[i] ? '✓' : '✗') : '·'}</button>))}
                       {v.marks ? <span className="small muted">{v.marks.reduce((a, m, i) => a + m * items[i].points, 0)} bal</span>
                         : <button className="btn sm ghost" onClick={() => set({ marks: items.map(() => 0) })}>daxil et</button>}

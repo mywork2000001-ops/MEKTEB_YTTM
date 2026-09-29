@@ -24,7 +24,12 @@ gələcək dərsə yalnız mövzu və ev tapşırığı; ev tapşırığı yaln�
 `test_journal_grid_plan_execution_and_feedback` (jurnal səhifəsi, planın icrası, rəy, dərs qeydi, «2» səhvi, standart təhlili),
 `test_journal_methodology_rules`, `test_journal_entry_rules`. Cəmi 106 test keçir.
 
-## Açıq qalan metodik qərarlar
-1. KSQ/BSQ günü formativ qiyməti tam bloklamaq (indi yalnız xəbərdarlıq).
-2. Onlayn testin nəticəsini bir düymə ilə formativ qiymət kimi jurnala köçürmək.
-3. Summativi üzrlü səbəbdən buraxan şagird üçün «sonradan yazdı» tarixi.
+## İstifadəçinin qərarları ilə icra olundu (29.09)
+1. **KSQ/BSQ günü formativ qiymət tam bloklanır** – serverdə 400; jurnalda qiymət sahələri bağlıdır, davamiyyət və ev tapşırığı yazılır.
+2. **Onlayn test → jurnal** – «Onlayn tapşırıqlar → Nəticələr → Jurnala köçür»: dərs günü (defolt testin açıldığı gün) və saat
+   seçilir; düzgün / sual → faiz → qiymət «test» növü ilə, rəy «Onlayn test: …»; həmin dərsdə olmayan ötürülür;
+   təkrar köçürmə dublikat yaratmır, yeniləyir; KSQ/BSQ dərsinə və gələcək dərsə köçürülmür.
+3. **«Sonradan yazdı»** – KSQ/BSQ nəticəsində tarix (`ExamScore.taken_on`): imtahandan sonra, yarımilin sonuna və bu günə qədər;
+   nəticə cədvəlində və çapda «sonradan: dd.mm» görünür, yarımil qiymətinə adi qaydada daxil olur.
+
+Testlər: `test_task_to_journal`, `test_exam_taken_later` – cəmi 108 test keçir.

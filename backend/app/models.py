@@ -321,6 +321,7 @@ class ExamScore(Base):
     points: Mapped[float | None] = mapped_column(Float)
     item_marks: Mapped[list | None] = mapped_column(JSON)              # [1, 0, 1, …] – tapşırıq üzrə ✓/✗
     absent: Mapped[bool] = mapped_column(Boolean, default=False)
+    taken_on: Mapped[dt.date | None] = mapped_column(Date)             # üzrlü səbəbdən sonradan yazdığı tarix
 
 
 # ---------------------------------------------------------------- onlayn tapşırıqlar (vaxtlı testlər)
