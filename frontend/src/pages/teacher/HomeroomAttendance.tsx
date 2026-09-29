@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { get, put } from '../../api'
 import { esc, head, printDoc, table } from '../../print'
-import { AsyncBtn, Empty, ErrorBox, fmt, fmtDate, isoDate, Loading, ord, Pill, Seg, toast, useLoad } from '../../ui'
+import { AsyncBtn, Empty, ErrorBox, fmt, fmtDate, isoDate, Loading, ord, Pill, Seg, toast, useLoad, useNarrow } from '../../ui'
 
 type Cell = { status: string; source: string; reason: string | null } | null
 const ST: [string, string, string][] = [['var', 'V', 'var'], ['yox', 'Q', 'yox'], ['üzrlü', 'Ü', 'uzrlu'], ['gecikdi', 'G', 'gecikdi']]
@@ -160,6 +160,8 @@ function Month({ cid, className }: { cid: number; className: string }) {
 export function ClassTimetable({ cid }: { cid: number }) {
   const [t, err, loading, reload] = useLoad<any>(() => get(`/api/homeroom/${cid}/timetable`), [cid])
   const [cells, setCells] = useState<Record<string, { subject: string; teacher: string }>>({})
+  const narrow = useNarrow()
+  const [day, setDay] = useState(() => Math.min(Math.max(new Date().getDay() - 1, 0), 4))
   useEffect(() => {
     if (!t) return
     setCells(Object.fromEntries(t.cells.filter((c: any) => !c.locked).map((c: any) => [`${c.weekday}:${c.period}`, { subject: c.subject, teacher: c.teacher || '' }])))
@@ -168,6 +170,27 @@ export function ClassTimetable({ cid }: { cid: number }) {
   if (err) return <ErrorBox error={err} />
   const lockedAt = (w: number, p: number) => t.cells.filter((c: any) => c.locked && c.weekday === w && c.period === p)
   const upd = (k: string, f: 'subject' | 'teacher', v: string) => setCells({ ...cells, [k]: { ...(cells[k] || { subject: '', teacher: '' }), [f]: v } })
+  const dayView = narrow && (
+    <>
+      <div className="row" style={{ marginBottom: 10 }}>
+        <Seg value={String(day)} onChange={v => setDay(Number(v))} options={t.weekdays.map((w: string, i: number) => [String(i), w]) as [string, string][]} label="Gün" />
+      </div>
+      <div className="jlist">{t.periods.map((p: any) => {
+        const k = `${day}:${p.period}`, lk = lockedAt(day, p.period), v = cells[k] || { subject: '', teacher: '' }
+        const onlyGroup = lk.length > 0 && lk.every((c: any) => c.subject.endsWith('(qrup)'))
+        return (
+          <div key={p.period} className="jrow cols" style={{ ['--cols' as any]: '64px minmax(0,1fr)', ['--mcols' as any]: '64px minmax(0,1fr)' }}>
+            <span><b>{ord(p.period)}</b><br /><small className="muted">{p.time || ''}</small></span>
+            <span>
+              {lk.map((c: any, i: number) => <div key={i} className="small" style={{ background: 'var(--sunk)', borderRadius: 8, padding: '8px 10px', marginBottom: 4 }}><b>{c.subject}</b> 🔒<br /><span className="muted">{c.teacher}</span></div>)}
+              {(lk.length === 0 || onlyGroup) && <>
+                <input className="sel w100" placeholder={onlyGroup ? 'paralel fənn' : 'fənn (boş – dərs yoxdur)'} value={v.subject} onChange={e => upd(k, 'subject', e.target.value)} aria-label={`fənn ${t.weekdays[day]} ${ord(p.period)} saat`} />
+                {v.subject && <input className="sel w100" style={{ marginTop: 6 }} placeholder="müəllim (istəyə görə)" value={v.teacher} onChange={e => upd(k, 'teacher', e.target.value)} />}</>}
+            </span>
+          </div>)
+      })}</div>
+    </>
+  )
   return (
     <>
       <div className="row" style={{ marginBottom: 10 }}>
@@ -177,7 +200,7 @@ export function ClassTimetable({ cid }: { cid: number }) {
           toast('Dərs cədvəli yadda saxlanıldı'); reload()
         }}>Yadda saxla</AsyncBtn>
       </div>
-      <div className="tbl-wrap"><table style={{ minWidth: 720 }}>
+      {dayView || <div className="tbl-wrap"><table style={{ minWidth: 720 }}>
         <thead><tr><th>Saat</th>{t.weekdays.map((w: string) => <th key={w}>{w}</th>)}</tr></thead>
         <tbody>{t.periods.map((p: any) => (
           <tr key={p.period}><td style={{ whiteSpace: 'nowrap' }}><b>{ord(p.period)}</b><br /><small className="muted">{p.time || ''}</small></td>
@@ -192,7 +215,7 @@ export function ClassTimetable({ cid }: { cid: number }) {
                     {v.subject && <input className="sel" style={{ minHeight: 28, width: '100%', fontSize: 12, marginTop: 3 }} placeholder="müəllim (istəyə görə)" value={v.teacher} onChange={e => upd(k, 'teacher', e.target.value)} />}</>}
                 </td>)
             })}</tr>))}</tbody>
-      </table></div>
+      </table></div>}
     </>
   )
 }

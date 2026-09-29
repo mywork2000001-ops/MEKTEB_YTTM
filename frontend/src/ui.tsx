@@ -52,6 +52,17 @@ export function ErrorBox({ error }: { error: unknown }) {
 }
 
 /** Sadə yükləmə hook-u: [data, error, loading, reload]. */
+/** Telefon ekranı (≤ 700px) – cədvəl əvəzinə kart/gün görünüşü üçün. */
+export function useNarrow(): boolean {
+  const q = '(max-width: 700px)'
+  const [n, setN] = useState(() => typeof matchMedia !== 'undefined' && matchMedia(q).matches)
+  useEffect(() => {
+    const m = matchMedia(q); const f = () => setN(m.matches)
+    m.addEventListener('change', f); return () => m.removeEventListener('change', f)
+  }, [])
+  return n
+}
+
 export function useLoad<T>(fn: () => Promise<T>, deps: unknown[]): [T | undefined, unknown, boolean, () => void] {
   const [data, setData] = useState<T>()
   const [err, setErr] = useState<unknown>()

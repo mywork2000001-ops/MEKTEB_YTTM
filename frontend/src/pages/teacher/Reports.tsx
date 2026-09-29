@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { get } from '../../api'
 import { useAuth } from '../../auth'
-import { ErrorBox, fmt, fmtDate, gradeTone, levelTone, Loading, PickFirst, Pill, riskTone, Seg, Stat, Top, useLoad, ord } from '../../ui'
+import { ErrorBox, fmt, fmtDate, gradeTone, levelTone, Loading, PickFirst, Pill, riskTone, Seg, Stat, Top, useLoad, ord, useNarrow } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { head, printDoc, table } from '../../print'
 import { useT } from '../../i18n'
@@ -155,6 +155,22 @@ function PrintView({ a, ta, sem }: { a: any; ta: number; sem: string }) {
 
 /** Dərs sayı: plan – cədvəl – keçilməli – yazılıb – yazılmamış – keçilən/qalan mövzu – geriləmə. */
 export function LessonCountTable({ rows, first }: { rows: { label: string; l: any }[]; first: string }) {
+  const narrow = useNarrow()
+  if (narrow) return (
+    <div className="stack" style={{ gap: 10 }}>{rows.map(({ label, l }) => (
+      <section key={label} className="panel" style={{ padding: 14 }}>
+        <h2 style={{ fontSize: 15, marginBottom: 8 }}>{label}</h2>
+        <div className="kpis">
+          <Stat value={l.weekly_hours} label="həftədə" /><Stat value={l.plan_total} label="planda" /><Stat value={l.due} label="keçilməli idi" />
+          <Stat value={l.written} label="yazılıb" /><Stat value={l.missing} label="yazılmayıb" /><Stat value={l.remaining} label="qalan mövzu" />
+        </div>
+        <div className="row" style={{ marginTop: 8, gap: 6 }}>
+          {l.lag ? <Pill tone={l.lag > 3 ? 'bad' : 'warn'}>geriləmə: {l.lag} dərs</Pill> : <Pill tone="ok">geriləmə yoxdur</Pill>}
+          {l.date_mismatch ? <Pill tone="bad">planla tarix: {l.date_mismatch} fərq</Pill> : <Pill tone="ok">plana uyğun</Pill>}
+          {l.unfit ? <Pill tone="bad">sığmır: {l.unfit}</Pill> : null}
+        </div>
+      </section>))}</div>
+  )
   return (
     <div className="tbl-wrap"><table>
       <thead><tr><th>{first}</th><th className="r">Həftədə</th><th className="r">Planda</th><th className="r">Cədvəldə</th><th className="r">Keçilməli idi</th><th className="r">Jurnalda yazılıb</th><th className="r">Yazılmayıb</th><th className="r">Keçilən mövzu</th><th className="r">Qalan</th><th className="r">Geriləmə</th><th className="r" title="cədvəl üzrə tarix = plandakı tarix">Planla tarix</th></tr></thead>

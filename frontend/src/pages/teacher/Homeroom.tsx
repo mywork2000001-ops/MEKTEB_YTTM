@@ -3,7 +3,7 @@ import { del, get, post, put } from '../../api'
 import { useAuth } from '../../auth'
 import { useT } from '../../i18n'
 import { esc, head, printDoc, table } from '../../print'
-import { AsyncBtn, Drawer, Empty, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, PickFirst, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
+import { AsyncBtn, Drawer, Empty, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, PickFirst, Pill, Seg, Stat, toast, Top, useLoad, useNarrow } from '../../ui'
 import { usePick } from './common'
 import { LessonCountTable, PerfStats } from './Reports'
 import HomeroomAttendance, { ClassTimetable } from './HomeroomAttendance'
@@ -91,7 +91,7 @@ function Overview({ h }: { h: any }) {
         <PerfStats m={s.grades} />
       </section>
       <section className="panel" style={{ gridColumn: '1/-1' }}><h2>Fənlər üzrə müvəffəqiyyət</h2>
-        <div className="tbl-wrap"><table>
+        <div className="tbl-wrap"><table className="sticky-first">
           <thead><tr><th>Fənn</th><th>Müəllim</th><th className="r">Müvəffəqiyyət</th><th className="r">Keyfiyyət</th><th className="r">Orta</th><th className="r">SOU</th><th className="r">«5»·«4»·«3»·«2»</th><th className="r">Qiymətsiz</th></tr></thead>
           <tbody>{h.subjects.map((x: any) => (
             <tr key={x.ta_id}><td>{x.label}</td><td className="small">{x.teacher}</td>
@@ -115,9 +115,21 @@ function Lessons({ h }: { h: any }) {
 }
 
 function Grades({ h }: { h: any }) {
+  const narrow = useNarrow()
+  if (narrow) return (      // telefon: hər şagird bir sətir – fənn qiymətləri nişan kimi
+    <div className="jlist">{h.students.map((r: any, i: number) => (
+      <div key={r.student_id} className="jrow cols" style={{ ['--cols' as any]: '1fr', ['--mcols' as any]: '1fr', gap: 6 }}>
+        <div className="row"><b className="grow">{i + 1}. {r.full_name}</b>
+          {r.category ? <Pill tone={CAT_TONE[r.category]}>{r.category}</Pill> : <span className="muted small">qiymət yoxdur</span>}</div>
+        <div className="row small" style={{ gap: 6 }}>
+          {h.subjects.filter((x: any) => x.ta_id in r.grades || !x.group).map((x: any) => (
+            <span key={x.ta_id}>{x.label}: {r.grades[x.ta_id] ? <Pill tone={gradeTone(r.grades[x.ta_id])}>{r.grades[x.ta_id]}</Pill> : '—'}</span>))}
+          <span className="grow" /><span>orta <b>{fmt(r.avg, 2)}</b></span></div>
+      </div>))}</div>
+  )
   return (
     <>
-      <div className="tbl-wrap"><table>
+      <div className="tbl-wrap"><table className="sticky-first">
         <thead><tr><th>№</th><th>Şagird</th>{h.subjects.map((x: any) => <th key={x.ta_id} className="r" title={x.teacher}>{x.label}</th>)}<th className="r">Orta</th><th>Kateqoriya</th></tr></thead>
         <tbody>{h.students.map((r: any, i: number) => (
           <tr key={r.student_id}><td className="num">{i + 1}</td><td style={{ whiteSpace: 'nowrap' }}>{r.full_name}</td>
@@ -132,7 +144,7 @@ function Grades({ h }: { h: any }) {
 function Attendance({ h }: { h: any }) {
   const rows = [...h.students].sort((a: any, b: any) => (b.missed_pct ?? -1) - (a.missed_pct ?? -1))
   return (
-    <div className="tbl-wrap"><table>
+    <div className="tbl-wrap"><table className="sticky-first">
       <thead><tr><th>Şagird</th><th className="r">Dərs</th><th className="r">Buraxıb</th><th className="r">Üzrsüz</th><th className="r">Üzrlü</th><th className="r">Gecikib</th><th className="r">Buraxma %</th></tr></thead>
       <tbody>{rows.map((r: any) => (
         <tr key={r.student_id}><td>{r.full_name}{r.absent_today && <> <Pill tone="warn">bu gün yoxdur</Pill></>}</td>
