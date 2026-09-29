@@ -6,6 +6,7 @@ import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, Loading, 
 
 type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; split_with: string | null; utis_class: string | null
   exam_date: string | null; bells: Record<string, string> | null; students: number; can_open: boolean; archived: boolean
+  homeroom: { id: number; name: string } | null
   teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number; slots: Record<string, number[]>; has_summative: boolean } | null }
 type Stud = { id: number; full_name: string; birth_date: string | null; gender: string | null; class_id: number; class_name: string; portal_code: string
   score_language: number | null; score_math: number | null; score_foreign: number | null; archived: boolean }
@@ -37,7 +38,8 @@ function ClassesTab() {
         {(classes || []).map(c => (
           <div className="jrow" key={c.id}>
             <span><b>{c.name}</b> <span className="small muted">{c.kind}{c.split_with ? ' · bölünür: ' + c.split_with : ''} · {c.students} şagird</span>
-              <span className="sub small muted"><br />{c.teachers.map(t => `${t.name} (${t.subject})`).join(', ') || 'müəllim yoxdur'}</span></span>
+              <span className="sub small muted"><br />{c.teachers.map(t => `${t.name} (${t.subject})`).join(', ') || 'müəllim yoxdur'}</span>
+              {c.kind !== 'qrup' && <span className="sub small muted"><br />Sinif rəhbəri: {c.homeroom?.name || '—'}</span>}</span>
             <span className="row">{c.mine ? <Pill tone="ok">{c.mine.subject} · {c.mine.weekly_hours} saat</Pill> : <Pill>qoşulmamısınız</Pill>}</span>
             <span className="row">
               <button className="btn sm" onClick={() => setJoin(c)}>{c.mine ? 'Cədvəl' : 'Qoşul'}</button>
@@ -111,6 +113,7 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
           <Field label="UTİS sinfi"><input value={f.utis_class} onChange={e => setF({ ...f, utis_class: e.target.value })} placeholder="10 e" /></Field>
           <Field label="İmtahan tarixi" hint="şagird portalında sayğac"><input type="date" value={f.exam_date} onChange={e => setF({ ...f, exam_date: e.target.value })} /></Field>
         </div>
+        {cls && cls.kind !== 'qrup' && <HomeroomField cls={cls} onDone={onDone} />}
         {cls && ta && (
           <fieldset><legend>Rəsmi perspektiv plan (.docx)</legend>
             <p className="small muted">{ta.plan_lessons ? `Yüklənib: ${ta.plan_lessons} dərs. Yenidən yükləmək jurnal qeydlərini saxlayır.` : 'Plan yüklənməyib.'}</p>
@@ -127,6 +130,35 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
           : <button className="btn danger" onClick={() => setConfirm(true)}>Arxivə göndər</button>)}
       </div>
     </Drawer>
+  )
+}
+
+/** Sinif rəhbəri: admin istənilən müəllimi təyin edir; müəllim rəhbəri olmayan sinfi özü götürür və ya özünü çıxarır. */
+function HomeroomField({ cls, onDone }: { cls: Cls; onDone: () => void }) {
+  const { me } = useAuth()
+  const admin = me?.role === 'admin'
+  const [teachers] = useLoad<any[]>(() => (admin ? get('/api/teachers') : Promise.resolve([])), [admin])
+  const [v, setV] = useState(String(cls.homeroom?.id ?? ''))
+  const set = async (id: number | null) => { await put(`/api/classes/${cls.id}/homeroom`, { teacher_id: id }); toast('Sinif rəhbəri yadda saxlanıldı'); onDone() }
+  return (
+    <fieldset><legend>Sinif rəhbəri</legend>
+      {admin ? (
+        <div className="row">
+          <select className="sel" value={v} onChange={e => setV(e.target.value)} aria-label="Sinif rəhbəri">
+            <option value="">— təyin edilməyib —</option>
+            {(teachers || []).filter(t => !t.archived && t.school_id === me?.school_id).map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
+          </select>
+          <AsyncBtn className="btn" disabled={v === String(cls.homeroom?.id ?? '')} onClick={() => set(v ? Number(v) : null)}>Təyin et</AsyncBtn>
+        </div>
+      ) : cls.homeroom?.id === me?.id ? (
+        <div className="row"><span className="grow">Siz bu sinfin rəhbərisiniz.</span><AsyncBtn className="btn" onClick={() => set(null)}>Rəhbərlikdən çıx</AsyncBtn></div>
+      ) : cls.homeroom ? (
+        <p className="small muted" style={{ margin: 0 }}>Rəhbər: {cls.homeroom.name}. Dəyişmək üçün adminə müraciət edin.</p>
+      ) : (
+        <div className="row"><span className="grow small muted">Bu sinfin rəhbəri yoxdur.</span><AsyncBtn className="btn" onClick={() => set(me!.id)}>Mən sinif rəhbəriyəm</AsyncBtn></div>
+      )}
+      <p className="small muted" style={{ margin: '6px 0 0' }}>Sinif rəhbəri sinfin bütün fənləri üzrə dərs sayını, qiymətləri, müvəffəqiyyəti və davamiyyəti görür (başqa müəllimlərin jurnal qeydlərini yox).</p>
+    </fieldset>
   )
 }
 

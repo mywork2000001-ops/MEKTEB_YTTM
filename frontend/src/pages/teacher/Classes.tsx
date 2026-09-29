@@ -5,7 +5,7 @@ import { usePick } from './common'
 import { fmtD, fmtN, head, printDoc, table } from '../../print'
 
 type Cls = { id: number; name: string; code: string; kind: string; students: number; can_open: boolean; split_with: string | null
-  teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number } | null; exam_date: string | null }
+  teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number } | null; exam_date: string | null; homeroom?: { id: number; name: string } | null }
 type Stud = { id: number; full_name: string; birth_date: string | null; gender: string | null; portal_code: string; class_name: string
   score_language: number | null; score_math: number | null; score_foreign: number | null; score_total: number | null; level: string | null }
 const LV: Record<string, string> = { 'Yüksək': 'Güclü', 'Orta': 'Orta', 'Zəif': 'Zəif' }
@@ -27,6 +27,7 @@ export default function Classes() {
               <div className="cls-head"><div className="cls-title"><span className="badge">{c.code}</span><div><b>{c.name}</b><div className="small muted">{c.kind === 'qrup' ? `qrup${c.split_with ? ' · ' + c.split_with : ''}` : c.kind}</div></div></div></div>
               <dl className="cls-meta">
                 <dt>Şagird</dt><dd>{c.students}</dd>
+                {c.homeroom && <><dt>Rəhbər</dt><dd>{c.homeroom.name}</dd></>}
                 <dt>Müəllim</dt><dd>{c.teachers.map(t => `${t.name} (${t.subject})`).join(', ') || '—'}</dd>
                 {c.exam_date && <><dt>İmtahan</dt><dd>{fmtDate(c.exam_date)}</dd></>}
               </dl>

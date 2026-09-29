@@ -58,6 +58,7 @@ def class_out(db: Session, c: SchoolClass, user: User, mine: set[int] | None):
     return {'id': c.id, 'name': c.name, 'code': c.code, 'kind': c.kind, 'parent_id': c.parent_id,
             'utis_class': c.utis_class, 'exam_date': c.exam_date, 'bells': c.bells, 'split_with': c.split_with,
             'archived': c.archived_at is not None, 'students': n, 'can_open': visible,
+            'homeroom': (lambda u: u and {'id': u.id, 'name': u.full_name})(db.get(User, c.homeroom_id) if c.homeroom_id else None),
             'teachers': [{'id': i, 'name': nm, 'subject': sb} for i, nm, sb in teachers],
             'mine': my_ta and {'subject': my_ta.subject, 'weekly_hours': my_ta.weekly_hours, 'slots': my_ta.slots,
                                'has_summative': my_ta.has_summative}}

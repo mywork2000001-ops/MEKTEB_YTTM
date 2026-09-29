@@ -37,6 +37,7 @@ const T = {
   Tasks: lazy(() => import('./pages/teacher/Tasks')),
   Materials: lazy(() => import('./pages/teacher/Materials')),
   Reports: lazy(() => import('./pages/teacher/Reports')),
+  Homeroom: lazy(() => import('./pages/teacher/Homeroom')),
   Settings: lazy(() => import('./pages/teacher/Settings')),
 }
 const S = {
@@ -90,6 +91,7 @@ export default function App() {
                 <Route path="/t/:id" element={<Navigate to="/tasks" replace />} />
                 <Route path="/materials" element={<T.Materials />} />
                 <Route path="/reports" element={<T.Reports />} />
+                <Route path="/homeroom" element={<T.Homeroom />} />
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/settings" element={<T.Settings />} />
                 <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { flushOutbox, outbox } from './api'
+import { flushOutbox, get, outbox } from './api'
 import { toast } from './ui'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from './auth'
@@ -17,6 +17,7 @@ export const TEACHER_NAV: NavItem[] = [
   { to: '/tasks', icon: 'online', label: 'Onlayn tapşırıqlar', short: 'Tapşırıq' },
   { to: '/materials', icon: 'clip', label: 'Materiallar' },
   { to: '/reports', icon: 'reports', label: 'Analitika və hesabat', short: 'Hesabat' },
+  { to: '/homeroom', icon: 'classes', label: 'Sinif rəhbəri', short: 'Rəhbər' },
   { to: '/chat', icon: 'feedback', label: 'Çat' },
   { to: '/settings', icon: 'settings', label: 'Tənzimləmələr', short: 'Tənzimləmə' },
 ]
@@ -53,7 +54,13 @@ export function Layout({ children }: { children: ReactNode }) {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); window.removeEventListener('mk-outbox', upd) }
   }, [])
   const student = me?.role === 'student'
-  const items = student ? STUDENT_NAV : TEACHER_NAV
+  // «Sinif rəhbəri» yalnız rəhbəri olduğu sinif varsa (admin – həmişə)
+  const [homeroom, setHomeroom] = useState(me?.role === 'admin')
+  useEffect(() => {
+    if (!me || me.role !== 'teacher') return
+    get<any[]>('/api/homeroom').then(r => setHomeroom(r.length > 0)).catch(() => {})
+  }, [me?.id, loc.pathname === '/settings'])
+  const items = student ? STUDENT_NAV : TEACHER_NAV.filter(i => i.to !== '/homeroom' || homeroom)
   const tabs = student ? STUDENT_TABS : TEACHER_TABS
   const initials = (me?.full_name || '?').split(' ').slice(0, 2).map(w => w[0]).join('')
   const shortName = (me?.full_name || '').split(' ').slice(0, 2).join(' ')

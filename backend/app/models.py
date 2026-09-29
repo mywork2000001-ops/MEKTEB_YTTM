@@ -97,6 +97,7 @@ class SchoolClass(Base, Archivable):
     utis_class: Mapped[str | None] = mapped_column(String(20))           # UTİS: «10 e»
     exam_date: Mapped[dt.date | None] = mapped_column(Date)              # buraxılış/qəbul imtahanı (sayğac)
     bells: Mapped[dict | None] = mapped_column(JSON)                     # sinfin öz zəngi (XI peşə)
+    homeroom_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'))   # sinif rəhbəri (yalnız bütöv sinif)
     created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
     __table_args__ = (UniqueConstraint('school_id', 'year_id', 'name'),)
     students: Mapped[list[Student]] = relationship(back_populates='cls', foreign_keys='Student.class_id')
@@ -116,6 +117,7 @@ class Student(Base, Archivable):
     score_language: Mapped[float | None] = mapped_column(Float)          # IX sinif buraxılış balları
     score_math: Mapped[float | None] = mapped_column(Float)
     score_foreign: Mapped[float | None] = mapped_column(Float)
+    guardians: Mapped[list | None] = mapped_column(JSON)                 # [{name, relation, phone}] – yalnız sinif rəhbəri/admin görür
     created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
     __table_args__ = (UniqueConstraint('school_id', 'full_name', 'birth_date', name='uq_student_person'),)
     cls: Mapped[SchoolClass] = relationship(back_populates='students', foreign_keys=[class_id])
@@ -491,3 +493,17 @@ class LevelOverride(Base):
     level: Mapped[str] = mapped_column(String(10))                     # Güclü | Orta | Zəif
     note: Mapped[str | None] = mapped_column(String(300))
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class ClassEvent(Base):
+    """Sinif rəhbərinin jurnalı: valideyn iclası, sinif saatı, tədbir, ekskursiya (kim iştirak etmədi)."""
+    __tablename__ = 'class_events'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    class_id: Mapped[int] = mapped_column(ForeignKey('classes.id', ondelete='CASCADE'))
+    teacher_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    date: Mapped[dt.date] = mapped_column(Date)
+    kind: Mapped[str] = mapped_column(String(20))                      # valideyn iclası | sinif saatı | tədbir | ekskursiya | digər
+    title: Mapped[str] = mapped_column(String(300))
+    note: Mapped[str | None] = mapped_column(Text)
+    absent_ids: Mapped[list | None] = mapped_column(JSON)              # iştirak etməyən şagirdlər
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)

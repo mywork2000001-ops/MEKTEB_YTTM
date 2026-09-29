@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { get } from '../../api'
 import { useAuth } from '../../auth'
-import { ErrorBox, fmt, fmtDate, levelTone, Loading, PickFirst, Pill, riskTone, Seg, Stat, Top, useLoad } from '../../ui'
+import { ErrorBox, fmt, fmtDate, gradeTone, levelTone, Loading, PickFirst, Pill, riskTone, Seg, Stat, Top, useLoad } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { head, printDoc, table } from '../../print'
 import { useT } from '../../i18n'
 
-const TABS = [['overview', 'İcmal'], ['rating', 'Reytinq'], ['levels', 'Güclü / orta / zəif'], ['risk', 'Risk'], ['attendance', 'Davamiyyət'], ['print', 'Çap / PDF']] as const
+const TABS = [['overview', 'İcmal'], ['lessons', 'Dərs sayı'], ['performance', 'Müvəffəqiyyət'], ['rating', 'Reytinq'], ['levels', 'Güclü / orta / zəif'], ['risk', 'Risk'], ['attendance', 'Davamiyyət'], ['print', 'Çap / PDF']] as const
 
 export default function Reports() {
   const t = useT()
@@ -28,6 +28,8 @@ export default function Reports() {
         <>
           <div className="tabs no-print">{TABS.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{t(l)}</button>)}</div>
           {tab === 'overview' && <Overview a={a} />}
+          {tab === 'lessons' && <LessonCounts ta={ta} />}
+          {tab === 'performance' && <Performance ta={ta} sem={sem} />}
           {tab === 'rating' && <Rating a={a} />}
           {tab === 'levels' && <Levels a={a} />}
           {tab === 'risk' && <Risk a={a} />}
@@ -147,6 +149,75 @@ function PrintView({ a, ta, sem }: { a: any; ta: number; sem: string }) {
         <p style={{ marginTop: 16, fontSize: 12 }}>Orta qiymət: {fmt(a.overview.avg_grade, 2)} · Davamiyyət: {fmt(a.overview.avg_attendance)}% · Güclü/orta/zəif: {a.overview.levels['Güclü']}/{a.overview.levels['Orta']}/{a.overview.levels['Zəif']}</p>
         <p style={{ marginTop: 24, fontSize: 12 }}>Müəllim: {me?.full_name} ____________</p>
       </div>
+    </>
+  )
+}
+
+/** Dərs sayı: plan – cədvəl – keçilməli – yazılıb – yazılmamış – keçilən/qalan mövzu – geriləmə. */
+export function LessonCountTable({ rows, first }: { rows: { label: string; l: any }[]; first: string }) {
+  return (
+    <div className="tbl-wrap"><table>
+      <thead><tr><th>{first}</th><th className="r">Həftədə</th><th className="r">Planda</th><th className="r">Cədvəldə</th><th className="r">Keçilməli idi</th><th className="r">Jurnalda yazılıb</th><th className="r">Yazılmayıb</th><th className="r">Keçilən mövzu</th><th className="r">Qalan</th><th className="r">Geriləmə</th></tr></thead>
+      <tbody>{rows.map(({ label, l }) => (
+        <tr key={label}><td>{label}</td><td className="r num">{l.weekly_hours}</td><td className="r num">{l.plan_total}</td>
+          <td className="r num">{l.timetable_total}{l.unfit ? <> <Pill tone="bad">sığmır: {l.unfit}</Pill></> : null}</td>
+          <td className="r num">{l.due}</td><td className="r num"><b>{l.written}</b></td>
+          <td className="r num">{l.missing ? <Pill tone="warn">{l.missing}</Pill> : 0}</td>
+          <td className="r num">{l.covered}</td><td className="r num">{l.remaining}</td>
+          <td className="r num">{l.lag ? <Pill tone={l.lag > 3 ? 'bad' : 'warn'}>{l.lag} dərs</Pill> : 0}</td></tr>))}</tbody>
+    </table></div>
+  )
+}
+
+function LessonCounts({ ta }: { ta: number }) {
+  const [r, err] = useLoad<any>(() => get(`/api/analytics/${ta}/lessons`), [ta])
+  if (err) return <ErrorBox error={err} />
+  if (!r) return <Loading />
+  const y = r.year
+  return (
+    <>
+      <section className="panel" style={{ marginBottom: 12 }}><div className="kpis">
+        <Stat value={y.plan_total} label="dərs planda" /><Stat value={y.due} label={`keçilməli idi (${fmtDate(r.today)})`} />
+        <Stat value={y.written} label="jurnalda yazılıb" /><Stat value={y.missing} label="yazılmayıb" />
+        <Stat value={y.remaining} label="qalan mövzu" /><Stat value={y.lag} label="geriləmə (dərs)" />
+      </div></section>
+      <LessonCountTable first="Dövr" rows={[{ label: 'I yarımil', l: r.semesters[0] }, { label: 'II yarımil', l: r.semesters[1] }, { label: 'Bütün il', l: y }]} />
+      {y.missing_list.length > 0 && (
+        <section className="panel" style={{ marginTop: 12 }}><h2>Yazılmamış dərslər<small>{y.missing}</small></h2>
+          <div className="row" style={{ gap: 6 }}>{y.missing_list.map((m: any) => <Pill key={m.date + m.period} tone="warn">{fmtDate(m.date)} · {m.period}-ci saat</Pill>)}</div>
+          <p className="small muted" style={{ margin: '8px 0 0' }}>Cədvələ görə dərs olub, amma jurnalda qeyd yoxdur. Jurnalda həmin günü açıb yazın.</p>
+        </section>)}
+      <p className="small muted">«Keçilən mövzu» işçi plana görədir («Mövzunu saxla» nəzərə alınır). «Cədvəldə» – həftəlik cədvəl və bayramlara görə dövrdəki dərs saatları.</p>
+    </>
+  )
+}
+
+export function PerfStats({ m }: { m: any }) {
+  return (
+    <div className="kpis">
+      <Stat value={fmt(m.success_pct) + '%'} label="müvəffəqiyyət" /><Stat value={fmt(m.quality_pct) + '%'} label="keyfiyyət" />
+      <Stat value={fmt(m.avg, 2)} label="orta qiymət" /><Stat value={fmt(m.sou) + '%'} label="təlim səviyyəsi (SOU)" />
+      <Stat value={`${m.graded}/${m.students}`} label="qiymətləndirilib" />
+      <Stat value={[5, 4, 3, 2].map(g => m.distribution[g]).join(' · ')} label="«5» · «4» · «3» · «2»" />
+    </div>
+  )
+}
+
+function Performance({ ta, sem }: { ta: number; sem: string }) {
+  const [p, err] = useLoad<any>(() => get(`/api/analytics/${ta}/performance`, sem === 'all' ? {} : { semester: sem }), [ta, sem])
+  if (err) return <ErrorBox error={err} />
+  if (!p) return <Loading />
+  return (
+    <>
+      <section className="panel"><h2>{p.class_name} · {p.subject}</h2><PerfStats m={p.summary} /></section>
+      <div className="tbl-wrap" style={{ marginTop: 12 }}><table>
+        <thead><tr><th>Şagird</th><th className="r">Qiymət</th><th>Mənbə</th><th className="r">Formativ orta</th><th className="r">Qiymət sayı</th><th className="r">Yarımil</th></tr></thead>
+        <tbody>{p.students.map((r: any) => (
+          <tr key={r.student_id}><td>{r.full_name}</td><td className="r">{r.grade ? <Pill tone={gradeTone(r.grade)}>{r.grade}</Pill> : '—'}</td>
+            <td className="small muted">{r.source || 'qiymət yoxdur'}</td><td className="r num">{fmt(r.formative_avg, 2)}</td>
+            <td className="r num">{r.marks}</td><td className="r num">{r.semester_grade ?? '—'}</td></tr>))}</tbody>
+      </table></div>
+      <p className="small muted">Qiymət: yarımil qiyməti (KSQ×0,4 + BSQ×0,6) varsa o, yoxdursa formativ qiymətlərin ortası. Müvəffəqiyyət = «2» almayanlar / qiymətləndirilənlər; keyfiyyət = «4» və «5» / qiymətləndirilənlər; SOU = (100·n5 + 64·n4 + 36·n3 + 16·n2) / n.</p>
     </>
   )
 }
