@@ -115,7 +115,7 @@ def day(date: dt.date | None = None, user: User = Depends(student_only), db: Ses
                 a = db.get(Attendance, (e.id, s.id))
                 item['attendance'] = a.status if a else None
                 item['marks'] = [{'kind': m.kind, 'grade': m.grade, 'test_correct': m.test_correct,
-                                  'test_total': m.test_total} for m in
+                                  'test_total': m.test_total, 'comment': m.comment} for m in   # müəllimin rəyi
                                  db.scalars(select(Mark).where(Mark.entry_id == e.id, Mark.student_id == s.id))]
                 h = db.get(HomeworkCheck, (e.id, s.id))
                 item['homework_check'] = h.status if h else None
@@ -145,6 +145,50 @@ def plan(view: str = 'week', date: dt.date | None = None, user: User = Depends(s
                           **_plan_fields(pl, sl, e), 'homework': e.homework if e else None})
     items.sort(key=lambda x: (x['date'], x['time'] or '', x['period']))
     return {'view': view, 'items': items}
+
+
+UPCOMING_DAYS = 21          # summativdən 3 həftə əvvəl şagird təkrara başlasın
+
+
+@router.get('/upcoming')
+def upcoming(user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Hazırlıq: 1) yaxınlaşan KSQ/BSQ (işçi plana görə tarix) və əhatə etdiyi mövzular + standartlar
+    (əvvəlki summativdən bu yana); 2) hər fənn üzrə növbəti dərs və ona verilən ev tapşırığı."""
+    s = me_student(db, user)
+    d = today()
+    exams, homework = [], []
+    for ta, c in my_assignments(db, s):
+        ctx = plan_ctx(db, ta)
+        # növbəti summativ
+        nxt = next((sl for sl in ctx.slots if sl.date >= d and sl.index is not None
+                    and ctx.lessons[sl.index].assessment_type in ('KSQ', 'BSQ')), None)
+        if nxt and (nxt.date - d).days <= UPCOMING_DAYS and ta.has_summative:
+            pl = ctx.lessons[nxt.index]
+            prev = max((i for i in range(nxt.index) if ctx.lessons[i].assessment_type in ('KSQ', 'BSQ')), default=-1)
+            topics = [x for x in ctx.lessons[prev + 1:nxt.index] if x.assessment_type not in ('KSQ', 'BSQ')]
+            if pl.assessment_type == 'BSQ':            # BSQ bütün yarımili əhatə edir
+                topics = [x for x in ctx.lessons[:nxt.index] if x.semester == pl.semester
+                          and x.assessment_type not in ('KSQ', 'BSQ')]
+            exams.append({'subject': ta.subject, 'class_name': c.name, 'kind': pl.assessment_type, 'no': pl.exam_no,
+                          'date': nxt.date, 'days': (nxt.date - d).days, 'title': pl.topic,
+                          'topics': [{'seq': x.seq, 'topic': x.topic, 'tt_pages': x.tt_pages} for x in topics],
+                          'standards': sorted({st for x in topics for st in (x.standards or [])},
+                                              key=lambda v: [int(p) if p.isdigit() else p for p in v.split('.')])})
+        # növbəti dərsə ev tapşırığı – SON dərs gününün bütün saatlarında verilənlər (gündə 2 dərs olanda
+        # 1-ci saatda verilib, 5-ci saatda verilməyə bilər); son dərs günü ev tapşırığı yoxdursa – heç nə
+        after = next((sl for sl in ctx.slots if sl.date > d), None)
+        last_day = db.scalar(select(JournalEntry.date).where(JournalEntry.assignment_id == ta.id, JournalEntry.date <= d)
+                             .order_by(JournalEntry.date.desc()))
+        hws = [e.homework for e in db.scalars(select(JournalEntry).where(
+            JournalEntry.assignment_id == ta.id, JournalEntry.date == last_day, JournalEntry.homework.is_not(None))
+            .order_by(JournalEntry.period))] if last_day else []
+        if hws and after:
+            homework.append({'subject': ta.subject, 'class_name': c.name, 'homework': '; '.join(dict.fromkeys(hws)),
+                             'given': last_day, 'due': after.date, 'due_period': after.period,
+                             'due_time': bell(db, c, after.period)})
+    exams.sort(key=lambda x: x['date'])
+    homework.sort(key=lambda x: (x['due'], x['due_time'] or ''))
+    return {'today': d, 'exams': exams, 'homework': homework}
 
 
 # ---------------------------------------------------------------- tapşırıqlar
@@ -327,10 +371,15 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
         for e in exams:
             sc = db.get(ExamScore, (e.id, s.id))
             g = grade_from_points(sc.points, e.max_points) if sc and sc.points is not None and not sc.absent else None
+            # özünüqiymətləndirmə: tapşırıq üzrə ✓/✗ və standart (sinif yoldaşlarının nəticəsi yoxdur)
+            items = [{'n': it['n'], 'points': it['points'], 'standard': it.get('standard'), 'ok': bool(m)}
+                     for it, m in zip(e.items or [], (sc.item_marks or []) if g else [])]
+            weak = sorted({i['standard'] for i in items if i['standard'] and not i['ok']})
             ex_rows.append({'kind': e.kind, 'no': e.no, 'semester': e.semester, 'date': e.date,
                             'points': sc.points if sc else None, 'max_points': e.max_points,
                             'pct': round(sc.points * 100 / e.max_points, 1) if g else None, 'grade': g,
-                            'absent': bool(sc and sc.absent)})
+                            'absent': bool(sc and sc.absent), 'taken_on': sc.taken_on if sc and g else None,
+                            'items': items, 'weak_standards': weak})
             ks, bs = per_sem[e.semester]
             if g is not None:
                 per_sem[e.semester] = (ks + [g], bs) if e.kind == 'KSQ' else (ks, g)

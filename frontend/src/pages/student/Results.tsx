@@ -28,7 +28,10 @@ export default function Results() {
           {s.exams.length > 0 && (
             <div className="tbl-wrap"><table style={{ minWidth: 0 }}><thead><tr><th>İmtahan</th><th>Tarix</th><th className="r">Bal</th><th className="r">%</th><th className="r">Qiymət</th></tr></thead>
               <tbody>{s.exams.map((e: any, j: number) => (
-                <tr key={j}><td>{e.kind}-{e.no} <span className="small muted">({e.semester}-ci yarımil)</span></td><td>{fmtDate(e.date)}</td>
+                <tr key={j}><td>{e.kind}-{e.no} <span className="small muted">({e.semester}-ci yarımil)</span>
+                  {e.items?.length > 0 && <div className="row" style={{ gap: 3, marginTop: 4 }}>{e.items.map((it: any) => <span key={it.n} className="small" title={it.standard ? 'standart ' + it.standard : ''} style={{ padding: '1px 5px', borderRadius: 4, background: it.ok ? 'var(--ok-soft)' : 'var(--bad-soft)', color: it.ok ? 'var(--ok)' : 'var(--bad)' }}>{it.n}{it.ok ? '✓' : '✗'}</span>)}</div>}
+                  {e.weak_standards?.length > 0 && <div className="small" style={{ marginTop: 4 }}>Təkrarla – standart: <b>{e.weak_standards.join(', ')}</b></div>}</td>
+                  <td>{fmtDate(e.date)}{e.taken_on && <div className="small muted">sonradan: {fmtDate(e.taken_on)}</div>}</td>
                   <td className="r num">{e.absent ? 'yox idi' : e.points != null ? `${fmt(e.points, 1)} / ${e.max_points}` : '—'}</td><td className="r num">{fmt(e.pct)}</td>
                   <td className="r">{e.grade ? <Pill tone={gradeTone(e.grade)}>{e.grade}</Pill> : '—'}</td></tr>))}</tbody></table></div>)}
         </section>))}

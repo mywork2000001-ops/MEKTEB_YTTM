@@ -117,7 +117,7 @@ def test_student_sees_only_own_data(world, clock):
         'marks': [{'student_id': st[0]['id'], 'kind': 'şifahi', 'grade': 5}]})
     day = s1.get('/api/portal/day', params={'date': '2026-09-29'}).json()['lessons']
     assert day[0]['topic'] == 'Kvadrat tənliklər' and day[0]['homework'] == 'S 1–5'
-    assert day[0]['marks'] == [{'kind': 'şifahi', 'grade': 5, 'test_correct': None, 'test_total': None}]
+    assert day[0]['marks'] == [{'kind': 'şifahi', 'grade': 5, 'test_correct': None, 'test_total': None, 'comment': None}]
     assert day[0]['teacher'] == 'Həsənov Fərid'
     an = s1.get('/api/portal/analytics').json()['subjects'][0]
     assert an['me']['avg_grade'] == 5 and an['class_avg']['attendance_pct'] == 50.0
