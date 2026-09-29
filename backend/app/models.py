@@ -9,7 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import enum
 
-from sqlalchemy import (JSON, Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, String, Text,
+from sqlalchemy import (JSON, Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, LargeBinary, String, Text,
                         UniqueConstraint, func)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -55,6 +55,9 @@ class User(Base, Archivable):
     theme: Mapped[str | None] = mapped_column(String(20))
     settings_password_hash: Mapped[str | None] = mapped_column(String(255))   # Tənzimləmələr kilidi (boş = yoxdur)
     ai_settings: Mapped[dict | None] = mapped_column(JSON)               # {provider, model, base_url, key(şifrəli)} – müəllimin öz açarı
+    avatar: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)   # çat şəkli (≤ 300 KB, 256 px)
+    avatar_type: Mapped[str | None] = mapped_column(String(20))
+    avatar_v: Mapped[int | None] = mapped_column(Integer)                # versiya (keş üçün); boş – şəkil yoxdur
     failed_logins: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -411,6 +414,7 @@ class ChatMessage(Base):
     file_size: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
     deleted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    edited_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))   # müəllif mətni düzəldib
 
 
 class ChatReport(Base):

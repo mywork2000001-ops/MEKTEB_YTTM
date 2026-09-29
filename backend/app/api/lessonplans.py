@@ -19,13 +19,19 @@ from ..db import get_db
 from ..deps import staff
 from ..domain import daily_plan as dp
 from ..domain.plan import slot_at, view_range
-from ..models import DailyPlan, JournalEntry, School, User
+from ..models import DailyPlan, JournalEntry, User
 from ..security import secret_decrypt, secret_encrypt
 from ..services import journal_entries, own_assignment, plan_ctx, roster, taught_lesson
 from .common import audit, settings_unlocked
 from .plan import WEEKDAYS, bell
 
 router = APIRouter(prefix='/api', tags=['daily-plans'])
+SCHOOL_DEFAULT = 'Tərtər şəhər Rafiq Nuriyev adına 6 nömrəli tam orta ümumtəhsil məktəbi'
+
+
+def header_school(user: User) -> str:
+    """Başlıqda məktəbin adı: müəllimin seçimi, yoxdursa rəsmi ad (XI peşə də daxil – eyni məktəb)."""
+    return (user.ai_settings or {}).get('header_school') or SCHOOL_DEFAULT
 DAYS_FULL = ['Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə', 'Bazar']
 
 
@@ -80,7 +86,8 @@ def put_ai(body: AiIn, user: User = Depends(settings_unlocked), db: Session = De
         enc = old['key']
     else:
         enc = secret_encrypt(key)
-    user.ai_settings = {'provider': body.provider, 'model': body.model.strip(), 'base_url': base, 'key': enc}
+    user.ai_settings = {'provider': body.provider, 'model': body.model.strip(), 'base_url': base, 'key': enc,
+                        'header_school': old.get('header_school')}
     audit(db, user, 'update', 'ai_settings', user.id, provider=body.provider, model=body.model)
     db.commit()
     return _ai_out(user)
@@ -88,7 +95,8 @@ def put_ai(body: AiIn, user: User = Depends(settings_unlocked), db: Session = De
 
 @router.delete('/ai/settings')
 def del_ai(user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
-    user.ai_settings = None
+    hs = (user.ai_settings or {}).get('header_school')
+    user.ai_settings = {'header_school': hs} if hs else None
     audit(db, user, 'delete', 'ai_settings', user.id)
     db.commit()
     return _ai_out(user)
@@ -134,8 +142,7 @@ def _context(db: Session, user: User, ctx, s, notes: str | None) -> tuple[dict, 
     if hw_t:
         hw_nums = [str(hw_t.get('start'))] + ([str(hw_t['end'])] if hw_t.get('end') and hw_t.get('end') != hw_t.get('start') else [])
         hw = f"{pl.tt_pages + ', ' if pl.tt_pages else ''}№ {'–'.join(hw_nums)}"
-    school = db.get(School, ctx.cls.school_id)
-    c = {'school': school.name if school else '', 'teacher': user.full_name, 'subject': ctx.ta.subject,
+    c = {'school': header_school(user), 'teacher': user.full_name, 'subject': ctx.ta.subject,
          'class_name': ctx.cls.name, 'group': ctx.cls.kind == 'qrup', 'students': len(roster(db, ctx.ta)),
          'date': s.date.isoformat(), 'date_text': s.date.strftime('%d.%m.%Y'), 'weekday': DAYS_FULL[s.date.weekday()],
          'period': s.period, 'time': bell(db, ctx.cls, s.period), 'minutes': dp.LESSON_MIN,
@@ -160,10 +167,14 @@ def _full(p: DailyPlan, ctx) -> dict:
     return {**_brief(p), 'date': p.date, 'period': p.period, 'content': p.content, 'notes': p.notes,
             'provider': p.provider, 'class_name': ctx.cls.name, 'subject': ctx.ta.subject,
             'weekday': DAYS_FULL[p.date.weekday()], 'warnings': (p.content or {}).get('_warnings', []),
-            'meta': (p.content or {}).get('_meta', {})}
+            'meta': {**(p.content or {}).get('_meta', {}), 'school': header_school(ctx.ta.teacher)}}
 
 
 # ---------------------------------------------------------------- gündəlik planlar
+META_KEYS = ('school', 'teacher', 'subject', 'class_name', 'date_text', 'weekday', 'period', 'time', 'minutes',
+             'semester', 'seq', 'total', 'section', 'topic', 'assessment_type', 'exam_no', 'tt_pages', 'tasks', 'resources')
+
+
 def _my_assignments(db: Session, user: User):
     from ..models import SchoolClass, TeachingAssignment
     return list(db.scalars(select(TeachingAssignment).join(SchoolClass).where(
@@ -171,19 +182,25 @@ def _my_assignments(db: Session, user: User):
         SchoolClass.archived_at.is_(None)).order_by(SchoolClass.name)))
 
 
-@router.get('/daily-plans-day')
-def day_plans(date: dt.date | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
-    """Dərs günü üzrə: müəllimin həmin gün BÜTÜN siniflərdəki dərsləri (saat sırası ilə) və gündəlik planları."""
-    from ..services import today
-    d = date or today()
+def _range(view: str, d: dt.date) -> tuple[dt.date, dt.date]:
+    if view == 'day':
+        return d, d
+    if view == 'week':
+        a = d - dt.timedelta(days=d.weekday())
+        return a, a + dt.timedelta(days=4)
+    raise HTTPException(400, 'görünüş: day, week')
+
+
+def _items(db: Session, tas, a: dt.date, b: dt.date) -> list[dict]:
     items = []
-    for ta in _my_assignments(db, user):
+    for ta in tas:
         ctx = plan_ctx(db, ta)
-        slots = [s for s in ctx.slots if s.date == d]
+        slots = [s for s in ctx.slots if a <= s.date <= b]
         if not slots:
             continue
-        saved = {p.period: p for p in db.scalars(select(DailyPlan).where(DailyPlan.assignment_id == ta.id, DailyPlan.date == d))}
-        entries = journal_entries(db, ta.id, d, d)
+        saved = {(p.date, p.period): p for p in db.scalars(select(DailyPlan).where(
+            DailyPlan.assignment_id == ta.id, DailyPlan.date >= a, DailyPlan.date <= b))}
+        entries = journal_entries(db, ta.id, a, b)
         for s in slots:
             pl = taught_lesson(ctx, s, entries.get((s.date, s.period)))
             items.append({'ta_id': ta.id, 'class_name': ctx.cls.name, 'subject': ta.subject, 'date': s.date,
@@ -193,57 +210,96 @@ def day_plans(date: dt.date | None = None, user: User = Depends(staff), db: Sess
                                             'standards': pl.standards, 'assessment_type': pl.assessment_type,
                                             'exam_no': pl.exam_no, 'tt_pages': pl.tt_pages,
                                             'tasks': dp.tasks_text(pl.tasks)},
-                          'plan': _brief(saved.get(s.period))})
-    items.sort(key=lambda i: (i['period'], i['class_name']))
+                          'plan': _brief(saved.get((s.date, s.period)))})
+    items.sort(key=lambda i: (i['date'], i['period'], i['class_name']))
+    return items
+
+
+@router.get('/daily-plans-list')
+def list_all(ta: str = 'all', view: str = 'day', date: dt.date | None = None, user: User = Depends(staff),
+             db: Session = Depends(get_db)):
+    """Gün və ya dərs həftəsi; bütün siniflər (ta=all) və ya bir sinif/qrup (ta=<id>) – tarix və saat sırası ilə."""
+    from ..services import today
+    d = date or today()
+    a, b = _range(view, d)
+    tas = _my_assignments(db, user) if ta == 'all' else [own_assignment(db, user, int(ta) if ta.isdigit() else 0)]
     s = user.ai_settings or {}
-    return {'date': d, 'weekday': DAYS_FULL[d.weekday()], 'items': items,
+    return {'from': a, 'to': b, 'weekday': DAYS_FULL[d.weekday()], 'items': _items(db, tas, a, b),
+            'header_school': header_school(user),
             'ai': {'configured': bool(s.get('key')), 'provider': s.get('provider'), 'model': s.get('model')}}
-
-
-@router.get('/daily-plans-day/docx')
-def day_docx(date: dt.date, user: User = Depends(staff), db: Session = Depends(get_db)):
-    """Günün bütün gündəlik planları bir Word faylında (saat sırası ilə)."""
-    tas = [ta.id for ta in _my_assignments(db, user)]
-    plans = sorted(db.scalars(select(DailyPlan).where(DailyPlan.assignment_id.in_(tas), DailyPlan.date == date)),
-                   key=lambda p: p.period)
-    if not plans:
-        raise HTTPException(404, 'Bu gün üçün hazır gündəlik plan yoxdur')
-    buf = io.BytesIO()
-    build_docx(plans).save(buf)
-    buf.seek(0)
-    from urllib.parse import quote
-    name = f'Gundelik planlar {date:%d.%m.%Y}.docx'
-    return StreamingResponse(buf, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                             headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(name)}"})
 
 
 @router.get('/daily-plans/{ta_id}')
 def list_plans(ta_id: int, view: str = 'week', date: dt.date | None = None, user: User = Depends(staff),
                db: Session = Depends(get_db)):
-    ta = own_assignment(db, user, ta_id)
-    ctx = plan_ctx(db, ta)
-    from ..services import today
-    d = date or today()
-    if view not in ('day', 'week'):
-        raise HTTPException(400, 'görünüş: day, week')
-    a, b = view_range(view, d, ctx.year.sem1_end, ctx.year.sem2_start, ctx.year.start, ctx.year.end)
-    saved = {(p.date, p.period): p for p in db.scalars(select(DailyPlan).where(
-        DailyPlan.assignment_id == ta.id, DailyPlan.date >= a, DailyPlan.date <= b))}
-    entries = journal_entries(db, ta.id, a, b)
-    items = []
-    for s in ctx.slots:
-        if a <= s.date <= b:
-            pl = taught_lesson(ctx, s, entries.get((s.date, s.period)))
-            items.append({'date': s.date, 'weekday': WEEKDAYS[s.date.weekday()], 'period': s.period,
-                          'time': bell(db, ctx.cls, s.period), 'held': s.held,
-                          'lesson': pl and {'seq': pl.seq, 'topic': pl.topic, 'section': pl.section,
-                                            'standards': pl.standards, 'assessment_type': pl.assessment_type,
-                                            'exam_no': pl.exam_no, 'tt_pages': pl.tt_pages,
-                                            'tasks': dp.tasks_text(pl.tasks)},
-                          'plan': _brief(saved.get((s.date, s.period)))})
-    s = user.ai_settings or {}
-    return {'from': a, 'to': b, 'class_name': ctx.cls.name, 'subject': ta.subject, 'items': items,
-            'ai': {'configured': bool(s.get('key')), 'provider': s.get('provider'), 'model': s.get('model')}}
+    """Bir sinif üzrə (köhnə ünvan) – list_all ilə eyni."""
+    return list_all(str(ta_id), view, date, user, db)
+
+
+def _blank(db: Session, user: User, ctx, s) -> dict:
+    """Süni intellektsiz şablon: perspektiv plandan doldurulur (mövzu, altstandart, meyar, ev tapşırığı), qalanı boş."""
+    c, pl = _context(db, user, ctx, s, None)
+    res = [x.strip() for x in re.split(r'[;\n]', pl.resources or '') if x.strip()]
+    content = {'standartlar': [{'kod': k, 'metn': ''} for k in c['standards']], 'telim_neticeleri': [],
+               'acar_anlayislar': [], 'inteqrasiya': c['integration'] or '', 'is_formalari': [], 'is_usullari': [],
+               'resurslar': res, 'tedqiqat_suali': '', 'merheleler': [], 'diferensial': {'destek': '', 'inkisaf': ''},
+               'qiymetlendirme': {'meyarlar': [pl.assessment] if pl.assessment else [], 'usul': '', 'vasite': '',
+                                  'rubrika': [], 'spesifikasiya': []},
+               'refleksiya': [], 'ev_tapsirigi': c['homework_plan'] or '', 'muellim_ucun_qeyd': '',
+               '_meta': {k: c[k] for k in META_KEYS}, '_warnings': []}
+    return {'id': None, 'blank': True, 'topic': pl.topic, 'date': s.date, 'period': s.period, 'content': content,
+            'notes': None, 'model': None, 'edited': False, 'class_name': ctx.cls.name, 'subject': ctx.ta.subject,
+            'weekday': DAYS_FULL[s.date.weekday()], 'warnings': [], 'meta': content['_meta']}
+
+
+class HeaderIn(BaseModel):
+    school: str = Field(min_length=5, max_length=300)
+
+
+@router.put('/daily-plans-header')
+def put_header(body: HeaderIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Bütün gündəlik planların başlığında məktəbin adı (müəllimin öz seçimi)."""
+    user.ai_settings = {**(user.ai_settings or {}), 'header_school': body.school.strip()}
+    audit(db, user, 'update', 'daily_plan_header', user.id)
+    db.commit()
+    return {'school': header_school(user)}
+
+
+class SlotIn(BaseModel):
+    date: dt.date
+    period: int
+
+
+@router.post('/daily-plans/{ta_id}/manual')
+def manual(ta_id: int, body: SlotIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Süni intellektsiz: şablondan (perspektiv plandan doldurulmuş) plan yaradılır, müəllim hər sətri özü yazır."""
+    ctx = plan_ctx(db, own_assignment(db, user, ta_id))
+    s = _slot(ctx, body.date, body.period)
+    if db.scalar(select(DailyPlan.id).where(DailyPlan.assignment_id == ctx.ta.id, DailyPlan.date == s.date,
+                                            DailyPlan.period == s.period)):
+        raise HTTPException(409, 'Bu dərs üçün gündəlik plan artıq var')
+    b = _blank(db, user, ctx, s)
+    entry = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ctx.ta.id, JournalEntry.date == s.date,
+                                                 JournalEntry.period == s.period))
+    pl = taught_lesson(ctx, s, entry)
+    p = DailyPlan(assignment_id=ctx.ta.id, date=s.date, period=s.period, created_by=user.id,
+                  plan_lesson_id=pl.id if pl else None, topic=b['topic'], content=b['content'], provider='manual',
+                  model=None, edited=True)
+    db.add(p)
+    db.flush()
+    audit(db, user, 'create', 'daily_plan', p.id, date=str(s.date), period=s.period, model='manual')
+    db.commit()
+    return {**_full(p, ctx), 'blank': False}
+
+
+@router.get('/daily-plans/{ta_id}/preview')
+def preview(ta_id: int, date: dt.date, period: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Sistemdə baxış: hazır plan varsa – o, yoxdursa perspektiv plandan doldurulmuş şablon."""
+    ctx = plan_ctx(db, own_assignment(db, user, ta_id))
+    s = _slot(ctx, date, period)
+    p = db.scalar(select(DailyPlan).where(DailyPlan.assignment_id == ctx.ta.id, DailyPlan.date == date,
+                                          DailyPlan.period == period))
+    return {**_full(p, ctx), 'blank': False} if p else _blank(db, user, ctx, s)
 
 
 class GenIn(BaseModel):
@@ -262,21 +318,19 @@ def prompt_preview(ta_id: int, body: GenIn, user: User = Depends(staff), db: Ses
 
 @router.post('/daily-plans/{ta_id}/generate')
 def generate(ta_id: int, body: GenIn, user: User = Depends(staff), db: Session = Depends(get_db)):
-    cfg = ai_config(user)
     ctx = plan_ctx(db, own_assignment(db, user, ta_id))
     s = _slot(ctx, body.date, body.period)
+    if db.scalar(select(DailyPlan.id).where(DailyPlan.assignment_id == ctx.ta.id, DailyPlan.date == s.date,
+                                            DailyPlan.period == s.period)):
+        raise HTTPException(409, 'Bu dərs üçün gündəlik plan artıq hazırdır – yenisini hazırlamaq üçün əvvəlcə onu silin')
+    cfg = ai_config(user)
     c, pl = _context(db, user, ctx, s, body.notes)
     raw = ai.complete_json(cfg, dp.system_prompt(c['minutes']), dp.user_prompt(c))
     content, warn = dp.normalize(raw, c)
     content['_warnings'] = warn
-    content['_meta'] = {k: c[k] for k in ('school', 'teacher', 'subject', 'class_name', 'date_text', 'weekday', 'period',
-                                          'time', 'minutes', 'semester', 'seq', 'total', 'section', 'topic',
-                                          'assessment_type', 'exam_no', 'tt_pages', 'tasks', 'resources')}
-    p = db.scalar(select(DailyPlan).where(DailyPlan.assignment_id == ctx.ta.id, DailyPlan.date == s.date,
-                                          DailyPlan.period == s.period))
-    if p is None:
-        p = DailyPlan(assignment_id=ctx.ta.id, date=s.date, period=s.period, created_by=user.id)
-        db.add(p)
+    content['_meta'] = {k: c[k] for k in META_KEYS}
+    p = DailyPlan(assignment_id=ctx.ta.id, date=s.date, period=s.period, created_by=user.id)   # hər dərs saatı – ayrıca plan
+    db.add(p)
     p.plan_lesson_id, p.topic, p.content, p.notes = pl.id, pl.topic, content, c['notes']
     p.provider, p.model, p.edited = cfg['provider'], cfg['model'], False
     db.flush()
@@ -313,6 +367,8 @@ def edit_plan(ta_id: int, pid: int, body: EditIn, user: User = Depends(staff), d
     keep['_warnings'] = [] if total == minutes else [f'Mərhələlərin vaxtı cəmi {total} dəq (olmalı: {minutes}) – yoxlayın']
     p.content = {**new, **keep}
     p.edited = True
+    if isinstance(new.get('basliq'), dict) and str(new['basliq'].get('topic') or '').strip():
+        p.topic = str(new['basliq']['topic']).strip()[:1000]
     audit(db, user, 'update', 'daily_plan', p.id)
     db.commit()
     return _full(p, ctx)
@@ -328,25 +384,45 @@ def delete_plan(ta_id: int, pid: int, user: User = Depends(staff), db: Session =
 
 
 # ---------------------------------------------------------------- Word (.docx)
-@router.get('/daily-plans/{ta_id}/docx')
-def docx_export(ta_id: int, ids: str, user: User = Depends(staff), db: Session = Depends(get_db)):
-    want = [int(x) for x in ids.split(',') if x.strip().isdigit()][:40]
-    ta = own_assignment(db, user, ta_id)
-    plans = [p for p in db.scalars(select(DailyPlan).where(DailyPlan.assignment_id == ta.id, DailyPlan.id.in_(want))
-                                   .order_by(DailyPlan.date, DailyPlan.period))]
-    if not plans:
-        raise HTTPException(404, 'Gündəlik plan tapılmadı')
+@router.get('/daily-plans-docx')
+def docx_slots(slots: str, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """slots = «ta:YYYY-MM-DD:saat,…» – hazır plan, yoxdursa şablon; bir Word faylında, verilən sıra ilə."""
+    docs, ctxs = [], {}
+    for part in slots.split(',')[:60]:
+        try:
+            t, d, per = part.split(':')
+            t, d, per = int(t), dt.date.fromisoformat(d), int(per)
+        except ValueError:
+            continue
+        if t not in ctxs:
+            ctxs[t] = plan_ctx(db, own_assignment(db, user, t))
+        ctx = ctxs[t]
+        s = slot_at(ctx.slots, d, per)
+        if not s:
+            continue
+        p = db.scalar(select(DailyPlan).where(DailyPlan.assignment_id == t, DailyPlan.date == d, DailyPlan.period == per))
+        if p:
+            docs.append((p.topic, p.content or {}))
+            continue
+        try:
+            b = _blank(db, user, ctx, s)
+        except HTTPException:
+            continue
+        docs.append((b['topic'], b['content']))
+    if not docs:
+        raise HTTPException(404, 'Perspektiv planda mövzusu olan dərs tapılmadı')
     buf = io.BytesIO()
-    build_docx(plans).save(buf)
+    build_docx(docs, header_school(user)).save(buf)
     buf.seek(0)
-    first = plans[0]
-    name = f"Gundelik plan {ta.cls.name} {first.date:%d.%m}" + (f"-{plans[-1].date:%d.%m}" if len(plans) > 1 else '') + '.docx'
     from urllib.parse import quote
+    name = f'Gundelik planlasdirma {dt.date.today():%d.%m.%Y}.docx'
     return StreamingResponse(buf, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                              headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(name)}"})
 
 
-def build_docx(plans: list[DailyPlan]):
+def build_docx(docs: list[tuple[str, dict]], school: str = SCHOOL_DEFAULT):
+    """ARTİ «Gündəlik planlaşdırma» forması: Məktəb/Fənn/Müəllim/Sinif/Tarix, Altstandart(lar), Təlim nəticəsi(ləri),
+    Qiymətləndirmə meyar(lar)ı, Mövzu, Dərsin təşkili, İş üsulu / İş forması, Refleksiya. Boş bölmə – yazmaq üçün xətlər."""
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml import OxmlElement
@@ -357,118 +433,128 @@ def build_docx(plans: list[DailyPlan]):
     sec = doc.sections[0]
     sec.page_width, sec.page_height = Mm(210), Mm(297)
     for side in ('left_margin', 'right_margin', 'top_margin', 'bottom_margin'):
-        setattr(sec, side, Mm(15))
+        setattr(sec, side, Mm(18))
     st = doc.styles['Normal']
-    st.font.name, st.font.size = 'Times New Roman', Pt(11)
+    st.font.name, st.font.size = 'Times New Roman', Pt(12)
     st.element.rPr.rFonts.set(qn('w:eastAsia'), 'Times New Roman')
     st.paragraph_format.space_after = Pt(2)
 
-    def shade(cell):
-        tcPr = cell._tc.get_or_add_tcPr()
-        sh = OxmlElement('w:shd')
-        sh.set(qn('w:val'), 'clear'); sh.set(qn('w:color'), 'auto'); sh.set(qn('w:fill'), 'D9D9D9')
-        tcPr.append(sh)
-
-    def para(text, bold=False, size=None, center=False, cell=None):
-        p = cell.add_paragraph() if cell is not None else doc.add_paragraph()
-        r = p.add_run(text)
-        r.bold = bold
-        if size:
-            r.font.size = Pt(size)
+    def para(text='', bold=False, size=None, center=False, before=0):
+        p = doc.add_paragraph()
+        if text:
+            r = p.add_run(text)
+            r.bold = bold
+            if size:
+                r.font.size = Pt(size)
         if center:
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(before)
         return p
 
-    def cell_text(cell, text, bold=False):
-        cell.text = ''
-        lines = str(text or '').split('\n')
-        cell.paragraphs[0].add_run(lines[0]).bold = bold
-        for ln in lines[1:]:
-            cell.add_paragraph(ln)
+    def labeled(label, value, before=0):
+        p = para(before=before)
+        p.add_run(label).bold = True
+        p.add_run(value)
+        return p
 
-    def joined(v):
-        return '\n'.join(f'• {x}' for x in v) if isinstance(v, list) else str(v or '')
+    def field(p, label, value):
+        p.add_run(label + ': ').bold = True
+        p.add_run(value or '____________________')
 
-    for n, p in enumerate(plans):
-        c, m = p.content or {}, (p.content or {}).get('_meta', {})
+    def lines(n=3):
+        for _ in range(n):
+            para('_' * 78)
+
+    def heading(t):
+        para(t, bold=True, before=10)
+
+    def no_borders(t):
+        b = OxmlElement('w:tblBorders')
+        for e in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+            el = OxmlElement(f'w:{e}')
+            el.set(qn('w:val'), 'nil')
+            b.append(el)
+        t._tbl.tblPr.append(b)
+
+    for n, (topic, c) in enumerate(docs):
+        h = {k: v for k, v in (c.get('basliq') or {}).items() if isinstance(v, str) and v.strip()}
+        m = {**c.get('_meta', {}), 'school': school, **h}             # redaktə olunmuş başlıq sətirləri üstündür
+        topic = h.get('topic', topic)
         if n:
             doc.add_page_break()
-        para(m.get('school', ''), bold=True, center=True)
-        para('GÜNDƏLİK DƏRS PLANI', bold=True, size=14, center=True)
-        rows = [('Fənn', m.get('subject', '')), ('Sinif', m.get('class_name', '')),
-                ('Tarix', f"{m.get('date_text', '')} ({m.get('weekday', '')}), {m.get('period', '')}-ci dərs"),
-                ('Müəllim', m.get('teacher', '')),
-                ('Bölmə', m.get('section') or ''), ('Mövzu', p.topic),
-                ('Dərs №', f"{m.get('seq', '')} (perspektiv plan üzrə)"),
-                ('Məzmun standartları', '\n'.join(f"{s['kod']}{(' – ' + s['metn']) if s.get('metn') else ''}" for s in c.get('standartlar', []))),
-                ('Təlim nəticələri', joined(c.get('telim_neticeleri'))),
-                ('Açar anlayışlar', ', '.join(c.get('acar_anlayislar', []))),
-                ('İnteqrasiya', c.get('inteqrasiya', '')), ('İş formaları', ', '.join(c.get('is_formalari', []))),
-                ('İş üsulları', ', '.join(c.get('is_usullari', []))), ('Resurslar', joined(c.get('resurslar'))),
-                ('Tədqiqat sualı', c.get('tedqiqat_suali', ''))]
-        t = doc.add_table(rows=0, cols=2)
-        t.style = 'Table Grid'
-        for k, v in rows:
-            if not v:
-                continue
-            r = t.add_row().cells
-            cell_text(r[0], k, bold=True); shade(r[0]); cell_text(r[1], v)
-            r[0].width, r[1].width = Mm(45), Mm(135)
-        para('Dərsin gedişi', bold=True, size=12).paragraph_format.space_before = Pt(8)
-        t = doc.add_table(rows=1, cols=4)
-        t.style = 'Table Grid'
-        for cell, h in zip(t.rows[0].cells, ['Mərhələ', 'Vaxt', 'Müəllimin fəaliyyəti', 'Şagirdlərin fəaliyyəti']):
-            cell_text(cell, h, bold=True); shade(cell)
-        for s in c.get('merheleler', []):
-            r = t.add_row().cells
-            cell_text(r[0], s.get('ad'), bold=True)
-            cell_text(r[1], f"{s.get('vaxt', '')} dəq")
-            cell_text(r[2], s.get('muellim'))
-            sag = s.get('sagird', '')
-            if s.get('tapsiriqlar'):
-                sag += '\nTapşırıqlar:\n' + '\n'.join(f"{i}) {x['metn']}{('  [Cavab: ' + x['cavab'] + ']') if x.get('cavab') else ''}"
-                                                   for i, x in enumerate(s['tapsiriqlar'], 1))
-            cell_text(r[3], sag)
+        para('Gündəlik planlaşdırma', bold=True, size=15, center=True)
+        t = doc.add_table(rows=3, cols=2)
+        no_borders(t)
+        field(t.cell(0, 0).paragraphs[0], 'Məktəb', m.get('school', ''))
+        field(t.cell(0, 1).paragraphs[0], 'Fənn', m.get('subject', ''))
+        field(t.cell(1, 0).paragraphs[0], 'Müəllim', m.get('teacher', ''))
+        field(t.cell(1, 1).paragraphs[0], 'Sinif', m.get('class_name', ''))
+        field(t.cell(2, 1).paragraphs[0], 'Tarix', m.get('tarix') or f"{m.get('date_text', '')} ({m.get('period', '')}-ci dərs)")
         for row in t.rows:
-            for cell, w in zip(row.cells, (Mm(35), Mm(15), Mm(65), Mm(65))):
-                cell.width = w
-        d = c.get('diferensial') or {}
-        if d.get('destek') or d.get('inkisaf'):
-            para('Diferensial yanaşma', bold=True, size=12).paragraph_format.space_before = Pt(8)
-            if d.get('destek'):
-                para(f"Dəstək: {d['destek']}")
-            if d.get('inkisaf'):
-                para(f"İnkişaf: {d['inkisaf']}")
+            row.cells[0].width, row.cells[1].width = Mm(108), Mm(66)
+
+        heading('Altstandart(lar):')
+        std = c.get('standartlar') or []
+        for s in std:
+            para(f"{s.get('kod', '')}{(' – ' + s['metn']) if s.get('metn') else ''}")
+        if not any(s.get('metn') for s in std):
+            lines(2)
+        heading('Təlim nəticəsi(ləri):')
+        if c.get('telim_neticeleri'):
+            for i, x in enumerate(c['telim_neticeleri'], 1):
+                para(f'{i}. {x}')
+        else:
+            lines(3)
+        heading('Qiymətləndirmə meyar(lar)ı:')
         q = c.get('qiymetlendirme') or {}
-        para('Qiymətləndirmə', bold=True, size=12).paragraph_format.space_before = Pt(8)
-        if q.get('usul') or q.get('vasite'):
-            para(f"Üsul: {q.get('usul', '')}.  Vasitə: {q.get('vasite', '')}")
-        if q.get('rubrika'):
-            t = doc.add_table(rows=1, cols=5)
-            t.style = 'Table Grid'
-            for cell, h in zip(t.rows[0].cells, ['Meyar', 'I səviyyə', 'II səviyyə', 'III səviyyə', 'IV səviyyə']):
-                cell_text(cell, h, bold=True); shade(cell)
-            for rb in q['rubrika']:
-                r = t.add_row().cells
-                for cell, k in zip(r, ('meyar', 'I', 'II', 'III', 'IV')):
-                    cell_text(cell, rb.get(k, ''), bold=k == 'meyar')
-        elif q.get('meyarlar'):
-            para(joined(q['meyarlar']))
+        if q.get('meyarlar'):
+            for x in q['meyarlar']:
+                para(f'• {x}')
+        else:
+            lines(3)
         if q.get('spesifikasiya'):
-            t = doc.add_table(rows=1, cols=4)
-            t.style = 'Table Grid'
-            for cell, h in zip(t.rows[0].cells, ['Standart', 'Tapşırıq sayı', 'Çətinlik', 'Bal']):
-                cell_text(cell, h, bold=True); shade(cell)
+            tt = doc.add_table(rows=1, cols=4)
+            tt.style = 'Table Grid'
+            for cell, h in zip(tt.rows[0].cells, ['Altstandart', 'Tapşırıq sayı', 'Çətinlik', 'Bal']):
+                cell.text = h
             for sp in q['spesifikasiya']:
-                r = t.add_row().cells
+                r = tt.add_row().cells
                 for cell, k in zip(r, ('standart', 'tapsiriq_sayi', 'seviyye', 'bal')):
-                    cell_text(cell, sp.get(k, ''))
+                    cell.text = str(sp.get(k, ''))
+        labeled('Mövzu: ', topic, before=10)
+        heading('Dərsin təşkili (Şagirdlərin dərsə cəlbolunması, sual və tapşırıqlar):')
+        stages = c.get('merheleler') or []
+        if c.get('tedqiqat_suali'):
+            labeled('Tədqiqat sualı: ', c['tedqiqat_suali'])
+        for i, s in enumerate(stages, 1):
+            para(f"{i}. {s.get('ad', '')}" + (f" ({s['vaxt']} dəq)" if s.get('vaxt') else ''), bold=True, before=4)
+            if s.get('muellim'):
+                labeled('Müəllim: ', s['muellim'])
+            if s.get('sagird'):
+                labeled('Şagirdlər: ', s['sagird'])
+            for j, x in enumerate(s.get('tapsiriqlar') or [], 1):
+                para(f"    {j}) {x.get('metn', '')}" + (f"  [Cavab: {x['cavab']}]" if x.get('cavab') else ''))
+        d = c.get('diferensial') or {}
+        if d.get('destek'):
+            labeled('Dəstək (zəif şagirdlər): ', d['destek'], before=4)
+        if d.get('inkisaf'):
+            labeled('İnkişaf (güclü şagirdlər): ', d['inkisaf'])
+        if not stages:
+            lines(12)
+        if c.get('ev_tapsirigi'):
+            labeled('Ev tapşırığı: ', c['ev_tapsirigi'], before=4)
+        t = doc.add_table(rows=1, cols=2)
+        no_borders(t)
+        for cell, label, vals in ((t.cell(0, 0), 'İş üsulu:', c.get('is_usullari')),
+                                  (t.cell(0, 1), 'İş forması:', c.get('is_formalari'))):
+            cell.paragraphs[0].add_run(label).bold = True
+            cell.paragraphs[0].paragraph_format.space_before = Pt(10)
+            for x in vals or ['_' * 32] * 3:
+                cell.add_paragraph(x)
+        heading('Refleksiya:')
         if c.get('refleksiya'):
-            para('Refleksiya', bold=True, size=12).paragraph_format.space_before = Pt(8)
-            para(joined(c['refleksiya']))
-        para('Ev tapşırığı', bold=True, size=12).paragraph_format.space_before = Pt(8)
-        para(c.get('ev_tapsirigi') or '—')
-        if c.get('muellim_ucun_qeyd'):
-            para('Müəllim üçün qeyd', bold=True, size=12).paragraph_format.space_before = Pt(8)
-            para(c['muellim_ucun_qeyd'])
+            for x in c['refleksiya']:
+                para(f'• {x}')
+        else:
+            lines(3)
     return doc

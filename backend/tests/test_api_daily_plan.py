@@ -76,22 +76,43 @@ def test_ai_settings_and_daily_plan(world, monkeypatch):
     w = admin.get(f'/api/daily-plans/{ta}', params={'view': 'week', 'date': '2026-09-22'}).json()
     assert [i['lesson']['seq'] for i in w['items']] == [3, 4] and w['items'][0]['plan']['id'] == p['id'] and w['ai']['configured']
 
-    # təkrar hazırlama – eyni yazı yenilənir
-    assert admin.post(f'/api/daily-plans/{ta}/generate', json={'date': '2026-09-22', 'period': 1}).json()['id'] == p['id']
+    # hazır plan silinmədən yenisi hazırlanmır; eyni gün başqa saat – ayrıca plan
+    assert admin.post(f'/api/daily-plans/{ta}/generate', json={'date': '2026-09-22', 'period': 1}).status_code == 409
+    p5 = admin.post(f'/api/daily-plans/{ta}/generate', json={'date': '2026-09-22', 'period': 5}).json()
+    assert p5['id'] != p['id'] and p5['topic'] == 'Mövzu 4'
 
     # redaktə: vaxt cəmi yoxlanır
     c['merheleler'][1]['vaxt'] = 30
     e = admin.put(f'/api/daily-plans/{ta}/item/{p["id"]}', json={'content': c}).json()
     assert e['edited'] and e['warnings'] and e['meta']['topic'] == 'Mövzu 3'
 
-    # Word
-    d = admin.get(f'/api/daily-plans/{ta}/docx', params={'ids': str(p['id'])})
+    # Word – hazır plan + şablon (hazır olmayan dərs) bir faylda
+    d = admin.get('/api/daily-plans-docx', params={'slots': f'{ta}:2026-09-22:1,{ta}:2026-09-29:1'})
     assert d.status_code == 200 and d.content[:2] == b'PK'
+    # sistemdə baxış: hazır olmayan dərs – perspektiv plandan şablon
+    b = admin.get(f'/api/daily-plans/{ta}/preview', params={'date': '2026-09-29', 'period': 1}).json()
+    assert b['blank'] and b['topic'] == 'Mövzu 5' and b['content']['standartlar'][0]['kod'] == '1.1.4'
+    assert '21' in b['content']['ev_tapsirigi'] and b['meta']['teacher'] == 'Həsənov Fərid'
+    assert admin.get(f'/api/daily-plans/{ta}/preview', params={'date': '2026-09-22', 'period': 1}).json()['id'] == p['id']
+    assert 'tam orta' in b['meta']['school']
+    # əl ilə doldurma (açarsız da): şablon plana çevrilir, başlıq daxil hər sətir redaktə olunur
+    mp = admin.post(f'/api/daily-plans/{ta}/manual', json={'date': '2026-09-29', 'period': 1}).json()
+    assert mp['id'] and mp['edited'] and not mp['blank']
+    assert admin.post(f'/api/daily-plans/{ta}/manual', json={'date': '2026-09-29', 'period': 1}).status_code == 409
+    mc = {**mp['content'], 'basliq': {'school': 'Tərtər şəhər 6 nömrəli tam orta ümumtəhsil məktəbi', 'topic': 'Yeni mövzu adı',
+                                      'tarix': '29.09.2026'}}
+    e2 = admin.put(f'/api/daily-plans/{ta}/item/{mp["id"]}', json={'content': mc}).json()
+    assert e2['topic'] == 'Yeni mövzu adı' and e2['content']['basliq']['school'].startswith('Tərtər şəhər 6')
+    # başlıqda məktəbin adı – bütün planlar üçün
+    assert admin.put('/api/daily-plans-header', json={'school': 'Tərtər şəhər 6 nömrəli tam orta ümumtəhsil məktəbi'}).status_code == 200
+    assert admin.get(f'/api/daily-plans/{ta}/preview', params={'date': '2026-09-22', 'period': 1}).json()['meta']['school'].startswith('Tərtər şəhər 6')
+    assert admin.get('/api/daily-plans-docx', params={'slots': f'{ta}:2026-09-29:1'}).status_code == 200
 
     # başqa müəllim görə bilmir
     as_, _ = world
     assert as_('ilqar').get(f'/api/daily-plans/{ta}/item/{p["id"]}').status_code == 404
     assert admin.delete(f'/api/daily-plans/{ta}/item/{p["id"]}').status_code == 200
+    assert admin.post(f'/api/daily-plans/{ta}/generate', json={'date': '2026-09-22', 'period': 1}).status_code == 200   # silindikdən sonra
     assert admin.delete('/api/ai/settings').json()['has_key'] is False
 
 
@@ -112,19 +133,21 @@ def test_day_view_all_classes(world, monkeypatch):
         db.add(PlanLesson(assignment_id=ta2, seq=1, semester=1, assessment_type='formativ', topic='Başqa mövzu',
                           date=dt.date(2026, 9, 15)))
         db.commit()
-    d = admin.get('/api/daily-plans-day', params={'date': '2026-09-15'}).json()
+    d = admin.get('/api/daily-plans-list', params={'date': '2026-09-15'}).json()
     assert [(i['period'], i['class_name']) for i in d['items']] == [(1, 'X e'), (3, 'X c'), (5, 'X e')]
     assert d['weekday'] == 'Çərşənbə axşamı' and not d['ai']['configured']
-    assert admin.get('/api/daily-plans-day', params={'date': '2026-09-16'}).json()['items'] == []
-    assert admin.get('/api/daily-plans-day/docx', params={'date': '2026-09-15'}).status_code == 404
+    assert admin.get('/api/daily-plans-list', params={'date': '2026-09-16'}).json()['items'] == []
+    # dərs həftəsi – bütün siniflər; bir sinif
+    w = admin.get('/api/daily-plans-list', params={'date': '2026-09-24', 'view': 'week'}).json()
+    assert w['from'] == '2026-09-21' and len(w['items']) == 3
+    assert len(admin.get('/api/daily-plans-list', params={'date': '2026-09-24', 'view': 'week', 'ta': str(ta2)}).json()['items']) == 1
 
     admin.put('/api/ai/settings', json={'provider': 'openrouter', 'model': 'google/gemini-2.5-flash', 'api_key': 'sk-or-TEST-123456789'})
     monkeypatch.setattr('app.ai.complete_json', lambda cfg, s, u: FAKE)
     for i in d['items']:
         assert admin.post(f"/api/daily-plans/{i['ta_id']}/generate", json={'date': i['date'], 'period': i['period']}).status_code == 200
-    d = admin.get('/api/daily-plans-day', params={'date': '2026-09-15'}).json()
+    d = admin.get('/api/daily-plans-list', params={'date': '2026-09-15'}).json()
     assert all(i['plan'] for i in d['items'])
-    w = admin.get('/api/daily-plans-day/docx', params={'date': '2026-09-15'})
-    assert w.status_code == 200 and w.content[:2] == b'PK'
-    # başqa müəllimin günü boşdur
-    assert as_('ilqar').get('/api/daily-plans-day', params={'date': '2026-09-15'}).json()['items'] == []
+    # başqa müəllimin günü boşdur, başqasının dərsinə Word/baxış yoxdur
+    assert as_('ilqar').get('/api/daily-plans-list', params={'date': '2026-09-15'}).json()['items'] == []
+    assert as_('ilqar').get('/api/daily-plans-docx', params={'slots': f'{ta}:2026-09-15:1'}).status_code == 404

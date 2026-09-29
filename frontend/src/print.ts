@@ -70,6 +70,19 @@ export async function downloadPdf(d: Doc) {
 export function printDoc(d: Doc) {
   const w = window.open('', '_blank')
   if (!w) { alert('Pəncərə açılmadı – brauzerdə açılan pəncərələrə icazə verin'); return }
+  fillPrint(w, d)
+}
+
+/** Məlumat serverdən sonra gəlirsə: pəncərəni KLİK anında açır (brauzer bloklamasın), sonra doldurur. */
+export function printLater(): { show: (d: Doc) => void; fail: (msg: string) => void } | null {
+  const w = window.open('', '_blank')
+  if (!w) { alert('Pəncərə açılmadı – brauzerdə açılan pəncərələrə icazə verin'); return null }
+  w.document.write('<p style="font:16px Arial,sans-serif;padding:24px">Sənəd hazırlanır…</p>')
+  return { show: d => fillPrint(w, d), fail: msg => { w.document.body.innerHTML = `<p style="font:16px Arial,sans-serif;padding:24px">${esc(msg)}</p>` } }
+}
+
+function fillPrint(w: Window, d: Doc) {
+  w.document.open()
   const bar = `<div id="mk-bar" style="position:sticky;top:0;background:#f3f4f6;border-bottom:1px solid #ccc;padding:8px;display:flex;gap:8px;font:14px Arial,sans-serif;z-index:9">
     <button id="mk-print" style="padding:8px 14px">Çap et</button><button id="mk-pdf" style="padding:8px 14px">PDF yüklə</button>
     <button id="mk-close" style="padding:8px 14px">Bağla</button><span id="mk-msg" style="align-self:center;color:#555"></span></div>
