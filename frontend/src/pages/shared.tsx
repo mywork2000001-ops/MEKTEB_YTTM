@@ -32,6 +32,7 @@ export function LookPanel() {
 
 export function PasswordPanel({ student }: { student: boolean }) {
   const t = useT()
+  const { logout } = useAuth()
   const [f, setF] = useState({ old: '', new: '', again: '' })
   const valid = student ? /^\d{4}$/.test(f.new) : f.new.length >= 8
   const clean = (v: string) => (student ? v.replace(/\D/g, '').slice(0, 4) : v)
@@ -45,6 +46,8 @@ export function PasswordPanel({ student }: { student: boolean }) {
         <AsyncBtn className="btn primary" disabled={!valid || f.new !== f.again || !f.old} ok="Dəyişdirildi"
           onClick={async () => { await post('/api/auth/password', { old: f.old, new: f.new }); setF({ old: '', new: '', again: '' }) }}>{t('Yadda saxla')}</AsyncBtn>
       </div>
+      <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '16px 0' }} />
+      <button className="btn danger w100" onClick={logout}>{t('Çıxış')}</button>
     </section>
   )
 }
