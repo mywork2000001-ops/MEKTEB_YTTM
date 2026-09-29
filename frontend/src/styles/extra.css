@@ -68,3 +68,25 @@
 /* sürüşən cədvəldə şagird adı sabit qalsın (sinif rəhbərinin davamiyyəti, jurnal səhifəsi) */
 .sticky-first th:first-child,.sticky-first td:first-child{position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:1px 0 0 var(--line)}
 @media (max-width:700px){.sticky-first td:first-child{max-width:132px;white-space:normal!important;font-size:13px}}
+
+/* ---- Çat: söhbət siyahısı, kontaktlar, mesaj pəncərəsi ---- */
+.chat-h{font-size:13px;color:var(--muted);margin:14px 2px 6px;font-weight:700}
+.chat-row{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:12px;width:100%;padding:10px 14px;min-height:60px;border-bottom:1px solid var(--line);cursor:pointer}
+.chat-row:last-child{border-bottom:0}
+.chat-row:hover,.chat-row:focus-visible{background:var(--sunk)}
+.chat-av{width:42px;height:42px;border-radius:50%;background:var(--accent-soft);display:grid;place-items:center;font-weight:700;font-size:14px;flex:none}
+.ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-room{display:flex;flex-direction:column;padding:0;overflow:hidden}
+.chat-top{gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.chat-room .msgs{flex:1;padding:12px}
+.chat-day{text-align:center;margin:8px 0}
+.chat-day span{display:inline-block;font-size:12px;color:var(--muted);background:var(--sunk);border-radius:999px;padding:3px 10px}
+.chat-input{display:flex;align-items:flex-end;gap:8px;padding:10px 12px;border-top:1px solid var(--line);background:var(--surface)}
+.chat-input textarea{resize:none;min-height:44px;max-height:120px;line-height:1.35;padding-top:11px}
+.chat-input .btn{min-height:44px;min-width:44px}
+.chat-act{min-height:28px!important;padding:0 8px!important;margin-left:6px}
+@media (max-width:700px){
+  .chat-room{margin:0 -16px;border-radius:0;border-left:0;border-right:0;height:calc(100dvh - 168px)}
+  .chat-room .msgs{max-height:none;min-height:0;overflow:auto;border-radius:0}
+  .chat-input{flex:none}
+}

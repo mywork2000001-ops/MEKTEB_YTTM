@@ -67,23 +67,32 @@ def _student(db: Session, u: User) -> Student | None:
 
 
 def _teacher_class_ids(db: Session, u: User) -> set[int]:
-    """Müəllimin dərs dediyi siniflər (qrup -> ana sinif)."""
+    """Müəllimin dərs dediyi siniflər (qrup -> ana sinif) + rəhbəri olduğu siniflər."""
     rows = db.execute(select(SchoolClass.id, SchoolClass.parent_id).join(
         TeachingAssignment, TeachingAssignment.class_id == SchoolClass.id).where(
         TeachingAssignment.teacher_id == u.id, TeachingAssignment.archived_at.is_(None),
         SchoolClass.archived_at.is_(None))).all()
-    return {p or c for c, p in rows}
+    return {p or c for c, p in rows} | _homeroom_ids(db, u)
+
+
+def _homeroom_ids(db: Session, u: User) -> set[int]:
+    return set(db.scalars(select(SchoolClass.id).where(SchoolClass.homeroom_id == u.id, SchoolClass.archived_at.is_(None))))
 
 
 def _student_teacher_ids(db: Session, s: Student) -> set[int]:
+    """Şagirdin müəllimləri + sinif rəhbəri."""
     groups = set(db.scalars(select(GroupMember.group_id).where(GroupMember.student_id == s.id)))
-    return set(db.scalars(select(TeachingAssignment.teacher_id).where(
+    ids = set(db.scalars(select(TeachingAssignment.teacher_id).where(
         TeachingAssignment.class_id.in_(groups | {s.class_id}), TeachingAssignment.archived_at.is_(None))))
+    hr = db.scalar(select(SchoolClass.homeroom_id).where(SchoolClass.id == s.class_id))
+    return ids | ({hr} if hr else set())
 
 
 def can_dm(db: Session, a: User, b: User) -> bool:
     if a.id == b.id or b.archived_at or a.school_id != b.school_id or not a.school_id:
         return False
+    if Role.admin in (a.role, b.role):
+        return True                                               # admin məktəbdə hər kəslə yazışa bilər
     sa, sb = _student(db, a), _student(db, b)
     if sa and sb:
         return sa.class_id == sb.class_id
@@ -160,16 +169,46 @@ def rooms(u: User = Depends(current_user), db: Session = Depends(get_db)):
         if can_access(db, u, r):
             last = db.scalar(select(ChatMessage).where(ChatMessage.room_id == r.id, ChatMessage.deleted_at.is_(None))
                              .order_by(ChatMessage.id.desc()))
+            if r.kind == 'dm' and not last:
+                continue                                          # boş şəxsi yazışma siyahını doldurmasın
+            sender = last and db.get(User, last.sender_id)
             out.append({'id': r.id, 'kind': r.kind, 'title': _title(db, u, r), 'unread': _unread(db, u, r),
-                        'last': last and {'text': (last.text or last.file_name or '')[:80], 'at': last.created_at}})
+                        'last': last and {'text': (last.text or ('📎 ' + (last.file_name or 'fayl')))[:80], 'at': last.created_at,
+                                          'mine': last.sender_id == u.id,
+                                          'sender': sender.full_name.split(' ')[1] if sender and len(sender.full_name.split()) > 1 else (sender.full_name if sender else '')}})
     order = {'staff': 0, 'class': 1, 'dm': 2}
-    return sorted(out, key=lambda x: (order[x['kind']], x['title']))
+    groups = sorted([x for x in out if x['kind'] != 'dm'], key=lambda x: (order[x['kind']], x['title']))
+    dms = sorted([x for x in out if x['kind'] == 'dm'], key=lambda x: x['last']['at'], reverse=True)
+    return groups + dms
 
 
 @router.get('/contacts')
 def contacts(u: User = Depends(current_user), db: Session = Depends(get_db)):
-    cand = db.scalars(select(User).where(User.school_id == u.school_id, User.archived_at.is_(None), User.id != u.id))
-    return [{'id': x.id, 'full_name': x.full_name, 'role': x.role} for x in cand if can_dm(db, u, x)]
+    """Kimə yazmaq olar – qrup (Müəllimlər / sinif adı), alt yazı (fənn, «sinif rəhbəri»), mövcud yazışma."""
+    cand = list(db.scalars(select(User).where(User.school_id == u.school_id, User.archived_at.is_(None), User.id != u.id)))
+    studs = {s.user_id: s for s in db.scalars(select(Student).where(Student.school_id == u.school_id,
+                                                                    Student.archived_at.is_(None), Student.user_id.is_not(None)))}
+    cls = {c.id: c for c in db.scalars(select(SchoolClass).where(SchoolClass.school_id == u.school_id))}
+    subj: dict[int, set] = {}
+    for tid, sub in db.execute(select(TeachingAssignment.teacher_id, TeachingAssignment.subject)
+                               .where(TeachingAssignment.archived_at.is_(None))):
+        subj.setdefault(tid, set()).add(sub)
+    hr = {c.homeroom_id: c.name for c in cls.values() if c.homeroom_id and not c.archived_at}
+    existing = {r.dm_key: r.id for r in db.scalars(select(ChatRoom).where(ChatRoom.school_id == u.school_id, ChatRoom.kind == 'dm'))}
+    out = []
+    for x in cand:
+        if not can_dm(db, u, x):
+            continue
+        s = studs.get(x.id)
+        if s:
+            group, sub = cls[s.class_id].name if s.class_id in cls else 'Şagirdlər', s.portal_code
+        else:
+            group = 'Müəllimlər'
+            sub = ', '.join(sorted(subj.get(x.id, []))) + (f' · {hr[x.id]} sinif rəhbəri' if x.id in hr else '')
+        a, b = sorted((u.id, x.id))
+        out.append({'id': x.id, 'full_name': x.full_name, 'role': x.role, 'group': group, 'sub': sub.strip(' ·'),
+                    'room_id': existing.get(f'dm:{a}:{b}')})
+    return sorted(out, key=lambda c: (c['group'] != 'Müəllimlər', c['group'], c['full_name']))
 
 
 class DmIn(BaseModel):
