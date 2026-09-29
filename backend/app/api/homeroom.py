@@ -98,11 +98,12 @@ def homeroom_class(db: Session, user: User, cid: int) -> SchoolClass:
 
 
 @router.get('/homeroom')
-def my_homerooms(user: User = Depends(staff), db: Session = Depends(get_db)):
-    """Rəhbəri olduğum siniflər (admin – məktəbin bütün bütöv sinifləri)."""
+def my_homerooms(all: bool = False, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Rəhbəri olduğum siniflər. Admin «all=1» ilə məktəbin bütün bütöv siniflərinə baxa bilər
+    (defolt – yalnız özününkü, başqa müəllimin sinfi «mənim sinfim» kimi görünməsin)."""
     st = select(SchoolClass).where(SchoolClass.school_id == user.school_id, SchoolClass.archived_at.is_(None),
                                    SchoolClass.kind != 'qrup')
-    if user.role != Role.admin:
+    if not (all and user.role == Role.admin):
         st = st.where(SchoolClass.homeroom_id == user.id)
     return [{'id': c.id, 'name': c.name, 'homeroom': _hr(db, c), 'mine': c.homeroom_id == user.id}
             for c in db.scalars(st.order_by(SchoolClass.name))]

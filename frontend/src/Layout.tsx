@@ -54,8 +54,8 @@ export function Layout({ children }: { children: ReactNode }) {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); window.removeEventListener('mk-outbox', upd) }
   }, [])
   const student = me?.role === 'student'
-  // «Sinif rəhbəri» yalnız rəhbəri olduğu sinif varsa (admin – həmişə)
-  const [homeroom, setHomeroom] = useState(me?.role === 'admin')
+  // «Sinif rəhbəri» yalnız rəhbəri olduğu sinif varsa
+  const [homeroom, setHomeroom] = useState(me?.role === 'admin')   // admin: «Bütün siniflər» baxışı üçün
   useEffect(() => {
     if (!me || me.role !== 'teacher') return
     get<any[]>('/api/homeroom').then(r => setHomeroom(r.length > 0)).catch(() => {})

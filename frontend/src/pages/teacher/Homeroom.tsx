@@ -13,23 +13,31 @@ const CAT_TONE: Record<string, 'ok' | 'info' | 'warn' | 'bad'> = { 'Əlaçı': '
 
 export default function Homeroom() {
   const t = useT()
-  const [list, err0] = useLoad<any[]>(() => get('/api/homeroom'), [])
+  const { me } = useAuth()
+  const admin = me?.role === 'admin'
+  const [all, setAll] = useState(false)
+  const [list, err0] = useLoad<any[]>(() => get('/api/homeroom', all ? { all: 1 } : {}), [all])
   const [cid, setCid] = usePick('homeroom')
   const [sem, setSem] = useState<'1' | '2' | 'all'>('1')
   const [tab, setTab] = useState<(typeof TABS)[number][0]>('overview')
   // yalnız bir sinfin rəhbəridirsə – avtomatik seçilir
-  useEffect(() => { if (list && list.length === 1 && cid !== list[0].id) setCid(list[0].id) }, [list])
+  useEffect(() => {
+    if (!list) return
+    if (list.length === 1 && cid !== list[0].id) setCid(list[0].id)
+    else if (cid && !list.some(c => c.id === cid)) setCid(null)
+  }, [list])
   const [h, err, loading, reload] = useLoad<any>(() => (cid ? get(`/api/homeroom/${cid}`, sem === 'all' ? {} : { semester: sem }) : Promise.resolve(null)), [cid, sem])
   return (
     <>
       <Top title="Sinif rəhbəri" sub={h ? `${h.class.name} · rəhbər: ${h.class.homeroom?.name || '—'}` : 'Sinif seçin'} />
       <ErrorBox error={err0 || err} />
+      {admin && <div className="row no-print" style={{ marginBottom: 8 }}><label className="check"><input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} />Bütün siniflər (admin baxışı)</label></div>}
       {list && list.length === 0 ? (
         <Empty>Siz heç bir sinfin rəhbəri deyilsiniz. Tənzimləmələr → Siniflər → sinfi açın → «Mən sinif rəhbəriyəm» (və ya admin təyin edir).</Empty>
       ) : (
         <>
           <div className="toolbar no-print">
-            {list && list.length > 1 && (
+            {list && (list.length > 1 || all) && (
               <select className="sel" aria-label="Sinif" value={cid ?? ''} onChange={e => setCid(e.target.value ? Number(e.target.value) : null)}>
                 <option value="">— Sinif seçin —</option>
                 {list.map(c => <option key={c.id} value={c.id}>{c.name}{c.mine ? '' : c.homeroom ? ` · ${c.homeroom.name}` : ' · rəhbər yoxdur'}</option>)}

@@ -88,6 +88,8 @@ def test_homeroom_assign_and_summary(world, monkeypatch):
     # özünü çıxarır
     assert ilqar.put(f'/api/classes/{cid}/homeroom', json={'teacher_id': None}).status_code == 200
     assert ilqar.get('/api/homeroom').json() == []
+    assert c.get('/api/homeroom').json() == []                                   # admin: yalnız özününkü
+    assert [x['id'] for x in c.get('/api/homeroom', params={'all': 1}).json()] == [cid]   # «bütün siniflər»
 
 
 def test_homeroom_other_school(world):
