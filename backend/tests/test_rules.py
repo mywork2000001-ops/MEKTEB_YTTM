@@ -67,3 +67,10 @@ def test_today_uses_baku_time(monkeypatch):
             return dt.datetime(2026, 9, 22, 21, 30, tzinfo=dt.timezone.utc).astimezone(tz)
     monkeypatch.setattr(services.dt, 'datetime', FakeDT)
     assert services.today() == dt.date(2026, 9, 23)
+
+
+def test_keepalive_hours():
+    import datetime as dt
+    from app.scheduler import awake_now
+    assert awake_now('7-23', dt.datetime(2026, 9, 29, 7, 0)) and awake_now('7-23', dt.datetime(2026, 9, 29, 22, 59))
+    assert not awake_now('7-23', dt.datetime(2026, 9, 29, 23, 0)) and not awake_now('7-23', dt.datetime(2026, 9, 29, 6, 59))

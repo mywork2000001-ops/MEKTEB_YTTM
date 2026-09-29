@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     admin_login: str = 'M-001'                           # müəllimlər ID ilə daxil olur (M-001, M-002, …)
     cookie_secure: bool = False                          # HTTPS-də (Render) True
     upload_dir: str | None = None                        # çat faylları; boşdursa – bazanın yanında data/uploads
+    # Render pulsuz planı 15 dəq trafiksiz qalanda yatır: server öz ünvanına müraciət edir (Bakı vaxtı ilə saatlar)
+    keepalive_url: str | None = None                     # boşdursa RENDER_EXTERNAL_URL (Render özü verir)
+    keepalive_hours: str = '7-23'                        # 07:00–23:00 oyaq; gecə yatır
     storage: str = 'local'                               # local | db | gdrive (hostinqdə: gdrive, qoşulana qədər db)
     gdrive_folder_id: str | None = None
     gdrive_client_id: str | None = None
