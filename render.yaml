@@ -28,3 +28,5 @@ services:
         value: db
       - key: MK_BANK_SYNC_MINUTES
         value: "60"
+      - key: MK_BANK_HOOK_TOKEN       # viktorina deploy → POST /api/bank/hook (eyni dəyər GitHub secret-də)
+        sync: false

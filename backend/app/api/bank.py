@@ -1,7 +1,8 @@
 """Əlavə test bazası (viktorina.html) – vəziyyət, əl ilə yeniləmə, mənbələr, sual axtarışı."""
+import hmac
 import threading
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -39,6 +40,22 @@ def sync_now(force: bool = False, _: User = Depends(admin_only)):
     def job():
         with SessionLocal() as db:
             run_sync(db, 'manual', force=force)
+    threading.Thread(target=job, daemon=True).start()
+    return {'started': True}
+
+
+@router.post('/hook')
+def sync_hook(x_hook_token: str | None = Header(None)):
+    """Viktorina saytı deploy olunanda (GitHub Action) çağırılır – saatlıq yoxlamanı gözləmədən yeniləyir."""
+    token = settings().bank_hook_token
+    if not token:
+        raise HTTPException(404, 'Not Found')
+    if not x_hook_token or not hmac.compare_digest(x_hook_token.encode(), token.encode()):
+        raise HTTPException(403, 'Yanlış açar')
+
+    def job():
+        with SessionLocal() as db:
+            run_sync(db, 'hook')
     threading.Thread(target=job, daemon=True).start()
     return {'started': True}
 

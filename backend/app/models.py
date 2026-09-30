@@ -199,7 +199,7 @@ class BankSync(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     started_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
-    trigger: Mapped[str] = mapped_column(String(20))                     # auto | manual
+    trigger: Mapped[str] = mapped_column(String(20))                     # auto | manual | hook
     status: Mapped[str] = mapped_column(String(20), default='running')   # running | unchanged | updated | error
     files_checked: Mapped[int] = mapped_column(Integer, default=0)
     files_changed: Mapped[int] = mapped_column(Integer, default=0)

@@ -67,6 +67,18 @@ def test_role_guards_on_bank(client):
     assert client.patch('/api/bank/sources/p004', json={'enabled': True}).status_code == 403
 
 
+def test_bank_hook_token(client, monkeypatch):
+    from app.config import settings
+    started = []
+    monkeypatch.setattr('app.api.bank.run_sync', lambda db, trigger, **k: started.append(trigger))
+    monkeypatch.setattr(settings(), 'bank_hook_token', None)
+    assert client.post('/api/bank/hook', headers={'X-Hook-Token': 'x'}).status_code == 404   # açar yoxdursa – söndürülüb
+    monkeypatch.setattr(settings(), 'bank_hook_token', 'gizli-acar')
+    assert client.post('/api/bank/hook').status_code == 403
+    assert client.post('/api/bank/hook', headers={'X-Hook-Token': 'yanlis'}).status_code == 403
+    assert client.post('/api/bank/hook', headers={'X-Hook-Token': 'gizli-acar'}).json() == {'started': True}
+
+
 def test_student_pin_change_rules(client):
     login(client, 'XE-001', '1234')
     assert client.post('/api/auth/password', json={'old': '1234', 'new': '12a4'}).status_code == 400

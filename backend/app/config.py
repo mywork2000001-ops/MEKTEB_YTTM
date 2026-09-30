@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     viktorina_url: str = 'https://hub-educat-on-6m58.vercel.app/viktorina.html'
     bank_sync_minutes: int = 60                          # 0 = avtomatik yeniləmə söndürülüb
     bank_exclude_sources: str = 'eduhub'                 # vergüllə; EduHub açar tələb edir
+    bank_hook_token: str | None = None                   # viktorina deploy olunanda GitHub Action POST /api/bank/hook çağırır
     chrome_path: str | None = None                       # lokal: C:/Program Files/Google/Chrome/Application/chrome.exe
     admin_password: str | None = None                    # ilk açılış: baza boşdursa admin bu parolla yaradılır
     admin_login: str = 'M-001'                           # müəllimlər ID ilə daxil olur (M-001, M-002, …)
