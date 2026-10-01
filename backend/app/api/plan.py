@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import tempfile
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -83,6 +84,91 @@ def official(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_
         out.append({**lesson_out(pl), 'taught_dates': d, 'working_date': wd,
                     'status': 'keçilib' if d else 'gecikir' if wd and wd < t else 'gözlənilir'})
     return out
+
+
+# ---------------------------------------------------------------- mövzu icrası (irəliləyiş / geriləmə)
+@router.get('/my/progress')
+def progress_overview(user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Bütün dərslərim üzrə icmal: keçilib / cəmi, fərq (irəlidə + / geridə −), sığmayan."""
+    from ..progress import topic_progress
+    t = today()
+    out = []
+    for ta, c in db.execute(select(TeachingAssignment, SchoolClass).join(SchoolClass).where(
+            TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None),
+            SchoolClass.archived_at.is_(None)).order_by(SchoolClass.name)):
+        p = topic_progress(db, plan_ctx(db, ta), t)
+        out.append({'ta_id': ta.id, 'class_name': c.name, 'subject': ta.subject, **p['summary'],
+                    'shortfall': p['forecast']['shortfall'],
+                    'next': next(({'seq': x['seq'], 'topic': x['topic']} for x in p['topics']
+                                  if x['status'] not in ('keçildi', 'təkrar')), None)})
+    return out
+
+
+@router.get('/plan/{ta_id}/progress')
+def progress(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    from ..progress import topic_progress
+    ctx = plan_ctx(db, own_assignment(db, user, ta_id))
+    return {'class_name': ctx.cls.name, 'subject': ctx.ta.subject, **topic_progress(db, ctx, today())}
+
+
+class TopicIn(BaseModel):
+    status: Literal['keçildi', 'təkrar', 'qismən']
+    done_on: dt.date | None = None                      # boş – bu gün
+    note: str | None = Field(None, max_length=300)
+
+
+class TopicsBulkIn(TopicIn):
+    ids: list[int] = Field(min_length=1, max_length=400)
+
+
+def _set_topic(db: Session, user: User, ta: TeachingAssignment, pl_id: int, body: TopicIn):
+    from ..models import PlanLesson, TopicProgress
+    pl = db.get(PlanLesson, pl_id)
+    if not pl or pl.assignment_id != ta.id:
+        raise HTTPException(404, 'Mövzu bu dərsin planında yoxdur')
+    d = body.done_on or today()
+    if d > today():
+        raise HTTPException(400, 'Gələcək tarixlə «keçildi» qeyd olunmur')
+    m = db.scalar(select(TopicProgress).where(TopicProgress.assignment_id == ta.id, TopicProgress.plan_lesson_id == pl_id))
+    if not m:
+        m = TopicProgress(assignment_id=ta.id, plan_lesson_id=pl_id)
+        db.add(m)
+    m.status, m.done_on, m.note, m.updated_by = body.status, d, (body.note or '').strip() or None, user.id
+    return pl
+
+
+@router.put('/plan/{ta_id}/topics/{pl_id}')
+def set_topic(ta_id: int, pl_id: int, body: TopicIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Gündəlik iş – Tənzimləmələr kilidi tələb olunmur (Mövzunu saxla kimi)."""
+    ta = own_assignment(db, user, ta_id)
+    pl = _set_topic(db, user, ta, pl_id, body)
+    audit(db, user, 'update', 'topic_progress', ta.id, seq=pl.seq, status=body.status)
+    db.commit()
+    return {'ok': True}
+
+
+@router.post('/plan/{ta_id}/topics/bulk')
+def set_topics_bulk(ta_id: int, body: TopicsBulkIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Toplu qeyd: məs. «№1–№12 keçildi» (tətbiqə gec başlayan müəllim üçün)."""
+    ta = own_assignment(db, user, ta_id)
+    seqs = [_set_topic(db, user, ta, i, body).seq for i in dict.fromkeys(body.ids)]
+    audit(db, user, 'update', 'topic_progress', ta.id, count=len(seqs), status=body.status)
+    db.commit()
+    return {'ok': True, 'count': len(seqs)}
+
+
+@router.delete('/plan/{ta_id}/topics/{pl_id}')
+def clear_topic(ta_id: int, pl_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Əl ilə qeydi götürür – jurnal yazılıbsa, mövzu yenə «keçildi» sayılır."""
+    from ..models import TopicProgress
+    ta = own_assignment(db, user, ta_id)
+    m = db.scalar(select(TopicProgress).where(TopicProgress.assignment_id == ta.id, TopicProgress.plan_lesson_id == pl_id))
+    if not m:
+        raise HTTPException(404, 'Qeyd tapılmadı')
+    db.delete(m)
+    audit(db, user, 'delete', 'topic_progress', ta.id, plan_lesson_id=pl_id)
+    db.commit()
+    return {'ok': True}
 
 
 @router.post('/plan/{ta_id}/import')

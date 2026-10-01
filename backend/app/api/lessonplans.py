@@ -168,8 +168,19 @@ def _context(db: Session, user: User, ctx, s, notes: str | None) -> tuple[dict, 
          'continues_next': bool(s.held),
          'prev_topic': prev_pl.topic if prev_pl else None, 'prev_homework': prev_entry.homework if prev_entry else None,
          'next_topic': nxt.topic if nxt else None, 'next_exam': exam, 'notes': (notes or '').strip() or None,
-         'homework_plan': hw, 'homework_nums': hw_nums}
+         'homework_plan': hw, 'homework_nums': hw_nums, 'review_topics': _review_topics(db, ctx, i)}
     return c, pl
+
+
+def _review_topics(db: Session, ctx, i: int) -> list[str]:
+    """Müəllimin «təkrar» / «qismən» qeyd etdiyi əvvəlki mövzular (son 5) – dərsin əvvəlində qısa təkrar üçün."""
+    from ..models import TopicProgress
+    prev = {x.id: x for x in ctx.lessons[:i]}
+    rows = db.scalars(select(TopicProgress).where(TopicProgress.assignment_id == ctx.ta.id,
+                                                  TopicProgress.status.in_(('təkrar', 'qismən')),
+                                                  TopicProgress.plan_lesson_id.in_(list(prev) or [0])))
+    found = sorted((prev[m.plan_lesson_id].seq, prev[m.plan_lesson_id].topic, m.status) for m in rows)
+    return [f"№{s} {t} ({'qismən keçilib' if st == 'qismən' else 'mənimsəmə zəifdir'})" for s, t, st in found[-5:]]
 
 
 def _brief(p: DailyPlan | None) -> dict | None:

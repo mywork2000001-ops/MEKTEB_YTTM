@@ -142,9 +142,36 @@ def plan(view: str = 'week', date: dt.date | None = None, user: User = Depends(s
             pl = taught_lesson(ctx, sl, e)
             items.append({'date': d_, 'weekday': WEEKDAYS[d_.weekday()], 'period': period,
                           'time': bell(db, c, period), 'subject': ta.subject, 'class_name': c.name,
+                          'group': c.kind == 'qrup',
                           **_plan_fields(pl, sl, e), 'homework': e.homework if e else None})
     items.sort(key=lambda x: (x['date'], x['time'] or '', x['period']))
     return {'view': view, 'items': items}
+
+
+@router.get('/progress')
+def progress(user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Fənlər üzrə keçilən mövzular: keçilib / cəmi, plana nisbətən fərq, təkrar tövsiyə olunan və növbəti mövzular.
+    Müəllimin qeydi (note) şagirdə göstərilmir."""
+    from ..progress import DONE, topic_progress
+    s = me_student(db, user)
+    t = today()
+    out = []
+    for ta, c in my_assignments(db, s):
+        p = topic_progress(db, plan_ctx(db, ta), t)
+        if not p['topics']:
+            continue
+        tp = p['topics']
+        out.append({'ta_id': ta.id, 'subject': ta.subject, 'class_name': c.name, 'group': c.kind == 'qrup',
+                    'teacher': _teacher(db, ta),
+                    **{k: p['summary'][k] for k in ('total', 'done', 'expected', 'delta', 'done_pct', 'plan_pct')},
+                    'review': [{'seq': x['seq'], 'topic': x['topic']} for x in tp if x['status'] == 'təkrar'][-5:],
+                    'recent': [{'seq': x['seq'], 'topic': x['topic'], 'done_on': x['done_on']}
+                               for x in sorted((x for x in tp if x['status'] in DONE and x['done_on']),
+                                               key=lambda x: (x['done_on'], x['seq']))][-5:][::-1],
+                    'next': [{'seq': x['seq'], 'topic': x['topic'], 'assessment_type': x['assessment_type'],
+                              'exam_no': x['exam_no']} for x in tp if x['status'] not in DONE][:3],
+                    'sections': [{k: x[k] for k in ('section', 'total', 'done')} for x in p['sections']]})
+    return out
 
 
 UPCOMING_DAYS = 21          # summativdən 3 həftə əvvəl şagird təkrara başlasın

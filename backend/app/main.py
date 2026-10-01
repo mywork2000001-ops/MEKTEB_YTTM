@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import scheduler
-from .api import admin, analytics, auth, bank, chat, classes, exams, homeroom, homeroom_att, imports, invites, journal, lessonplans, materials, plan, printing, portal, school, students, tasks
+from .api import admin, analytics, auth, bank, chat, classes, exams, homeroom, homeroom_att, imports, invites, journal, lessonplans, materials, phones, plan, printing, portal, school, students, tasks
 
 def bootstrap():
     """İlk açılış (hostinq): miqrasiyalar + baza boşdursa məktəb, admin, tədris ili, siniflər, cədvəl.
@@ -115,6 +115,7 @@ app.include_router(chat.router)
 app.include_router(analytics.router)
 app.include_router(homeroom.router)
 app.include_router(homeroom_att.router)
+app.include_router(phones.router)
 app.include_router(imports.router)
 app.include_router(materials.router)
 app.include_router(invites.router)

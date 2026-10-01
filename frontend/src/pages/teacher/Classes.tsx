@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { get, post, put } from '../../api'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, levelTone, Loading, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
-import { usePick } from './common'
+import { kindLabel, usePick } from './common'
+import { useNavigate } from 'react-router-dom'
 import { fmtD, fmtN, head, printDoc, table } from '../../print'
 
-type Cls = { id: number; name: string; code: string; kind: string; students: number; can_open: boolean; split_with: string | null
+type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; students: number; can_open: boolean; split_with: string | null
   teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number } | null; exam_date: string | null; homeroom?: { id: number; name: string } | null }
 type Stud = { id: number; full_name: string; birth_date: string | null; gender: string | null; portal_code: string; class_name: string
   score_language: number | null; score_math: number | null; score_foreign: number | null; score_total: number | null; level: string | null }
@@ -14,17 +15,19 @@ export default function Classes() {
   const [classes, err] = useLoad<Cls[]>(() => get('/api/classes'), [])
   const [sel, setSel] = usePick('classes')
   const [card, setCard] = useState<Stud | null>(null)
+  const nav = useNavigate()
   const mine = (classes || []).filter(c => c.can_open)
   const cur = mine.find(c => c.id === sel)
   return (
     <>
-      <Top title="Siniflər və qruplar" sub="Redaktə – Tənzimləmələrdə" />
+      <Top title="Siniflər və qruplar" sub="Sinif, bölünmə qrupu, tədris qrupu"
+        actions={<button className="btn sm" onClick={() => nav('/settings?tab=classes')}>Yarat / redaktə et / şagird əlavə et</button>} />
       <ErrorBox error={err} />
       {!classes ? <Loading /> : (
         <div className="grid g3" style={{ marginBottom: 20 }}>
           {mine.filter(c => c.kind !== 'qrup').concat(mine.filter(c => c.kind === 'qrup')).map(c => (
             <button key={c.id} className="panel cls" style={{ textAlign: 'left', cursor: 'pointer', outline: c.id === sel ? '2px solid var(--accent)' : undefined }} onClick={() => setSel(c.id === sel ? null : c.id)}>
-              <div className="cls-head"><div className="cls-title"><span className="badge">{c.code}</span><div><b>{c.name}</b><div className="small muted">{c.kind === 'qrup' ? `qrup${c.split_with ? ' · ' + c.split_with : ''}` : c.kind}</div></div></div></div>
+              <div className="cls-head"><div className="cls-title"><span className="badge">{c.code}</span><div><b>{c.name}</b><div className="small muted">{kindLabel(c)}{c.split_with ? ' · paralel: ' + c.split_with : ''}</div></div></div></div>
               <dl className="cls-meta">
                 <dt>Şagird</dt><dd>{c.students}</dd>
                 {c.homeroom && <><dt>Rəhbər</dt><dd>{c.homeroom.name}</dd></>}

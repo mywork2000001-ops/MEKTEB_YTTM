@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { del, get, post, put } from '../../api'
+import { api, del, get, post, put } from '../../api'
 import { useAuth } from '../../auth'
 import { useT } from '../../i18n'
 import { esc, head, printDoc, table } from '../../print'
@@ -157,36 +157,130 @@ function Attendance({ h }: { h: any }) {
 
 const REL = ['ana', 'ata', 'qəyyum', 'nənə', 'baba', 'digər']
 
+const telHref = (p: string) => `tel:${p.replace(/[^0-9+]/g, '')}`
+const waHref = (p: string) => `https://wa.me/${p.replace(/\D/g, '')}`
+/** Nömrə + zəng və WhatsApp keçidi */
+function Phone({ p }: { p: string }) {
+  return <><a href={telHref(p)}>{p}</a> <a href={waHref(p)} target="_blank" rel="noreferrer" className="small" aria-label={`${p} – WhatsApp`}>WA</a></>
+}
+
 function Parents({ h, reload }: { h: any; reload: () => void }) {
   const [edit, setEdit] = useState<any>(null)
+  const [mode, setMode] = useState<'list' | 'table' | 'import'>('list')
+  const filled = h.students.filter((r: any) => r.phone || r.guardians.some((g: any) => g.phone)).length
   return (
     <>
-      <div className="jlist">{h.students.map((r: any) => (
+      <div className="toolbar">
+        <Seg value={mode} onChange={setMode} label="Görünüş" options={[['list', 'Siyahı'], ['table', 'Cədvəldə daxil et'], ['import', 'Excel / CSV idxalı']]} />
+        <span className="small muted">Telefonu olan: {filled} / {h.students.length}</span>
+      </div>
+      {mode === 'table' && <PhoneTable cid={h.class.id} onDone={() => { setMode('list'); reload() }} />}
+      {mode === 'import' && <PhoneImport cid={h.class.id} onDone={() => { setMode('list'); reload() }} />}
+      {mode === 'list' && <div className="jlist">{h.students.map((r: any) => (
         <div className="jrow" key={r.student_id}>
           <span className="grow"><b>{r.full_name}</b>{r.birth_date && <span className="small muted"> · {fmtDate(r.birth_date)}</span>}
-            <span className="sub small"><br />{r.guardians.length ? r.guardians.map((g: any, i: number) => <span key={i}>{g.relation}: {g.name}{g.phone && <> · <a href={`tel:${g.phone.replace(/[^0-9+]/g, '')}`}>{g.phone}</a></>}{i < r.guardians.length - 1 ? '; ' : ''}</span>) : <span className="muted">valideyn məlumatı yoxdur</span>}</span></span>
+            {r.phone && <span className="small"> · şagird: <Phone p={r.phone} /></span>}
+            <span className="sub small"><br />{r.guardians.length ? r.guardians.map((g: any, i: number) => <span key={i}>{g.relation}: {g.name}{g.phone && <> · <Phone p={g.phone} /></>}{i < r.guardians.length - 1 ? '; ' : ''}</span>) : <span className="muted">valideyn məlumatı yoxdur</span>}</span></span>
           <button className="btn sm" onClick={() => setEdit(r)}>Redaktə</button>
-        </div>))}</div>
-      <p className="small muted">Valideyn məlumatını yalnız sinif rəhbəri və admin görür.</p>
+        </div>))}</div>}
+      <p className="small muted">Şagird və valideyn telefonlarını yalnız sinif rəhbəri və admin görür. Nömrə istənilən yazılışda daxil edilə bilər (050 123 45 67) – avtomatik +994 50 123 45 67 formatına salınır.</p>
       {edit && <GuardianForm cid={h.class.id} s={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
     </>
   )
 }
 
+type PRow = { student_id: number; full_name: string; phone: string | null; guardians: { name: string; relation: string; phone: string | null }[] }
+type Flat = { student_id: number; full_name: string; phone: string; ana: string; ana_tel: string; ata: string; ata_tel: string; rest: PRow['guardians'] }
+
+/** Bütün sinif bir cədvəldə: şagirdin telefonu, ana və ata (ad + telefon). Digər qəyyumlar toxunulmaz qalır. */
+function PhoneTable({ cid, onDone }: { cid: number; onDone: () => void }) {
+  const [d, err] = useLoad<{ students: PRow[] }>(() => get(`/api/homeroom/${cid}/phones`), [cid])
+  const [rows, setRows] = useState<Flat[] | null>(null)
+  const [saveErr, setSaveErr] = useState<unknown>()
+  useEffect(() => {
+    if (!d) return
+    setRows(d.students.map(s => {
+      const g = (rel: string) => s.guardians.find(x => x.relation === rel)
+      return { student_id: s.student_id, full_name: s.full_name, phone: s.phone || '', ana: g('ana')?.name || '', ana_tel: g('ana')?.phone || '',
+        ata: g('ata')?.name || '', ata_tel: g('ata')?.phone || '', rest: s.guardians.filter(x => x.relation !== 'ana' && x.relation !== 'ata') }
+    }))
+  }, [d])
+  if (!rows) return <><ErrorBox error={err} /><Loading /></>
+  const upd = (i: number, k: keyof Flat, v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)))
+  const save = async () => {
+    setSaveErr(undefined)
+    const body = rows.map(r => ({
+      student_id: r.student_id, phone: r.phone.trim() || null,
+      guardians: [
+        ...(r.ana.trim() || r.ana_tel.trim() ? [{ name: r.ana.trim().length >= 2 ? r.ana.trim() : 'Ana', relation: 'ana', phone: r.ana_tel.trim() || null }] : []),
+        ...(r.ata.trim() || r.ata_tel.trim() ? [{ name: r.ata.trim().length >= 2 ? r.ata.trim() : 'Ata', relation: 'ata', phone: r.ata_tel.trim() || null }] : []),
+        ...r.rest].slice(0, 4),
+    }))
+    try { await put(`/api/homeroom/${cid}/phones`, body); toast('Telefonlar yadda saxlanıldı'); onDone() } catch (e) { setSaveErr(e) }
+  }
+  const inp = (i: number, k: keyof Flat, ph: string, tel = false) => (
+    <input className="sel w100" style={{ minWidth: tel ? 140 : 150 }} type={tel ? 'tel' : 'text'} inputMode={tel ? 'tel' : undefined}
+      value={rows[i][k] as string} placeholder={ph} aria-label={`${rows[i].full_name} – ${ph}`} onChange={e => upd(i, k, e.target.value)} />)
+  return (
+    <>
+      <div className="tbl-wrap"><table>
+        <thead><tr><th>Şagird</th><th>Şagirdin telefonu</th><th>Ana</th><th>Ana telefonu</th><th>Ata</th><th>Ata telefonu</th></tr></thead>
+        <tbody>{rows.map((r, i) => (
+          <tr key={r.student_id}><td><b>{r.full_name}</b>{r.rest.length > 0 && <span className="sub small muted"><br />+ {r.rest.map(g => g.relation).join(', ')}</span>}</td>
+            <td>{inp(i, 'phone', '050 123 45 67', true)}</td><td>{inp(i, 'ana', 'Ad, soyad')}</td><td>{inp(i, 'ana_tel', '055 …', true)}</td>
+            <td>{inp(i, 'ata', 'Ad, soyad')}</td><td>{inp(i, 'ata_tel', '070 …', true)}</td></tr>))}</tbody>
+      </table></div>
+      <ErrorBox error={saveErr} />
+      <div className="row" style={{ margin: '10px 0' }}><button className="btn" onClick={onDone}>Ləğv et</button><AsyncBtn className="btn primary" onClick={save}>Hamısını yadda saxla</AsyncBtn></div>
+    </>
+  )
+}
+
+/** Excel / CSV: şablonu yüklə → doldur → yoxla (heç nə yazılmır) → təsdiq et. */
+function PhoneImport({ cid, onDone }: { cid: number; onDone: () => void }) {
+  const [file, setFile] = useState<File | null>(null)
+  const [rep, setRep] = useState<any>(null)
+  const send = async (dry: boolean) => {
+    const fd = new FormData(); fd.append('file', file!)
+    const r = await api(`/api/homeroom/${cid}/phones/import`, { method: 'POST', form: fd, params: { dry_run: dry } })
+    if (dry) setRep(r); else { toast(`${r.matched} şagirdin məlumatı yazıldı`); onDone() }
+  }
+  return (
+    <section className="panel stack" style={{ marginBottom: 12 }}>
+      <p className="small muted" style={{ margin: 0 }}>Sütunlar: <b>Şagird</b>, Şagirdin telefonu, Ana, Ana telefonu, Ata, Ata telefonu (ardıcıllıq vacib deyil). Şagird adı sinif siyahısı ilə eşləşdirilir («oğlu/qızı» yazılmaya bilər). Boş xana mövcud nömrəni silmir.</p>
+      <div className="row"><a className="btn sm" href={`/api/homeroom/${cid}/phones/template`} download>Şablonu yüklə (.xlsx, sinfin adları ilə)</a></div>
+      <input type="file" accept=".xlsx,.csv" onChange={e => { setFile(e.target.files?.[0] || null); setRep(null) }} />
+      <div className="row"><AsyncBtn className="btn" disabled={!file} onClick={() => send(true)}>Yoxla</AsyncBtn>
+        {rep && rep.matched > 0 && <AsyncBtn className="btn primary" onClick={() => send(false)}>Təsdiq et və yaz ({rep.matched})</AsyncBtn>}</div>
+      {rep && <>
+        <div className="row" style={{ gap: 6 }}><Pill tone="ok">eşləşdi: {rep.matched}</Pill>{rep.errors > 0 && <Pill tone="bad">xəta: {rep.errors}</Pill>}<span className="small muted">sətir: {rep.rows}</span></div>
+        <div className="jlist">{rep.report.map((x: any) => (
+          <div key={x.row} className="jrow" style={{ gridTemplateColumns: '48px minmax(0,1fr)' }}>
+            <span className="num muted">{x.row}</span>
+            <span><b>{x.student || x.name}</b>{x.changes.length > 0 && <span className="sub small"><br />{x.changes.join(' · ')}</span>}
+              {x.errors.length > 0 && <span className="sub small" style={{ color: 'var(--bad)' }}><br />{x.errors.join('; ')}</span>}</span>
+          </div>))}</div></>}
+    </section>
+  )
+}
+
 function GuardianForm({ cid, s, onClose, onDone }: { cid: number; s: any; onClose: () => void; onDone: () => void }) {
   const [rows, setRows] = useState<any[]>(s.guardians.length ? s.guardians : [{ name: '', relation: 'ana', phone: '' }])
+  const [own, setOwn] = useState<string>(s.phone || '')
   const [err, setErr] = useState<unknown>()
   const upd = (i: number, k: string, v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)))
   const save = async () => {
     try {
-      await put(`/api/homeroom/${cid}/students/${s.student_id}/guardians`, rows.filter(r => r.name.trim()).map(r => ({ ...r, name: r.name.trim(), phone: r.phone?.trim() || null })))
+      await put(`/api/homeroom/${cid}/phones`, [{ student_id: s.student_id, phone: own.trim() || null,
+        guardians: rows.filter(r => r.name.trim()).map(r => ({ ...r, name: r.name.trim(), phone: r.phone?.trim() || null })) }])
       toast('Yadda saxlanıldı'); onDone()
     } catch (e) { setErr(e) }
   }
   return (
-    <Drawer title={`${s.full_name} – valideynlər`} onClose={onClose}
+    <Drawer title={`${s.full_name} – əlaqə`} onClose={onClose}
       footer={<><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" onClick={save}>Yadda saxla</button></>}>
       <div className="stack">
+        <Field label="Şagirdin öz telefonu" hint="boş saxlamaq olar"><input type="tel" inputMode="tel" value={own} onChange={e => setOwn(e.target.value)} placeholder="050 123 45 67" /></Field>
         {rows.map((r, i) => (
           <fieldset key={i}><legend>{i + 1}</legend>
             <div className="fg">
@@ -286,8 +380,8 @@ function PrintView({ h, sem }: { h: any; sem: string }) {
         `<p>Davamiyyət: ${fmt(s.attendance_pct)}% · ${s.absence_limit_pct}%+ buraxan: ${s.absence_warnings}</p>` + sign })],
     ['Valideynlərin siyahısı', () => printDoc({ title: `${h.class.name} – valideynlər`,
       body: head(`${h.class.name} sinfi – şagird və valideynlərin siyahısı`) +
-        table(['№', 'Şagird', 'Doğum tarixi', 'Valideyn', 'Telefon'],
-          h.students.map((r: any, i: number) => [i + 1, r.full_name, r.birth_date ? fmtDate(r.birth_date) : '', r.guardians.map((g: any) => `${g.relation}: ${g.name}`).join('; '), r.guardians.map((g: any) => g.phone || '').filter(Boolean).join('; ')])) + sign })],
+        table(['№', 'Şagird', 'Doğum tarixi', 'Şagirdin telefonu', 'Valideyn', 'Valideyn telefonu'],
+          h.students.map((r: any, i: number) => [i + 1, r.full_name, r.birth_date ? fmtDate(r.birth_date) : '', r.phone || '', r.guardians.map((g: any) => `${g.relation}: ${g.name}`).join('; '), r.guardians.map((g: any) => g.phone || '').filter(Boolean).join('; ')])) + sign })],
   ]
   return (
     <div className="jlist">{docs.map(([l, f]) => (

@@ -1,7 +1,9 @@
 """Siniflər – məktəbin ortaq siyahısı.
 - Eyni adlı sinif ikinci dəfə yaradılmır (409) – müəllim mövcud sinfə «qoşulur» (TeachingAssignment).
 - Müəllim bütün siniflərin adını görür (qoşulmaq üçün), şagirdləri isə yalnız öz siniflərində.
-- Silmə: arxiv (adı yazaraq təsdiq) -> geri qaytarma və ya həmişəlik silmə (yalnız arxivdən)."""
+- Silmə: arxiv (adı yazaraq təsdiq) -> geri qaytarma və ya həmişəlik silmə (yalnız arxivdən).
+- Qrup (kind='qrup'): ana sinifli – sinif daxilində BÖLÜNMƏ qrupu (üzvlər yalnız ana sinifdən);
+  ana sinifsiz – sərbəst TƏDRİS qrupu (olimpiada, hazırlıq: üzvlər məktəbin istənilən sinfindən)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -43,6 +45,11 @@ def _unique_code(db: Session, school_id: int, year_id: int, base: str) -> str:
     return code
 
 
+def group_type(c: SchoolClass) -> str | None:
+    """bölünmə – sinif daxilində; tədris – müxtəlif siniflərdən; None – bütöv sinif."""
+    return None if c.kind != 'qrup' else 'bölünmə' if c.parent_id else 'tədris'
+
+
 def class_out(db: Session, c: SchoolClass, user: User, mine: set[int] | None):
     teachers = db.execute(select(User.id, User.full_name, TeachingAssignment.subject)
                           .join(TeachingAssignment, TeachingAssignment.teacher_id == User.id)
@@ -56,6 +63,7 @@ def class_out(db: Session, c: SchoolClass, user: User, mine: set[int] | None):
     if c.kind == 'qrup':
         n = db.scalar(select(func.count()).select_from(GroupMember).where(GroupMember.group_id == c.id))
     return {'id': c.id, 'name': c.name, 'code': c.code, 'kind': c.kind, 'parent_id': c.parent_id,
+            'group_type': group_type(c),
             'utis_class': c.utis_class, 'exam_date': c.exam_date, 'bells': c.bells, 'split_with': c.split_with,
             'archived': c.archived_at is not None, 'students': n, 'can_open': visible,
             'homeroom': (lambda u: u and {'id': u.id, 'name': u.full_name})(db.get(User, c.homeroom_id) if c.homeroom_id else None),
@@ -102,12 +110,14 @@ def create_class(body: ClassIn, user: User = Depends(settings_unlocked), db: Ses
     if dup:
         raise HTTPException(409, {'message': f'«{dup.name}» sinfi artıq var – ona qoşulun',
                                   'class_id': dup.id, 'archived': dup.archived_at is not None})
-    if body.kind == 'qrup' and not body.parent_id:
-        raise HTTPException(400, 'Qrup üçün ana sinfi seçin')
+    if body.parent_id and body.kind != 'qrup':
+        raise HTTPException(400, 'Ana sinif yalnız bölünmə qrupu üçün seçilir')
     if body.parent_id:
         p = get_or_404(db, SchoolClass, body.parent_id, 'Ana sinif')
-        if p.school_id != sid:
+        if p.school_id != sid or p.year_id != year.id:
             raise HTTPException(404, 'Ana sinif tapılmadı')
+        if p.kind == 'qrup':
+            raise HTTPException(400, 'Ana sinif bütöv sinif olmalıdır (qrup yox)')
     c = SchoolClass(school_id=sid, year_id=year.id, name=name, code=_unique_code(db, sid, year.id, class_code(name)),
                     kind=body.kind, parent_id=body.parent_id, split_with=body.split_with, utis_class=body.utis_class, exam_date=body.exam_date,
                     bells=body.bells, created_by=user.id)
@@ -120,6 +130,7 @@ def create_class(body: ClassIn, user: User = Depends(settings_unlocked), db: Ses
 
 class ClassPatch(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=60)
+    kind: str | None = None                                    # yalnız TOM <-> adi
     split_with: str | None = Field(None, max_length=120)
     utis_class: str | None = Field(None, max_length=20)
     exam_date: dt.date | None = None
@@ -137,6 +148,11 @@ def update_class(cid: int, body: ClassPatch, user: User = Depends(settings_unloc
     c = get_or_404(db, SchoolClass, cid, 'Sinif')
     _editable(db, user, c)
     data = body.model_dump(exclude_unset=True)
+    if 'kind' in data and (data['kind'] not in ('TOM', 'adi') or c.kind == 'qrup'):
+        raise HTTPException(400, 'Növ yalnız TOM ↔ adi dəyişir; sinif qrupa (və ya əksinə) çevrilmir')
+    if data.get('bells') is not None:                         # boş xanalar atılır; hamısı boşdursa – məktəbin zəngi
+        data['bells'] = {k: v.strip() for k, v in data['bells'].items()
+                         if k.isdigit() and 0 <= int(k) <= 9 and v.strip()} or None
     if 'name' in data:
         data['name'] = norm_name(data['name'])
         dup = db.scalar(select(SchoolClass).where(SchoolClass.school_id == c.school_id, SchoolClass.year_id == c.year_id,
@@ -219,6 +235,34 @@ def members(cid: int, user: User = Depends(staff), db: Session = Depends(get_db)
     return list(db.scalars(select(GroupMember.student_id).where(GroupMember.group_id == cid)))
 
 
+@router.get('/{cid}/members/detail')
+def members_detail(cid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Qrup üzvləri sinifləri ilə (tədris qrupunda üzvlər müxtəlif siniflərdəndir)."""
+    c = get_or_404(db, SchoolClass, cid, 'Sinif')
+    if not can_see_class(db, user, c):
+        raise HTTPException(403, 'Bu sinif sizin siniflərinizdən deyil')
+    rows = db.execute(select(Student, SchoolClass.name).join(GroupMember, GroupMember.student_id == Student.id)
+                      .join(SchoolClass, SchoolClass.id == Student.class_id)
+                      .where(GroupMember.group_id == cid, Student.archived_at.is_(None))
+                      .order_by(SchoolClass.name, Student.full_name))
+    return [{'id': s.id, 'full_name': s.full_name, 'class_id': s.class_id, 'class_name': n} for s, n in rows]
+
+
+@router.get('/{cid}/candidates')
+def candidates(cid: int, class_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Tədris qrupuna üzv seçmək üçün istənilən sinfin siyahısı – yalnız ad və sinif (qrupu redaktə edən müəllimə)."""
+    c = get_or_404(db, SchoolClass, cid, 'Sinif')
+    if c.kind != 'qrup' or c.parent_id:
+        raise HTTPException(400, 'Yalnız tədris qrupu üçün')
+    _editable(db, user, c)
+    src = get_or_404(db, SchoolClass, class_id, 'Sinif')
+    if src.school_id != c.school_id or src.year_id != c.year_id or src.kind == 'qrup' or src.archived_at:
+        raise HTTPException(404, 'Sinif tapılmadı')
+    rows = db.scalars(select(Student).where(Student.class_id == src.id, Student.archived_at.is_(None))
+                      .order_by(Student.full_name))
+    return [{'id': s.id, 'full_name': s.full_name, 'class_id': src.id, 'class_name': src.name} for s in rows]
+
+
 class MembersIn(BaseModel):
     student_ids: list[int]
 
@@ -229,11 +273,17 @@ def set_members(cid: int, body: MembersIn, user: User = Depends(settings_unlocke
     if c.kind != 'qrup':
         raise HTTPException(400, 'Üzvlər yalnız qrup üçün təyin olunur')
     _editable(db, user, c)
-    ok = set(db.scalars(select(Student.id).where(Student.id.in_(body.student_ids), Student.class_id == c.parent_id,
-                                                 Student.archived_at.is_(None))))
+    st = select(Student.id).where(Student.id.in_(body.student_ids), Student.archived_at.is_(None))
+    if c.parent_id:                                       # bölünmə: yalnız ana sinifdən
+        st = st.where(Student.class_id == c.parent_id)
+    else:                                                 # tədris qrupu: məktəbin cari ilinin istənilən sinfindən
+        st = st.join(SchoolClass, SchoolClass.id == Student.class_id).where(
+            SchoolClass.school_id == c.school_id, SchoolClass.year_id == c.year_id, SchoolClass.kind != 'qrup')
+    ok = set(db.scalars(st))
     bad = set(body.student_ids) - ok
     if bad:
-        raise HTTPException(400, f'Bu şagirdlər ana sinifdə deyil: {sorted(bad)}')
+        where = 'ana sinifdə' if c.parent_id else 'məktəbin siniflərində'
+        raise HTTPException(400, f'Bu şagirdlər {where} deyil: {sorted(bad)}')
     db.query(GroupMember).filter(GroupMember.group_id == cid).delete()
     db.add_all(GroupMember(group_id=cid, student_id=s) for s in ok)
     audit(db, user, 'update', 'group_members', cid, count=len(ok))

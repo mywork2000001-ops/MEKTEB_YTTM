@@ -12,7 +12,7 @@ import datetime as dt
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -155,7 +155,7 @@ def homeroom_summary(cid: int, semester: int | None = None, user: User = Depends
                      **{k: st[k] for k in ('lessons', 'missed', 'unexcused', 'excused', 'late', 'missed_pct',
                                            'absence_warning', 'max_absent_days', 'consecutive_warning')},
                      'absent_today': any((rec.get((t, p, s.id)) or ('',))[0] in OUT for p in days.get(t, [])),
-                     'guardians': s.guardians or []})
+                     'guardians': s.guardians or [], 'phone': s.phone})
     graded = [r for r in rows if r['category']]
     cats = {k: sum(r['category'] == k for r in rows) for k in CATEGORIES}
     n = len(graded)
@@ -189,6 +189,12 @@ class GuardianIn(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     relation: Literal['ana', 'ata', 'qəyyum', 'nənə', 'baba', 'digər'] = 'ana'
     phone: str | None = Field(None, max_length=30, pattern=r'^[0-9+()\- ]*$')
+
+    @field_validator('phone')
+    @classmethod
+    def _phone(cls, v):
+        from ..domain.phones import norm_phone            # «050 123 45 67» -> «+994 50 123 45 67»
+        return norm_phone(v)
 
 
 @router.put('/homeroom/{cid}/students/{sid}/guardians')

@@ -24,6 +24,7 @@ export default function Home() {
   const today = isoDate(now)
   const [tt, err1] = useLoad<TT>(() => get('/api/timetable', { date: today }), [today])
   const [ov, err2] = useLoad<any[]>(() => get('/api/overview'), [])
+  const [prog] = useLoad<any[]>(() => get('/api/my/progress'), [])
 
   const lessons = useMemo(() => {
     const d = tt?.days.find(x => x.date === today)
@@ -101,6 +102,20 @@ export default function Home() {
             </div>)}
         </section>
       </div>
+      {prog && prog.some(p => p.total) && (
+        <section className="panel" style={{ marginTop: 16 }}>
+          <h2>Mövzu icrası <small>rəsmi plana nisbətən</small></h2>
+          <div className="stack" style={{ gap: 8 }}>{prog.filter(p => p.total).map(p => (
+            <button key={p.ta_id} className="row" style={{ justifyContent: 'space-between', textAlign: 'left', background: 'none', border: 0, borderBottom: '1px solid var(--line)', padding: '0 0 8px', cursor: 'pointer', color: 'inherit' }}
+              onClick={() => { try { sessionStorage.setItem('mk-pick-journal', String(p.ta_id)) } catch { /* yaddaş yoxdur */ } nav('/journal') }}>
+              <span><span className="ctag">{p.class_name}</span> <span className="small muted">{p.next ? `növbəti: №${p.next.seq} ${p.next.topic}` : 'plan bitib'}</span></span>
+              <span className="row small" style={{ gap: 6 }}>
+                <b>{p.done}/{p.total}</b>
+                {p.delta < 0 ? <Pill tone={p.delta <= -3 ? 'bad' : 'warn'}>{p.delta} dərs</Pill> : p.delta > 0 ? <Pill tone="ok">+{p.delta}</Pill> : <Pill tone="ok">plana uyğun</Pill>}
+                {p.shortfall > 0 && <Pill tone="bad">sığmır: {p.shortfall}</Pill>}
+              </span>
+            </button>))}</div>
+        </section>)}
     </>
   )
 }

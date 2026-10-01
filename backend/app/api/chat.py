@@ -68,12 +68,13 @@ def _student(db: Session, u: User) -> Student | None:
 
 
 def _teacher_class_ids(db: Session, u: User) -> set[int]:
-    """Müəllimin dərs dediyi siniflər (qrup -> ana sinif) + rəhbəri olduğu siniflər."""
-    rows = db.execute(select(SchoolClass.id, SchoolClass.parent_id).join(
+    """Müəllimin dərs dediyi siniflər (bölünmə qrupu -> ana sinif) + rəhbəri olduğu siniflər.
+    Tədris qrupu (ana sinifsiz) üçün sinif otağı yoxdur – üzvlər müxtəlif siniflərdəndir."""
+    rows = db.execute(select(SchoolClass.id, SchoolClass.parent_id, SchoolClass.kind).join(
         TeachingAssignment, TeachingAssignment.class_id == SchoolClass.id).where(
         TeachingAssignment.teacher_id == u.id, TeachingAssignment.archived_at.is_(None),
         SchoolClass.archived_at.is_(None))).all()
-    return {p or c for c, p in rows} | _homeroom_ids(db, u)
+    return {p or c for c, p, k in rows if p or k != 'qrup'} | _homeroom_ids(db, u)
 
 
 def _homeroom_ids(db: Session, u: User) -> set[int]:

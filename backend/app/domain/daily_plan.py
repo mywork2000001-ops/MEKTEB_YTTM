@@ -124,6 +124,9 @@ def user_prompt(c: dict) -> str:
           f"Növbəti dərsin mövzusu: {c['next_topic'] or '—'}"]
     if c.get('next_exam'):
         L.append(f"Yaxın summativ qiymətləndirmə: {c['next_exam']}")
+    if c.get('review_topics'):
+        L.append(f"Təkrar tələb olunan əvvəlki mövzular (müəllimin qeydi): {'; '.join(c['review_topics'])} – "
+                 "dərsin əvvəlinə (motivasiya/yoxlama mərhələsi) 3–5 dəqiqəlik qısa təkrar daxil et.")
     if c.get('notes'):
         L.append(f"MÜƏLLİMİN ƏLAVƏ İSTƏYİ (nəzərə al, plan faktlarına zidd olmasın): {c['notes']}")
     L.append('\nTAPŞIRIQ: yuxarıdakı dərs üçün ARTİ strukturuna uyğun gündəlik plan hazırla. YALNIZ sxemdəki JSON-u qaytar.')

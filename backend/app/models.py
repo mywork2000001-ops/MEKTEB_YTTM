@@ -122,6 +122,7 @@ class Student(Base, Archivable):
     score_math: Mapped[float | None] = mapped_column(Float)
     score_foreign: Mapped[float | None] = mapped_column(Float)
     guardians: Mapped[list | None] = mapped_column(JSON)                 # [{name, relation, phone}] – yalnız sinif rəhbəri/admin görür
+    phone: Mapped[str | None] = mapped_column(String(30))                # şagirdin öz telefonu (+994 50 123 45 67) – rəhbər/admin
     left_reason: Mapped[str | None] = mapped_column(String(300))         # passiv: «başqa məktəbə köçdü» və s.
     left_on: Mapped[dt.date | None] = mapped_column(Date)                # məktəbdən getdiyi tarix
     created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
@@ -259,6 +260,21 @@ class PlanHold(Base):
     reason: Mapped[str | None] = mapped_column(String(300))
     created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
     __table_args__ = (UniqueConstraint('assignment_id', 'date', 'period'),)
+
+
+class TopicProgress(Base):
+    """Mövzu icrası – müəllimin əl ilə qeydi (jurnaldan üstündür). Rəsmi plan dəyişmir; planın yenidən yüklənməsi
+    qeydi saxlayır (sıra № üzrə yenilənir). keçildi | təkrar (keçildi, mənimsəmə zəif) | qismən (sayılmır)."""
+    __tablename__ = 'topic_progress'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'))
+    plan_lesson_id: Mapped[int] = mapped_column(ForeignKey('plan_lessons.id', ondelete='CASCADE'))
+    status: Mapped[str] = mapped_column(String(10))
+    done_on: Mapped[dt.date] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(String(300))
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+    __table_args__ = (UniqueConstraint('assignment_id', 'plan_lesson_id', name='uq_topic_progress'),)
 
 
 class DailyPlan(Base):

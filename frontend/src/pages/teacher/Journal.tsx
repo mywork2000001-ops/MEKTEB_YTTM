@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { del, get, post, put } from '../../api'
-import { AsyncBtn, ErrorBox, fmt, fmtDate, gradeTone, isoDate, Loading, PickFirst, Pill, toast, Top, useLoad, ord } from '../../ui'
+import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, Loading, PickFirst, Pill, Seg, toast, Top, useLoad, ord } from '../../ui'
 import { ATT, HW, LessonSelect, type MyLesson, useMyLessons, usePick } from './common'
 import Exams from './Exams'
 import { fmtN, head, printDoc, table } from '../../print'
@@ -16,7 +16,7 @@ type Lesson = {
 }
 type Day = { date: string; weekday: string | null; class_name: string; lessons: Lesson[]; students: Stud[] }
 
-const TABS = [['day', 'Gündəlik'], ['grid', 'Jurnal səhifəsi'], ['students', 'Şagirdlər'], ['exams', 'KSQ / BSQ'], ['semester', 'Yarımil'], ['topics', 'Mövzular'], ['summary', 'Xülasə']] as const
+const TABS = [['day', 'Gündəlik'], ['grid', 'Jurnal səhifəsi'], ['students', 'Şagirdlər'], ['exams', 'KSQ / BSQ'], ['semester', 'Yarımil'], ['topics', 'Mövzular və irəliləyiş'], ['summary', 'Xülasə']] as const
 
 export default function Journal() {
   const t = useT()
@@ -210,38 +210,176 @@ function Semester({ ta }: { ta: MyLesson }) {
   )
 }
 
+type Topic = { id: number; seq: number; semester: number; section: string | null; topic: string; assessment_type: string; exam_no: number | null
+  official_date: string; working_date: string | null; taught_dates: string[]; status: 'keçildi' | 'təkrar' | 'qismən' | 'gecikir' | 'gözlənilir'
+  done_on: string | null; source: 'qeyd' | 'jurnal' | null; note: string | null; delay_days: number | null }
+type Progress = { today: string; topics: Topic[]
+  summary: { total: number; done: number; partial: number; review: number; overdue: number; expected: number; delta: number; delta_weeks: number
+    done_pct: number | null; plan_pct: number | null; hold_lag: number; weekly_hours: number }
+  forecast: { remaining: number; slots_left: number; weeks_left: number; shortfall: number; pace_recent: number; pace_needed: number | null }
+  sections: { section: string; semester: number; total: number; done: number; expected: number; from_seq: number; to_seq: number }[]
+  series: { week: string; planned: number; done: number | null }[] }
+const ST_TONE: Record<string, 'ok' | 'warn' | 'bad' | 'info' | undefined> = { 'keçildi': 'ok', 'təkrar': 'info', 'qismən': 'warn', 'gecikir': 'bad' }
+const isDone = (s: string) => s === 'keçildi' || s === 'təkrar'
+
+/** Mövzu icrası: keçilən mövzuları qeyd etmək, rəsmi plana nisbətən irəliləyiş / geriləmə, bölmələr, qrafik, proqnoz. */
 function Topics({ ta }: { ta: MyLesson }) {
-  const [rows, err] = useLoad<any[]>(() => get(`/api/plan/${ta.id}/official`), [ta.id])
+  const [p, err, , reload] = useLoad<Progress>(() => get(`/api/plan/${ta.id}/progress`), [ta.id])
   const [q, setQ] = useState('')
-  const [st, setSt] = useState<'' | 'keçilib' | 'gecikir' | 'gözlənilir'>('')
-  const list = useMemo(() => (rows || []).filter(r => (!q || r.topic.toLowerCase().includes(q.toLowerCase())) && (!st || r.status === st)), [rows, q, st])
-  const cnt = (k: string) => (rows || []).filter(r => r.status === k).length
-  const due = cnt('keçilib') + cnt('gecikir')
+  const [st, setSt] = useState<'' | 'done' | 'qismən' | 'gecikir' | 'gözlənilir'>('')
+  const [open, setOpen] = useState<Topic | null>(null)
+  const [bulk, setBulk] = useState(false)
+  const list = useMemo(() => (p?.topics || []).filter(r => (!q || r.topic.toLowerCase().includes(q.toLowerCase()))
+    && (!st || (st === 'done' ? isDone(r.status) : r.status === st))), [p, q, st])
+  if (!p) return <><ErrorBox error={err} /><Loading /></>
+  if (!p.topics.length) return <div className="empty">Rəsmi plan yüklənməyib – Tənzimləmələr → Siniflər → Plan yüklə.</div>
+  const s = p.summary, f = p.forecast
+  const quick = async (t: Topic, status: 'keçildi' | 'təkrar' | 'qismən') => {
+    await put(`/api/plan/${ta.id}/topics/${t.id}`, { status, done_on: t.done_on && t.done_on <= p.today ? t.done_on : null, note: t.note }); reload()
+  }
   return (
     <>
       <ErrorBox error={err} />
-      {rows && !rows.length && <div className="empty">Rəsmi plan yüklənməyib – Tənzimləmələr → Siniflər → Plan yüklə.</div>}
-      {rows && rows.length > 0 && <>
-        <div className="kpis" style={{ marginBottom: 10 }}>
-          <div className="kpi"><b>{cnt('keçilib')} / {rows.length}</b><span>keçilib (jurnalda)</span></div>
-          <div className="kpi"><b>{due ? Math.round(cnt('keçilib') * 100 / due) : 100}%</b><span>bu günə qədər plan icrası</span></div>
-          <div className="kpi"><b>{cnt('gecikir')}</b><span>vaxtı keçib, yazılmayıb</span></div>
+      <section className="panel" style={{ marginBottom: 12 }}>
+        <div className="kpis">
+          <div className="kpi"><b>{s.done} / {s.total}</b><span>keçilib ({s.done_pct ?? 0}%; plan üzrə {s.plan_pct ?? 0}% olmalı)</span></div>
+          <div className="kpi"><b style={{ color: s.delta < 0 ? 'var(--bad)' : s.delta > 0 ? 'var(--ok)' : undefined }}>{s.delta > 0 ? '+' : ''}{s.delta} dərs</b>
+            <span>{s.delta < 0 ? `geriləmə ≈ ${Math.abs(s.delta_weeks)} həftə` : s.delta > 0 ? `irəlidə ≈ ${s.delta_weeks} həftə` : 'plana tam uyğun'}</span></div>
+          <div className="kpi"><b>{f.shortfall ? <span style={{ color: 'var(--bad)' }}>{f.shortfall} sığmır</span> : 'sığır'}</b>
+            <span>qalan {f.remaining} mövzu · {f.slots_left} dərs saatı</span></div>
         </div>
-        <div className="toolbar"><div className="search"><input placeholder="Mövzu axtar" value={q} onChange={e => setQ(e.target.value)} /></div>
-          {([['', 'Hamısı'], ['keçilib', 'Keçilib'], ['gecikir', 'Gecikir'], ['gözlənilir', 'Gözlənilir']] as const).map(([k, l]) => <button key={k} className="chip" aria-pressed={st === k} onClick={() => setSt(k)}>{l}</button>)}</div></>}
+        <div className="row" style={{ marginTop: 8, gap: 6 }}>
+          {s.overdue > 0 && <Pill tone="bad">vaxtı keçib, qeyd yoxdur: {s.overdue}</Pill>}
+          {s.partial > 0 && <Pill tone="warn">qismən: {s.partial}</Pill>}
+          {s.review > 0 && <Pill tone="info">təkrar lazımdır: {s.review}</Pill>}
+          {s.hold_lag > 0 && <Pill>«Mövzunu saxla»: {s.hold_lag} dərs</Pill>}
+          <span className="small muted">Temp: son 4 həftədə {fmt(f.pace_recent)} mövzu/həftə{f.pace_needed != null ? ` · ilin sonuna çatmaq üçün ${fmt(f.pace_needed)} lazımdır` : ''}</span>
+        </div>
+        <ProgressChart series={p.series} today={p.today} total={s.total} />
+      </section>
+      <section className="panel" style={{ marginBottom: 12 }}>
+        <h2>Bölmələr üzrə icra</h2>
+        <div className="stack" style={{ gap: 8 }}>{p.sections.map(x => (
+          <div key={x.from_seq}>
+            <div className="row small" style={{ justifyContent: 'space-between' }}><span><b>{x.section}</b> <span className="muted">№{x.from_seq}–{x.to_seq}</span></span>
+              <span>{x.done}/{x.total}{x.done < x.expected ? <> · <span style={{ color: 'var(--bad)' }}>{x.expected - x.done} geridə</span></> : ''}</span></div>
+            <div style={{ position: 'relative', height: 8, background: 'var(--sunk)', borderRadius: 4, overflow: 'hidden' }} title={`keçilib ${x.done}, olmalı ${x.expected}, cəmi ${x.total}`}>
+              <i style={{ position: 'absolute', inset: 0, width: `${(x.done / x.total) * 100}%`, background: 'var(--accent)', borderRadius: 4 }} />
+              {x.expected > 0 && x.expected < x.total && <i style={{ position: 'absolute', top: 0, bottom: 0, left: `calc(${(x.expected / x.total) * 100}% - 1px)`, width: 2, background: 'var(--ink)' }} />}
+            </div>
+          </div>))}</div>
+        <p className="small muted" style={{ margin: '8px 0 0' }}>Zolaq – keçilən mövzular; qara xətt – rəsmi plana görə bu günə qədər keçilməli olan.</p>
+      </section>
+      <div className="toolbar">
+        <div className="search"><input placeholder="Mövzu axtar" value={q} onChange={e => setQ(e.target.value)} /></div>
+        {([['', 'Hamısı'], ['done', 'Keçilib'], ['qismən', 'Qismən'], ['gecikir', 'Gecikir'], ['gözlənilir', 'Gözlənilir']] as const).map(([k, l]) =>
+          <button key={k} className="chip" aria-pressed={st === k} onClick={() => setSt(k)}>{l}</button>)}
+        <button className="btn sm" onClick={() => setBulk(true)}>Toplu qeyd</button>
+        <button className="btn sm" onClick={() => printDoc({ title: `${ta.class_name} – mövzu icrası`, body: head(`${ta.class_name} – ${ta.subject}: mövzu icrası`, `Keçilib ${s.done}/${s.total} · fərq ${s.delta > 0 ? '+' : ''}${s.delta} dərs`) + table(['№', 'Mövzu', 'Rəsmi tarix', 'Status', 'Keçildi', 'Gecikmə (gün)', 'Qeyd'], p.topics.map(t => [t.seq, t.topic, fmtDate(t.official_date), t.status, t.done_on ? fmtDate(t.done_on) : '', t.delay_days ?? '', t.note || ''])) })}>Çap / PDF</button>
+      </div>
       <div className="jlist">
         {list.map(r => (
           <div className="jrow cols" key={r.id} style={{ ['--cols' as any]: '48px minmax(0,1fr) auto', ['--mcols' as any]: '40px minmax(0,1fr)' }}>
             <span className="num muted">№{r.seq}</span>
-            <span><b>{r.topic}</b><span className="sub small muted"> {r.section}</span>{r.resources && <span className="sub small muted"><br />{r.resources}</span>}
-              <span className="sub small"><br />{r.taught_dates.length ? <>Keçilib: {r.taught_dates.map(fmtDate).join(', ')}</> : r.working_date ? <>İşçi plan: {fmtDate(r.working_date)}</> : 'ilə sığmır'}</span></span>
-            <span className="row">{r.assessment_type !== 'formativ' && <Pill tone="warn">{r.assessment_type}{r.exam_no ? '-' + r.exam_no : ''}</Pill>}
-              <Pill tone={r.status === 'keçilib' ? 'ok' : r.status === 'gecikir' ? 'bad' : undefined}>{r.status}</Pill><span className="small">{fmtDate(r.official_date)}</span></span>
+            <span><b>{r.topic}</b><span className="sub small muted"> {r.section}</span>
+              <span className="sub small"><br />Rəsmi: {fmtDate(r.official_date)}
+                {r.done_on ? <> · keçildi {fmtDate(r.done_on)} ({r.source === 'jurnal' ? 'jurnal' : 'qeyd'})</> : r.working_date ? <> · işçi plan: {fmtDate(r.working_date)}</> : ' · ilə sığmır'}
+                {r.delay_days ? <> · <span style={{ color: r.delay_days > 0 ? 'var(--bad)' : 'var(--ok)' }}>{r.delay_days > 0 ? `${r.delay_days} gün gec` : `${-r.delay_days} gün tez`}</span></> : null}
+                {r.note && <><br /><span className="muted">Qeyd: {r.note}</span></>}</span></span>
+            <span className="row" style={{ gap: 4 }}>
+              {r.assessment_type !== 'formativ' && <Pill tone="warn">{r.assessment_type}{r.exam_no ? '-' + r.exam_no : ''}</Pill>}
+              <Pill tone={ST_TONE[r.status]}>{r.status}</Pill>
+              {!isDone(r.status) && <AsyncBtn className="btn sm" ok="Qeyd olundu" onClick={() => quick(r, 'keçildi')}>✓ Keçildi</AsyncBtn>}
+              <button className="btn sm ghost" onClick={() => setOpen(r)}>…</button>
+            </span>
           </div>))}
       </div>
+      {open && <TopicForm ta={ta} t={open} today={p.today} onClose={() => setOpen(null)} onDone={() => { setOpen(null); reload() }} />}
+      {bulk && <BulkTopics ta={ta} topics={p.topics} today={p.today} onClose={() => setBulk(false)} onDone={() => { setBulk(false); reload() }} />}
     </>
   )
 }
+
+function TopicForm({ ta, t, today, onClose, onDone }: { ta: MyLesson; t: Topic; today: string; onClose: () => void; onDone: () => void }) {
+  const [status, setStatus] = useState<'keçildi' | 'təkrar' | 'qismən'>(isDone(t.status) || t.status === 'qismən' ? t.status as any : 'keçildi')
+  const [date, setDate] = useState(t.done_on || (t.official_date < today ? t.official_date : today))
+  const [note, setNote] = useState(t.note || '')
+  return (
+    <Drawer title={`№${t.seq} ${t.topic}`} onClose={onClose}
+      footer={<><button className="btn" onClick={onClose}>Ləğv et</button>
+        <AsyncBtn className="btn primary" ok="Yadda saxlanıldı" onClick={async () => { await put(`/api/plan/${ta.id}/topics/${t.id}`, { status, done_on: date, note: note || null }); onDone() }}>Yadda saxla</AsyncBtn></>}>
+      <div className="stack">
+        <Seg value={status} onChange={setStatus} label="Status" options={[['keçildi', 'Keçildi'], ['təkrar', 'Keçildi, təkrar lazımdır'], ['qismən', 'Qismən']]} />
+        <p className="small muted" style={{ margin: 0 }}>«Təkrar» – mövzu sayılır və gündəlik plan (AI) növbəti dərslərin əvvəlinə qısa təkrar qoyur. «Qismən» – sayılmır, davam edəcək.</p>
+        <Field label="Tarix"><input type="date" max={today} value={date} onChange={e => setDate(e.target.value)} /></Field>
+        <Field label="Qeyd" hint="məs. kəsrlərin toplanması zəif mənimsənilib"><input maxLength={300} value={note} onChange={e => setNote(e.target.value)} /></Field>
+        <p className="small muted">Rəsmi tarix: {fmtDate(t.official_date)}{t.taught_dates.length ? ` · jurnalda: ${t.taught_dates.map(fmtDate).join(', ')}` : ''}</p>
+        {t.source === 'qeyd' && <AsyncBtn className="btn danger" ok="Qeyd götürüldü" onClick={async () => { await del(`/api/plan/${ta.id}/topics/${t.id}`); onDone() }}>Qeydi götür{t.taught_dates.length ? ' (jurnal qalır)' : ''}</AsyncBtn>}
+      </div>
+    </Drawer>
+  )
+}
+
+function BulkTopics({ ta, topics, today, onClose, onDone }: { ta: MyLesson; topics: Topic[]; today: string; onClose: () => void; onDone: () => void }) {
+  const firstOpen = topics.find(t => !isDone(t.status))?.seq ?? 1
+  const [a, setA] = useState(firstOpen)
+  const [b, setB] = useState(Math.max(firstOpen, topics.filter(t => t.official_date <= today).at(-1)?.seq ?? firstOpen))
+  const [date, setDate] = useState(today)
+  const sel = topics.filter(t => t.seq >= a && t.seq <= b && !isDone(t.status))
+  return (
+    <Drawer title="Toplu qeyd – keçilmiş mövzular" onClose={onClose}
+      footer={<><span className="small muted grow">{sel.length} mövzu</span><button className="btn" onClick={onClose}>Ləğv et</button>
+        <AsyncBtn className="btn primary" disabled={!sel.length} ok="Qeyd olundu" onClick={async () => { await post(`/api/plan/${ta.id}/topics/bulk`, { ids: sel.map(t => t.id), status: 'keçildi', done_on: date }); onDone() }}>Keçildi kimi qeyd et</AsyncBtn></>}>
+      <div className="stack">
+        <p className="small muted" style={{ margin: 0 }}>Tətbiqə gec başlamısınızsa, artıq keçdiyiniz mövzuları bir dəfəyə qeyd edin. Artıq keçilmiş kimi görünənlər dəyişmir.</p>
+        <div className="fg">
+          <Field label="№ (başlanğıc)"><input type="number" min={1} value={a} onChange={e => setA(Number(e.target.value))} /></Field>
+          <Field label="№ (son)"><input type="number" min={a} value={b} onChange={e => setB(Number(e.target.value))} /></Field>
+          <Field label="Tarix" hint="dəqiq bilinmirsə – bu gün"><input type="date" max={today} value={date} onChange={e => setDate(e.target.value)} /></Field>
+        </div>
+        <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{sel.slice(0, 12).map(t => <li key={t.id}>№{t.seq} {t.topic}</li>)}{sel.length > 12 && <li>… və daha {sel.length - 12}</li>}</ul>
+      </div>
+    </Drawer>
+  )
+}
+
+/** Plan–fakt: kumulyativ keçilməli (rəsmi plan, qırıq xətt) və keçilən mövzular (bərk xətt), həftələr üzrə. */
+function ProgressChart({ series, today, total }: { series: Progress['series']; today: string; total: number }) {
+  const [hov, setHov] = useState<number | null>(null)
+  if (series.length < 2) return null
+  const W = 640, H = 180, L = 32, R = 12, T = 12, B = 22
+  const x = (i: number) => L + (i * (W - L - R)) / (series.length - 1)
+  const y = (v: number) => T + (1 - v / Math.max(1, total)) * (H - T - B)
+  const path = (vals: (number | null)[]) => vals.map((v, i) => v == null ? '' : `${i && vals[i - 1] != null ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('')
+  const ti = series.findIndex(s => s.week > today) - 1
+  const now = ti >= 0 ? ti : series.length - 1
+  const months = series.map((s, i) => [i, s.week] as const).filter(([i, w]) => i === 0 || w.slice(5, 7) !== series[i - 1].week.slice(5, 7))
+  const h = hov != null ? series[hov] : null
+  const lastDone = [...series].reverse().find(s => s.done != null)
+  return (
+    <figure style={{ margin: '12px 0 0', position: 'relative' }}>
+      <div className="row small" style={{ gap: 14, marginBottom: 4 }}>
+        <span><svg width="22" height="8" aria-hidden><line x1="0" y1="4" x2="22" y2="4" stroke="var(--muted)" strokeWidth="2" strokeDasharray="4 3" /></svg> Rəsmi plan</span>
+        <span><svg width="22" height="8" aria-hidden><line x1="0" y1="4" x2="22" y2="4" stroke="var(--accent)" strokeWidth="2" /></svg> Keçilən</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Plan və faktiki keçilən mövzular, həftələr üzrə" onMouseLeave={() => setHov(null)}>
+        {[0, 0.5, 1].map(k => <g key={k}><line x1={L} x2={W - R} y1={y(total * k)} y2={y(total * k)} stroke="var(--line)" strokeWidth="1" />
+          <text x={L - 6} y={y(total * k) + 4} textAnchor="end" fontSize="10" fill="var(--muted)">{Math.round(total * k)}</text></g>)}
+        {months.map(([i, w]) => <text key={w} x={x(i)} y={H - 6} fontSize="10" fill="var(--muted)">{MONTHS_SHORT[Number(w.slice(5, 7)) - 1]}</text>)}
+        <line x1={x(now)} x2={x(now)} y1={T} y2={H - B} stroke="var(--line)" strokeWidth="1" strokeDasharray="2 2" />
+        <path d={path(series.map(s => s.planned))} fill="none" stroke="var(--muted)" strokeWidth="2" strokeDasharray="5 4" />
+        <path d={path(series.map(s => s.done))} fill="none" stroke="var(--accent)" strokeWidth="2" />
+        {lastDone && <text x={x(series.indexOf(lastDone)) + 6} y={y(lastDone.done!) - 6} fontSize="11" fill="var(--ink)">{lastDone.done}</text>}
+        {hov != null && <line x1={x(hov)} x2={x(hov)} y1={T} y2={H - B} stroke="var(--muted)" strokeWidth="1" />}
+        {hov != null && h?.done != null && <circle cx={x(hov)} cy={y(h.done)} r="4" fill="var(--accent)" stroke="var(--surface)" strokeWidth="2" />}
+        {series.map((_, i) => <rect key={i} x={x(i) - (W - L - R) / series.length / 2} y={T} width={(W - L - R) / series.length} height={H - T - B} fill="transparent" onMouseEnter={() => setHov(i)} />)}
+      </svg>
+      {h && <div className="small" style={{ position: 'absolute', top: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, padding: '4px 8px' }}>
+        Həftə {fmtDate(h.week)}: plan <b>{h.planned}</b>{h.done != null ? <> · keçilən <b>{h.done}</b> ({h.done - h.planned >= 0 ? '+' : ''}{h.done - h.planned})</> : ''}</div>}
+    </figure>
+  )
+}
+const MONTHS_SHORT = ['yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avq', 'sen', 'okt', 'noy', 'dek']
 
 function Summary({ ta }: { ta: MyLesson }) {
   const [sem, setSem] = useState<'1' | '2' | 'all'>('1')

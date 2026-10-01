@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import get_db
 from ..deps import staff
-from ..models import AcademicYear, AuditLog, Role, SchoolClass, TeachingAssignment, User
+from ..models import AcademicYear, AuditLog, GroupMember, Role, SchoolClass, Student, TeachingAssignment, User
 
 SETTINGS_TTL = 15 * 60          # Tənzimləmələr 15 dəqiqə açıq qalır
 
@@ -58,6 +58,17 @@ def can_see_class(db: Session, user: User, cls: SchoolClass) -> bool:
         return False
     ids = my_class_ids(db, user)
     return ids is None or cls.id in ids
+
+
+def can_see_student(db: Session, user: User, s: Student) -> bool:
+    """Şagird kartı: öz sinfi müəllimin sinfidir və ya şagird müəllimin dərs dediyi qrupun (tədris qrupu) üzvüdür."""
+    if s.school_id != user.school_id:
+        return False
+    ids = my_class_ids(db, user)
+    if ids is None or s.class_id in ids:
+        return True
+    return bool(db.scalar(select(GroupMember.group_id).where(GroupMember.student_id == s.id,
+                                                             GroupMember.group_id.in_(ids)).limit(1)))
 
 
 # ---------------------------------------------------------------- Tənzimləmələr kilidi

@@ -23,6 +23,7 @@ export function PlanNotes({ l, compact }: { l: any; compact?: boolean }) {
 
 export default function Plan() {
   const t = useT()
+  const [mode, setMode] = useState<'plan' | 'progress'>('plan')
   const [view, setView] = useState<'day' | 'week' | 'month' | 'semester'>('week')
   const [date, setDate] = useState(isoDate(new Date()))
   const [d, err, loading] = useLoad<any>(() => get('/api/portal/plan', { view, date }), [view, date])
@@ -35,6 +36,8 @@ export default function Plan() {
   return (
     <>
       <Top title={t('Plan')} sub="Sinfinin perspektiv planı" />
+      <div className="toolbar"><Seg value={mode} onChange={setMode} label="Bölmə" options={[['plan', t('Plan')], ['progress', t('Keçilən mövzular')]]} /></div>
+      {mode === 'progress' ? <Progress /> : <>
       <div className="toolbar">
         <Seg value={view} onChange={setView} options={[['day', t('Gün')], ['week', t('Həftə')], ['month', t('Ay')], ['semester', t('Yarımil')]]} />
         <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
@@ -51,12 +54,47 @@ export default function Plan() {
               <div key={k} className="jrow cols" style={{ ['--cols' as any]: '84px minmax(0,1fr) auto', ['--mcols' as any]: '64px minmax(0,1fr) auto', background: i.date === isoDate(new Date()) ? 'var(--accent-soft)' : undefined }}>
                 <span className="small">{show ? <b>{i.weekday} {fmtDate(i.date).slice(0, 5)}</b> : ''}<br /><span className="muted">{i.time}</span></span>
                 <span><b>{i.topic || '—'}</b>{i.taught && <span className="small" style={{ color: 'var(--ok)' }} title="jurnalda yazılıb"> ✓</span>}
-                  <span className="sub small muted"> {i.subject}{i.class_name.includes('qrup') ? ' · qrup' : ''}{i.plan_seq ? ` · №${i.plan_seq}` : ''}</span>
+                  <span className="sub small muted"> {i.subject}{i.group ? ' · ' + i.class_name : ''}{i.plan_seq ? ` · №${i.plan_seq}` : ''}</span>
                   <PlanNotes l={i} compact /></span>
                 {examLabel(i) ? <Pill tone="warn">{examLabel(i)}</Pill> : <span />}
               </div>)
           })}
         </div>)}
+      </>}
     </>
+  )
+}
+
+type Subj = { ta_id: number; subject: string; class_name: string; group: boolean; teacher: string; total: number; done: number; expected: number; delta: number
+  done_pct: number | null; plan_pct: number | null; review: { seq: number; topic: string }[]; recent: { seq: number; topic: string; done_on: string }[]
+  next: { seq: number; topic: string; assessment_type: string; exam_no: number | null }[]; sections: { section: string; total: number; done: number }[] }
+
+/** Fənlər üzrə: neçə mövzu keçilib, plana nisbətən harada olduğumuz, təkrar tövsiyə olunan və növbəti mövzular. */
+function Progress() {
+  const [rows, err] = useLoad<Subj[]>(() => get('/api/portal/progress'), [])
+  if (!rows) return <><ErrorBox error={err} /><Loading /></>
+  if (!rows.length) return <div className="empty">Hələ perspektiv plan yüklənməyib.</div>
+  return (
+    <div className="stack">{rows.map(r => (
+      <section key={r.ta_id} className="panel">
+        <h2>{r.subject}{r.group ? <small> · {r.class_name}</small> : null} <small>{r.teacher}</small></h2>
+        <div className="row small" style={{ justifyContent: 'space-between' }}>
+          <span>Keçilib <b>{r.done}</b> / {r.total} mövzu</span>
+          {r.delta < 0 ? <Pill tone="warn">plandan {-r.delta} dərs geridə</Pill> : r.delta > 0 ? <Pill tone="ok">plandan {r.delta} dərs irəlidə</Pill> : <Pill tone="ok">plana uyğun</Pill>}
+        </div>
+        <div style={{ position: 'relative', height: 10, background: 'var(--sunk)', borderRadius: 5, overflow: 'hidden', margin: '6px 0 10px' }}
+          role="img" aria-label={`${r.done_pct ?? 0}% keçilib, plan üzrə ${r.plan_pct ?? 0}%`}>
+          <i style={{ position: 'absolute', inset: 0, width: `${r.done_pct ?? 0}%`, background: 'var(--accent)', borderRadius: 5 }} />
+          {r.plan_pct != null && r.plan_pct > 0 && r.plan_pct < 100 && <i style={{ position: 'absolute', top: 0, bottom: 0, left: `calc(${r.plan_pct}% - 1px)`, width: 2, background: 'var(--ink)' }} />}
+        </div>
+        {r.review.length > 0 && <p className="small" style={{ margin: '0 0 6px' }}><b>Təkrar etməyi tövsiyə edirik:</b> {r.review.map(x => `№${x.seq} ${x.topic}`).join('; ')}</p>}
+        {r.next.length > 0 && <p className="small" style={{ margin: '0 0 6px' }}><b>Növbəti mövzular:</b> {r.next.map(x => `№${x.seq} ${x.topic}${examLabel(x) ? ' (' + examLabel(x) + ')' : ''}`).join('; ')}</p>}
+        {r.recent.length > 0 && <details><summary className="small" style={{ cursor: 'pointer' }}>Son keçilən mövzular</summary>
+          <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{r.recent.map(x => <li key={x.seq}>№{x.seq} {x.topic} <span className="muted">· {fmtDate(x.done_on)}</span></li>)}</ul></details>}
+        {r.sections.length > 1 && <details><summary className="small" style={{ cursor: 'pointer' }}>Bölmələr üzrə</summary>
+          <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{r.sections.map((x, k) => <li key={k}>{x.section}: {x.done}/{x.total}</li>)}</ul></details>}
+      </section>))}
+      <p className="small muted">Qara xətt – plana görə bu günə qədər keçilməli olan yer.</p>
+    </div>
   )
 }

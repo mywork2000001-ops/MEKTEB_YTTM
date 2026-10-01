@@ -15,9 +15,9 @@ from sqlalchemy.orm import Session
 from ..analytics import Period, analyze, attendance_map
 from ..db import get_db
 from ..deps import admin_only, staff
-from ..models import AuditLog, IndividualPlan, ParentContact, SchoolClass, Student, TeachingAssignment, User
+from ..models import AuditLog, IndividualPlan, ParentContact, Student, TeachingAssignment, User
 from ..services import own_assignment, plan_ctx
-from .common import audit, can_see_class, get_or_404
+from .common import audit, can_see_student, get_or_404
 
 router = APIRouter(prefix='/api', tags=['analytics'])
 
@@ -104,7 +104,7 @@ def set_level(ta_id: int, sid: int, body: LevelIn, user: User = Depends(staff), 
 # ---------------------------------------------------------------- şagird kartı (müəllimin öz qeydləri)
 def _student(db: Session, user: User, sid: int) -> Student:
     s = get_or_404(db, Student, sid, 'Şagird')
-    if not can_see_class(db, user, db.get(SchoolClass, s.class_id)):
+    if not can_see_student(db, user, s):
         raise HTTPException(403, 'Bu şagird sizin siniflərinizdən deyil')
     return s
 

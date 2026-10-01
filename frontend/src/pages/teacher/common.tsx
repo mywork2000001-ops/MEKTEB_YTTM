@@ -67,3 +67,7 @@ export function TargetPicker({ ta, onChange }: { ta: number; onChange: (ids: num
     </fieldset>
   )
 }
+
+/** Növ adı: TOM / adi sinif, bölünmə qrupu (sinif daxilində), tədris qrupu (müxtəlif siniflərdən). */
+export const kindLabel = (c: { kind: string; parent_id: number | null }) =>
+  c.kind !== 'qrup' ? (c.kind === 'TOM' ? 'TOM sinfi' : 'adi sinif') : c.parent_id ? 'bölünmə qrupu' : 'tədris qrupu'

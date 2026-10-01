@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { api, ApiError, del, get, patch, post, put } from '../../api'
 import { useAuth } from '../../auth'
 import { esc, head, printDoc, table } from '../../print'
-import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, isoDate, Loading, PickFirst, Pill, toast, useLoad, ord } from '../../ui'
+import { kindLabel } from './common'
+import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, isoDate, Loading, PickFirst, Pill, Seg, toast, useLoad, ord } from '../../ui'
 
-type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; split_with: string | null; utis_class: string | null
+type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; group_type?: 'bölünmə' | 'tədris' | null; split_with: string | null; utis_class: string | null
   exam_date: string | null; bells: Record<string, string> | null; students: number; can_open: boolean; archived: boolean
   homeroom: { id: number; name: string } | null
   teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number; slots: Record<string, number[]>; has_summative: boolean } | null }
@@ -26,6 +27,8 @@ function ClassesTab() {
   const [join, setJoin] = useState<Cls | null>(null)
   const [members, setMembers] = useState<Cls | null>(null)
   const [split, setSplit] = useState<Cls | null>(null)
+  const [study, setStudy] = useState<Cls | null>(null)
+  const [add, setAdd] = useState<Cls | null>(null)
   if (loading && !classes) return <Loading />
   return (
     <>
@@ -38,14 +41,16 @@ function ClassesTab() {
       <div className="jlist">
         {(classes || []).map(c => (
           <div className="jrow" key={c.id}>
-            <span><b>{c.name}</b> <span className="small muted">{c.kind}{c.split_with ? ' · bölünür: ' + c.split_with : ''} · {c.students} şagird</span>
+            <span><b>{c.name}</b> <span className="small muted">{kindLabel(c)}{c.parent_id ? ' · ' + ((classes || []).find(p => p.id === c.parent_id)?.name || '') : ''}{c.split_with ? ' · paralel: ' + c.split_with : ''} · {c.students} şagird</span>
               <span className="sub small muted"><br />{c.teachers.map(t => `${t.name} (${t.subject})`).join(', ') || 'müəllim yoxdur'}</span>
               {c.kind !== 'qrup' && <span className="sub small muted"><br />Sinif rəhbəri: {c.homeroom?.name || '—'}</span>}</span>
             <span className="row">{c.mine ? <Pill tone="ok">{c.mine.subject} · {c.mine.weekly_hours} saat</Pill> : <Pill>qoşulmamısınız</Pill>}</span>
             <span className="row">
               <button className="btn sm" onClick={() => setJoin(c)}>{c.mine ? 'Cədvəl' : 'Qoşul'}</button>
               {c.can_open && <button className="btn sm" onClick={() => setEdit(c)}>Redaktə</button>}
-              {c.can_open && c.kind === 'qrup' && <button className="btn sm" onClick={() => setMembers(c)}>Bölünmə</button>}
+              {c.can_open && c.kind !== 'qrup' && <button className="btn sm" onClick={() => setAdd(c)}>+ Şagird</button>}
+              {c.can_open && c.kind === 'qrup' && c.parent_id && <button className="btn sm" onClick={() => setMembers(c)}>Bölünmə / şagird</button>}
+              {c.can_open && c.kind === 'qrup' && !c.parent_id && <button className="btn sm" onClick={() => setStudy(c)}>Üzvlər</button>}
               {c.can_open && c.kind !== 'qrup' && <button className="btn sm" onClick={() => setSplit(c)}>Bölünmə yarat</button>}
             </span>
           </div>))}
@@ -54,6 +59,9 @@ function ClassesTab() {
       {edit && <ClassForm cls={edit === 'new' ? null : edit} all={classes || []} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
       {join && <JoinForm cls={join} onClose={() => setJoin(null)} onDone={() => { setJoin(null); reload() }} />}
       {members && <Members cls={members} onClose={() => { setMembers(null); reload() }} />}
+      {study && <StudyMembers cls={study} all={classes || []} onClose={() => { setStudy(null); reload() }} />}
+      {add && <Drawer title={`${add.name} – yeni şagird`} onClose={() => setAdd(null)}>
+        <NewStudent classId={add.id} onDone={() => { setAdd(null); reload() }} /></Drawer>}
       {split && <SplitForm parent={split} onClose={() => setSplit(null)} onDone={() => { setSplit(null); reload() }} />}
     </>
   )
@@ -84,18 +92,23 @@ function PlansUpload({ onDone }: { onDone: () => void }) {
 }
 
 function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[]; onClose: () => void; onDone: () => void }) {
-  const [f, setF] = useState({ name: cls?.name || '', kind: cls?.kind || 'TOM', parent_id: cls?.parent_id || '', split_with: cls?.split_with || '',
-    utis_class: cls?.utis_class || '', exam_date: cls?.exam_date || '' })
+  // növ: TOM / adi – bütöv sinif; split – sinif daxilində bölünmə qrupu; study – müxtəlif siniflərdən tədris qrupu
+  const type0 = !cls ? 'TOM' : cls.kind !== 'qrup' ? cls.kind : cls.parent_id ? 'split' : 'study'
+  const [f, setF] = useState({ name: cls?.name || '', type: type0, parent_id: cls?.parent_id || '', split_with: cls?.split_with || '',
+    utis_class: cls?.utis_class || '', exam_date: cls?.exam_date || '', bells: (cls?.bells || {}) as Record<string, string> })
+  const [ownBells, setOwnBells] = useState(!!cls?.bells && Object.keys(cls.bells).length > 0)
   const [err, setErr] = useState<unknown>()
   const [confirm, setConfirm] = useState(false)
   const [plan, setPlan] = useState<File | null>(null)
   const [lessons] = useLoad<any[]>(() => get('/api/my/lessons'), [])
   const ta = lessons?.find(l => l.class_id === cls?.id)
+  const group = f.type === 'split' || f.type === 'study'
   const save = async () => {
     try {
-      const body: any = { name: f.name, split_with: f.split_with || null, utis_class: f.utis_class || null, exam_date: f.exam_date || null }
-      if (cls) await patch(`/api/classes/${cls.id}`, body)
-      else await post('/api/classes', { ...body, kind: f.kind, parent_id: f.parent_id ? Number(f.parent_id) : null })
+      const body: any = { name: f.name, split_with: f.type === 'split' ? f.split_with || null : null, utis_class: group ? null : f.utis_class || null,
+        exam_date: f.exam_date || null, bells: ownBells ? Object.fromEntries(Object.entries(f.bells).filter(([, v]) => v.trim())) : {} }
+      if (cls) await patch(`/api/classes/${cls.id}`, { ...body, ...(group ? {} : { kind: f.type }) })
+      else await post('/api/classes', { ...body, kind: group ? 'qrup' : f.type, parent_id: f.type === 'split' && f.parent_id ? Number(f.parent_id) : null })
       toast('Yadda saxlanıldı'); onDone()
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && (e.data as any)?.detail?.class_id) setErr(new Error((e.data as any).detail.message))
@@ -104,16 +117,30 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
   }
   return (
     <Drawer title={cls ? `${cls.name} – redaktə` : 'Yeni sinif / qrup'} onClose={onClose}
-      footer={<><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" onClick={save} disabled={!f.name}>Yadda saxla</button></>}>
+      footer={<><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" onClick={save} disabled={!f.name || (f.type === 'split' && !f.parent_id)}>Yadda saxla</button></>}>
       <div className="stack">
         <div className="fg">
-          <Field label="Ad" full hint="məs. X e, X b (riyaziyyat qrupu)"><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
-          {!cls && <Field label="Növ"><select value={f.kind} onChange={e => setF({ ...f, kind: e.target.value })}><option value="TOM">TOM</option><option value="adi">adi</option><option value="qrup">bölünən qrup</option></select></Field>}
-          {!cls && f.kind === 'qrup' && <Field label="Ana sinif"><select value={f.parent_id} onChange={e => setF({ ...f, parent_id: e.target.value })}><option value="">—</option>{all.filter(c => c.kind !== 'qrup').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>}
-          {(f.kind === 'qrup' || cls?.kind === 'qrup') && <Field label="Paralel fənn (bölünmə)" full><input value={f.split_with} onChange={e => setF({ ...f, split_with: e.target.value })} placeholder="Biologiya – Şərqiyə müəllimə" /></Field>}
-          <Field label="UTİS sinfi"><input value={f.utis_class} onChange={e => setF({ ...f, utis_class: e.target.value })} placeholder="10 e" /></Field>
+          <Field label="Ad" full hint={group ? 'məs. X b (riyaziyyat qrupu), Olimpiada qrupu' : 'məs. X e, XI peşə sinfi'}><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
+          <Field label="Növ" hint={cls && group ? 'qrupun növü dəyişmir' : cls ? 'TOM ↔ adi dəyişir' : undefined}>
+            <select value={f.type} disabled={!!cls && group} onChange={e => setF({ ...f, type: e.target.value })}>
+              <option value="TOM">TOM sinfi</option><option value="adi">Adi sinif</option>
+              {(!cls || group) && <option value="split">Bölünmə qrupu (sinif daxilində)</option>}
+              {(!cls || group) && <option value="study">Tədris qrupu (müxtəlif siniflərdən)</option>}
+            </select></Field>
+          {f.type === 'split' && <Field label="Ana sinif">{cls
+            ? <input readOnly value={all.find(c => c.id === cls.parent_id)?.name || ''} />
+            : <select value={f.parent_id} onChange={e => setF({ ...f, parent_id: e.target.value })}><option value="">—</option>{all.filter(c => c.kind !== 'qrup').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}</Field>}
+          {f.type === 'split' && <Field label="Paralel fənn (sinfin digər yarısı)" full><input value={f.split_with} onChange={e => setF({ ...f, split_with: e.target.value })} placeholder="Biologiya – Şərqiyə müəllimə" /></Field>}
+          {!group && <Field label="UTİS sinfi"><input value={f.utis_class} onChange={e => setF({ ...f, utis_class: e.target.value })} placeholder="10 e" /></Field>}
           <Field label="İmtahan tarixi" hint="şagird portalında sayğac"><input type="date" value={f.exam_date} onChange={e => setF({ ...f, exam_date: e.target.value })} /></Field>
         </div>
+        {f.type === 'study' && <p className="small muted" style={{ margin: 0 }}>Tədris qrupu (olimpiada, hazırlıq, dərnək): yaratdıqdan sonra «Qoşul» ilə cədvəli, «Üzvlər» ilə müxtəlif siniflərdən şagirdləri seçin.</p>}
+        <fieldset><legend>Dərs vaxtları</legend>
+          <label className="check"><input type="checkbox" checked={ownBells} onChange={e => setOwnBells(e.target.checked)} /> Bu sinfin öz zəngi var (məs. XI peşə 08:00)</label>
+          {ownBells && <div className="fg" style={{ marginTop: 8 }}>{Array.from({ length: 9 }, (_, i) => String(i)).map(k => (
+            <Field key={k} label={`${ord(k)} saat`}><input value={f.bells[k] || ''} placeholder="08:00–08:45" onChange={e => setF({ ...f, bells: { ...f.bells, [k]: e.target.value } })} /></Field>))}</div>}
+          {!ownBells && <p className="small muted" style={{ margin: '4px 0 0' }}>Məktəbin ümumi zəngi işlənir.</p>}
+        </fieldset>
         {cls && cls.kind !== 'qrup' && <HomeroomField cls={cls} onDone={onDone} />}
         {cls && ta && (
           <fieldset><legend>Rəsmi perspektiv plan (.docx)</legend>
@@ -197,9 +224,11 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
 }
 
 function Members({ cls, onClose }: { cls: Cls; onClose: () => void }) {
-  const [studs] = useLoad<Stud[]>(() => get('/api/students', { class_id: cls.parent_id! }), [cls.parent_id])
+  const [studs, , , reloadStuds] = useLoad<Stud[]>(() => get('/api/students', { class_id: cls.parent_id! }), [cls.parent_id])
   const [ids, setIds] = useState<Set<number>>(new Set())
   const [other, setOther] = useState(cls.split_with || '')
+  const [adding, setAdding] = useState(false)
+  const [side, setSide] = useState<'mine' | 'other'>('mine')
   useEffect(() => { get<number[]>(`/api/classes/${cls.id}/members`).then(x => setIds(new Set(x))) }, [cls.id])
   const inner = cls.name.includes('(') ? cls.name.slice(cls.name.indexOf('(') + 1).replace(')', '').replace(/ qrupu$/, '').trim() : 'Bu qrup'
   const mine = inner.charAt(0).toLocaleUpperCase('az') + inner.slice(1)
@@ -216,7 +245,17 @@ function Members({ cls, onClose }: { cls: Cls; onClose: () => void }) {
       <div className="row" style={{ margin: '12px 0' }}>
         <button className="btn sm" onClick={() => setIds(new Set((studs || []).map(s => s.id)))}>Hamısı: {mine}</button>
         <button className="btn sm" onClick={() => setIds(new Set())}>Hamısı: {otherName}</button>
+        <button className="btn sm primary" aria-pressed={adding} onClick={() => setAdding(!adding)}>+ Yeni şagird</button>
       </div>
+      {adding && (
+        <fieldset style={{ marginBottom: 12 }}><legend>Yeni şagird – ana sinfə yazılır</legend>
+          <Seg value={side} onChange={setSide} label="Qrup" options={[['mine', mine], ['other', `${otherName} (paralel)`]]} />
+          <NewStudent classId={cls.parent_id!} onDone={s => {
+            reloadStuds()
+            if (s && side === 'mine') { const n = new Set(ids); n.add(s.id); setIds(n) }
+            if (s) toast(`${s.full_name} – ${side === 'mine' ? mine : otherName}. «Yadda saxla»nı basın`)
+          }} />
+        </fieldset>)}
       {!studs ? <Loading /> : (
         <div className="jlist">{studs.map(s => (
           <div key={s.id} className="jrow" style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}>
@@ -226,6 +265,74 @@ function Members({ cls, onClose }: { cls: Cls; onClose: () => void }) {
               <button aria-pressed={!ids.has(s.id)} onClick={() => set(s.id, false)}>{otherName}</button>
             </div>
           </div>))}</div>)}
+    </Drawer>
+  )
+}
+
+/** Yeni şagird (sinfə yazılır): yaradıldıqdan sonra giriş kodu və ilkin PIN bir dəfə göstərilir. */
+function NewStudent({ classId, onDone }: { classId: number; onDone: (s: { id: number; full_name: string } | null) => void }) {
+  const [f, setF] = useState({ full_name: '', birth_date: '', gender: '' })
+  const [made, setMade] = useState<{ full_name: string; portal_code: string; initial_pin: string | null } | null>(null)
+  const [err, setErr] = useState<unknown>()
+  return (
+    <div className="stack">
+      <div className="fg">
+        <Field label="Soyadı, adı, ata adı" full><input value={f.full_name} onChange={e => setF({ ...f, full_name: e.target.value })} placeholder="Məmmədov Əli Vüqar oğlu" /></Field>
+        <Field label="Doğum tarixi"><input type="date" value={f.birth_date} onChange={e => setF({ ...f, birth_date: e.target.value })} /></Field>
+        <Field label="Cins"><select value={f.gender} onChange={e => setF({ ...f, gender: e.target.value })}><option value="">—</option><option>Qız</option><option>Oğlan</option></select></Field>
+      </div>
+      <ErrorBox error={err} />
+      <AsyncBtn className="btn primary" disabled={f.full_name.trim().length < 5} onClick={async () => {
+        setErr(undefined)
+        try {
+          const r = await post('/api/students', { full_name: f.full_name.trim(), class_id: classId, birth_date: f.birth_date || null, gender: f.gender || null })
+          setMade(r); setF({ full_name: '', birth_date: '', gender: '' }); onDone({ id: r.id, full_name: r.full_name })
+        } catch (e) { setErr(e) }
+      }}>Şagirdi əlavə et</AsyncBtn>
+      {made && <div className="banner" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>
+        <b>{made.full_name}</b> əlavə olundu · giriş kodu <span className="mono">{made.portal_code}</span>{made.initial_pin && <> · PIN <b className="mono">{made.initial_pin}</b> (yazın – yalnız indi görünür)</>}</div>}
+      <p className="small muted" style={{ margin: 0 }}>Uşaq İD, pinkod və şəxsiyyət vəsiqəsi daxil edilmir. Eyni ad + doğum tarixi ikinci dəfə yaradılmır.</p>
+    </div>
+  )
+}
+
+type Member = { id: number; full_name: string; class_id: number; class_name: string }
+
+/** Tədris qrupu: üzvlər məktəbin istənilən sinfindən seçilir (sinif seç → işarələ). */
+function StudyMembers({ cls, all, onClose }: { cls: Cls; all: Cls[]; onClose: () => void }) {
+  const [sel, setSel] = useState<Map<number, Member>>(new Map())
+  const [src, setSrc] = useState<number | null>(null)
+  const [q, setQ] = useState('')
+  const [err, setErr] = useState<unknown>()
+  useEffect(() => { get<Member[]>(`/api/classes/${cls.id}/members/detail`).then(x => setSel(new Map(x.map(m => [m.id, m]))), setErr) }, [cls.id])
+  const [cand] = useLoad<Member[] | null>(() => (src ? get(`/api/classes/${cls.id}/candidates`, { class_id: src }) : Promise.resolve(null)), [src])
+  const toggle = (m: Member) => { const n = new Map(sel); n.has(m.id) ? n.delete(m.id) : n.set(m.id, m); setSel(n) }
+  const list = (cand || []).filter(s => !q || s.full_name.toLowerCase().includes(q.toLowerCase()))
+  const byClass = [...sel.values()].sort((a, b) => a.class_name.localeCompare(b.class_name) || a.full_name.localeCompare(b.full_name))
+  return (
+    <Drawer title={`${cls.name} – üzvlər`} onClose={onClose}
+      footer={<><span className="small muted grow">Seçilib: {sel.size}</span>
+        <AsyncBtn className="btn primary" ok="Üzvlər yadda saxlanıldı" onClick={async () => { await put(`/api/classes/${cls.id}/members`, { student_ids: [...sel.keys()] }); onClose() }}>Yadda saxla</AsyncBtn></>}>
+      <div className="stack">
+        <ErrorBox error={err} />
+        <p className="small muted" style={{ margin: 0 }}>Sinfi seçin və şagirdləri işarələyin – bir neçə sinifdən yığmaq olar. Şagird öz sinfində qalır, qrupa yalnız üzv olur.</p>
+        <div className="toolbar">
+          <select className="sel" value={src ?? ''} onChange={e => setSrc(e.target.value ? Number(e.target.value) : null)} aria-label="Sinif">
+            <option value="">— sinif seçin —</option>{all.filter(c => c.kind !== 'qrup').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          {cand && <div className="search"><input placeholder="Axtar" value={q} onChange={e => setQ(e.target.value)} /></div>}
+          {cand && cand.length > 0 && <button className="btn sm" onClick={() => { const n = new Map(sel); list.forEach(m => n.set(m.id, m)); setSel(n) }}>Hamısını seç</button>}
+        </div>
+        {cand && <div className="jlist">{list.map(s => (
+          <label key={s.id} className="check jrow" style={{ gridTemplateColumns: 'auto minmax(0,1fr)' }}>
+            <input type="checkbox" checked={sel.has(s.id)} onChange={() => toggle(s)} /><span>{s.full_name}</span></label>))}
+          {cand.length === 0 && <div className="empty">Sinifdə şagird yoxdur.</div>}</div>}
+        <h3 className="small muted" style={{ margin: '8px 0 0' }}>Qrupun üzvləri ({sel.size})</h3>
+        <div className="jlist">{byClass.map(m => (
+          <div key={m.id} className="jrow" style={{ gridTemplateColumns: 'minmax(0,1fr) auto auto' }}>
+            <span>{m.full_name}</span><Pill>{m.class_name}</Pill>
+            <button className="btn sm ghost" aria-label={`${m.full_name} – çıxar`} onClick={() => toggle(m)}>Çıxar</button></div>))}
+          {sel.size === 0 && <div className="empty">Hələ üzv yoxdur.</div>}</div>
+      </div>
     </Drawer>
   )
 }
