@@ -618,3 +618,50 @@ class HomeroomAttendance(Base):
     reason: Mapped[str | None] = mapped_column(String(120))            # üzrlü səbəb: arayış, ailə, tədbir …
     marked_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+# ---------------------------------------------------------------- əlavə məşğələ (əyani və onlayn)
+class ExtraCourse(Base, Archivable):
+    """Əlavə məşğələ kursu – dərs cədvəlindən və gündəlik plandan ayrı, öz perspektiv planı (məşğələlər) ilə.
+    Jurnala qiymət yazmır, işçi planı sürüşdürmür; şagird və valideyn planı və öz iştirakını görür."""
+    __tablename__ = 'extra_courses'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    school_id: Mapped[int] = mapped_column(ForeignKey('schools.id'))
+    title: Mapped[str] = mapped_column(String(200))
+    subject: Mapped[str] = mapped_column(String(60))
+    format: Mapped[str] = mapped_column(String(10))                    # əyani | onlayn | qarışıq
+    audience: Mapped[dict] = mapped_column(JSON)                       # {"ta_ids": [...], "levels": [...] | null, "student_ids": [...] | null}
+    schedule: Mapped[list] = mapped_column(JSON)                       # [{"weekday": 5, "start": "10:00", "end": "11:00", "room": "...", "link": "..."}]
+    starts_on: Mapped[dt.date] = mapped_column(Date)
+    ends_on: Mapped[dt.date] = mapped_column(Date)
+    goal: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ExtraSession(Base):
+    __tablename__ = 'extra_sessions'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    course_id: Mapped[int] = mapped_column(ForeignKey('extra_courses.id', ondelete='CASCADE'))
+    date: Mapped[dt.date] = mapped_column(Date)
+    start: Mapped[str] = mapped_column(String(5))                      # 10:00 (Bakı vaxtı)
+    end: Mapped[str] = mapped_column(String(5))
+    format: Mapped[str] = mapped_column(String(10))                    # əyani | onlayn
+    room: Mapped[str | None] = mapped_column(String(60))
+    link: Mapped[str | None] = mapped_column(String(500))              # yalnız https://
+    topics: Mapped[list | None] = mapped_column(JSON)                  # [{"plan_lesson_id": 12 | null, "text": "..."}]
+    goals: Mapped[str | None] = mapped_column(Text)
+    resources: Mapped[str | None] = mapped_column(Text)                # material / keçidlər
+    homework: Mapped[str | None] = mapped_column(Text)
+    batch_id: Mapped[int | None] = mapped_column(ForeignKey('test_batches.id', ondelete='SET NULL'))   # məşğələ testi
+    status: Mapped[str] = mapped_column(String(10), default='planned')   # planned | held | cancelled
+    note: Mapped[str | None] = mapped_column(String(300))              # ləğv / köçürmə səbəbi
+    recording_url: Mapped[str | None] = mapped_column(String(500))
+
+
+class ExtraAttendance(Base):
+    __tablename__ = 'extra_attendance'
+    session_id: Mapped[int] = mapped_column(ForeignKey('extra_sessions.id', ondelete='CASCADE'), primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
+    status: Mapped[str | None] = mapped_column(String(10))             # var | yox | üzrlü | gecikdi (müəllim təsdiqi)
+    joined_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))   # şagird «Qoşul» basıb (onlayn)

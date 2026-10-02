@@ -317,6 +317,8 @@ def to_journal(ta_id: int, task_id: int, body: ToJournalIn, user: User = Depends
     from ..services import SCHOOL_TZ, plan_ctx, taught_lesson, today
     from .journal import SUMMATIVE
     t = _own_task(db, user, ta_id, task_id)
+    if t.kind == 'extra':
+        raise HTTPException(400, 'Əlavə məşğələ testi jurnala köçürülmür – nəticə məşğələ statistikasındadır')
     if t.kind == 'sinaq':
         raise HTTPException(400, 'Sınaq imtahanının nəticəsi formativ jurnala köçürülmür – «Sınaq jurnalı»nda və reytinqdədir')
     if t.kind == 'movzu' and t.plan_lesson_id and body.date is None:   # mövzu testi – mövzunun öz dərsinə

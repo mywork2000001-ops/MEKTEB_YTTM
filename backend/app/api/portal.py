@@ -399,6 +399,20 @@ def my_exams(user: User = Depends(student_only), db: Session = Depends(get_db)):
             'delta': round(got[-1]['pct'] - got[-2]['pct'], 1) if len(got) >= 2 else None}
 
 
+@router.get('/extra')
+def my_extra(user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Əlavə məşğələlərim: kursun planı, növbəti məşğələ, öz iştirakım və məşğələ testlərim."""
+    from .extra import student_courses
+    return student_courses(db, me_student(db, user))
+
+
+@router.post('/extra/{sid}/join')
+def join_extra(sid: int, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Onlayn məşğələyə qoşul: qoşulma vaxtı qeyd olunur (müəllim davamiyyəti təsdiqləyir), keçid qaytarılır."""
+    from .extra import join
+    return join(db, me_student(db, user), sid)
+
+
 @router.get('/results')
 def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
     s = me_student(db, user)

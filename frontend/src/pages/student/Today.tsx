@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { get } from '../../api'
 import { useT } from '../../i18n'
+import { NextExtra } from './Extra'
 import { examLabel } from './Plan'
 import { ErrorBox, fmtDate, gradeTone, isoDate, Loading, longDate, Pill, useLoad, WD } from '../../ui'
 
@@ -10,6 +11,7 @@ export default function Today() {
   const [me, err] = useLoad<any>(() => get('/api/portal/me'), [])
   const [day] = useLoad<any>(() => get('/api/portal/day'), [])
   const [tasks] = useLoad<any[]>(() => get('/api/portal/tasks'), [])
+  const [extra, , , reloadExtra] = useLoad<any[]>(() => get('/api/portal/extra'), [])
   if (!me) return err ? <ErrorBox error={err} /> : <Loading />
   const now = new Date()
   const open = (tasks || []).filter(x => ['açıq', 'həll edilir', 'gözlənilir'].includes(x.status))
@@ -46,6 +48,13 @@ export default function Today() {
           {me.teachers.map(([n, s]: [string, string]) => <p key={n + s} style={{ margin: '0 0 4px' }}><b>{n}</b> <span className="muted small">{s}</span></p>)}
         </section>
       </div>
+      {(extra || []).filter(c => c.next).length > 0 && (
+        <section className="panel" style={{ marginTop: 16 }}>
+          <h2>Əlavə məşğələ</h2>
+          {(extra || []).filter(c => c.next).map(c => (
+            <div key={c.id} style={{ marginBottom: 8 }}><span className="small muted">{c.title} · {c.teacher}</span><NextExtra x={c.next} onJoined={reloadExtra} /></div>))}
+          <button className="btn sm" onClick={() => nav('/extra')}>Məşğələlər</button>
+        </section>)}
       <Prepare />
     </>
   )
