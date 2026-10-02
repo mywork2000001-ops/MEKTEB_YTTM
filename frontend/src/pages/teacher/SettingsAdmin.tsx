@@ -102,7 +102,35 @@ function Bank() {
           </label>))}</div>
         <p className="small muted">Söndürülən mənbənin sualları tapşırıq yaradarkən görünmür.</p>
       </section>
+      <BankFiles sources={sources || []} />
     </div>
+  )
+}
+
+const KINDS: [string, string][] = [['movzu', 'mövzu testi'], ['sinaq', 'sınaq'], ['yekun', 'yekun test'], ['diaqnostik', 'diaqnostik']]
+
+/** Faylın növü (mövzu testi / sınaq) və sinfi – avtomatik təsnifat səhvdirsə admin düzəldir (sinxronizasiya toxunmur). */
+function BankFiles({ sources }: { sources: any[] }) {
+  const [src, setSrc] = useState('')
+  const [files, err, , reload] = useLoad<any[] | null>(() => (src ? get('/api/bank/lessons', { source: src }) : Promise.resolve(null)), [src])
+  const save = async (id: number, body: any) => { await patch(`/api/bank/files/${id}`, body); reload() }
+  return (
+    <section className="panel" style={{ gridColumn: '1 / -1' }}>
+      <h2>Faylların növü və sinfi <small>mövzu testi perspektiv planda, sınaq «Sınaq imtahanları»nda görünür</small></h2>
+      <select className="sel" value={src} onChange={e => setSrc(e.target.value)}>
+        <option value="">Mənbə seçin</option>{sources.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}</select>
+      <ErrorBox error={err} />
+      {files && <div className="jlist" style={{ marginTop: 8, maxHeight: 420, overflow: 'auto' }}>
+        {files.map(f => (
+          <div key={f.id} className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr) 140px 110px auto', ['--mcols' as any]: '1fr' }}>
+            <span className="small">{f.label} <span className="muted">({f.questions})</span></span>
+            <select className="sel" value={f.kind} onChange={e => save(f.id, { kind: e.target.value })}>{KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            <input className="sel" defaultValue={(f.grades || []).join(', ')} placeholder="sinif: 9, 10" aria-label="Siniflər"
+              onBlur={e => { const g = e.target.value.split(/[ ,;]+/).map(Number).filter(n => n >= 1 && n <= 12); if (g.join() !== (f.grades || []).join()) save(f.id, { grades: g }) }} />
+            {f.meta_locked ? <button className="btn sm ghost" title="Əl ilə düzəlişi götür" onClick={() => save(f.id, { auto: true })}>avtomatik</button> : <span className="small muted">avto</span>}
+          </div>))}
+      </div>}
+    </section>
   )
 }
 

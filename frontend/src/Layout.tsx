@@ -16,6 +16,7 @@ export const TEACHER_NAV: NavItem[] = [
   { to: '/daily', icon: 'edit', label: 'Gündəlik plan', short: 'Gündəlik' },
   { to: '/timetable', icon: 'topics', label: 'Həftəlik cədvəl', short: 'Cədvəl' },
   { to: '/tasks', icon: 'online', label: 'Onlayn tapşırıqlar', short: 'Tapşırıq' },
+  { to: '/exams-online', icon: 'rating', label: 'Sınaq imtahanları', short: 'Sınaq' },
   { to: '/materials', icon: 'clip', label: 'Materiallar' },
   { to: '/reports', icon: 'reports', label: 'Analitika və hesabat', short: 'Hesabat' },
   { to: '/homeroom', icon: 'classes', label: 'Sinif rəhbəri', short: 'Rəhbər' },

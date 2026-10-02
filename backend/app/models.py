@@ -174,6 +174,10 @@ class BankFile(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     checked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     changed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    kind: Mapped[str] = mapped_column(String(12), default='movzu')       # movzu | sinaq | yekun | diaqnostik (bank/classify.py)
+    grades: Mapped[list | None] = mapped_column(JSON)                    # [9] – hansı siniflər üçün
+    subject: Mapped[str | None] = mapped_column(String(60), default='Riyaziyyat')
+    meta_locked: Mapped[bool] = mapped_column(Boolean, default=False)    # admin əl ilə düzəldib – avtomatik təsnifat toxunmur
     __table_args__ = (UniqueConstraint('source_key', 'lesson'),)
 
 
@@ -377,6 +381,7 @@ class TestBatch(Base):
     title: Mapped[str] = mapped_column(String(200))
     subject: Mapped[str | None] = mapped_column(String(60))
     grade: Mapped[int | None] = mapped_column(Integer)
+    penalty: Mapped[int] = mapped_column(Integer, default=0)            # sınaq: N səhv 1 düzü aparır (0 – cərimə yox)
     created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
 
@@ -418,6 +423,7 @@ class TaskAttempt(Base):
     correct: Mapped[int | None] = mapped_column(Integer)
     total: Mapped[int | None] = mapped_column(Integer)
     grade: Mapped[int | None] = mapped_column(Integer)
+    manual: Mapped[dict | None] = mapped_column(JSON)                   # müəllimin açıq sual düzəlişi {"sual indeksi": true/false}
     __table_args__ = (UniqueConstraint('task_id', 'student_id'),)
 
 

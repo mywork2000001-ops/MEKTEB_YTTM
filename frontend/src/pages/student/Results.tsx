@@ -8,6 +8,7 @@ const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en ||
 export default function Results() {
   const t = useT()
   const [d, err] = useLoad<any>(() => get('/api/portal/results'), [])
+  const [ex] = useLoad<any>(() => get('/api/portal/exams'), [])
   if (!d) return err ? <ErrorBox error={err} /> : <Loading />
   return (
     <>
@@ -35,6 +36,22 @@ export default function Results() {
                   <td className="r num">{e.absent ? 'yox idi' : e.points != null ? `${fmt(e.points, 1)} / ${e.max_points}` : '—'}</td><td className="r num">{fmt(e.pct)}</td>
                   <td className="r">{e.grade ? <Pill tone={gradeTone(e.grade)}>{e.grade}</Pill> : '—'}</td></tr>))}</tbody></table></div>)}
         </section>))}
+      {ex?.items?.length > 0 && (
+        <section className="panel" style={{ marginBottom: 16 }}>
+          <h2>Sınaq imtahanları <small>{ex.items.length}{ex.delta != null ? ` · son dinamika ${ex.delta > 0 ? '+' : ''}${fmt(ex.delta)}%` : ''}</small></h2>
+          {ex.items.map((x: any) => (
+            <div key={x.batch_id} style={{ borderBottom: '1px solid var(--line)', padding: '8px 0' }}>
+              <div className="row"><b className="grow">{x.title}</b><span className="small muted">{fmtDate(x.opens_at)}</span></div>
+              {!x.closed ? <span className="small muted">Nəticə və yer sınaq bağlandıqdan sonra görünəcək.</span>
+                : x.status !== 'yazıb' ? <span className="small muted">Sınağı yazmamısan.</span> : (
+                <div className="row" style={{ gap: 6, marginTop: 4 }}>
+                  <Pill tone={x.pct >= 70 ? 'ok' : x.pct >= 40 ? 'warn' : 'bad'}>{fmt(x.pct)}% · {x.correct} düz, {x.wrong} səhv, {x.blank} boş</Pill>
+                  <Pill tone="acc">sinifdə {x.place_class}/{x.class_count}</Pill>
+                  <Pill tone="info">ümumi {x.place_all}/{x.all_count}</Pill>
+                  <span className="small muted">orta {fmt(x.avg_pct)}% · ən yüksək {fmt(x.max_pct)}%</span>
+                </div>)}
+            </div>))}
+        </section>)}
       <section className="panel" style={{ marginBottom: 16 }}>
         <h2>Onlayn tapşırıqlar <small>{d.tasks.length}</small></h2>
         {d.tasks.length === 0 ? <p className="muted">Hələ təhvil verilmiş tapşırıq yoxdur.</p> : d.tasks.map((x: any) => (

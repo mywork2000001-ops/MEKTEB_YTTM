@@ -26,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from .classify import apply as classify_file
 from ..models import AppState, BankFile, BankQuestion, BankSource, BankSync, now
 
 log = logging.getLogger('bank')
@@ -226,6 +227,7 @@ def run_sync(db: Session, trigger: str = 'manual', force: bool = False,
                         db.flush()
                         new_urls.append(url)
                     f.label, f.url, f.active = l['label'], url, True
+                    classify_file(f)                              # növ (mövzu/sınaq) və sinif – kilidlidirsə toxunulmur
                     todo.append((f, url))
             for src in db.scalars(select(BankSource)):
                 if src.key not in {s['key'] for s in listed}:

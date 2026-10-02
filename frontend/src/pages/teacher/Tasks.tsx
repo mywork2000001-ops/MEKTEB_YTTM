@@ -42,6 +42,7 @@ export default function Tasks() {
               <div className="jrow cols" key={t.id} style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 8 }}>
                 <div className="row">
                   <b className="grow">{t.title}</b>
+                  {t.kind === 'sinaq' && <Pill tone="acc">sınaq imtahanı</Pill>}
                   {t.kind === 'movzu' && <Pill tone="acc">{t.topic ? `mövzu testi · №${t.topic.seq}` : 'mövzu planda yoxdur'}</Pill>}
                   {t.kind === 'movzu' && t.journal_auto && <Pill tone={t.journal_done_at ? 'ok' : undefined}>{t.journal_done_at ? 'jurnala yazılıb' : 'jurnala yazılacaq'}</Pill>}
                   {now < o ? <Pill>gözlənilir</Pill> : live ? <Pill tone="ok">● açıqdır</Pill> : <Pill tone="info">bağlanıb</Pill>}
@@ -212,7 +213,8 @@ function Watch({ ta, id, onClose }: { ta: number; id: number; onClose: () => voi
             </div>))}
             {rows.length === 0 && <div className="empty">Uyğun şagird yoxdur.</div>}
           </div>
-          {d.summary['təhvil verib'] > 0 && <ToJournal ta={ta} id={id} opens={d.task.opens_at} />}
+          {d.task.kind === 'sinaq' ? <p className="small muted">Sınaq imtahanı formativ jurnala köçürülmür – nəticə «Sınaq imtahanları» bölməsində (jurnal və reytinq).</p>
+            : d.summary['təhvil verib'] > 0 && <ToJournal ta={ta} id={id} opens={d.task.opens_at} />}
           {d.questions.length > 0 && d.summary['təhvil verib'] > 0 && (
             <section className="panel"><h2>Suallar üzrə</h2>
               {d.questions.map((x: any) => (

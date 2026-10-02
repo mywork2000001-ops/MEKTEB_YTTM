@@ -125,7 +125,8 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
             {d.classes.length === 1 && <p className="small muted">Eyni fənn və sinif səviyyəsində başqa sinfiniz yoxdur.</p>}
           </fieldset>
 
-          <BankPicker has={has} add={add} remove={remove} onTitle={() => {}} disabled={false} first={false} />
+          <BankPicker has={has} add={add} remove={remove} onTitle={() => {}} disabled={false} first={false} kinds={['movzu', 'diaqnostik']}
+            legend="Test bazasından – mövzu testləri (sınaqlar ayrıca bölmədədir)" />
           <fieldset><legend>Seçilmiş suallar ({qs.length})</legend>
             {qs.length === 0 ? <p className="small muted">Yuxarıdan test bazasından seçin və ya öz sualınızı yazın.</p> : (
               <div className="jlist">

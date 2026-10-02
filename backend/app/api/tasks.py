@@ -27,14 +27,25 @@ def aware(t: dt.datetime) -> dt.datetime:
     return t.astimezone(dt.timezone.utc) if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
 
 
+def is_ok(task: OnlineTask, a: TaskAttempt, i: int) -> bool:
+    """Sual düzgündür: müəllimin düzəlişi (açıq sual) avtomatik yoxlamadan üstündür."""
+    m = (a.manual or {}).get(str(i))
+    return bool(m) if m is not None else check(task.questions[i], (a.answers or {}).get(str(i)))
+
+
+def score(task: OnlineTask, a: TaskAttempt):
+    """Düzgün cavab sayı, faiz və qiymət yenidən hesablanır (düzəlişdən sonra da)."""
+    ok = sum(is_ok(task, a, i) for i in range(len(task.questions)))
+    a.correct, a.total = ok, len(task.questions)
+    a.grade = summative_grade(ok * 100 / a.total) if a.total else None
+
+
 def finalize(db: Session, task: OnlineTask, a: TaskAttempt, at: dt.datetime | None = None, auto: bool = False):
     """Cavabları yoxlayır və təhvil verir (bir dəfə)."""
     if a.submitted_at:
         return a
     at = at or now()
-    ok = sum(check(task.questions[int(i)], v) for i, v in (a.answers or {}).items() if int(i) < len(task.questions))
-    a.correct, a.total = ok, len(task.questions)
-    a.grade = summative_grade(ok * 100 / a.total) if a.total else None
+    score(task, a)
     a.submitted_at, a.auto_submitted = min(at, aware(a.deadline)), auto
     return a
 
@@ -193,7 +204,7 @@ def task_results(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
     done = [a for a in atts.values() if a.submitted_at]
     per_q = []
     for i, q in enumerate(t.questions):
-        ok = sum(check(q, (a.answers or {}).get(str(i))) for a in done)
+        ok = sum(is_ok(t, a, i) for a in done)
         per_q.append({'index': i, 'text': q['text'], 'kind': q['kind'], 'correct': ok, 'of': len(done),
                       'pct': round(ok * 100 / len(done), 1) if done else None})
     summary = {k: sum(r['status'] == k for r in rows) for k in ('başlamayıb', 'həll edir', 'təhvil verib')}
@@ -306,6 +317,8 @@ def to_journal(ta_id: int, task_id: int, body: ToJournalIn, user: User = Depends
     from ..services import SCHOOL_TZ, plan_ctx, taught_lesson, today
     from .journal import SUMMATIVE
     t = _own_task(db, user, ta_id, task_id)
+    if t.kind == 'sinaq':
+        raise HTTPException(400, 'Sınaq imtahanının nəticəsi formativ jurnala köçürülmür – «Sınaq jurnalı»nda və reytinqdədir')
     if t.kind == 'movzu' and t.plan_lesson_id and body.date is None:   # mövzu testi – mövzunun öz dərsinə
         from ..task_journal import write_topic_marks
         expire_due(db, t)

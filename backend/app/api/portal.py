@@ -387,6 +387,18 @@ def _stats(db: Session, eids: list[int], sid: int) -> dict:
             'homework_pct': round(sum(hw) * 100 / len(hw), 1) if hw else None}
 
 
+@router.get('/exams')
+def my_exams(user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Sınaq imtahanlarım: bal, sinifdə və ümumi yerim, orta / ən yüksək bal, dinamika."""
+    from .exams_online import student_exams
+    s = me_student(db, user)
+    items = student_exams(db, s, [t.id for t in _my_tasks(db, s)])
+    got = [x for x in items if x.get('pct') is not None]
+    db.commit()
+    return {'items': items[::-1], 'trend': [{'title': x['title'], 'pct': x['pct'], 'avg_pct': x['avg_pct']} for x in got],
+            'delta': round(got[-1]['pct'] - got[-2]['pct'], 1) if len(got) >= 2 else None}
+
+
 @router.get('/results')
 def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
     s = me_student(db, user)

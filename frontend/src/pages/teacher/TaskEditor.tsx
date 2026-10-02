@@ -121,7 +121,8 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
 }
 
 // ---------------------------------------------------------------- viktorina: bir neçə mənbə və bölmə
-export function BankPicker({ has, add, remove, onTitle, disabled, first }: { has: (k: string) => boolean; add: (q: Q[]) => void; remove: (k: string) => void; onTitle: (t: string) => void; disabled: boolean; first: boolean }) {
+/** kinds – yalnız bu növ fayllar (mövzu testi: movzu, diaqnostik; sınaq: sinaq, yekun); boş – hamısı. */
+export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, legend }: { has: (k: string) => boolean; add: (q: Q[]) => void; remove: (k: string) => void; onTitle: (t: string) => void; disabled: boolean; first: boolean; kinds?: string[]; legend?: string }) {
   const [sources, setSources] = useState<any[]>([])
   const [srcSel, setSrcSel] = useState<string[]>([])
   const [lessons, setLessons] = useState<Record<string, any[]>>({})
@@ -129,7 +130,11 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first }: { has
   const [qByFile, setQByFile] = useState<Record<number, any[]>>({})
   const [filter, setFilter] = useState('')
   const [n, setN] = useState(10)
-  useEffect(() => { get<any[]>('/api/bank/sources').then(x => setSources(x.filter(s => s.enabled && s.active))) }, [])
+  const kindKey = kinds?.join(',') || ''
+  useEffect(() => {
+    get<any[]>('/api/bank/sources').then(x => setSources(x.filter(s => s.enabled && s.active &&
+      (!kindKey || kindKey.split(',').some(k => (s.kinds || {})[k])))))
+  }, [kindKey])
   useEffect(() => { srcSel.forEach(k => { if (!lessons[k]) get<any[]>('/api/bank/lessons', { source: k }).then(l => setLessons(x => ({ ...x, [k]: l }))) }) }, [srcSel])
   useEffect(() => { lesSel.forEach(l => { if (!qByFile[l.id]) get('/api/bank/questions', { file_id: l.id, limit: 200 }).then(r => setQByFile(x => ({ ...x, [l.id]: r.items }))) }) }, [lesSel])
   const label = (k: string) => (sources.find(s => s.key === k)?.label || k)
@@ -143,9 +148,10 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first }: { has
   const groups = lesSel.map(l => ({ l, items: (qByFile[l.id] || []).map(q => fromBank(q, l.src, l.label)) }))
   const pool = groups.flatMap(g => g.items)
   const random = () => add([...pool.filter(q => !has(q.key))].sort(() => Math.random() - 0.5).slice(0, n))
-  const list = (k: string) => (lessons[k] || []).filter(l => !filter || l.label.toLowerCase().includes(filter.toLowerCase()))
+  const list = (k: string) => (lessons[k] || []).filter(l => (!kinds || kinds.includes(l.kind || 'movzu')) &&
+    (!filter || l.label.toLowerCase().includes(filter.toLowerCase())))
   return (
-    <fieldset disabled={disabled}><legend>{first ? '1. Viktorinadan: mənbələr və bölmələr' : 'Test bazasından (viktorina – avtomatik yenilənir)'}</legend>
+    <fieldset disabled={disabled}><legend>{legend || (first ? '1. Viktorinadan: mənbələr və bölmələr' : 'Test bazasından (viktorina – avtomatik yenilənir)')}</legend>
       <div className="stack">
         <div className="row" style={{ gap: 6 }}>
           {sources.map(s => <button key={s.key} type="button" className="chip" aria-pressed={srcSel.includes(s.key)} onClick={() => toggleSrc(s.key)}>{s.label} <span className="muted">({s.questions})</span></button>)}
@@ -160,7 +166,7 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first }: { has
                   {list(k).map(l => (
                     <label key={l.id} className="check" style={{ padding: '0 12px', minHeight: 36 }}>
                       <input type="checkbox" checked={lesSel.some(x => x.id === l.id)} onChange={() => toggleLes(l, k)} />
-                      <span className="small">{l.label} <span className="muted">({l.questions})</span></span></label>))}
+                      <span className="small">{l.label} <span className="muted">({l.questions}{l.grades?.length ? ` · ${l.grades.join(', ')}-cu sinif` : ''})</span></span></label>))}
                   {!lessons[k] && <p className="small muted" style={{ padding: '0 12px' }}>Yüklənir…</p>}
                 </div>))}
             </div>
