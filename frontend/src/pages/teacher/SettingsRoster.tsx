@@ -5,7 +5,7 @@ import { esc, head, printDoc, table } from '../../print'
 import { kindLabel } from './common'
 import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, isoDate, Loading, PickFirst, Pill, Seg, toast, useLoad, ord } from '../../ui'
 
-type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; group_type?: 'bölünmə' | 'tədris' | null; split_with: string | null; utis_class: string | null
+type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; group_type?: 'bölünmə' | 'tədris' | null; split_with: string | null; utis_class: string | null; grade?: number | null; grade_set?: number | null
   exam_date: string | null; bells: Record<string, string> | null; students: number; can_open: boolean; archived: boolean
   homeroom: { id: number; name: string } | null
   teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number; slots: Record<string, number[]>; has_summative: boolean } | null }
@@ -95,7 +95,7 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
   // növ: TOM / adi – bütöv sinif; split – sinif daxilində bölünmə qrupu; study – müxtəlif siniflərdən tədris qrupu
   const type0 = !cls ? 'TOM' : cls.kind !== 'qrup' ? cls.kind : cls.parent_id ? 'split' : 'study'
   const [f, setF] = useState({ name: cls?.name || '', type: type0, parent_id: cls?.parent_id || '', split_with: cls?.split_with || '',
-    utis_class: cls?.utis_class || '', exam_date: cls?.exam_date || '', bells: (cls?.bells || {}) as Record<string, string> })
+    utis_class: cls?.utis_class || '', grade: cls?.grade_set ? String(cls.grade_set) : '', exam_date: cls?.exam_date || '', bells: (cls?.bells || {}) as Record<string, string> })
   const [ownBells, setOwnBells] = useState(!!cls?.bells && Object.keys(cls.bells).length > 0)
   const [err, setErr] = useState<unknown>()
   const [confirm, setConfirm] = useState(false)
@@ -105,7 +105,7 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
   const group = f.type === 'split' || f.type === 'study'
   const save = async () => {
     try {
-      const body: any = { name: f.name, split_with: f.type === 'split' ? f.split_with || null : null, utis_class: group ? null : f.utis_class || null,
+      const body: any = { name: f.name, split_with: f.type === 'split' ? f.split_with || null : null, utis_class: group ? null : f.utis_class || null, grade: f.grade ? Number(f.grade) : null,
         exam_date: f.exam_date || null, bells: ownBells ? Object.fromEntries(Object.entries(f.bells).filter(([, v]) => v.trim())) : {} }
       if (cls) await patch(`/api/classes/${cls.id}`, { ...body, ...(group ? {} : { kind: f.type }) })
       else await post('/api/classes', { ...body, kind: group ? 'qrup' : f.type, parent_id: f.type === 'split' && f.parent_id ? Number(f.parent_id) : null })
@@ -132,6 +132,8 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
             : <select value={f.parent_id} onChange={e => setF({ ...f, parent_id: e.target.value })}><option value="">—</option>{all.filter(c => c.kind !== 'qrup').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}</Field>}
           {f.type === 'split' && <Field label="Paralel fənn (sinfin digər yarısı)" full><input value={f.split_with} onChange={e => setF({ ...f, split_with: e.target.value })} placeholder="Biologiya – Şərqiyə müəllimə" /></Field>}
           {!group && <Field label="UTİS sinfi"><input value={f.utis_class} onChange={e => setF({ ...f, utis_class: e.target.value })} placeholder="10 e" /></Field>}
+          <Field label="Sinif rəqəmi" hint="boş – addan (IX a → 9); eyni mövzulu sinifləri tapmaq üçün"><select value={f.grade} onChange={e => setF({ ...f, grade: e.target.value })}>
+            <option value="">avtomatik{cls?.grade ? ` (${cls.grade})` : ''}</option>{Array.from({ length: 11 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select></Field>
           <Field label="İmtahan tarixi" hint="şagird portalında sayğac"><input type="date" value={f.exam_date} onChange={e => setF({ ...f, exam_date: e.target.value })} /></Field>
         </div>
         {f.type === 'study' && <p className="small muted" style={{ margin: 0 }}>Tədris qrupu (olimpiada, hazırlıq, dərnək): yaratdıqdan sonra «Qoşul» ilə cədvəli, «Üzvlər» ilə müxtəlif siniflərdən şagirdləri seçin.</p>}

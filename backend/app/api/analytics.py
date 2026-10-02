@@ -83,19 +83,12 @@ class LevelIn(BaseModel):
 @router.put('/analytics/{ta_id}/levels/{sid}')
 def set_level(ta_id: int, sid: int, body: LevelIn, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Müəllim şagirdin səviyyəsini əl ilə təyin edir (öz fənni üzrə); None – yenidən avtomatik."""
-    from ..models import LevelOverride
     from ..services import roster
     ta = own_assignment(db, user, ta_id)
     if sid not in {s.id for s in roster(db, ta)}:
         raise HTTPException(404, 'Şagird bu sinifdə/qrupda deyil')
-    o = db.get(LevelOverride, (ta.id, sid))
-    if body.level is None:
-        if o:
-            db.delete(o)
-    else:
-        o = o or LevelOverride(assignment_id=ta.id, student_id=sid, level=body.level)
-        o.level, o.note = body.level, body.note
-        db.merge(o)
+    from .levels import _set
+    _set(db, user, ta.id, sid, body.level, 'manual', True, note=body.note)   # müəllimin qərarı – kilidli, tarixçədə
     audit(db, user, 'update', 'level', sid, level=body.level)
     db.commit()
     return {'ok': True, 'level': body.level}

@@ -6,7 +6,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -160,7 +160,7 @@ def cross_class(body: CrossIn, user: User = Depends(settings_unlocked), db: Sess
     year = current_year(db, sid)
     name = norm_name(body.name)
     if db.scalar(select(SchoolClass).where(SchoolClass.school_id == sid, SchoolClass.year_id == year.id,
-                                           SchoolClass.name.ilike(name))):
+                                           func.lower(SchoolClass.name) == name.lower())):
         raise HTTPException(409, f'«{name}» adlı sinif/qrup artıq var')
     members = []
     for t in tas:

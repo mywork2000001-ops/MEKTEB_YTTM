@@ -5,7 +5,6 @@ Revises: d1e4f7a2b8c3
 Create Date: 2026-10-04 23:00:00
 
 """
-import json
 from typing import Sequence, Union
 
 from alembic import op
@@ -25,10 +24,11 @@ def upgrade() -> None:
         b.add_column(sa.Column('subject', sa.String(length=60), nullable=True))
         b.add_column(sa.Column('meta_locked', sa.Boolean(), nullable=False, server_default=sa.false()))
     conn = op.get_bind()
+    upd = sa.text('UPDATE bank_files SET kind = :k, grades = :g, subject = :s WHERE id = :i').bindparams(
+        sa.bindparam('g', type_=sa.JSON()))                                   # Postgres: json tipi ilə
     for fid, src, label in conn.execute(sa.text('SELECT id, source_key, label FROM bank_files')).all():
         c = classify(src, label or '')
-        conn.execute(sa.text('UPDATE bank_files SET kind = :k, grades = :g, subject = :s WHERE id = :i'),
-                     {'k': c['kind'], 'g': json.dumps(c['grades']), 's': c['subject'], 'i': fid})
+        conn.execute(upd, {'k': c['kind'], 'g': c['grades'], 's': c['subject'], 'i': fid})
     with op.batch_alter_table('test_batches') as b:
         b.add_column(sa.Column('penalty', sa.Integer(), nullable=False, server_default='0'))
     with op.batch_alter_table('task_attempts') as b:

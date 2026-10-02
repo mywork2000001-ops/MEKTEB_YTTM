@@ -245,3 +245,26 @@ Mərhələ təklifi: **I** – 1–5 (mövzu testi + jurnal), **II** – 6 (sın
   test bazası + öz sualım, «Bağlananda formativ jurnala yaz»; Tapşırıqlar – «mövzu testi · №N», «jurnala yazılıb / yazılacaq».
 - **Yoxlama:** 151 test keçdi (yeni `test_api_topic_tests.py` – 3 test), `tsc`, `vite build` təmiz. Brauzerdə əl ilə yoxlama (360 px daxil) hələ edilməyib.
 - **Növbəti:** II mərhələ – sınaq imtahanları + sinif/ümumi reytinq (bank faylının növü – `kind='sinaq'` təsnifatı ilə).
+
+## 8. İcra nəticəsi – II, III, IV mərhələ və yekun audit (02.10.2026)
+| Mərhələ | Commit | Miqrasiya | Əsas hissələr |
+|---|---|---|---|
+| I – mövzu testi + jurnal | `3731f7c` | `d1e4f7a2b8c3` | bax §7 |
+| II – sınaq imtahanları + reytinq | `a1efe7b` | `e2f6a8b1c4d7` | bank təsnifatı (`bank/classify.py`, admin düzəlişi), `api/exams_online.py`, «Sınaq imtahanları» səhifəsi, portalda yer |
+| III – səviyyə qrupları | `92f302a` | `f3a7b9c2d5e8` | `app/levels.py`, `api/levels.py`, Jurnal → «Səviyyə qrupları» |
+| IV – əlavə məşğələ | `ba509de` | `a4b8c1d3e6f9` | `api/extra.py`, «Əlavə məşğələ» (müəllim), «Əlavə məşğələlər» + «Bu gün» kartı (şagird) |
+
+**Yekun audit – tapılan və düzəldilən:**
+- Jurnal → «Şagirdlər» tabındakı köhnə səviyyə seçimi avtomatik bölgüdən gələn səviyyəni «müəllim / kilidli» etmirdi – təklif müəllimin qərarını üstələyə bilərdi; indi kilidlidir və tarixçəyə düşür.
+- Paralel siniflərdən qrup adının yoxlanması `ilike` ilə idi (`%`, `_` şablon kimi işləyərdi) – dəqiq müqayisə.
+- Bank təsnifatı miqrasiyası JSON-u mətn kimi yazırdı – Postgres üçün tipli parametr.
+- Sinif rəqəmi interfeysdə redaktə olunmurdu – Tənzimləmələr → Siniflər formasına «Sinif rəqəmi» (boş – addan).
+- Miqrasiyalar təmiz bazada (`MK_DATABASE_URL`) `upgrade head → downgrade c9d3e4f5a6b7 → upgrade head` yoxlanıb; mövcud bank faylı düzgün təsnif olunur.
+- Yoxlama: **158 backend testi** keçdi (yeni: `test_api_topic_tests.py`, `test_api_exams_online.py`, `test_api_levels.py`, `test_api_extra.py`), `tsc`, `vite build`, `oxlint` (yeni fayllar) təmiz.
+
+**Edilməyən / sonraya qalan (şüurlu qərar):**
+- Səviyyəyə görə **variantlı** mövzu testi (3 sual dəsti bir testdə) – hələ yoxdur; mövzu testini səviyyə qrupuna «Tapşırıqlar → Kimə» ilə göndərmək olur, «🧪 Test» panelində hədəf hələ bütün sinifdir.
+- Mövzu testinin gələn ilə surətlənməsi, PWA bildirişi – yoxdur.
+- Əlavə məşğələdə material «Materiallar» bölməsinə bağlı deyil – sərbəst mətn/keçid sahəsidir.
+- Sınaqda «təkrar cəhd» nişanı audit jurnalındakı «cəhd silindi» qeydindən hesablanır.
+- **Brauzerdə əl ilə yoxlama (360 px daxil) aparılmayıb**; canlıda `alembic upgrade head` (4 yeni miqrasiya) getdiyini yoxlamaq lazımdır.

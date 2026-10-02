@@ -66,7 +66,7 @@ def class_out(db: Session, c: SchoolClass, user: User, mine: set[int] | None):
         n = db.scalar(select(func.count()).select_from(GroupMember).where(GroupMember.group_id == c.id))
     return {'id': c.id, 'name': c.name, 'code': c.code, 'kind': c.kind, 'parent_id': c.parent_id,
             'group_type': group_type(c),
-            'utis_class': c.utis_class, 'grade': class_grade(db, c), 'exam_date': c.exam_date, 'bells': c.bells, 'split_with': c.split_with,
+            'utis_class': c.utis_class, 'grade': class_grade(db, c), 'grade_set': c.grade, 'exam_date': c.exam_date, 'bells': c.bells, 'split_with': c.split_with,
             'archived': c.archived_at is not None, 'students': n, 'can_open': visible,
             'homeroom': (lambda u: u and {'id': u.id, 'name': u.full_name})(db.get(User, c.homeroom_id) if c.homeroom_id else None),
             'teachers': [{'id': i, 'name': nm, 'subject': sb} for i, nm, sb in teachers],
