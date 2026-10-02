@@ -6,6 +6,7 @@ import Exams from './Exams'
 import { fmtN, head, printDoc, table } from '../../print'
 import { useNavigate } from 'react-router-dom'
 import { useT } from '../../i18n'
+import LevelGroups from './LevelGroups'
 
 type Stud = { id: number; full_name: string; portal_code: string }
 type MarkRow = { student_id: number; kind: 'şifahi' | 'yazılı' | 'test'; grade?: number | null; test_correct?: number | null; test_total?: number | null; comment?: string | null }
@@ -16,7 +17,7 @@ type Lesson = {
 }
 type Day = { date: string; weekday: string | null; class_name: string; lessons: Lesson[]; students: Stud[] }
 
-const TABS = [['day', 'Gündəlik'], ['grid', 'Jurnal səhifəsi'], ['students', 'Şagirdlər'], ['exams', 'KSQ / BSQ'], ['semester', 'Yarımil'], ['topics', 'Mövzular və irəliləyiş'], ['summary', 'Xülasə']] as const
+const TABS = [['day', 'Gündəlik'], ['grid', 'Jurnal səhifəsi'], ['students', 'Şagirdlər'], ['levels', 'Səviyyə qrupları'], ['exams', 'KSQ / BSQ'], ['semester', 'Yarımil'], ['topics', 'Mövzular və irəliləyiş'], ['summary', 'Xülasə']] as const
 
 export default function Journal() {
   const t = useT()
@@ -41,6 +42,7 @@ export default function Journal() {
           {tab === 'day' && <DayView ta={cur} date={date} setDate={setDate} />}
           {tab === 'grid' && <Grid ta={cur} />}
           {tab === 'students' && <StudentsLevels ta={cur} />}
+          {tab === 'levels' && <LevelGroups ta={cur} />}
           {tab === 'exams' && <Exams ta={cur} />}
           {tab === 'semester' && <Semester ta={cur} />}
           {tab === 'topics' && <Topics ta={cur} />}

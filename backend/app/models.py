@@ -562,6 +562,24 @@ class LevelOverride(Base):
     level: Mapped[str] = mapped_column(String(10))                     # Güclü | Orta | Zəif
     note: Mapped[str | None] = mapped_column(String(300))
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+    source: Mapped[str] = mapped_column(String(10), default='manual')  # manual – müəllim | auto – bölgü (app/levels.py)
+    locked: Mapped[bool] = mapped_column(Boolean, default=True)        # kilidli – avtomatik bölgü və təkliflər toxunmur
+    score: Mapped[float | None] = mapped_column(Float)                 # bölgü balı (0–100)
+    components: Mapped[dict | None] = mapped_column(JSON)              # {"buraxilis": 72, "sinaq": 64, ...}
+
+
+class LevelHistory(Base):
+    """Səviyyə dəyişikliklərinin tarixçəsi (kim, nə vaxt, haradan → hara)."""
+    __tablename__ = 'level_history'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'))
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'))
+    old: Mapped[str | None] = mapped_column(String(10))
+    new: Mapped[str | None] = mapped_column(String(10))
+    source: Mapped[str] = mapped_column(String(10))                    # manual | auto
+    score: Mapped[float | None] = mapped_column(Float)
+    by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class ClassEvent(Base):

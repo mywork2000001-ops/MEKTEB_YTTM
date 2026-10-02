@@ -82,7 +82,8 @@ def analyze(db: Session, ctx: PlanCtx, p: Period) -> dict:
     mid = p.a + (p.b - p.a) / 2
     first = _collect(db, ctx.ta.id, Period(p.a, mid))
     second = _collect(db, ctx.ta.id, Period(mid + dt.timedelta(days=1), p.b))
-    manual = {o.student_id: o.level for o in db.scalars(select(LevelOverride).where(LevelOverride.assignment_id == ctx.ta.id))}
+    ovr = {o.student_id: o for o in db.scalars(select(LevelOverride).where(LevelOverride.assignment_id == ctx.ta.id))}
+    manual = {k: o.level for k, o in ovr.items()}
     rows = []
     for s in studs:
         m = _metrics(s.id, *data)
@@ -95,7 +96,7 @@ def analyze(db: Session, ctx: PlanCtx, p: Period) -> dict:
         rows.append({'student_id': s.id, 'full_name': s.full_name, 'portal_code': s.portal_code,
                      'ix_math': s.score_math, 'baseline_level': LEVEL_NAMES.get(base), 'auto_level': auto_level,
                      'level': manual.get(s.id, auto_level), 'manual_level': manual.get(s.id),
-                     'level_source': 'müəllim' if s.id in manual else 'nəticələr' if m['rating'] is not None else 'IX sinif balı',
+                     'level_source': ('bölgü' if ovr[s.id].source == 'auto' else 'müəllim') if s.id in manual else 'nəticələr' if m['rating'] is not None else 'IX sinif balı',
                      'score_language': s.score_language, 'score_foreign': s.score_foreign,
                      'progress': round(r2 - r1, 1) if r1 is not None and r2 is not None else None,
                      'risk': {'score': risk.score, 'status': risk.status, 'factors': risk.factors}, **m})
