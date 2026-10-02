@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { get, post } from '../../api'
 import { MathText } from '../../MathText'
 import { Drawer, ErrorBox, Field, fmtDate, Loading, Pill, toast } from '../../ui'
+import { sectionText } from './Plan'
 import { BankPicker, fromSnapshot, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
 
 type Peer = {
@@ -92,8 +93,10 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
         <button className="btn primary" disabled={busy} onClick={submit}>Göndər</button></>}>
       {!d ? (err ? <ErrorBox error={err} /> : <Loading />) : (
         <div className="stack">
-          <div className="banner"><b>№{d.topic.seq} {d.topic.topic}</b>{d.topic.section ? <span className="muted"> · {d.topic.section}</span> : null}
-            <br /><span className="small">{f.journal ? 'Test bağlananda nəticə (bal və qiymət) formativ jurnala – bu mövzunun dərsinə yazılır. Testi yazmayana qiymət yazılmır.' : 'Nəticə jurnala avtomatik yazılmayacaq.'}</span></div>
+          <div className="banner"><div>
+            <b>№{d.topic.seq} {d.topic.topic}</b>{d.topic.section ? <span className="muted"> · {sectionText(d.topic.section)}</span> : null}
+            <div className="small" style={{ marginTop: 4 }}>{f.journal ? 'Test bağlananda nəticə (bal və qiymət) formativ jurnala – bu mövzunun dərsinə yazılır. Testi yazmayana qiymət yazılmır.' : 'Nəticə jurnala avtomatik yazılmayacaq.'}</div>
+          </div></div>
           <div className="fg">
             <Field label="Ad" full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
             <Field label="Həll müddəti (dəq)"><input type="number" min={1} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>

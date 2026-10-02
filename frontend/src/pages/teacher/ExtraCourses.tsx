@@ -321,6 +321,8 @@ function BulkTopics({ course, onClose, onDone }: { course: number; onClose: () =
   )
 }
 
+const sign = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+' : ''}${fmt(v)}`)
+
 function Stats({ id }: { id: number }) {
   const [d, err] = useLoad<any>(() => get(`/api/extra/${id}/stats`), [id])
   if (!d) return err ? <ErrorBox error={err} /> : <Loading />
@@ -334,10 +336,14 @@ function Stats({ id }: { id: number }) {
         <Stat value={fmt(s.attendance_pct) + '%'} label="orta iştirak" /><Stat value={fmt(s.extra_test_avg) + '%'} label="məşğələ testi" />
       </div>
       {s.at_risk > 0 && <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>{s.at_risk} şagird ardıcıl 2 məşğələni buraxıb – valideynlə əlaqə saxlayın.</div>}
-      <section className="panel"><h2>Effekt <small>kurs başlayandan sonra mövzu testləri və sınaqlar</small></h2>
-        <div className="row"><Pill tone="ok">iştirakçılar ({cmp.participants}): {fmt(cmp.participants_pct)}%</Pill><Pill>digərləri ({cmp.others}): {fmt(cmp.others_pct)}%</Pill>
-          {cmp.participants_pct != null && cmp.others_pct != null && <b>fərq {cmp.participants_pct - cmp.others_pct > 0 ? '+' : ''}{fmt(cmp.participants_pct - cmp.others_pct)}</b>}</div>
-        <p className="small muted">İştirakçı – məşğələlərin ən azı yarısında olan şagird. Format üzrə iştirak: əyani {fmt(d.by_format['əyani'].attendance_pct)}%, onlayn {fmt(d.by_format.onlayn.attendance_pct)}%.</p></section>
+      <section className="panel"><h2>Effekt <small>irəliləyiş: kursdan sonrakı nəticə − əvvəlki (mövzu testləri və sınaqlar)</small></h2>
+        {cmp.participants_delta == null && cmp.others_delta == null ? <p className="small muted">Kursdan əvvəl və sonra test/sınaq nəticəsi yığıldıqca burada görünəcək.</p> : (
+          <div className="row">
+            <Pill tone="ok">iştirakçılar ({cmp.participants}): {sign(cmp.participants_delta)}</Pill><Pill>digərləri ({cmp.others}): {sign(cmp.others_delta)}</Pill>
+            {cmp.participants_delta != null && cmp.others_delta != null && <b>fərq {sign(cmp.participants_delta - cmp.others_delta)}</b>}
+          </div>)}
+        <p className="small muted">İştirakçı – məşğələlərin ən azı yarısında olan şagird. Zəif qrup üçün mütləq nəticə yox, irəliləyiş müqayisə olunur.
+          Kursdan sonrakı orta: iştirakçılar {fmt(cmp.participants_pct)}%, digərləri {fmt(cmp.others_pct)}%. Format üzrə iştirak: əyani {fmt(d.by_format['əyani'].attendance_pct)}%, onlayn {fmt(d.by_format.onlayn.attendance_pct)}%.</p></section>
       <div className="tbl-wrap"><table>
         <thead><tr><th>Şagird</th><th className="r">İştirak</th><th className="r">Test %</th><th className="r">Əvvəl</th><th className="r">Sonra</th><th className="r">±</th></tr></thead>
         <tbody>{d.students.map((x: any) => (

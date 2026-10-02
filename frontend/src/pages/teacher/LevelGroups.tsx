@@ -38,7 +38,7 @@ export default function LevelGroups({ ta }: { ta: MyLesson }) {
       </div>
       <p className="small muted" style={{ marginTop: 0 }}>Səviyyə fənn üzrədir və sinif daxilində virtual qrupdur (ayrıca jurnal yaranmır). Onlayn test və tapşırığı
         «Kimə» bölməsində qrupa göndərmək olar. Şagird öz səviyyə etiketini görmür. 🔒 – müəllimin qərarı, avtomatik bölgü və təkliflər toxunmur.</p>
-      <div className="grid g3">
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))' }}>
         {COLS.map(k => (
           <section key={k} className="panel">
             <h2><Pill tone={tone(k)}>{k}</Pill> <small>{d.groups[k].length} şagird</small></h2>
@@ -60,15 +60,17 @@ export default function LevelGroups({ ta }: { ta: MyLesson }) {
 }
 
 function MemberRow({ m, level, onMove }: { m: Member; level: string | null; onMove: (m: Member, l: string | null, locked?: boolean) => void }) {
+  const c = comps(m.components)
   return (
-    <div className="row" style={{ borderTop: '1px solid var(--line)', padding: '6px 0', gap: 6, flexWrap: 'nowrap' }}>
-      <span className="grow" style={{ minWidth: 0 }}>
-        <span className="small"><b>{m.full_name}</b>{m.locked ? ' 🔒' : ''}</span>
-        <span className="sub small muted" style={{ display: 'block' }}>{m.score != null ? `bal ${fmt(m.score)} · ` : ''}{comps(m.components) || (m.source === 'manual' ? 'müəllim' : '')}</span>
-      </span>
-      <select className="grade-sel" value={level || ''} aria-label="Köçür" onChange={e => onMove(m, e.target.value || null)}>
-        <option value="">—</option>{COLS.map(k => <option key={k} value={k}>{k}</option>)}</select>
-      {level && <button className="btn sm ghost" title={m.locked ? 'Kilidi aç (təkliflər işləsin)' : 'Kilidlə'} onClick={() => onMove(m, level, !m.locked)}>{m.locked ? '🔓' : '🔒'}</button>}
+    <div style={{ borderTop: '1px solid var(--line)', padding: '8px 0', display: 'grid', gap: 3 }}>
+      <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+        <span className="small grow" style={{ minWidth: 0, overflowWrap: 'anywhere' }}><b>{m.full_name}</b>{m.locked ? ' 🔒' : ''}</span>
+        {m.score != null && <span className="small num" style={{ fontWeight: 600 }}>{fmt(m.score)}</span>}
+        <select className="grade-sel" value={level || ''} aria-label="Köçür" onChange={e => onMove(m, e.target.value || null)}>
+          <option value="">—</option>{COLS.map(k => <option key={k} value={k}>{k}</option>)}</select>
+        {level && <button className="btn sm ghost" title={m.locked ? 'Kilidi aç (təkliflər işləsin)' : 'Kilidlə'} onClick={() => onMove(m, level, !m.locked)}>{m.locked ? '🔓' : '🔒'}</button>}
+      </div>
+      {(c || m.source === 'manual') && <span className="small muted">{c || 'müəllimin qərarı'}</span>}
     </div>
   )
 }

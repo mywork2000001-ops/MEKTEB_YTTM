@@ -608,10 +608,19 @@ def stats(cid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
                          'extra_test_avg': _avg([p for _, p in extra.get(m.id, [])]),
                          'before_pct': before, 'after_pct': after,
                          'delta': round(after - before, 1) if before is not None and after is not None else None})
-    # iştirakçı (≥50 % iştirak) ↔ eyni siniflərdə qalan şagirdlər – kurs başlayandan sonrakı mövzu testi/sınaq ortası
+    # iştirakçı (≥50 % iştirak) ↔ eyni siniflərdə qalan şagirdlər. Əsas göstərici – İRƏLİLƏYİŞ (kursdan sonra − əvvəl):
+    # zəif qrupu güclü şagirdlərlə mütləq nəticəyə görə müqayisə etmək həmişə mənfi fərq verir və yanıldır.
     active = {s['student_id'] for s in students if (s['attendance_pct'] or 0) >= 50}
     others = {x.id for i in c.audience['ta_ids'] for x in roster(db, db.get(TeachingAssignment, i))} - active
     after_of = lambda ids: _avg([_avg([p for t, p in main.get(i, []) if t >= start]) for i in ids])
+
+    def delta_of(ids):
+        out = []
+        for i in ids:
+            b_, a_ = _avg([p for t, p in main.get(i, []) if t < start]), _avg([p for t, p in main.get(i, []) if t >= start])
+            if b_ is not None and a_ is not None:
+                out.append(a_ - b_)
+        return _avg(out)
     by_format = {}
     for f in ('əyani', 'onlayn'):
         fs = [x for x in sessions if x['format'] == f]
@@ -623,8 +632,8 @@ def stats(cid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
                     'students': len(ms), 'attendance_pct': _avg([s['attendance_pct'] for s in students]),
                     'extra_test_avg': _avg([s['extra_test_avg'] for s in students]),
                     'at_risk': sum(s['risk'] for s in students)},
-        'compare': {'participants': len(active), 'participants_pct': after_of(active),
-                    'others': len(others), 'others_pct': after_of(others)},
+        'compare': {'participants': len(active), 'participants_pct': after_of(active), 'participants_delta': delta_of(active),
+                    'others': len(others), 'others_pct': after_of(others), 'others_delta': delta_of(others)},
         'by_format': by_format, 'sessions': sessions, 'students': students,
     }
 

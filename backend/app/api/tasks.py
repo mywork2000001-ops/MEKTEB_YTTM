@@ -173,7 +173,8 @@ def list_tasks(ta_id: int, archived: bool = False, user: User = Depends(staff), 
     for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, flt)
                         .order_by(OnlineTask.opens_at.desc())):
         expire_due(db, t)
-        done = db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.submitted_at.is_not(None))).all()
+        done = [a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.submitted_at.is_not(None)))
+                if a.total]                           # sualsız (boş) tapşırıq ortanı sıfıra bölməsin
         pl = db.get(PlanLesson, t.plan_lesson_id) if t.plan_lesson_id else None
         out.append({**task_out(t), 'submitted': len(done), 'topic': pl and {'seq': pl.seq, 'topic': pl.topic},
                     'avg_pct': round(sum(a.correct * 100 / a.total for a in done) / len(done), 1) if done else None})

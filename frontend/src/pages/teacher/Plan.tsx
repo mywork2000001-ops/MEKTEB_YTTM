@@ -13,7 +13,7 @@ type Item = { date: string; weekday: string; period: number; time: string | null
     id: number; standards?: string[] | null; tt_pages?: string | null; tests?: TopicTestInfo[] } | null }
 const DAYS = ['Bazar', 'Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə']
 /** «IV BÖLMƏ – FAİZ. NİSBƏT» -> «IV bölmə – Faiz. Nisbət» (böyük hərflərlə yazılmış bölmə adı oxunaqlı olsun) */
-const sectionText = (s: string) => s.replace(/\s+/g, ' ').trim().split(' – ').map((part, i) => {
+export const sectionText = (s: string) => s.replace(/\s+/g, ' ').trim().split(' – ').map((part, i) => {
   if (i === 0) return part.replace(/BÖLMƏ/i, 'bölmə')
   const low = part.toLocaleLowerCase('az')
   return low.replace(/(^|[.!?]\s+)(\p{L})/gu, (_, a, c) => a + c.toLocaleUpperCase('az'))

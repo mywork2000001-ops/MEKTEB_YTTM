@@ -102,6 +102,7 @@ def test_extra_course_flow(world, clock, monkeypatch):
     assert by[st[2]['id']]['attendance_pct'] == 0.0 and by[st[2]['id']]['risk']
     assert stt['sessions'][0]['test_avg'] == 100.0 and stt['by_format']['onlayn']['held'] == 1
     assert stt['compare']['participants'] == 1 and stt['compare']['others'] == 2
+    assert {'participants_delta', 'others_delta'} <= set(stt['compare'])          # irəliləyiş müqayisəsi
     me = z.get('/api/portal/extra').json()[0]
     assert (me['present'], me['held']) == (1, 1) and me['sessions'][0]['test']['pct'] == 100.0
 
