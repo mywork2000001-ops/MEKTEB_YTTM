@@ -262,9 +262,18 @@ Mərhələ təklifi: **I** – 1–5 (mövzu testi + jurnal), **II** – 6 (sın
 - Miqrasiyalar təmiz bazada (`MK_DATABASE_URL`) `upgrade head → downgrade c9d3e4f5a6b7 → upgrade head` yoxlanıb; mövcud bank faylı düzgün təsnif olunur.
 - Yoxlama: **158 backend testi** keçdi (yeni: `test_api_topic_tests.py`, `test_api_exams_online.py`, `test_api_levels.py`, `test_api_extra.py`), `tsc`, `vite build`, `oxlint` (yeni fayllar) təmiz.
 
-**Edilməyən / sonraya qalan (şüurlu qərar):**
-- Səviyyəyə görə **variantlı** mövzu testi (3 sual dəsti bir testdə) – hələ yoxdur; mövzu testini səviyyə qrupuna «Tapşırıqlar → Kimə» ilə göndərmək olur, «🧪 Test» panelində hədəf hələ bütün sinifdir.
-- Mövzu testinin gələn ilə surətlənməsi, PWA bildirişi – yoxdur.
-- Əlavə məşğələdə material «Materiallar» bölməsinə bağlı deyil – sərbəst mətn/keçid sahəsidir.
-- Sınaqda «təkrar cəhd» nişanı audit jurnalındakı «cəhd silindi» qeydindən hesablanır.
-- **Brauzerdə əl ilə yoxlama (360 px daxil) aparılmayıb**; canlıda `alembic upgrade head` (4 yeni miqrasiya) getdiyini yoxlamaq lazımdır.
+**Tamamlama (03.10.2026, «əvvəlcə işi tamamla»):**
+- «🧪 Test» panelində hər sinif üçün **«Kimə»**: bütün sinif və ya Zəif / Orta / Güclü qrup(lar).
+- **Səviyyəyə görə variant**: hər səviyyəyə öz sualları; eyni paketdə hər qrupa ayrıca tapşırıq yaranır (jurnala yazılış, nəticə, təkrar cəhd olduğu kimi işləyir);
+  səviyyəsi və ya variantı olmayan şagird «Orta» variantını alır; qiymət öz variantının sual sayından.
+- **Əvvəlki testlərdən götür**: bu mövzu üçün əvvəl (digər siniflərdə, keçən illərdə) verdiyiniz testlərin sualları bir kliklə – gələn ilin planında da işləyir
+  (`GET /api/plan/{ta}/topics/{pl}/previous`, mövzu normallaşdırılmış mətnlə tanınır).
+- **Əlavə məşğələ ↔ «Materiallar»**: məşğələyə material bağlanır (miqrasiya `b5c9d2e4f7a1`); şagird yalnız özünə açıq olan materialları görür.
+- **Bildirişlər**: `GET /api/portal/notifications` (açıq / 24 saat ərzində açılacaq test, 7 gün ərzində sınaq nəticəsi, bu gün / sabah məşğələ);
+  «Bu gün» səhifəsində panel, «yeni» nişanı (cihazda), tətbiq açıq olanda brauzer bildirişi; bildirişə toxunanda tətbiq həmin səhifədə açılır.
+- Canlı miqrasiya: tətbiq işə düşəndə `alembic upgrade head` özü icra olunur (`main.py`) – deploy zamanı avtomatikdir.
+- Yoxlama: **160 backend testi** (yeni `test_api_completion.py`), `tsc`, `vite build`, `oxlint` təmiz; miqrasiya təmiz bazada yuxarı-aşağı-yuxarı.
+
+**Qalan (sizin qərarınız / açar tələb edir):**
+- **Əsl Web Push** (tətbiq bağlı olanda da telefona gələn): VAPID açarları Render-də (`MK_VAPID_*`) və `pywebpush` asılılığı lazımdır – açarları siz yaradıb qoymalısınız; indiki bildiriş tətbiq açıq olanda işləyir.
+- **Brauzerdə əl ilə yoxlama (360 px daxil)** aparılmayıb.

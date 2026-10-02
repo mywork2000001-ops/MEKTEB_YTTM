@@ -13,7 +13,7 @@ export type Q = {
   key: string; kind: 'mcq' | 'open'; text: string; options: string[]; correct: number; answer: string; explanation: string
   image: string | null; bank_id: number | null; source: string | null; lesson: string | null; raw: any | null
 }
-const fromSnapshot = (s: any, key: string): Q => ({
+export const fromSnapshot = (s: any, key: string): Q => ({
   key, kind: s.kind, text: ml(s.text), options: (s.options || []).map((o: ML) => ml(o)), correct: s.correct ?? 0,
   answer: s.answer || '', explanation: ml(s.explanation), image: s.image || null, bank_id: s.bank_id ?? null,
   source: s.source ?? null, lesson: s.lesson ?? null, raw: s,

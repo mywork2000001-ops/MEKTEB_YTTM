@@ -9,7 +9,8 @@ import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Q } from './Ta
 
 type Sess = { id: number; date: string; weekday: string; start: string; end: string; format: 'əyani' | 'onlayn'; room: string | null; link: string | null
   topics: { plan_lesson_id: number | null; seq: number | null; text: string }[]; goals: string | null; resources: string | null; homework: string | null
-  status: 'planned' | 'held' | 'cancelled'; note: string | null; recording_url: string | null; batch_id: number | null; present: number; joined: number; students: number | null }
+  status: 'planned' | 'held' | 'cancelled'; note: string | null; recording_url: string | null; batch_id: number | null; present: number; joined: number; students: number | null
+  material_ids: number[]; materials: { id: number; title: string; kind: string }[] }
 type Course = { id: number; title: string; subject: string; format: string; classes: string[]; audience: { ta_ids: number[]; levels: string[] | null; student_ids: number[] | null }
   schedule: { weekday: number; start: string; end: string; room?: string | null; link?: string | null }[]; starts_on: string; ends_on: string; goal: string | null
   students: number; sessions: number; held: number; cancelled: number; next: Sess | null; session_list?: Sess[]; members?: { student_id: number; full_name: string; class_name: string }[]; warnings?: string[] }
@@ -151,6 +152,7 @@ function CourseView({ id, archived, onClose }: { id: number; archived: boolean; 
                     {s.joined > 0 && s.status === 'planned' && <Pill tone="ok">qoşulub: {s.joined}</Pill>}
                     {s.batch_id && <Pill tone="acc">test</Pill>}</div>
                   <span className="small">{s.topics.length ? s.topics.map(t => (t.seq ? `№${t.seq} ` : '') + t.text).join(' · ') : <span className="muted">mövzu təyin edilməyib</span>}</span>
+                  {s.materials.length > 0 && <span className="small">Material: {s.materials.map(m => m.title).join(' · ')}</span>}
                   {(s.homework || s.note) && <span className="small muted">{s.homework ? `Ev tapşırığı: ${s.homework}` : ''}{s.note ? ` · ${s.note}` : ''}</span>}
                   {!archived && <div className="row" style={{ gap: 6 }}>
                     <button className="btn sm" onClick={() => setEdit(s)}>Redaktə</button>
@@ -180,6 +182,8 @@ function SessionEdit({ course, s, onClose, onDone }: { course: Course; s: Sess |
   }))
   const [topics, setTopics] = useState<{ plan_lesson_id: number | null; text: string }[]>(s?.topics.map(t => ({ plan_lesson_id: t.plan_lesson_id, text: t.plan_lesson_id ? '' : t.text })) || [])
   const [free, setFree] = useState('')
+  const [mats] = useLoad<any[]>(() => Promise.all(course.audience.ta_ids.map(i => get<any[]>(`/api/materials/${i}`).catch(() => []))).then(x => x.flat()), [course.id])
+  const [matIds, setMatIds] = useState<number[]>(s?.material_ids || [])
   const [err, setErr] = useState<unknown>()
   const label = (t: { plan_lesson_id: number | null; text: string }) => {
     const p = sug?.plan.find(x => x.id === t.plan_lesson_id)
@@ -187,7 +191,7 @@ function SessionEdit({ course, s, onClose, onDone }: { course: Course; s: Sess |
   }
   const save = async () => {
     const body = { ...f, room: f.room || null, link: f.link || null, recording_url: f.recording_url || null, note: f.note || null,
-      topics: topics.map(t => ({ plan_lesson_id: t.plan_lesson_id, text: t.text || null })) }
+      topics: topics.map(t => ({ plan_lesson_id: t.plan_lesson_id, text: t.text || null })), material_ids: matIds }
     try {
       if (s) await put(`/api/extra/${course.id}/sessions/${s.id}`, body)
       else await post(`/api/extra/${course.id}/sessions`, body)
@@ -217,9 +221,16 @@ function SessionEdit({ course, s, onClose, onDone }: { course: Course; s: Sess |
           <div className="row" style={{ marginTop: 6 }}><input className="sel grow" placeholder="və ya sərbəst mövzu (məs. sınaq səhvlərinin təhlili)" value={free} onChange={e => setFree(e.target.value)} />
             <button className="btn sm" disabled={!free.trim()} onClick={() => { setTopics(x => [...x, { plan_lesson_id: null, text: free.trim() }]); setFree('') }}>Əlavə et</button></div>
         </fieldset>
+        <fieldset><legend>Materiallar <span className="small muted">(«Materiallar» bölmənizdən)</span></legend>
+          {!mats ? <Loading /> : mats.length === 0 ? <p className="small muted">Bu siniflər üçün material yoxdur – əvvəl «Materiallar» bölməsində əlavə edin.</p>
+            : <div style={{ maxHeight: 200, overflow: 'auto' }}>{mats.map(m => (
+              <label key={m.id} className="check"><input type="checkbox" checked={matIds.includes(m.id)} onChange={e => setMatIds(x => e.target.checked ? [...x, m.id] : x.filter(v => v !== m.id))} />
+                {m.title} <span className="small muted">· {m.kind === 'video' ? 'video' : m.kind === 'link' ? 'keçid' : m.kind === 'task' ? 'tapşırıq' : 'qeyd'}{m.student_ids ? ' · seçilmiş şagirdlərə' : ''}</span></label>))}</div>}
+          <p className="small muted" style={{ margin: '6px 0 0' }}>Şagird yalnız özünə açıq olan materialları görür.</p>
+        </fieldset>
         <div className="fg">
           <Field label="Məqsəd" full><textarea value={f.goals} onChange={e => setF({ ...f, goals: e.target.value })} /></Field>
-          <Field label="Material / keçidlər" full><textarea value={f.resources} onChange={e => setF({ ...f, resources: e.target.value })} /></Field>
+          <Field label="Əlavə qeyd / keçidlər" full><textarea value={f.resources} onChange={e => setF({ ...f, resources: e.target.value })} /></Field>
           <Field label="Ev tapşırığı" full><input value={f.homework} onChange={e => setF({ ...f, homework: e.target.value })} /></Field>
           <Field label="Status"><select value={f.status} onChange={e => setF({ ...f, status: e.target.value as any })}>
             <option value="planned">planlaşdırılıb</option><option value="cancelled">ləğv edildi</option>{s?.status === 'held' && <option value="held">keçirildi</option>}</select></Field>

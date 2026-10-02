@@ -22,8 +22,9 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import staff
-from ..models import (ExtraAttendance, ExtraCourse, ExtraSession, Holiday, LevelOverride, OnlineTask, PlanLesson,
-                      SchoolClass, Student, TaskAttempt, TeachingAssignment, TestBatch, TopicProgress, User, now)
+from ..models import (ExtraAttendance, ExtraCourse, ExtraSession, Holiday, LevelOverride, Material, OnlineTask,
+                      PlanLesson, SchoolClass, Student, TaskAttempt, TeachingAssignment, TestBatch, TopicProgress, User,
+                      now)
 from ..services import SCHOOL_TZ, own_assignment, roster
 from .common import audit, current_year, need_school
 from .plan import bell
@@ -177,6 +178,9 @@ def session_out(db: Session, s: ExtraSession, n_students: int | None = None) -> 
     return {'id': s.id, 'date': s.date, 'weekday': DAYS[s.date.weekday()], 'start': s.start, 'end': s.end,
             'format': s.format, 'room': s.room, 'link': s.link, 'topics': _topics_text(db, s), 'goals': s.goals,
             'resources': s.resources, 'homework': s.homework, 'status': s.status, 'note': s.note,
+            'material_ids': s.material_ids or [],
+            'materials': [{'id': m.id, 'title': m.title, 'kind': m.kind} for m in
+                          (db.get(Material, i) for i in s.material_ids or []) if m and not m.archived_at],
             'recording_url': s.recording_url, 'batch_id': s.batch_id,
             'present': sum(a.status in ('var', 'gecikdi') for a in att), 'joined': sum(a.joined_at is not None for a in att),
             'students': n_students}
@@ -328,6 +332,7 @@ class SessionIn(BaseModel):
     topics: list[TopicRef] | None = Field(None, max_length=10)
     goals: str | None = Field(None, max_length=2000)
     resources: str | None = Field(None, max_length=4000)
+    material_ids: list[int] | None = Field(None, max_length=20)
     homework: str | None = Field(None, max_length=2000)
     status: Literal['planned', 'held', 'cancelled'] | None = None
     note: str | None = Field(None, max_length=300)
@@ -354,6 +359,12 @@ def _apply_session(db: Session, c: ExtraCourse, s: ExtraSession, body: SessionIn
             raise HTTPException(400, 'Mövzu kursun siniflərinin perspektiv planından olmalıdır')
         data['topics'] = [{'plan_lesson_id': t.plan_lesson_id, 'text': (t.text or '').strip() or None}
                           for t in body.topics if t.plan_lesson_id or (t.text or '').strip()]
+    if 'material_ids' in data and body.material_ids is not None:
+        ok_m = set(db.scalars(select(Material.id).where(Material.assignment_id.in_(c.audience['ta_ids']),
+                                                         Material.archived_at.is_(None))))
+        if set(body.material_ids) - ok_m:
+            raise HTTPException(400, 'Material kursun siniflərinin «Materiallar» bölməsindən olmalıdır')
+        data['material_ids'] = list(dict.fromkeys(body.material_ids)) or None
     if data.get('status') == 'cancelled' and not (body.note or s.note):
         raise HTTPException(400, 'Ləğv səbəbini yazın')
     for k, v in data.items():
@@ -622,7 +633,9 @@ def stats(cid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
 def student_courses(db: Session, s: Student) -> list[dict]:
     """Şagirdin kursları: plan (keçmiş və gələcək), öz iştirakı, məşğələ testlərinin nəticəsi.
     Onlayn keçid yalnız başlamazdan 10 dəqiqə əvvəldən bitənə qədər verilir."""
+    from .materials import _my_materials, material_out
     t = now().astimezone(TZ)
+    visible = {m.id: m for m in _my_materials(db, s)}
     out = []
     for c in db.scalars(select(ExtraCourse).where(ExtraCourse.school_id == s.school_id, ExtraCourse.archived_at.is_(None))
                         .order_by(ExtraCourse.starts_on)):
@@ -647,7 +660,9 @@ def student_courses(db: Session, s: Student) -> list[dict]:
             rows.append({'id': x.id, 'date': x.date, 'weekday': DAYS[x.date.weekday()], 'start': x.start, 'end': x.end,
                          'format': x.format, 'room': x.room, 'status': x.status, 'note': x.note,
                          'topics': [y['text'] for y in _topics_text(db, x)], 'goals': x.goals, 'resources': x.resources,
-                         'homework': x.homework, 'recording_url': x.recording_url if x.status == 'held' else None,
+                         'homework': x.homework,
+                         'materials': [material_out(visible[i]) for i in x.material_ids or [] if i in visible],
+                         'recording_url': x.recording_url if x.status == 'held' else None,
                          'link': x.link if live and x.format == 'onlayn' else None, 'live': live,
                          'my_status': a.status if a else None, 'joined': bool(a and a.joined_at), 'test': test})
         out.append({'id': c.id, 'title': c.title, 'subject': c.subject, 'format': c.format, 'teacher': teacher.full_name,

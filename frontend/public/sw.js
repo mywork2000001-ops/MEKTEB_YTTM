@@ -38,3 +38,14 @@ function withHeader(resp) {
   h.set('X-From-Cache', '1')
   return resp.blob().then(b => new Response(b, { status: resp.status, headers: h }))
 }
+
+// bildirişə toxunanda tətbiq açılır (açıqdırsa – həmin pəncərə) və bildirişin keçidinə gedir
+self.addEventListener('notificationclick', e => {
+  e.notification.close()
+  const link = (e.notification.data && e.notification.data.link) || '/'
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(ws => {
+    const w = ws.find(x => new URL(x.url).origin === location.origin)
+    if (w) return w.focus().then(() => w.navigate(link))
+    return self.clients.openWindow(link)
+  }))
+})

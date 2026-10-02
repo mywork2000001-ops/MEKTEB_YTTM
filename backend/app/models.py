@@ -652,6 +652,7 @@ class ExtraSession(Base):
     topics: Mapped[list | None] = mapped_column(JSON)                  # [{"plan_lesson_id": 12 | null, "text": "..."}]
     goals: Mapped[str | None] = mapped_column(Text)
     resources: Mapped[str | None] = mapped_column(Text)                # material / keçidlər
+    material_ids: Mapped[list | None] = mapped_column(JSON)            # «Materiallar» bölməsindən (şagird yalnız ona açıq olanları görür)
     homework: Mapped[str | None] = mapped_column(Text)
     batch_id: Mapped[int | None] = mapped_column(ForeignKey('test_batches.id', ondelete='SET NULL'))   # məşğələ testi
     status: Mapped[str] = mapped_column(String(10), default='planned')   # planned | held | cancelled

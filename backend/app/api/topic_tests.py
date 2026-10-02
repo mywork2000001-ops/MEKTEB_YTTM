@@ -20,7 +20,8 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import staff
-from ..models import (OnlineTask, PlanLesson, SchoolClass, TaskAttempt, TeachingAssignment, TestBatch, User, now)
+from ..models import (LevelOverride, OnlineTask, PlanLesson, SchoolClass, TaskAttempt, TeachingAssignment, TestBatch, User,
+                      now)
 from ..services import SCHOOL_TZ, class_grade, own_assignment, plan_ctx, roster
 from .common import audit
 from .plan import bell
@@ -109,6 +110,12 @@ class TopicTarget(BaseModel):
     opens_at: dt.datetime
     closes_at: dt.datetime
     student_ids: list[int] | None = None
+    levels: list[Literal['Zəif', 'Orta', 'Güclü']] | None = None     # hədəf: yalnız bu səviyyə qrupları
+
+
+class VariantQs(BaseModel):
+    bank_ids: list[int] = Field(default_factory=list)
+    custom: list[CustomQ] = Field(default_factory=list)
 
 
 class TopicTestIn(BaseModel):
@@ -121,13 +128,18 @@ class TopicTestIn(BaseModel):
     show_answers: Literal['after_close', 'after_submit', 'never'] = 'after_close'
     journal_auto: bool = True
     targets: list[TopicTarget] = Field(min_length=1, max_length=30)
+    # səviyyəyə görə variant: hər qrupa öz sualları (səviyyəsi və ya variantı olmayan şagird «Orta» variantı alır)
+    variants: dict[Literal['Zəif', 'Orta', 'Güclü'], VariantQs] | None = None
 
     @model_validator(mode='after')
     def _v(self):
-        if not self.bank_ids and not self.custom:
-            raise ValueError('ən azı bir sual seçin')
-        if len(self.bank_ids) + len(self.custom) > 100:
+        sets = list(self.variants.values()) if self.variants else [self]
+        if not sets or any(not v.bank_ids and not v.custom for v in sets):
+            raise ValueError('ən azı bir sual seçin' + (' (hər variantda)' if self.variants else ''))
+        if any(len(v.bank_ids) + len(v.custom) > 100 for v in sets):
             raise ValueError('bir testdə ən çoxu 100 sual')
+        if self.variants and 'Orta' not in self.variants:
+            raise ValueError('variantlı testdə «Orta» variantı məcburidir (səviyyəsi olmayanlar onu alır)')
         if len({t.ta_id for t in self.targets}) != len(self.targets):
             raise ValueError('bir sinif iki dəfə seçilib')
         return self
@@ -155,25 +167,45 @@ def create_topic_test(ta_id: int, pl_id: int, body: TopicTestIn, user: User = De
             raise HTTPException(400, f'{cls.name}: bitmə vaxtı keçmişdədir')
         if body.duration_min > (c - o).total_seconds() / 60:
             raise HTTPException(400, f'{cls.name}: həll müddəti ({body.duration_min} dəq) açıq qalma aralığından uzundur')
+        studs = [s.id for s in roster(db, t)]
         if tg.student_ids is not None:
-            if not tg.student_ids or set(tg.student_ids) - {s.id for s in roster(db, t)}:
+            if not tg.student_ids or set(tg.student_ids) - set(studs):
                 raise HTTPException(400, f'{cls.name}: şagirdlər bu sinifdən/qrupdan seçilməlidir')
-        plan.append((t, pl, o, c, tg.student_ids))
-    qs = _snapshot(db, body.bank_ids) + [custom_snapshot(q) for q in body.custom]
+            studs = list(tg.student_ids)
+        lv = {o_.student_id: o_.level for o_ in db.scalars(select(LevelOverride).where(LevelOverride.assignment_id == t.id))}
+        if tg.levels:
+            studs = [x for x in studs if lv.get(x) in tg.levels]
+            if not studs:
+                raise HTTPException(400, f'{cls.name}: seçilən səviyyə qrupunda şagird yoxdur (Jurnal → Səviyyə qrupları)')
+        if body.variants:                    # hər səviyyəyə öz tapşırığı (səviyyəsi və ya variantı olmayan – «Orta»)
+            var_of = lambda x: lv.get(x) if lv.get(x) in body.variants else 'Orta'
+            parts = [(k, [x for x in studs if var_of(x) == k]) for k in ('Zəif', 'Orta', 'Güclü') if k in body.variants]
+            parts = [(k, ids) for k, ids in parts if ids]
+        else:
+            parts = [(None, None if tg.student_ids is None and not tg.levels else studs)]
+        plan.append((t, pl, o, c, parts))
+    if body.variants:
+        qsets = {k: _snapshot(db, v.bank_ids) + [custom_snapshot(q) for q in v.custom] for k, v in body.variants.items()}
+    else:
+        qsets = {None: _snapshot(db, body.bank_ids) + [custom_snapshot(q) for q in body.custom]}
     batch = TestBatch(kind='movzu', title=body.title, subject=ta.subject,
                       grade=class_grade(db, db.get(SchoolClass, ta.class_id)), created_by=user.id)
     db.add(batch)
     db.flush()
     made = []
-    for t, pl, o, c, sids in plan:
-        task = OnlineTask(assignment_id=t.id, title=body.title, description=body.description, opens_at=o, closes_at=c,
-                          duration_min=body.duration_min, questions=copy.deepcopy(qs), shuffle=body.shuffle,
-                          show_answers=body.show_answers, student_ids=sids, created_by=user.id, kind='movzu',
-                          batch_id=batch.id, plan_lesson_id=pl.id, journal_auto=body.journal_auto)
-        db.add(task)
-        db.flush()
-        made.append(task)
-        audit(db, user, 'create', 'task', task.id, kind='movzu', batch=batch.id, plan_seq=pl.seq, questions=len(qs))
+    for t, pl, o, c, parts in plan:
+        for level, sids in parts:
+            qs = qsets[level]
+            task = OnlineTask(assignment_id=t.id, title=f'{body.title} · {level} variant' if level else body.title,
+                              description=body.description, opens_at=o, closes_at=c,
+                              duration_min=body.duration_min, questions=copy.deepcopy(qs), shuffle=body.shuffle,
+                              show_answers=body.show_answers, student_ids=sids, created_by=user.id, kind='movzu',
+                              batch_id=batch.id, plan_lesson_id=pl.id, journal_auto=body.journal_auto)
+            db.add(task)
+            db.flush()
+            made.append(task)
+            audit(db, user, 'create', 'task', task.id, kind='movzu', batch=batch.id, plan_seq=pl.seq, questions=len(qs),
+                  variant=level)
     db.commit()
     return {'batch_id': batch.id, 'tasks': [{**task_out(x), 'ta_id': x.assignment_id} for x in made]}
 
@@ -222,3 +254,32 @@ def write_journal_now(ta_id: int, task_id: int, user: User = Depends(staff), db:
                                   'summativ': 'KSQ/BSQ dərsinə formativ qiymət yazılmır'}[r['status']])
     db.commit()
     return r
+
+
+@router.get('/plan/{ta_id}/topics/{pl_id}/previous')
+def previous_tests(ta_id: int, pl_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Bu mövzu üçün əvvəl istifadə etdiyiniz testlər (digər siniflər, keçən illər) – sualları yenidən götürmək üçün.
+    Mövzu normallaşdırılmış mətnə və fənnə görə tanınır; yeni ilin planı yüklənəndə də işləyir."""
+    ta = own_assignment(db, user, ta_id)
+    key = norm_topic(_pl(db, ta, pl_id).topic)
+    rows = db.execute(select(OnlineTask, PlanLesson, TeachingAssignment)
+                      .join(PlanLesson, PlanLesson.id == OnlineTask.plan_lesson_id)
+                      .join(TeachingAssignment, TeachingAssignment.id == OnlineTask.assignment_id)
+                      .where(TeachingAssignment.teacher_id == user.id, TeachingAssignment.subject == ta.subject,
+                             OnlineTask.kind == 'movzu').order_by(OnlineTask.id.desc())).all()
+    out, seen = [], set()
+    for t, pl, tta in rows:
+        if norm_topic(pl.topic) != key:
+            continue
+        sig = (t.batch_id, t.title)                      # eyni paketin sinif surətləri bir dəfə
+        if sig in seen:
+            continue
+        seen.add(sig)
+        done = [a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id,
+                                                                TaskAttempt.submitted_at.is_not(None))) if a.total]
+        out.append({'task_id': t.id, 'title': t.title, 'class_name': db.get(SchoolClass, tta.class_id).name,
+                    'opens_at': aware(t.opens_at), 'questions': t.questions, 'count': len(t.questions),
+                    'avg_pct': round(sum(a.correct * 100 / a.total for a in done) / len(done), 1) if done else None})
+        if len(out) >= 20:
+            break
+    return out

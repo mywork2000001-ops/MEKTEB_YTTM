@@ -45,6 +45,10 @@ export default function Extra() {
                 </div>
                 {x.topics.length > 0 && <span className="small">Mövzu: {x.topics.join(' · ')}</span>}
                 {x.homework && <span className="small">Ev tapşırığı: {x.homework}</span>}
+                {x.materials?.length > 0 && <div className="row" style={{ gap: 6 }}>{x.materials.map((m: any) => (
+                  m.url ? <a key={m.id} className="small" href={m.url} target="_blank" rel="noopener noreferrer">📎 {m.title}</a>
+                    : m.file ? <a key={m.id} className="small" href={m.file.url} target="_blank" rel="noopener noreferrer">📎 {m.title}</a>
+                      : <span key={m.id} className="small" title={m.body || ''}>📎 {m.title}</span>))}</div>}
                 {x.resources && <span className="small muted" style={{ whiteSpace: 'pre-wrap' }}>{x.resources}</span>}
                 {x.recording_url && <a className="small" href={x.recording_url} target="_blank" rel="noopener noreferrer">Məşğələnin yazısı</a>}
                 {x.live && x.format === 'onlayn' && <NextExtra x={x} onJoined={reload} />}

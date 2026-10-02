@@ -17,7 +17,7 @@ from ..domain.plan import view_range
 from ..domain.rules import grade_from_points, semester_grade
 from ..models import (Attendance, Exam, ExamScore, GroupMember, HomeworkCheck, JournalEntry, Mark, OnlineTask, Role,
                       SchoolClass, Student, TaskAttempt, TeachingAssignment, User, now)
-from ..services import journal_entries, plan_ctx, roster, taught_lesson, today
+from ..services import SCHOOL_TZ, journal_entries, plan_ctx, roster, taught_lesson, today
 from .plan import WEEKDAYS, bell
 from .tasks import aware, expire_due, finalize
 
@@ -397,6 +397,45 @@ def my_exams(user: User = Depends(student_only), db: Session = Depends(get_db)):
     db.commit()
     return {'items': items[::-1], 'trend': [{'title': x['title'], 'pct': x['pct'], 'avg_pct': x['avg_pct']} for x in got],
             'delta': round(got[-1]['pct'] - got[-2]['pct'], 1) if len(got) >= 2 else None}
+
+
+@router.get('/notifications')
+def notifications(user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Bildirişlər (serverdə saxlanmır – hər dəfə hesablanır): açıq və 24 saat ərzində açılacaq testlər,
+    yeni sınaq nəticəsi (7 gün), bu gün / sabah əlavə məşğələ. key – cihazda «görüldü» işarəsi üçün sabit açar."""
+    from zoneinfo import ZoneInfo
+    from .exams_online import student_exams
+    from .extra import student_courses
+    s = me_student(db, user)
+    at = now()
+    hm = lambda x: aware(x).astimezone(ZoneInfo(SCHOOL_TZ)).strftime('%d.%m %H:%M')
+    out = []
+    tasks = _my_tasks(db, s)
+    for t in tasks:
+        a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
+        st = _status(t, a, at)
+        kind = 'sınaq' if t.kind == 'sinaq' else 'test'
+        if st in ('açıq', 'həll edilir'):
+            out.append({'key': f'task-open-{t.id}', 'kind': kind, 'title': f'{t.title} – açıqdır',
+                        'text': f'{hm(t.closes_at)}-dək · {t.duration_min} dəq', 'link': f'/t/{t.id}', 'at': aware(t.opens_at)})
+        elif st == 'gözlənilir' and aware(t.opens_at) - at <= dt.timedelta(hours=24):
+            out.append({'key': f'task-soon-{t.id}', 'kind': kind, 'title': f'{t.title} – tezliklə',
+                        'text': f'açılır: {hm(t.opens_at)}', 'link': '/tasks', 'at': aware(t.opens_at)})
+    for x in student_exams(db, s, [t.id for t in tasks]):
+        if x.get('closed') and x.get('pct') is not None and at - x['closes_at'] <= dt.timedelta(days=7):
+            out.append({'key': f'exam-{x["batch_id"]}', 'kind': 'nəticə', 'title': f'{x["title"]} – nəticə hazırdır',
+                        'text': f'{x["pct"]}% · sinifdə {x["place_class"]}/{x["class_count"]}', 'link': '/results',
+                        'at': x['closes_at']})
+    today = at.astimezone(ZoneInfo(SCHOOL_TZ)).date()
+    for c in student_courses(db, s):
+        n = c['next']
+        if n and (n['date'] - today).days <= 1:
+            when = 'bu gün' if n['date'] == today else 'sabah'
+            out.append({'key': f'extra-{n["id"]}', 'kind': 'məşğələ', 'title': f'{c["title"]} – {when} {n["start"]}',
+                        'text': ' · '.join(n['topics']) or n['format'], 'link': '/extra',
+                        'at': dt.datetime.combine(n['date'], dt.time.fromisoformat(n['start']), tzinfo=ZoneInfo(SCHOOL_TZ))})
+    db.commit()
+    return sorted(out, key=lambda x: x['at'])
 
 
 @router.get('/extra')
