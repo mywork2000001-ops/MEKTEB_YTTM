@@ -59,6 +59,11 @@ def plan_view(ta_id: int, view: str = 'week', date: dt.date | None = None, user:
     items = [{'date': s.date, 'weekday': WEEKDAYS[s.date.weekday()], 'period': s.period,
               'time': bell(db, ctx.cls, s.period), 'held': s.held, 'shift': s.shift,
               'lesson': lesson_out(ctx.lesson_for(s))} for s in ctx.slots if a <= s.date <= b]
+    from .topic_tests import topic_tests
+    tests = topic_tests(db, ta, {i['lesson']['id'] for i in items if i['lesson']})
+    for i in items:
+        if i['lesson']:
+            i['lesson']['tests'] = tests.get(i['lesson']['id'], [])
     return {'class_name': ctx.cls.name, 'subject': ta.subject, 'from': a, 'to': b, 'items': items,
             'unfit': [lesson_out(ctx.lessons[i]) for i in ctx.unfit], 'has_plan': bool(ctx.lessons)}
 

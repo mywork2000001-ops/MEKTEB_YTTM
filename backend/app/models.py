@@ -99,6 +99,7 @@ class SchoolClass(Base, Archivable):
     parent_id: Mapped[int | None] = mapped_column(ForeignKey('classes.id'))   # bölünən qrup -> sinif
     split_with: Mapped[str | None] = mapped_column(String(120))          # bölünmə: paralel fənn (Biologiya – Şərqiyə m.)
     utis_class: Mapped[str | None] = mapped_column(String(20))           # UTİS: «10 e»
+    grade: Mapped[int | None] = mapped_column(Integer)                   # sinif rəqəmi (IX a -> 9); eyni mövzulu siniflər üçün
     exam_date: Mapped[dt.date | None] = mapped_column(Date)              # buraxılış/qəbul imtahanı (sayğac)
     bells: Mapped[dict | None] = mapped_column(JSON)                     # sinfin öz zəngi (XI peşə)
     homeroom_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'))   # sinif rəhbəri (yalnız bütöv sinif)
@@ -331,6 +332,7 @@ class Mark(Base):
     test_correct: Mapped[int | None] = mapped_column(Integer)
     test_total: Mapped[int | None] = mapped_column(Integer)
     comment: Mapped[str | None] = mapped_column(String(300))
+    task_id: Mapped[int | None] = mapped_column(ForeignKey('online_tasks.id', ondelete='SET NULL'))   # onlayn testdən gəlib
     __table_args__ = (UniqueConstraint('entry_id', 'student_id', 'kind'),)
 
 
@@ -367,6 +369,18 @@ class ExamScore(Base):
 
 
 # ---------------------------------------------------------------- onlayn tapşırıqlar (vaxtlı testlər)
+class TestBatch(Base):
+    """Bir neçə sinfə eyni anda göndərilən test (mövzu testi / sınaq) – siniflərin müqayisəsi və ümumi reytinq üçün."""
+    __tablename__ = 'test_batches'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(10))                       # movzu | sinaq
+    title: Mapped[str] = mapped_column(String(200))
+    subject: Mapped[str | None] = mapped_column(String(60))
+    grade: Mapped[int | None] = mapped_column(Integer)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class OnlineTask(Base, Archivable):
     """Suallar yaradılanda SURƏT kimi saxlanılır – test bazası sonra dəyişsə də tapşırıq dəyişmir."""
     __tablename__ = 'online_tasks'
@@ -383,6 +397,11 @@ class OnlineTask(Base, Archivable):
     student_ids: Mapped[list | None] = mapped_column(JSON)              # None = bütün sinif/qrup
     created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    kind: Mapped[str | None] = mapped_column(String(10))                # movzu (plan mövzusu üzrə) | sinaq | None – adi tapşırıq
+    batch_id: Mapped[int | None] = mapped_column(ForeignKey('test_batches.id', ondelete='SET NULL'))
+    plan_lesson_id: Mapped[int | None] = mapped_column(ForeignKey('plan_lessons.id', ondelete='SET NULL'))
+    journal_auto: Mapped[bool] = mapped_column(Boolean, default=False)  # bağlananda formativ jurnala özü yazılsın
+    journal_done_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class TaskAttempt(Base):

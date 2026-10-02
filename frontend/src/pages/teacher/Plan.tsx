@@ -3,10 +3,14 @@ import { get } from '../../api'
 import { ErrorBox, fmtDate, isoDate, Loading, PickFirst, Pill, Seg, Top, useLoad } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { head, printDoc, table } from '../../print'
+import TopicTest from './TopicTest'
+
+type TopicTestInfo = { task_id: number; title: string; opens_at: string; closes_at: string; state: 'gözlənilir' | 'açıqdır' | 'bitib'
+  questions: number; submitted: number; total: number | null; avg_pct: number | null; journal: 'yazılıb' | 'gözləyir' | 'yox' }
 
 type Item = { date: string; weekday: string; period: number; time: string | null; held: boolean; shift: number
   lesson: { seq: number; topic: string; section: string | null; assessment_type: string; exam_no: number | null; official_date: string
-    standards?: string[] | null; tt_pages?: string | null } | null }
+    id: number; standards?: string[] | null; tt_pages?: string | null; tests?: TopicTestInfo[] } | null }
 const DAYS = ['Bazar', 'Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə']
 /** «IV BÖLMƏ – FAİZ. NİSBƏT» -> «IV bölmə – Faiz. Nisbət» (böyük hərflərlə yazılmış bölmə adı oxunaqlı olsun) */
 const sectionText = (s: string) => s.replace(/\s+/g, ' ').trim().split(' – ').map((part, i) => {
@@ -30,7 +34,8 @@ export default function Plan() {
   const [view, setView] = useState<'day' | 'week' | 'month' | 'semester'>('week')
   const [date, setDate] = useState(isoDate(new Date()))
   const cur = lessons?.find(l => l.id === ta)
-  const [d, err, loading] = useLoad<{ items: Item[]; unfit: any[]; has_plan: boolean; from: string; to: string } | null>(
+  const [testFor, setTestFor] = useState<number | null>(null)
+  const [d, err, loading, reload] = useLoad<{ items: Item[]; unfit: any[]; has_plan: boolean; from: string; to: string } | null>(
     () => (ta ? get(`/api/plan/${ta}`, { view, date }) : Promise.resolve(null)), [ta, view, date])
   let lastDate = ''
   return (
@@ -70,9 +75,12 @@ export default function Plan() {
                     <span className="plan-what">
                       {l ? <><span className="plan-topic">{l.topic}</span><span className="plan-meta">{meta.join(' · ')}</span></> : <span className="muted">Perspektiv planda mövzu yoxdur</span>}
                     </span>
-                    {l && (l.assessment_type !== 'formativ' || i.held) && <span className="plan-tags">
+                    {l && <span className="plan-tags">
                       {l.assessment_type !== 'formativ' && <Pill tone="warn">{l.assessment_type}{l.exam_no ? '-' + l.exam_no : ''}</Pill>}
                       {i.held && <Pill tone="info">mövzu davam edir</Pill>}
+                      {l.tests?.map(t => <TestPill key={t.task_id} t={t} />)}
+                      {!['KSQ', 'BSQ'].includes(l.assessment_type) && (
+                        <button className="btn sm" onClick={() => setTestFor(l.id)} title="Bu mövzuya onlayn test təyin et">🧪 Test</button>)}
                     </span>}
                   </div>
                 </div>)
@@ -80,6 +88,19 @@ export default function Plan() {
           </div>
         </>
       )}
+      {ta && testFor && <TopicTest ta={ta} pl={testFor} onClose={() => setTestFor(null)} onDone={() => { setTestFor(null); reload() }} />}
     </>
   )
+}
+
+const hm = (s: string) => new Date(s).toLocaleTimeString('az', { hour: '2-digit', minute: '2-digit' })
+const dm = (s: string) => { const x = new Date(s); return `${String(x.getDate()).padStart(2, '0')}.${String(x.getMonth() + 1).padStart(2, '0')}` }
+
+/** Mövzuya bağlı onlayn testin vəziyyəti: gözlənilir / açıqdır / bitib (orta nəticə, jurnal). */
+function TestPill({ t }: { t: TopicTestInfo }) {
+  const when = `${dm(t.opens_at)} ${hm(t.opens_at)}–${dm(t.closes_at)} ${hm(t.closes_at)}`
+  const done = `${t.submitted}${t.total != null ? '/' + t.total : ''}`
+  if (t.state === 'gözlənilir') return <Pill>🧪 {when}</Pill>
+  if (t.state === 'açıqdır') return <Pill tone="ok">🧪 açıqdır · {done} · {dm(t.closes_at)} {hm(t.closes_at)}-dək</Pill>
+  return <Pill tone={t.journal === 'yazılıb' ? 'info' : undefined}>🧪 bitib · {done}{t.avg_pct != null ? ` · ${t.avg_pct}%` : ''}{t.journal === 'yazılıb' ? ' · jurnalda' : ''}</Pill>
 }

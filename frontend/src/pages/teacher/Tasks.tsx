@@ -7,7 +7,8 @@ import { LessonSelect, type MyLesson, useMyLessons, usePick } from './common'
 import TaskEditor from './TaskEditor'
 import { esc, head, mathHtml, printDoc, table } from '../../print'
 
-type Task = { id: number; title: string; created_at?: string | null; opens_at: string; closes_at: string; duration_min: number; questions: number; submitted: number; avg_pct: number | null; student_ids: number[] | null }
+type Task = { id: number; title: string; created_at?: string | null; opens_at: string; closes_at: string; duration_min: number; questions: number; submitted: number; avg_pct: number | null; student_ids: number[] | null
+  kind?: string | null; topic?: { seq: number; topic: string } | null; journal_auto?: boolean; journal_done_at?: string | null }
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 const dt = (s: string) => new Date(s).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const hm = (s: string) => new Date(s).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
@@ -41,9 +42,11 @@ export default function Tasks() {
               <div className="jrow cols" key={t.id} style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 8 }}>
                 <div className="row">
                   <b className="grow">{t.title}</b>
+                  {t.kind === 'movzu' && <Pill tone="acc">{t.topic ? `mövzu testi · №${t.topic.seq}` : 'mövzu planda yoxdur'}</Pill>}
+                  {t.kind === 'movzu' && t.journal_auto && <Pill tone={t.journal_done_at ? 'ok' : undefined}>{t.journal_done_at ? 'jurnala yazılıb' : 'jurnala yazılacaq'}</Pill>}
                   {now < o ? <Pill>gözlənilir</Pill> : live ? <Pill tone="ok">● açıqdır</Pill> : <Pill tone="info">bağlanıb</Pill>}
                 </div>
-                <span className="small muted">{dt(t.opens_at)} – {hm(t.closes_at)} · {t.duration_min} dəq · {t.questions} sual · {t.student_ids ? `${t.student_ids.length} şagird` : 'bütün sinif'} · {t.submitted} təhvil · orta {fmt(t.avg_pct)}%{t.created_at ? ` · yaradılıb: ${dt(t.created_at)}` : ''}</span>
+                <span className="small muted">{dt(t.opens_at)} – {t.opens_at.slice(0, 10) === t.closes_at.slice(0, 10) ? hm(t.closes_at) : dt(t.closes_at)} · {t.duration_min} dəq{t.topic ? ` · «${t.topic.topic}»` : ''} · {t.questions} sual · {t.student_ids ? `${t.student_ids.length} şagird` : 'bütün sinif'} · {t.submitted} təhvil · orta {fmt(t.avg_pct)}%{t.created_at ? ` · yaradılıb: ${dt(t.created_at)}` : ''}</span>
                 {view === 'archived' ? (
                   <div className="row" style={{ gap: 6 }}>
                     <AsyncBtn className="btn sm primary" ok="Test geri qaytarıldı" onClick={async () => { await post(`/api/tasks/${ta}/${t.id}/restore`); reload() }}>Geri qaytar</AsyncBtn>

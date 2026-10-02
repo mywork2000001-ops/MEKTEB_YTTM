@@ -1,0 +1,147 @@
+// Mövzu testi: perspektiv planın mövzusuna onlayn test – eyni mövzunu keçən digər siniflərə də eyni anda.
+// Hər sinfin öz başlama/bitmə vaxtı (default – mövzunun həmin sinifdəki dərsindən sonra → ertəsi gün 22:00);
+// test bağlananda nəticə formativ jurnala, mövzunun dərsinə yazılır.
+import { useEffect, useState } from 'react'
+import { get, post } from '../../api'
+import { MathText } from '../../MathText'
+import { Drawer, ErrorBox, Field, fmtDate, Loading, Pill, toast } from '../../ui'
+import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
+
+type Peer = {
+  ta_id: number; class_name: string; kind: string; current: boolean; students: number
+  plan_lesson: { id: number; seq: number; topic: string } | null; already_has_test: boolean
+  working_date: string | null; period: number | null; opens_at: string | null; closes_at: string | null
+  lessons?: { id: number; seq: number; topic: string }[]
+}
+type Peers = { topic: { id: number; seq: number; topic: string; section: string | null; assessment_type: string }; subject: string; grade: number | null; classes: Peer[] }
+type Row = { on: boolean; pl: number | null; d1: string; t1: string; d2: string; t2: string }
+
+const nextDay = (d: string) => { const x = new Date(d + 'T00:00'); x.setDate(x.getDate() + 1); return localParts(x.toISOString())[0] }
+
+function defaults(p: Peer): Row {
+  const today = localParts(new Date().toISOString())[0]
+  const [d1, t1] = p.opens_at ? localParts(p.opens_at) : [today, '15:00']
+  const [d2, t2] = p.closes_at ? localParts(p.closes_at) : [nextDay(d1), '22:00']
+  return { on: p.current || (!!p.plan_lesson && !p.already_has_test), pl: p.plan_lesson?.id ?? null, d1, t1, d2, t2 }
+}
+
+export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl: number; onClose: () => void; onDone: () => void }) {
+  const [d, setD] = useState<Peers | null>(null)
+  const [rows, setRows] = useState<Record<number, Row>>({})
+  const [qs, setQs] = useState<Q[]>([])
+  const [f, setF] = useState({ title: '', duration: 20, show: 'after_close', shuffle: true, journal: true })
+  const [err, setErr] = useState<unknown>()
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    get<Peers>(`/api/plan/${ta}/topics/${pl}/peers`).then(p => {
+      setD(p)
+      setRows(Object.fromEntries(p.classes.map(c => [c.ta_id, defaults(c)])))
+      setF(x => ({ ...x, title: `№${p.topic.seq} ${p.topic.topic} – mövzu testi`.slice(0, 200) }))
+    }, setErr)
+  }, [ta, pl])
+
+  const has = (k: string) => qs.some(q => q.key === k)
+  const add = (list: Q[]) => setQs(cur => [...cur, ...list.filter(q => !cur.some(c => c.key === q.key))])
+  const remove = (k: string) => setQs(cur => cur.filter(q => q.key !== k))
+  const set = (id: number, patch: Partial<Row>) => setRows(r => ({ ...r, [id]: { ...r[id], ...patch } }))
+  const chosen = d ? d.classes.filter(c => rows[c.ta_id]?.on) : []
+  const sameTime = () => {
+    const cur = d?.classes.find(c => c.current)
+    if (!cur) return
+    const r = rows[cur.ta_id]
+    setRows(x => Object.fromEntries(Object.entries(x).map(([k, v]) => [k, { ...v, d1: r.d1, t1: r.t1, d2: r.d2, t2: r.t2 }])))
+  }
+
+  const problem = !f.title.trim() ? 'Testin adını yazın' : !qs.length ? 'Ən azı 1 sual seçin' : !chosen.length ? 'Ən azı bir sinif seçin'
+    : chosen.some(c => !rows[c.ta_id].pl) ? 'Mövzusu tapılmayan sinifdə mövzunu seçin'
+    : chosen.some(c => { const r = rows[c.ta_id]; return iso(r.d2, r.t2) <= iso(r.d1, r.t1) }) ? 'Bitmə vaxtı başlamadan sonra olmalıdır'
+    : qs.length > 100 ? 'Bir testdə ən çoxu 100 sual' : ''
+
+  const submit = async () => {
+    if (problem) { setErr(new Error(problem)); return }
+    setBusy(true)
+    try {
+      const r = await post<{ tasks: any[] }>(`/api/plan/${ta}/topics/${pl}/test`, {
+        title: f.title.trim(), duration_min: f.duration, shuffle: f.shuffle, show_answers: f.show, journal_auto: f.journal,
+        bank_ids: [], custom: qs.map(toCustom),
+        targets: chosen.map(c => { const x = rows[c.ta_id]; return { ta_id: c.ta_id, plan_lesson_id: x.pl, opens_at: iso(x.d1, x.t1), closes_at: iso(x.d2, x.t2) } }),
+      })
+      toast(r.tasks.length > 1 ? `Test ${r.tasks.length} sinfə göndərildi` : 'Test göndərildi')
+      onDone()
+    } catch (e) { setErr(e) } finally { setBusy(false) }
+  }
+
+  return (
+    <Drawer title="Mövzuya onlayn test" onClose={onClose}
+      footer={<><span className="small muted grow">{qs.length} sual · {chosen.length} sinif</span><button className="btn" onClick={onClose}>Ləğv et</button>
+        <button className="btn primary" disabled={busy} onClick={submit}>Göndər</button></>}>
+      {!d ? (err ? <ErrorBox error={err} /> : <Loading />) : (
+        <div className="stack">
+          <div className="banner"><b>№{d.topic.seq} {d.topic.topic}</b>{d.topic.section ? <span className="muted"> · {d.topic.section}</span> : null}
+            <br /><span className="small">{f.journal ? 'Test bağlananda nəticə (bal və qiymət) formativ jurnala – bu mövzunun dərsinə yazılır. Testi yazmayana qiymət yazılmır.' : 'Nəticə jurnala avtomatik yazılmayacaq.'}</span></div>
+          <div className="fg">
+            <Field label="Ad" full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
+            <Field label="Həll müddəti (dəq)"><input type="number" min={1} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+            <Field label="Düzgün cavablar görünsün"><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
+              <option value="after_close">test bağlandıqdan sonra</option><option value="after_submit">təhvil verdikdən dərhal sonra</option><option value="never">heç vaxt</option></select></Field>
+            <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> Sualların sırası hər şagirdə fərqli</label>
+            <label className="check full"><input type="checkbox" checked={f.journal} onChange={e => setF({ ...f, journal: e.target.checked })} /> Bağlananda formativ jurnala yaz</label>
+          </div>
+
+          <fieldset><legend>Siniflər – eyni mövzu ({d.subject}{d.grade ? `, ${d.grade}-cu sinif səviyyəsi` : ''})</legend>
+            <div className="jlist">
+              {d.classes.map(c => {
+                const r = rows[c.ta_id]
+                if (!r) return null
+                return (
+                  <div key={c.ta_id} className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 6 }}>
+                    <label className="check" style={{ minHeight: 32 }}>
+                      <input type="checkbox" checked={r.on} disabled={c.current} onChange={e => set(c.ta_id, { on: e.target.checked })} />
+                      <b>{c.class_name}</b><span className="small muted">{c.students} şagird</span>
+                      {c.current && <Pill tone="acc">bu sinif</Pill>}
+                      {c.already_has_test && <Pill tone="warn">bu mövzuya test artıq var</Pill>}
+                    </label>
+                    {c.plan_lesson ? (
+                      <span className="small muted">№{c.plan_lesson.seq} {c.plan_lesson.topic}{c.working_date ? ` · dərs: ${fmtDate(c.working_date)}, ${c.period}-ci saat` : ' · işçi planda tarix yoxdur'}</span>
+                    ) : r.on && (
+                      <select className="sel" value={r.pl ?? ''} onChange={e => set(c.ta_id, { pl: Number(e.target.value) || null })}>
+                        <option value="">Mövzu tapılmadı – bu sinfin planından seçin</option>
+                        {c.lessons?.map(l => <option key={l.id} value={l.id}>№{l.seq} {l.topic}</option>)}
+                      </select>)}
+                    {r.on && (
+                      <div className="row" style={{ gap: 6 }}>
+                        <span className="small">Başlama</span>
+                        <input type="date" className="sel" value={r.d1} onChange={e => set(c.ta_id, { d1: e.target.value })} />
+                        <input type="time" className="sel" value={r.t1} onChange={e => set(c.ta_id, { t1: e.target.value })} />
+                        <span className="small">Bitmə</span>
+                        <input type="date" className="sel" value={r.d2} onChange={e => set(c.ta_id, { d2: e.target.value })} />
+                        <input type="time" className="sel" value={r.t2} onChange={e => set(c.ta_id, { t2: e.target.value })} />
+                      </div>)}
+                  </div>)
+              })}
+            </div>
+            {d.classes.length > 1 && <button type="button" className="btn sm ghost" style={{ marginTop: 8 }} onClick={sameTime}>Hamısına bu sinfin vaxtını qoy</button>}
+            {d.classes.length === 1 && <p className="small muted">Eyni fənn və sinif səviyyəsində başqa sinfiniz yoxdur.</p>}
+          </fieldset>
+
+          <BankPicker has={has} add={add} remove={remove} onTitle={() => {}} disabled={false} first={false} />
+          <fieldset><legend>Seçilmiş suallar ({qs.length})</legend>
+            {qs.length === 0 ? <p className="small muted">Yuxarıdan test bazasından seçin və ya öz sualınızı yazın.</p> : (
+              <div className="jlist">
+                {qs.map((q, i) => (
+                  <div key={q.key} className="jrow cols" style={{ ['--cols' as any]: '28px minmax(0,1fr) auto', ['--mcols' as any]: '28px minmax(0,1fr)' }}>
+                    <span className="num muted">{i + 1}.</span>
+                    <span className="small"><span className="clamp2"><MathText text={q.text} /></span>
+                      <span className="muted">{q.raw ? `${q.source || ''}${q.lesson ? ' · ' + q.lesson : ''}` : 'öz sualım'}</span></span>
+                    <button className="btn sm ghost" onClick={() => remove(q.key)} aria-label="Sil">✕</button>
+                  </div>))}
+              </div>)}
+            <OwnQuestion onAdd={q => add([q])} />
+          </fieldset>
+          {problem && <p className="small" style={{ color: 'var(--warn)', margin: 0 }}>{problem}</p>}
+          <ErrorBox error={err} />
+        </div>)}
+    </Drawer>
+  )
+}

@@ -32,7 +32,7 @@ def _entry_payload(db: Session, e: JournalEntry | None) -> dict:
         'exists': True, 'id': e.id, 'topic': e.topic, 'homework': e.homework, 'note': e.note,
         'attendance': {a.student_id: a.status for a in db.scalars(select(Attendance).where(Attendance.entry_id == e.id))},
         'marks': [{'student_id': m.student_id, 'kind': m.kind, 'grade': m.grade, 'test_correct': m.test_correct,
-                   'test_total': m.test_total, 'comment': m.comment}
+                   'test_total': m.test_total, 'comment': m.comment, 'task_id': m.task_id}
                   for m in db.scalars(select(Mark).where(Mark.entry_id == e.id))],
         'homework_checks': {h.student_id: h.status
                             for h in db.scalars(select(HomeworkCheck).where(HomeworkCheck.entry_id == e.id))},
@@ -112,13 +112,21 @@ def save_entry(ta_id: int, body: EntryIn, user: User = Depends(staff), db: Sessi
         raise HTTPException(400, f'Bu şagirdlər bu sinifdə/qrupda deyil: {sorted(extra)}')
     if body.date > today() and (body.attendance or body.marks or body.homework_checks):
         raise HTTPException(400, 'Gələcək dərs üçün yalnız mövzu və ev tapşırığı yazılır (davamiyyət və qiymət – dərs günü)')
+    e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == body.date,
+                                             JournalEntry.period == body.period))
+    # onlayn mövzu testindən gələn qiymət (dəyişdirilməyibsə) mənbəyini saxlayır; onlayn test evdə yazılır –
+    # şagirdin dərsdə qayıb olması bu qiymətə mane deyil
+    online = {m.student_id: (m.task_id, m.test_correct, m.test_total) for m in db.scalars(select(Mark).where(
+        Mark.entry_id == e.id, Mark.kind == 'test', Mark.task_id.is_not(None)))} if e else {}
+
+    def _from_task(m: MarkIn) -> int | None:
+        o = online.get(m.student_id)
+        return o[0] if o and m.kind == 'test' and (m.test_correct, m.test_total) == o[1:] else None
     absent = {k for k, v in body.attendance.items() if v in ('yox', 'üzrlü')}
-    if any(m.student_id in absent for m in body.marks):
+    if any(m.student_id in absent and not _from_task(m) for m in body.marks):
         raise HTTPException(400, 'Dərsdə olmayan şagirdə (qayıb və ya üzrlü) qiymət yazıla bilməz')
     # dərsdə olmayan şagirdin ev tapşırığı yoxlanılmır – «etmədi» kimi yazılmasın (ev tapşırığı faizini korlamasın)
     body.homework_checks = {k: v for k, v in body.homework_checks.items() if k not in absent}
-    e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == body.date,
-                                             JournalEntry.period == body.period))
     pl = taught_lesson(ctx, s, e)          # düzəliş zamanı yazılmış mövzu dəyişmir
     if pl and pl.assessment_type in SUMMATIVE and body.marks:
         raise HTTPException(400, f'{pl.assessment_type} günü formativ qiymət yazılmır – nəticələr «KSQ / BSQ» bölməsində')
@@ -132,7 +140,7 @@ def save_entry(ta_id: int, body: EntryIn, user: User = Depends(staff), db: Sessi
     for model in (Attendance, Mark, HomeworkCheck):
         db.query(model).filter(model.entry_id == e.id).delete()
     db.add_all(Attendance(entry_id=e.id, student_id=k, status=v) for k, v in body.attendance.items())
-    db.add_all(Mark(entry_id=e.id, **m.model_dump()) for m in body.marks)
+    db.add_all(Mark(entry_id=e.id, task_id=_from_task(m), **m.model_dump()) for m in body.marks)
     db.add_all(HomeworkCheck(entry_id=e.id, student_id=k, status=v) for k, v in body.homework_checks.items())
     audit(db, user, 'update', 'journal', e.id, date=str(body.date), period=body.period)
     db.commit()

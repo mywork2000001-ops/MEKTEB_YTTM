@@ -14,7 +14,8 @@ from ..db import get_db
 from ..deps import staff
 from ..domain.answers import check
 from ..domain.rules import summative_grade
-from ..models import BankFile, BankQuestion, BankSource, OnlineTask, TaskAttempt, TeachingAssignment, User, now
+from ..models import (BankFile, BankQuestion, BankSource, Mark, OnlineTask, PlanLesson, TaskAttempt, TeachingAssignment,
+                      User, now)
 from ..services import own_assignment, roster
 from .common import audit, get_or_404
 
@@ -22,7 +23,8 @@ router = APIRouter(prefix='/api/tasks', tags=['tasks'])
 
 
 def aware(t: dt.datetime) -> dt.datetime:
-    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)      # SQLite tz saxlamır
+    # SQLite tz saxlamır: oxunan vaxt UTC sayılır, yazılan vaxt UTC-yə çevrilir (+04:00 ilə gələn vaxt sürüşməsin)
+    return t.astimezone(dt.timezone.utc) if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
 
 
 def finalize(db: Session, task: OnlineTask, a: TaskAttempt, at: dt.datetime | None = None, auto: bool = False):
@@ -126,7 +128,9 @@ def task_out(t: OnlineTask) -> dict:
     return {'id': t.id, 'title': t.title, 'description': t.description, 'opens_at': aware(t.opens_at),
             'closes_at': aware(t.closes_at), 'duration_min': t.duration_min, 'questions': len(t.questions),
             'shuffle': t.shuffle, 'show_answers': t.show_answers, 'student_ids': t.student_ids,
-            'archived': t.archived_at is not None,
+            'archived': t.archived_at is not None, 'kind': t.kind, 'batch_id': t.batch_id,
+            'plan_lesson_id': t.plan_lesson_id, 'journal_auto': bool(t.journal_auto),
+            'journal_done_at': aware(t.journal_done_at) if t.journal_done_at else None,
             'created_at': aware(t.created_at) if t.created_at else None}   # kim/nə vaxt – təsadüfi yaradılanı tanımaq üçün
 
 
@@ -159,7 +163,8 @@ def list_tasks(ta_id: int, archived: bool = False, user: User = Depends(staff), 
                         .order_by(OnlineTask.opens_at.desc())):
         expire_due(db, t)
         done = db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.submitted_at.is_not(None))).all()
-        out.append({**task_out(t), 'submitted': len(done),
+        pl = db.get(PlanLesson, t.plan_lesson_id) if t.plan_lesson_id else None
+        out.append({**task_out(t), 'submitted': len(done), 'topic': pl and {'seq': pl.seq, 'topic': pl.topic},
                     'avg_pct': round(sum(a.correct * 100 / a.total for a in done) / len(done), 1) if done else None})
     return out
 
@@ -271,6 +276,8 @@ def reset_attempt(ta_id: int, task_id: int, student_id: int, user: User = Depend
     if not a:
         raise HTTPException(404, 'Şagird bu testə başlamayıb')
     db.delete(a)
+    for m in db.scalars(select(Mark).where(Mark.task_id == t.id, Mark.student_id == student_id)):
+        db.delete(m)                                  # mövzu testindən jurnala yazılmış qiymət də götürülür
     audit(db, user, 'delete', 'task_attempt', t.id, student_id=student_id)
     db.commit()
     return {'ok': True}
@@ -299,6 +306,15 @@ def to_journal(ta_id: int, task_id: int, body: ToJournalIn, user: User = Depends
     from ..services import SCHOOL_TZ, plan_ctx, taught_lesson, today
     from .journal import SUMMATIVE
     t = _own_task(db, user, ta_id, task_id)
+    if t.kind == 'movzu' and t.plan_lesson_id and body.date is None:   # mövzu testi – mövzunun öz dərsinə
+        from ..task_journal import write_topic_marks
+        expire_due(db, t)
+        r = write_topic_marks(db, t, by=user.id)
+        if r['status'] != 'yazıldı':
+            raise HTTPException(400, f'Jurnala yazılmadı: {r["status"]} – dərsi (tarix və saat) özünüz seçin')
+        db.commit()
+        return {'date': r['date'], 'period': r['period'], 'topic': r['topic'], 'copied': r['copied'],
+                'updated': r['updated'], 'skipped': r['skipped']}
     ta = db.get(TeachingAssignment, t.assignment_id)
     ctx = plan_ctx(db, ta)
     d = body.date or aware(t.opens_at).astimezone(ZoneInfo(SCHOOL_TZ)).date()
@@ -336,7 +352,7 @@ def to_journal(ta_id: int, task_id: int, body: ToJournalIn, user: User = Depends
             copied += 1
         m.test_correct, m.test_total = a.correct, a.total
         m.grade = summative_grade(a.correct * 100 / a.total)
-        m.comment = f'Onlayn test: {t.title}'[:300]
+        m.comment, m.task_id = f'Onlayn test: {t.title}'[:300], t.id
     audit(db, user, 'update', 'journal', e.id, from_task=t.id, copied=copied, updated=updated)
     db.commit()
     return {'date': d, 'period': s.period, 'topic': (e.topic or (pl.topic if pl else None)), 'copied': copied,
@@ -391,6 +407,8 @@ def update_task(ta_id: int, task_id: int, body: TaskPatch, user: User = Depends(
     for k in ('title', 'description', 'duration_min', 'shuffle', 'show_answers'):
         if k in data and data[k] is not None:
             setattr(t, k, data[k])
+    if c != aware(t.closes_at):
+        t.journal_done_at = None                      # yeni bitmə vaxtında jurnala yenidən yazılsın
     t.opens_at, t.closes_at = o, c
     audit(db, user, 'update', 'task', t.id, fields=sorted(data))
     db.commit()

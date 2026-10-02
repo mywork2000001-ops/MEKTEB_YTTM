@@ -21,14 +21,14 @@ const fromSnapshot = (s: any, key: string): Q => ({
 const fromBank = (q: any, source: string, lesson: string): Q => fromSnapshot({
   bank_id: q.id, source, lesson, kind: q.kind, text: q.text, options: q.options, correct: q.correct, answer: q.answer,
   image: q.image, explanation: q.explanation }, 'b' + q.id)
-const toCustom = (q: Q) => ({
+export const toCustom = (q: Q) => ({
   kind: q.kind, text: q.text, options: q.kind === 'mcq' ? q.options : null, correct: q.kind === 'mcq' ? q.correct : null,
   answer: q.kind === 'open' ? q.answer : null, explanation: q.explanation || null, image: q.image, bank_id: q.bank_id,
   source: q.source, lesson: q.lesson, raw: q.raw,
 })
-const iso = (d: string, t: string) => new Date(`${d}T${t}:00`).toISOString()
+export const iso = (d: string, t: string) => new Date(`${d}T${t}:00`).toISOString()
 const pad = (n: number) => String(n).padStart(2, '0')
-const localParts = (s: string) => { const d = new Date(s); return [`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, `${pad(d.getHours())}:${pad(d.getMinutes())}`] }
+export const localParts = (s: string) => { const d = new Date(s); return [`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, `${pad(d.getHours())}:${pad(d.getMinutes())}`] }
 
 export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, onClose, onDone }:
   { ta: number; taskId?: number; fromBank?: boolean; onClose: () => void; onDone: () => void }) {
@@ -121,7 +121,7 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
 }
 
 // ---------------------------------------------------------------- viktorina: bir neçə mənbə və bölmə
-function BankPicker({ has, add, remove, onTitle, disabled, first }: { has: (k: string) => boolean; add: (q: Q[]) => void; remove: (k: string) => void; onTitle: (t: string) => void; disabled: boolean; first: boolean }) {
+export function BankPicker({ has, add, remove, onTitle, disabled, first }: { has: (k: string) => boolean; add: (q: Q[]) => void; remove: (k: string) => void; onTitle: (t: string) => void; disabled: boolean; first: boolean }) {
   const [sources, setSources] = useState<any[]>([])
   const [srcSel, setSrcSel] = useState<string[]>([])
   const [lessons, setLessons] = useState<Record<string, any[]>>({})
@@ -224,7 +224,7 @@ function QEdit({ q, onSave, onCancel }: { q: Q; onSave: (q: Q) => void; onCancel
   )
 }
 
-function OwnQuestion({ onAdd }: { onAdd: (q: Q) => void }) {
+export function OwnQuestion({ onAdd }: { onAdd: (q: Q) => void }) {
   const [open, setOpen] = useState(false)
   if (!open) return <button type="button" className="btn sm" style={{ marginTop: 8 }} onClick={() => setOpen(true)}>+ Öz sualım</button>
   const blank: Q = { key: 'c' + Date.now(), kind: 'mcq', text: '', options: ['', '', '', ''], correct: 0, answer: '', explanation: '', image: null, bank_id: null, source: 'müəllim', lesson: null, raw: null }

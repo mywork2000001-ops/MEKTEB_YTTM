@@ -32,6 +32,22 @@ def roster(db: Session, ta: TeachingAssignment) -> list[Student]:
     return list(db.scalars(st.order_by(Student.full_name)))
 
 
+def class_grade(db: Session, c: SchoolClass) -> int | None:
+    """Sinif rəqəmi: əl ilə yazılan → addan/UTİS-dən → bölünmə qrupunda ana sinifdən → tədris qrupunda üzvlərin
+    sinfindən (hamısı eyni rəqəmdədirsə)."""
+    from .domain.classes import grade_of
+    g = c.grade or grade_of(c.name, c.utis_class)
+    if g or c.kind != 'qrup':
+        return g
+    if c.parent_id:
+        p = db.get(SchoolClass, c.parent_id)
+        return p and class_grade(db, p)
+    parents = set(db.scalars(select(Student.class_id).join(GroupMember, GroupMember.student_id == Student.id)
+                             .where(GroupMember.group_id == c.id)))
+    grades = {class_grade(db, db.get(SchoolClass, pid)) for pid in parents}
+    return grades.pop() if len(grades) == 1 else None
+
+
 @dataclass
 class PlanCtx:
     ta: TeachingAssignment

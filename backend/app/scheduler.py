@@ -18,6 +18,15 @@ def _bank_job():
         log.info('bank sync: %s +%s ~%s -%s', r.status, r.added, r.updated, r.deactivated)
 
 
+def _topic_journal_job():
+    """Bağlanmış mövzu testlərinin nəticəsi formativ jurnala (mövzunun dərsinə)."""
+    from .task_journal import run_due
+    with SessionLocal() as db:
+        n = run_due(db)
+        if n:
+            log.info('mövzu testi → jurnal: %s test', n)
+
+
 def awake_now(hours: str, now: dt.datetime | None = None) -> bool:
     """«7-23» – Bakı vaxtı ilə 07:00 ≤ saat < 23:00."""
     from zoneinfo import ZoneInfo
@@ -43,9 +52,10 @@ def start():
     import os
     minutes = settings().bank_sync_minutes
     keep = bool(settings().keepalive_url or os.environ.get('RENDER_EXTERNAL_URL'))
-    if _sched or (minutes <= 0 and not keep):
+    if _sched:                                   # mövzu testi → jurnal işi həmişə lazımdır
         return
     _sched = BackgroundScheduler(timezone='Asia/Baku')
+    _sched.add_job(_topic_journal_job, 'interval', minutes=15, id='topic_journal', max_instances=1, coalesce=True)
     if keep:
         _sched.add_job(_keepalive_job, 'interval', minutes=10, id='keepalive', max_instances=1, coalesce=True)
     if minutes <= 0:
