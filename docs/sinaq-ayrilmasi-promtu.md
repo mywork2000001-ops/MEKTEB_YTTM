@@ -42,13 +42,13 @@
 - **Yekun («Xülasə»):** formativ göstəricilərdən sonra ayrıca blok – sınaq sayı (yazdığı / keçirilən), sınaq orta %,
   son sınaq %, dinamika (son − əvvəlki; artım yaşıl, azalma qırmızı). Yarımil seçimi sınaqlara da tətbiq olunur.
 - **«Yarımil»:** KSQ/BSQ formulasından sonra ayrıca «Sınaq» və «Sınaq orta %» – «yarımil qiymətinə daxil deyil» qeydi ilə.
+- Sınaq keçirilən gün dərs yoxdursa da (həftəsonu), sütun həmin tarixdə göstərilir – jurnalda boş dərs yaradılmır.
 - **Çap / PDF:** eyni sütunlar; jurnal çapında «Sınaq imtahanları» siyahısı (tarix – ad) və izah.
 
 ## 8. Əlavə təkliflər (müəllimin təsdiqi ilə növbəti addım)
 - Sınaq xanasında faizlə yanaşı 2–5 şkalası ilə qiymət (məs. «75% · 4») – yalnız məlumat üçün.
 - Şagird və valideyn portalında «Nəticələrim»də sınaq dinamikası qrafiki (sınaqdan sınağa faiz).
 - Ardıcıl iki sınaqda nəticəsi 10%-dən çox düşən şagird üçün müəllimə xəbərdarlıq və səviyyə qrupunu dəyişmək təklifi.
-- Sınaq keçirilən gün dərs yoxdursa da (həftəsonu), sütun həmin tarixdə göstərilir – jurnalda boş dərs yaradılmır.
 
 ## 9. Qəbul meyarları
 - Plana bağlı olmayan test «Onlayn tapşırıqlar»da görünmür, «Sınaq imtahanları»nda görünür; şagirddə «Sınaqlar»dadır.
