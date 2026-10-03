@@ -79,7 +79,9 @@ def program_detail(pid: int, user: User = Depends(staff), db: Session = Depends(
     out = _out(p, {})
     if p.kind == 'adaptive':
         tpl = p.data['template']
-        out['outline'] = [{'semester': i + 1, 'sections': [{'section': s['section'], 'part': s.get('part'), 'topics': s['topics']}
+        rom = ROMAN.get(p.grade, '')
+        out['outline'] = [{'semester': i + 1, 'sections': [{'section': s['section'], 'part': s.get('part'),
+                                                           'topics': [f'{rom} sinif: {t}' for t in s['topics']]}
                                                           for s in sem]} for i, sem in enumerate(tpl['semesters'])]
         out['variants'] = tpl.get('variants')
     else:

@@ -178,6 +178,8 @@ def expand(tpl: dict, grade: int, cap1: int, cap2: int, summative: bool) -> tupl
         else:
             les(sem, 'Təkrar', f'{"I" if sem == 1 else "II"} yarımil materialının ümumiləşdirici təkrarı', 'formativ',
                 'Formativ: yekun tapşırıqlar')
+    for l in out:                                  # mövzunun qabağında sinif: «IX sinif: …» (başqa sinfin proqramı qoşulanda da aydın olsun)
+        l['topic'] = f'{rom} sinif: {l["topic"]}'
     return out, warnings
 
 

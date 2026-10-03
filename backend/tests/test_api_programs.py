@@ -18,7 +18,7 @@ def test_expand_fills_slots_exactly():
     assert len(s1) == 20 and len(s2) == 15 and not warn
     assert s1[0]['assessment_type'] == 'diaqnostik' and s1[-1]['assessment_type'] == 'BSQ' and s2[-1]['assessment_type'] == 'BSQ'
     assert [l['exam_no'] for l in les if l['assessment_type'] == 'KSQ'] == [1, 2, 3]
-    assert any('Sinif testi' in l['topic'] for l in s1)
+    assert any('Sinif testi' in l['topic'] for l in s1) and all(l['topic'].startswith('V sinif: ') for l in les)
     # summativ olmayan qrup – KSQ/BSQ yoxdur
     les2, _ = expand(TPL, 5, 20, 15, False)
     assert not any(l['assessment_type'] in ('KSQ', 'BSQ') for l in les2) and len(les2) == 35
@@ -37,7 +37,7 @@ def test_library_apply_and_restore(world, monkeypatch):
     assert cur['kind'] == 'fixed' and cur['lessons'] == 40
     x10 = next(p for p in builtin if p['grade'] == 10)
     d = c.get(f"/api/programs/{x10['id']}").json()
-    assert d['outline'][0]['sections'][0]['topics'][0] == 'Funksiya anlayışı'
+    assert d['outline'][0]['sections'][0]['topics'][0] == 'X sinif: Funksiya anlayışı'
     pv = c.get(f"/api/programs/{x10['id']}/preview/{ta}").json()
     assert pv['lessons'] == pv['sem1_slots'] + pv['sem2_slots'] and pv['written_lessons'] == 10
     with S() as db:                                      # jurnalda yazılmış dərsin mövzusu

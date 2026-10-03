@@ -59,6 +59,7 @@ ardıcıllığı ilə **alternativ, ayrıca** proqramdır. Əvvəlki planlar kit
   «sinif testi (variant A–D)»; ilk dərs – yeni material, ortadakılar – məsələ həlli.
 - Yuva azdırsa: əvvəl diaqnostik və təkrar dərsləri çıxır, sonra hər mövzu 1 dərs; yenə sığmırsa – xəbərdarlıq.
 - Resurslar: «DİM Sinif testləri, N sinif: «mövzu» (variant A–D)»; qiymətləndirmə – formativ (sinif testi, 10 tapşırıq).
+- Hər dərsin mövzusunun qabağında sinif yazılır: «IX sinif: n-ci dərəcədən kök» (başqa sinfin proqramı əlavə proqram kimi qoşulanda qarışmasın).
 
 ### Proqramlar qarışdırılmır (istifadəçinin tələbi)
 - Hər proqram **ayrıca** proqramdır: uyğunlaşan proqram yalnız öz şablonundan açılır, başqa proqramdan (əvvəlki planlardan
