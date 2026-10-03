@@ -41,7 +41,7 @@ function ClassesTab() {
       <div className="jlist">
         {(classes || []).map(c => (
           <div className="jrow" key={c.id}>
-            <span><b>{c.name}</b> <span className="small muted">{kindLabel(c)}{c.parent_id ? ' · ' + ((classes || []).find(p => p.id === c.parent_id)?.name || '') : ''}{c.split_with ? ' · paralel: ' + c.split_with : ''} · {c.students} şagird</span>
+            <span><span className="badge" title="Sinif ID-si">{c.code}</span> <b>{c.name}</b> <span className="small muted">{kindLabel(c)}{c.parent_id ? ' · ' + ((classes || []).find(p => p.id === c.parent_id)?.name || '') : ''}{c.split_with ? ' · paralel: ' + c.split_with : ''} · {c.students} şagird</span>
               <span className="sub small muted"><br />{c.teachers.map(t => `${t.name} (${t.subject})`).join(', ') || 'müəllim yoxdur'}</span>
               {c.kind !== 'qrup' && <span className="sub small muted"><br />Sinif rəhbəri: {c.homeroom?.name || '—'}</span>}</span>
             <span className="row">{c.mine ? <Pill tone="ok">{c.mine.subject} · {c.mine.weekly_hours} saat</Pill> : <Pill>qoşulmamısınız</Pill>}</span>
@@ -60,8 +60,8 @@ function ClassesTab() {
       {join && <JoinForm cls={join} onClose={() => setJoin(null)} onDone={() => { setJoin(null); reload() }} />}
       {members && <Members cls={members} onClose={() => { setMembers(null); reload() }} />}
       {study && <StudyMembers cls={study} all={classes || []} onClose={() => { setStudy(null); reload() }} />}
-      {add && <Drawer title={`${add.name} – yeni şagird`} onClose={() => setAdd(null)}>
-        <NewStudent classId={add.id} onDone={() => { setAdd(null); reload() }} /></Drawer>}
+      {add && <Drawer title={`${add.name} (ID: ${add.code}) – yeni şagird`} onClose={() => setAdd(null)}>
+        <NewStudent classId={add.id} className={add.name} onDone={() => reload()} /></Drawer>}
       {split && <SplitForm parent={split} onClose={() => setSplit(null)} onDone={() => { setSplit(null); reload() }} />}
     </>
   )
@@ -94,7 +94,7 @@ function PlansUpload({ onDone }: { onDone: () => void }) {
 function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[]; onClose: () => void; onDone: () => void }) {
   // növ: TOM / adi – bütöv sinif; split – sinif daxilində bölünmə qrupu; study – müxtəlif siniflərdən tədris qrupu
   const type0 = !cls ? 'TOM' : cls.kind !== 'qrup' ? cls.kind : cls.parent_id ? 'split' : 'study'
-  const [f, setF] = useState({ name: cls?.name || '', type: type0, parent_id: cls?.parent_id || '', split_with: cls?.split_with || '',
+  const [f, setF] = useState({ name: cls?.name || '', code: cls?.code || '', type: type0, parent_id: cls?.parent_id || '', split_with: cls?.split_with || '',
     utis_class: cls?.utis_class || '', grade: cls?.grade_set ? String(cls.grade_set) : '', exam_date: cls?.exam_date || '', bells: (cls?.bells || {}) as Record<string, string> })
   const [ownBells, setOwnBells] = useState(!!cls?.bells && Object.keys(cls.bells).length > 0)
   const [err, setErr] = useState<unknown>()
@@ -107,7 +107,7 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
     try {
       const body: any = { name: f.name, split_with: f.type === 'split' ? f.split_with || null : null, utis_class: group ? null : f.utis_class || null, grade: f.grade ? Number(f.grade) : null,
         exam_date: f.exam_date || null, bells: ownBells ? Object.fromEntries(Object.entries(f.bells).filter(([, v]) => v.trim())) : {} }
-      if (cls) await patch(`/api/classes/${cls.id}`, { ...body, ...(group ? {} : { kind: f.type }) })
+      if (cls) await patch(`/api/classes/${cls.id}`, { ...body, ...(group ? {} : { kind: f.type }), ...(f.code && f.code !== cls.code ? { code: f.code } : {}) })
       else await post('/api/classes', { ...body, kind: group ? 'qrup' : f.type, parent_id: f.type === 'split' && f.parent_id ? Number(f.parent_id) : null })
       toast('Yadda saxlanıldı'); onDone()
     } catch (e) {
@@ -121,6 +121,8 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
       <div className="stack">
         <div className="fg">
           <Field label="Ad" full hint={group ? 'məs. X b (riyaziyyat qrupu), Olimpiada qrupu' : 'məs. X e, XI peşə sinfi'}><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
+          {cls && <Field label="Sinif ID-si" hint="hərf və rəqəm; şagird ID-ləri bununla başlayır (XB-001). Köhnə şagird ID-ləri dəyişmir">
+            <input value={f.code} maxLength={8} onChange={e => setF({ ...f, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} /></Field>}
           <Field label="Növ" hint={cls && group ? 'qrupun növü dəyişmir' : cls ? 'TOM ↔ adi dəyişir' : undefined}>
             <select value={f.type} disabled={!!cls && group} onChange={e => setF({ ...f, type: e.target.value })}>
               <option value="TOM">TOM sinfi</option><option value="adi">Adi sinif</option>
@@ -231,7 +233,23 @@ function Members({ cls, onClose }: { cls: Cls; onClose: () => void }) {
   const [other, setOther] = useState(cls.split_with || '')
   const [adding, setAdding] = useState(false)
   const [side, setSide] = useState<'mine' | 'other'>('mine')
+  const [q, setQ] = useState('')
+  const [codes, setCodes] = useState('')
+  const [codeMsg, setCodeMsg] = useState('')
   useEffect(() => { get<number[]>(`/api/classes/${cls.id}/members`).then(x => setIds(new Set(x))) }, [cls.id])
+  const lc = (x: string) => x.toLocaleLowerCase('az')
+  const shown = (studs || []).filter(s => !q || lc(s.full_name).includes(lc(q)) || lc(s.portal_code).includes(lc(q)))
+  const num = (s: Stud) => Number(s.portal_code.split('-').pop())
+  const byCodes = () => {
+    const want = codes.toUpperCase().split(/[\s,;]+/).filter(Boolean)
+    const map = new Map((studs || []).map(s => [s.portal_code.toUpperCase(), s.id]))
+    const n = new Set(ids), bad: string[] = []
+    // «7» və ya «007» yazsa da olar – sinif ID-si əlavə olunur
+    const prefix = (studs || [])[0]?.portal_code.split('-').slice(0, -1).join('-')
+    want.forEach(w => { const k = /^\d+$/.test(w) && prefix ? `${prefix}-${w.padStart(3, '0')}` : w; const id = map.get(k); id ? n.add(id) : bad.push(w) })
+    setIds(n); setCodes('')
+    setCodeMsg(`${want.length - bad.length} şagird qrupa əlavə olundu` + (bad.length ? ` · tanınmadı: ${bad.join(', ')}` : ''))
+  }
   const inner = cls.name.includes('(') ? cls.name.slice(cls.name.indexOf('(') + 1).replace(')', '').replace(/ qrupu$/, '').trim() : 'Bu qrup'
   const mine = inner.charAt(0).toLocaleUpperCase('az') + inner.slice(1)
   const otherName = (other.split('–')[0] || 'Digər fənn').trim()
@@ -247,35 +265,48 @@ function Members({ cls, onClose }: { cls: Cls; onClose: () => void }) {
       <div className="row" style={{ margin: '12px 0' }}>
         <button className="btn sm" onClick={() => setIds(new Set((studs || []).map(s => s.id)))}>Hamısı: {mine}</button>
         <button className="btn sm" onClick={() => setIds(new Set())}>Hamısı: {otherName}</button>
+        <button className="btn sm" onClick={() => setIds(new Set((studs || []).filter(s => num(s) % 2 === 1).map(s => s.id)))}>Tək ID-lər: {mine}</button>
+        <button className="btn sm" onClick={() => setIds(new Set((studs || []).filter(s => num(s) % 2 === 0).map(s => s.id)))}>Cüt ID-lər: {mine}</button>
         <button className="btn sm primary" aria-pressed={adding} onClick={() => setAdding(!adding)}>+ Yeni şagird</button>
       </div>
       {adding && (
         <fieldset style={{ marginBottom: 12 }}><legend>Yeni şagird – ana sinfə yazılır</legend>
           <Seg value={side} onChange={setSide} label="Qrup" options={[['mine', mine], ['other', `${otherName} (paralel)`]]} />
-          <NewStudent classId={cls.parent_id!} onDone={s => {
+          <NewStudent classId={cls.parent_id!} groupId={side === 'mine' ? cls.id : undefined} onDone={s => {
             reloadStuds()
             if (s && side === 'mine') { const n = new Set(ids); n.add(s.id); setIds(n) }
-            if (s) toast(`${s.full_name} – ${side === 'mine' ? mine : otherName}. «Yadda saxla»nı basın`)
+            if (s) toast(`${s.full_name} – ${side === 'mine' ? mine : otherName}`)
           }} />
         </fieldset>)}
+      <fieldset style={{ marginBottom: 12 }}><legend>ID ilə seç</legend>
+        <div className="row" style={{ flexWrap: 'nowrap' }}>
+          <input className="sel grow" value={codes} onChange={e => setCodes(e.target.value)} placeholder="məs. XB-001, XB-005 və ya 1 5 9" aria-label="Şagird ID-ləri"
+            onKeyDown={e => { if (e.key === 'Enter' && codes.trim()) byCodes() }} />
+          <button className="btn sm primary" disabled={!codes.trim()} onClick={byCodes}>{mine} qrupuna əlavə et</button></div>
+        {codeMsg && <p className="small muted" style={{ margin: '6px 0 0' }}>{codeMsg}</p>}
+      </fieldset>
+      <div className="search" style={{ marginBottom: 8 }}><input placeholder="Ad və ya ID ilə axtar" value={q} onChange={e => setQ(e.target.value)} /></div>
       {!studs ? <Loading /> : (
-        <div className="jlist">{studs.map(s => (
+        <div className="jlist">{shown.map(s => (
           <div key={s.id} className="jrow" style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}>
-            <span>{s.full_name}</span>
+            <span><span className="mono small muted">{s.portal_code}</span> {s.full_name}</span>
             <div className="seg" role="group" aria-label={s.full_name} style={{ minWidth: 220 }}>
               <button aria-pressed={ids.has(s.id)} onClick={() => set(s.id, true)}>{mine}</button>
               <button aria-pressed={!ids.has(s.id)} onClick={() => set(s.id, false)}>{otherName}</button>
             </div>
-          </div>))}</div>)}
+          </div>))}
+          {studs.length === 0 && <div className="empty">Ana sinifdə şagird yoxdur – «+ Yeni şagird» ilə əlavə edin.</div>}</div>)}
     </Drawer>
   )
 }
 
 /** Yeni şagird (sinfə yazılır): yaradıldıqdan sonra giriş kodu və ilkin PIN bir dəfə göstərilir. */
-function NewStudent({ classId, onDone }: { classId: number; onDone: (s: { id: number; full_name: string } | null) => void }) {
+export function NewStudent({ classId, groupId, className, onDone }: { classId: number; groupId?: number; className?: string; onDone: (s: { id: number; full_name: string } | null) => void }) {
   const [f, setF] = useState({ full_name: '', birth_date: '', gender: '' })
   const [made, setMade] = useState<{ full_name: string; portal_code: string; initial_pin: string | null } | null>(null)
   const [err, setErr] = useState<unknown>()
+  const [dupArch, setDupArch] = useState<{ id: number; message: string } | null>(null)
+  const words = f.full_name.trim().split(/\s+/).filter(Boolean).length
   return (
     <div className="stack">
       <div className="fg">
@@ -284,15 +315,26 @@ function NewStudent({ classId, onDone }: { classId: number; onDone: (s: { id: nu
         <Field label="Cins"><select value={f.gender} onChange={e => setF({ ...f, gender: e.target.value })}><option value="">—</option><option>Qız</option><option>Oğlan</option></select></Field>
       </div>
       <ErrorBox error={err} />
-      <AsyncBtn className="btn primary" disabled={f.full_name.trim().length < 5} onClick={async () => {
-        setErr(undefined)
+      {f.full_name.trim() && words < 2 && <p className="small muted" style={{ margin: 0 }}>Soyadı və adı yazın (ata adı da tövsiyə olunur).</p>}
+      {dupArch && <div className="confirm"><span className="grow">{dupArch.message}</span>
+        <AsyncBtn className="btn sm primary" ok="Şagird geri qaytarıldı" onClick={async () => {
+          await post(`/api/students/${dupArch.id}/restore`); setDupArch(null); setErr(undefined); onDone({ id: dupArch.id, full_name: f.full_name.trim() })
+        }}>Arxivdən geri qaytar</AsyncBtn></div>}
+      <AsyncBtn className="btn primary" disabled={words < 2 || f.full_name.trim().length < 5} onClick={async () => {
+        setErr(undefined); setDupArch(null)
         try {
-          const r = await post('/api/students', { full_name: f.full_name.trim(), class_id: classId, birth_date: f.birth_date || null, gender: f.gender || null })
+          const r = await post('/api/students', { full_name: f.full_name.trim(), class_id: classId, birth_date: f.birth_date || null, gender: f.gender || null, ...(groupId ? { group_id: groupId } : {}) })
           setMade(r); setF({ full_name: '', birth_date: '', gender: '' }); onDone({ id: r.id, full_name: r.full_name })
-        } catch (e) { setErr(e) }
+        } catch (e) {
+          const d = e instanceof ApiError ? (e.data as any)?.detail : null
+          if (d?.archived && d?.student_id) setDupArch({ id: d.student_id, message: d.message }); else setErr(e)
+        }
       }}>Şagirdi əlavə et</AsyncBtn>
-      {made && <div className="banner" style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>
-        <b>{made.full_name}</b> əlavə olundu · giriş kodu <span className="mono">{made.portal_code}</span>{made.initial_pin && <> · PIN <b className="mono">{made.initial_pin}</b> (yazın – yalnız indi görünür)</>}</div>}
+      {made && <div className="banner" style={{ background: 'var(--ok-soft)', color: 'var(--ok)', flexWrap: 'wrap' }}>
+        <span className="grow">✓ <b>{made.full_name}</b> əlavə olundu · ID <b className="mono">{made.portal_code}</b>{made.initial_pin && <> · PIN <b className="mono">{made.initial_pin}</b> (yazın – yalnız indi görünür)</>}</span>
+        {made.initial_pin && <button className="btn sm" onClick={async () => printDoc({ title: `${made.full_name} – giriş vərəqəsi`,
+          body: await sheetBody({ class_name: className || '', students: [{ full_name: made.full_name, portal_code: made.portal_code, pin: made.initial_pin }] }) })}>Giriş vərəqəsini çap et</button>}
+        <span className="small" style={{ flexBasis: '100%' }}>Növbəti şagirdi yaza bilərsiniz.</span></div>}
       <p className="small muted" style={{ margin: 0 }}>Uşaq İD, pinkod və şəxsiyyət vəsiqəsi daxil edilmir. Eyni ad + doğum tarixi ikinci dəfə yaradılmır.</p>
     </div>
   )

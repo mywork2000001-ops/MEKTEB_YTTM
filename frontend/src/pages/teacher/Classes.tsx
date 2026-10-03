@@ -4,6 +4,7 @@ import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, levelTone, Loading, Pi
 import { kindLabel, usePick } from './common'
 import { useNavigate } from 'react-router-dom'
 import { fmtD, fmtN, head, printDoc, table } from '../../print'
+import { NewStudent } from './SettingsRoster'
 
 type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; students: number; can_open: boolean; split_with: string | null
   teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number } | null; exam_date: string | null; homeroom?: { id: number; name: string } | null }
@@ -27,7 +28,7 @@ export default function Classes() {
         <div className="grid g3" style={{ marginBottom: 20 }}>
           {mine.filter(c => c.kind !== 'qrup').concat(mine.filter(c => c.kind === 'qrup')).map(c => (
             <button key={c.id} className="panel cls" style={{ textAlign: 'left', cursor: 'pointer', outline: c.id === sel ? '2px solid var(--accent)' : undefined }} onClick={() => setSel(c.id === sel ? null : c.id)}>
-              <div className="cls-head"><div className="cls-title"><span className="badge">{c.code}</span><div><b>{c.name}</b><div className="small muted">{kindLabel(c)}{c.split_with ? ' · paralel: ' + c.split_with : ''}</div></div></div></div>
+              <div className="cls-head"><div className="cls-title"><span className="badge" title="Sinif ID-si">{c.code}</span><div><b>{c.name}</b><div className="small muted">{kindLabel(c)}{c.split_with ? ' · paralel: ' + c.split_with : ''}</div></div></div></div>
               <dl className="cls-meta">
                 <dt>Şagird</dt><dd>{c.students}</dd>
                 {c.homeroom && <><dt>Rəhbər</dt><dd>{c.homeroom.name}</dd></>}
@@ -45,18 +46,25 @@ export default function Classes() {
 }
 
 function StudentList({ cls, onOpen }: { cls: Cls; onOpen: (s: Stud) => void }) {
-  const [rows, err] = useLoad<Stud[]>(() => get('/api/students', { class_id: cls.id }), [cls.id])
+  const [rows, err, , reload] = useLoad<Stud[]>(() => get('/api/students', { class_id: cls.id }), [cls.id])
   const [q, setQ] = useState('')
   const [inv, setInv] = useState(false)
-  const list = (rows || []).filter(s => !q || s.full_name.toLowerCase().includes(q.toLowerCase()))
+  const [add, setAdd] = useState(false)
+  const lc = (x: string) => x.toLocaleLowerCase('az')
+  const list = (rows || []).filter(s => !q || lc(s.full_name).includes(lc(q)) || lc(s.portal_code).includes(lc(q)))
+  // bütöv sinif – sinfə; bölünmə qrupu – ana sinfə yazılır və qrupa üzv olur; tədris qrupu – üzvlər «Tənzimləmələr»dən
+  const canAdd = cls.kind !== 'qrup' || !!cls.parent_id
   return (
     <>
-      <h2 className="sec">{cls.name} <small>{rows?.length ?? ''} şagird</small><span className="row" style={{ marginLeft: 'auto' }}>{rows && <button className="btn sm" onClick={() => printDoc({ title: `${cls.name} – şagird siyahısı`, body: head(`${cls.name} sinfi – şagird siyahısı`, `${rows.length} şagird`) + table(['№', 'Şagird', 'Doğum tarixi', 'Giriş kodu', 'IX: dil', 'IX: riyaziyyat', 'IX: xarici', 'Yekun'], rows.map((s, i) => [i + 1, s.full_name, fmtD(s.birth_date), s.portal_code, fmtN(s.score_language), fmtN(s.score_math), fmtN(s.score_foreign), fmtN(s.score_total)]), [4, 5, 6, 7]) })}>Çap / PDF</button>}{cls.kind !== 'qrup' && <button className="btn sm" onClick={() => setInv(true)}>Qeydiyyat linki</button>}</span></h2>
+      <h2 className="sec">{cls.name} <small>ID: {cls.code} · {rows?.length ?? ''} şagird</small><span className="row" style={{ marginLeft: 'auto' }}>{canAdd && <button className="btn sm primary" onClick={() => setAdd(true)}>+ Şagird</button>}{rows && <button className="btn sm" onClick={() => printDoc({ title: `${cls.name} – şagird siyahısı`, body: head(`${cls.name} sinfi – şagird siyahısı`, `${rows.length} şagird`) + table(['№', 'Şagird', 'Doğum tarixi', 'Giriş kodu', 'IX: dil', 'IX: riyaziyyat', 'IX: xarici', 'Yekun'], rows.map((s, i) => [i + 1, s.full_name, fmtD(s.birth_date), s.portal_code, fmtN(s.score_language), fmtN(s.score_math), fmtN(s.score_foreign), fmtN(s.score_total)]), [4, 5, 6, 7]) })}>Çap / PDF</button>}{cls.kind !== 'qrup' && <button className="btn sm" onClick={() => setInv(true)}>Qeydiyyat linki</button>}</span></h2>
       {inv && <Invites cls={cls} onClose={() => setInv(false)} />}
+      {add && <Drawer title={`${cls.name} (ID: ${cls.code}) – yeni şagird`} onClose={() => setAdd(false)}>
+        {cls.parent_id && <p className="small muted">Şagird ana sinfə yazılır və dərhal bu bölünmə qrupuna üzv olur.</p>}
+        <NewStudent classId={cls.parent_id || cls.id} groupId={cls.parent_id ? cls.id : undefined} className={cls.name} onDone={() => reload()} /></Drawer>}
       <ErrorBox error={err} />
-      <div className="toolbar"><div className="search"><input placeholder="Şagird axtar" value={q} onChange={e => setQ(e.target.value)} /></div></div>
+      <div className="toolbar"><div className="search"><input placeholder="Ad və ya ID ilə axtar" value={q} onChange={e => setQ(e.target.value)} /></div></div>
       <div className="tbl-wrap"><table>
-        <thead><tr><th>Şagird</th><th>Giriş kodu</th><th className="r">IX riyaziyyat</th><th className="r">Yekun bal</th><th>Səviyyə (IX)</th></tr></thead>
+        <thead><tr><th>Şagird</th><th>ID (giriş kodu)</th><th className="r">IX riyaziyyat</th><th className="r">Yekun bal</th><th>Səviyyə (IX)</th></tr></thead>
         <tbody>{list.map(s => (
           <tr key={s.id} className="click" onClick={() => onOpen(s)}>
             <td><b>{s.full_name}</b><span className="sub">{fmtDate(s.birth_date)} · {s.gender || ''}</span></td>
@@ -64,6 +72,7 @@ function StudentList({ cls, onOpen }: { cls: Cls; onOpen: (s: Stud) => void }) {
             <td>{s.level ? <Pill tone={levelTone(LV[s.level])}>{LV[s.level]}</Pill> : <span className="muted">bal yoxdur</span>}</td>
           </tr>))}</tbody>
       </table></div>
+      {rows?.length === 0 && <div className="empty">{cls.kind === 'qrup' && !cls.parent_id ? 'Qrupda üzv yoxdur – Tənzimləmələr → Siniflər → «Üzvlər».' : <>Şagird yoxdur – «+ Şagird» ilə əlavə edin{cls.parent_id ? ' və ya Tənzimləmələr → «Bölünmə / şagird» ilə ana sinifdən seçin' : ''}.</>}</div>}
     </>
   )
 }
@@ -77,7 +86,7 @@ function StudentCard({ s, onClose }: { s: Stud; onClose: () => void }) {
       {tab === 'info' && (
         <>
           <dl className="kv">
-            <dt>Sinif</dt><dd>{s.class_name}</dd><dt>Giriş kodu</dt><dd className="mono">{s.portal_code}</dd>
+            <dt>Sinif</dt><dd>{s.class_name}</dd><dt>ID (giriş kodu)</dt><dd className="mono">{s.portal_code}</dd>
             <dt>Doğum tarixi</dt><dd>{fmtDate(s.birth_date)}</dd><dt>Cins</dt><dd>{s.gender || '—'}</dd>
           </dl>
           <h3 className="small muted" style={{ margin: '16px 0 8px' }}>IX sinif buraxılış balları</h3>

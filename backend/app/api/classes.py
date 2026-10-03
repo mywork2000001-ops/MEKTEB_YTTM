@@ -133,6 +133,7 @@ def create_class(body: ClassIn, user: User = Depends(settings_unlocked), db: Ses
 
 class ClassPatch(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=60)
+    code: str | None = Field(None, min_length=1, max_length=8, pattern=r'^[A-Za-z0-9]+$')   # sinif ID-si (XB)
     kind: str | None = None                                    # yalnız TOM <-> adi
     split_with: str | None = Field(None, max_length=120)
     utis_class: str | None = Field(None, max_length=20)
@@ -157,6 +158,11 @@ def update_class(cid: int, body: ClassPatch, user: User = Depends(settings_unloc
     if data.get('bells') is not None:                         # boş xanalar atılır; hamısı boşdursa – məktəbin zəngi
         data['bells'] = {k: v.strip() for k, v in data['bells'].items()
                          if k.isdigit() and 0 <= int(k) <= 9 and v.strip()} or None
+    if 'code' in data:                                        # sinif ID-si: məktəb + tədris ilində unikal
+        data['code'] = data['code'].upper()
+        if db.scalar(select(SchoolClass.id).where(SchoolClass.school_id == c.school_id, SchoolClass.year_id == c.year_id,
+                                                  func.upper(SchoolClass.code) == data['code'], SchoolClass.id != c.id)):
+            raise HTTPException(409, f'«{data["code"]}» ID-si başqa sinifdədir')
     if 'name' in data:
         data['name'] = norm_name(data['name'])
         dup = db.scalar(select(SchoolClass).where(SchoolClass.school_id == c.school_id, SchoolClass.year_id == c.year_id,

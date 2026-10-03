@@ -66,6 +66,7 @@ class StudentIn(BaseModel):
     score_language: float | None = Field(None, ge=0, le=100)
     score_math: float | None = Field(None, ge=0, le=100)
     score_foreign: float | None = Field(None, ge=0, le=100)
+    group_id: int | None = None                    # bölünmə qrupundan əlavə edəndə – dərhal qrupa üzv olur
 
 
 def _class_for_write(db: Session, user: User, class_id: int) -> SchoolClass:
@@ -84,14 +85,21 @@ def _dup(db: Session, school_id: int, name: str, birth: dt.date | None, exclude:
         st = st.where(Student.birth_date == birth)
     for s, cname in db.execute(st):
         if s.id != exclude and (birth or s.birth_date is None):
-            where = f'{cname} sinfində' + (' (arxivdə)' if s.archived_at else '')
-            raise HTTPException(409, {'message': f'Bu şagird artıq var: {s.full_name}, {where}', 'student_id': s.id})
+            where = f'{cname} sinfində' + (' (arxivdə – passivdir)' if s.archived_at else '')
+            raise HTTPException(409, {'message': f'Bu şagird artıq var: {s.full_name}, {where}', 'student_id': s.id,
+                                      'archived': s.archived_at is not None, 'class_name': cname})
 
 
 def next_portal_code(db: Session, c: SchoolClass) -> str:
+    """Sinif ID-si + növbəti nömrə (XB-021). Həm şagird kodları, həm də istifadəçi loginləri ilə toqquşmur."""
     codes = db.scalars(select(Student.portal_code).where(Student.portal_code.like(f'{c.code}-%')))
     n = max((int(x.rsplit('-', 1)[1]) for x in codes if x.rsplit('-', 1)[1].isdigit()), default=0) + 1
-    return f'{c.code}-{n:03d}'
+    while True:
+        code = f'{c.code}-{n:03d}'
+        if not (db.scalar(select(Student.id).where(func.upper(Student.portal_code) == code))
+                or db.scalar(select(User.id).where(func.upper(User.login) == code))):
+            return code
+        n += 1
 
 
 @router.post('')
@@ -99,6 +107,13 @@ def create_student(body: StudentIn, user: User = Depends(settings_unlocked), db:
     sid = need_school(user)
     c = _class_for_write(db, user, body.class_id)
     name = ' '.join(body.full_name.split())
+    if body.birth_date and body.birth_date > dt.date.today():
+        raise HTTPException(400, 'Doğum tarixi gələcəkdə ola bilməz')
+    grp = None
+    if body.group_id is not None:
+        grp = get_or_404(db, SchoolClass, body.group_id, 'Qrup')
+        if grp.kind != 'qrup' or grp.parent_id != c.id:
+            raise HTTPException(400, 'Qrup bu sinfin bölünmə qrupu deyil')
     _dup(db, sid, name, body.birth_date)
     code = next_portal_code(db, c)
     pin = new_pin()
@@ -106,9 +121,11 @@ def create_student(body: StudentIn, user: User = Depends(settings_unlocked), db:
     db.add(acc)
     db.flush()
     s = Student(school_id=sid, created_by=user.id, portal_code=code, user_id=acc.id, initial_pin=pin_encrypt(pin),
-                **{**body.model_dump(), 'full_name': name})
+                **{**body.model_dump(exclude={'group_id'}), 'full_name': name})
     db.add(s)
     db.flush()
+    if grp:
+        db.add(GroupMember(group_id=grp.id, student_id=s.id))
     audit(db, user, 'create', 'student', s.id, class_id=c.id)
     db.commit()
     return {**student_out(s, c.name), 'initial_pin': pin}       # PIN yalnız bir dəfə göstərilir
