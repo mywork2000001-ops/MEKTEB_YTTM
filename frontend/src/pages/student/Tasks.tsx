@@ -8,6 +8,15 @@ import { MathText } from '../../MathText'
 import { PeriodBar, usePeriod } from '../../periods'
 
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
+// Test rejimi: tam ekran (çıxanda xəbərdarlıq) və mətnin seçilməsi / kopyalanması / uzun basma menyusu bağlıdır.
+// Qeyd: telefonun sistem funksiyalarını (ekran şəkli, Circle to Search) veb səhifə söndürə bilmir; iPhone-da tam ekran yoxdur.
+const fsOk = () => !!document.fullscreenEnabled
+const enterFs = () => (fsOk() && !document.fullscreenElement
+  ? document.documentElement.requestFullscreen({ navigationUI: 'hide' }).then(() => true, () => false) : Promise.resolve(!!document.fullscreenElement))
+const exitFs = () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}) }
+const block = (e: { preventDefault: () => void }) => e.preventDefault()
+const isField = (t: EventTarget | null) => t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement
+
 const hm = (s: string) => new Date(s).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
 export default function Tasks() {
@@ -52,7 +61,7 @@ export default function Tasks() {
             <div key={x.id} className="jrow">
               <span><b>{x.title}</b><span className="sub small muted"><br />{x.subject}{x.topic_seq ? ` · mövzu №${x.topic_seq}` : ''} · {x.teacher} · {hm(x.opens_at)} – {hm(x.closes_at).slice(-5)} · {x.duration_min} dəq · {x.questions} sual</span></span>
               <span className="row">{x.result ? <Pill tone={gradeTone(x.result.grade)}>{x.result.correct}/{x.result.total} → {x.result.grade}</Pill> : <Pill tone={x.status === 'açıq' || x.status === 'həll edilir' ? 'ok' : x.status === 'buraxılıb' ? 'bad' : undefined}>{x.status}</Pill>}</span>
-              <span>{(x.status === 'açıq' || x.status === 'həll edilir') && <button className="btn primary sm" onClick={() => setSolving(x.id)}>{x.status === 'açıq' ? t('Başla') : 'Davam et'}</button>}
+              <span>{(x.status === 'açıq' || x.status === 'həll edilir') && <button className="btn primary sm" onClick={() => { enterFs(); setSolving(x.id) }}>{x.status === 'açıq' ? t('Başla') : 'Davam et'}</button>}
                 {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>Cavablara bax</button>}</span>
             </div>))}
         </div></>)}
@@ -68,6 +77,27 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
   const [ans, setAns] = useState<Record<string, any>>({})
   const [i, setI] = useState(0)
   const [left, setLeft] = useState(0)
+  const [full, setFull] = useState(() => !!document.fullscreenElement)
+  const [fsFailed, setFsFailed] = useState(false)
+  const [exits, setExits] = useState(0)
+  useEffect(() => {
+    const ch = () => { const f = !!document.fullscreenElement; setFull(f); if (!f) setExits(n => n + 1) }
+    document.addEventListener('fullscreenchange', ch)
+    // seçmə, kopyalama, kəsmə, yapışdırma, sürükləmə, uzun basma menyusu və Ctrl+C/A/X/V/P/S – test boyunca bağlıdır
+    const sel = (e: Event) => { if (!isField(e.target)) e.preventDefault() }
+    const keys = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && 'cxavps'.includes(e.key.toLowerCase())) e.preventDefault() }
+    const evs: [string, EventListener][] = [['copy', block], ['cut', block], ['paste', block], ['contextmenu', block], ['dragstart', block],
+      ['selectstart', sel], ['keydown', keys as EventListener]]
+    evs.forEach(([n, f]) => document.addEventListener(n, f))
+    document.body.classList.add('exam-guard')
+    return () => {
+      document.removeEventListener('fullscreenchange', ch)
+      evs.forEach(([n, f]) => document.removeEventListener(n, f))
+      document.body.classList.remove('exam-guard')
+      exitFs()
+    }
+  }, [])
+  const backToFs = async () => { if (!(await enterFs())) setFsFailed(true) }
   const offset = useRef(0)
   const dirty = useRef<Record<string, any>>({})
   const ansRef = useRef<Record<string, any>>({})
@@ -127,6 +157,15 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
   const mm = String(Math.floor(left / 60)).padStart(2, '0'), ss = String(left % 60).padStart(2, '0')
   return (
     <>
+      {fsOk() && !full && !fsFailed && (
+        <div className="fs-guard" role="alertdialog" aria-modal="true" aria-labelledby="fs-guard-t">
+          <div className="panel" style={{ maxWidth: 420 }}>
+            <h2 id="fs-guard-t">{exits ? '⚠ Tam ekrandan çıxdınız' : 'Test tam ekranda yazılır'}</h2>
+            <p>{exits ? 'Testə qayıtmaq üçün tam ekrana keçin. Vaxt dayanmır – qalan vaxt: ' : 'Başlamaq üçün tam ekrana keçin. Qalan vaxt: '}<b>{mm}:{ss}</b></p>
+            {exits > 0 && <p className="small muted">Tam ekrandan çıxma: {exits} dəfə.</p>}
+            <button className="btn primary w100" onClick={backToFs}>Tam ekrana keç</button>
+          </div>
+        </div>)}
       <div className="row" style={{ marginBottom: 12, position: 'sticky', top: 0, background: 'var(--bg)', padding: '8px 0', zIndex: 5 }}>
         <b className="grow">{d.title}</b><span className="small muted">{t('Qalan vaxt')}</span><span className={'timer' + (left < 60 ? ' low' : '')}>{mm}:{ss}</span>
       </div>
@@ -138,7 +177,7 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
       <section className="panel">
         <p className="small muted">Sual {i + 1} / {d.questions.length}</p>
         <MathText as="p" style={{ fontSize: 17, whiteSpace: 'pre-wrap' }} text={ml(q.text)} />
-        {q.image && <img className="q-img" src={q.image} alt="" />}
+        {q.image && <img className="q-img" src={q.image} alt="" draggable={false} />}
         {q.kind === 'mcq' ? (
           <div className="stack">{q.options.map((o: any, k: number) => (
             <div key={k} className="q-opt" role="radio" tabIndex={0} aria-checked={ans[q.index] === k} onClick={() => set(q.index, k)} onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') set(q.index, k) }}>
