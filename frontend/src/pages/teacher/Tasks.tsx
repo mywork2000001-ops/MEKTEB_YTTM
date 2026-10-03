@@ -35,11 +35,13 @@ export default function Tasks() {
       {!ta ? <PickFirst /> : (
         <div className="jlist">
           {list?.length === 0 && <div className="empty">{view === 'archived' ? 'Silinmiş test yoxdur.' : 'Hələ tapşırıq yoxdur.'}</div>}
-          {list?.map(t => {
+          {list && [...list.filter(t => t.kind !== 'sinaq'), ...list.filter(t => t.kind === 'sinaq')].map((t, i, all) => {
             const now = Date.now(), o = Date.parse(t.opens_at), c = Date.parse(t.closes_at)
             const live = now >= o && now < c
-            return (
-              <div className="jrow cols" key={t.id} style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 8 }}>
+            const section = t.kind === 'sinaq' && all[i - 1]?.kind !== 'sinaq'
+            return (<div key={t.id} style={{ display: 'contents' }}>
+              {section && <h3 className="small muted" style={{ margin: '14px 0 4px' }}>Sınaq imtahanları <small>– jurnal və reytinq «Sınaq imtahanları» bölməsində</small></h3>}
+              <div className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 8 }}>
                 <div className="row">
                   <b className="grow">{t.title}</b>
                   {t.kind === 'sinaq' && <Pill tone="acc">sınaq imtahanı</Pill>}
@@ -63,9 +65,9 @@ export default function Tasks() {
                   <button className="btn sm" onClick={() => setEditor({ mode: 'edit', id: t.id })}>Redaktə</button>
                   <button className="btn sm ghost" onClick={() => setDel(t)}>Sil</button>
                 </div>)}
-                {del?.id === t.id && <ConfirmName name={t.title} action="Sil" onCancel={() => setDel(null)}
-                  onConfirm={async () => { await post(`/api/tasks/${ta}/${t.id}/archive`); toast('Test silindi – «Silinənlər»dən geri qaytarmaq olar'); setDel(null); reload() }} />}
-              </div>)
+                {del?.id === t.id && <ConfirmName name={t.title} action={t.kind === 'sinaq' ? 'Birdəfəlik sil' : 'Sil'} onCancel={() => setDel(null)}
+                  onConfirm={async () => { await post(`/api/tasks/${ta}/${t.id}/archive`); toast(t.kind === 'sinaq' ? 'Sınaq sistemdən silindi (nəticələri ilə)' : 'Test silindi – «Silinənlər»dən geri qaytarmaq olar'); setDel(null); reload() }} />}
+              </div></div>)
           })}
         </div>
       )}

@@ -33,13 +33,15 @@ export default function Tasks() {
       {loading && !list ? <Loading /> : (
         <div className="jlist">
           {list?.length === 0 && <div className="empty">Tapşırıq yoxdur.</div>}
-          {list?.map(x => (
-            <div key={x.id} className="jrow">
+          {list && [...list.filter(x => x.kind !== 'sinaq'), ...list.filter(x => x.kind === 'sinaq')].map((x, i, all) => (
+            <div key={x.id} style={{ display: 'contents' }}>
+            {x.kind === 'sinaq' && all[i - 1]?.kind !== 'sinaq' && <h3 className="small muted" style={{ margin: '14px 0 4px' }}>Sınaq imtahanları <small>– yeriniz və balınız «Nəticələrim»də</small></h3>}
+            <div className="jrow">
               <span><b>{x.title}</b><span className="sub small muted"><br />{x.subject} · {x.teacher} · {hm(x.opens_at)} – {hm(x.closes_at).slice(-5)} · {x.duration_min} dəq · {x.questions} sual</span></span>
               <span className="row">{x.result ? <Pill tone={gradeTone(x.result.grade)}>{x.result.correct}/{x.result.total} → {x.result.grade}</Pill> : <Pill tone={x.status === 'açıq' || x.status === 'həll edilir' ? 'ok' : x.status === 'buraxılıb' ? 'bad' : undefined}>{x.status}</Pill>}</span>
               <span>{(x.status === 'açıq' || x.status === 'həll edilir') && <button className="btn primary sm" onClick={() => setSolving(x.id)}>{x.status === 'açıq' ? t('Başla') : 'Davam et'}</button>}
                 {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>Cavablara bax</button>}</span>
-            </div>))}
+            </div></div>))}
         </div>)}
       {review && <Review id={review} onClose={() => setReview(null)} />}
     </>

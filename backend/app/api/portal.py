@@ -258,7 +258,7 @@ def tasks(user: User = Depends(student_only), db: Session = Depends(get_db)):
                     'duration_min': t.duration_min, 'questions': len(t.questions), 'status': _status(t, a, at),
                     'deadline': aware(a.deadline) if a else None,
                     'result': {'correct': a.correct, 'total': a.total, 'grade': a.grade} if a and a.submitted_at else None,
-                    'can_review': _can_review(t, a, at)})
+                    'can_review': _can_review(t, a, at), 'kind': t.kind})
     return out
 
 

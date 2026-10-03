@@ -1,9 +1,9 @@
 // Sınaq imtahanları (onlayn): planla əlaqəsiz, bir neçə sinfə eyni anda. Nəticə – «Sınaq jurnalı» (bal, faiz, sinifdə və
 // ümumi yer), siniflərin reytinqi, sual analizi, açıq sualın əl ilə yoxlanması, kumulyativ reytinq. Formativ jurnala düşmür.
 import { useEffect, useMemo, useState } from 'react'
-import { get, post, put } from '../../api'
+import { del as apiDel, get, post, put } from '../../api'
 import { MathText } from '../../MathText'
-import { AsyncBtn, Drawer, ErrorBox, Field, fmt, Loading, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
+import { ConfirmName, Drawer, ErrorBox, Field, fmt, Loading, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
 import { esc, head, printDoc, table } from '../../print'
 import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
 
@@ -24,19 +24,19 @@ const stateTone = (s: string) => (s === 'açıqdır' ? 'ok' : s === 'bitib' ? 'i
 const PENALTY: [string, string][] = [['0', 'cərimə yoxdur'], ['4', '4 səhv 1 düzü aparır'], ['3', '3 səhv 1 düzü aparır']]
 
 export default function OnlineExams() {
-  const [view, setView] = useState<'list' | 'rating' | 'archived'>('list')
-  const [list, err, loading, reload] = useLoad<Exam[]>(() => get('/api/exams-online', view === 'archived' ? { archived: true } : {}), [view])
+  const [view, setView] = useState<'list' | 'rating'>('list')
+  const [list, err, loading, reload] = useLoad<Exam[]>(() => get('/api/exams-online'), [])
   const [creating, setCreating] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
   return (
     <>
       <Top title="Sınaq imtahanları" sub="Onlayn sınaq bir neçə sinfə eyni anda · sınaq jurnalı · sinif və ümumi reytinq (formativ qiymətə təsir etmir)"
         actions={<button className="btn primary" onClick={() => setCreating(true)}>+ Yeni sınaq</button>} />
-      <div className="toolbar"><Seg value={view} onChange={setView} options={[['list', 'Sınaqlar'], ['rating', 'Reytinq'], ['archived', 'Arxiv']]} /></div>
+      <div className="toolbar"><Seg value={view} onChange={setView} options={[['list', 'Sınaqlar'], ['rating', 'Reytinq']]} /></div>
       <ErrorBox error={err} />
       {view === 'rating' ? <Rating /> : loading && !list ? <Loading /> : (
         <div className="jlist">
-          {list?.length === 0 && <div className="empty">{view === 'archived' ? 'Arxivdə sınaq yoxdur.' : 'Hələ sınaq yoxdur – «+ Yeni sınaq» ilə test bazasından sınaq seçin.'}</div>}
+          {list?.length === 0 && <div className="empty">Hələ sınaq yoxdur – «+ Yeni sınaq» ilə test bazasından sınaq seçin.</div>}
           {list?.map(x => (
             <div key={x.id} className="jrow cols click" onClick={() => setOpen(x.id)} style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 6 }}>
               <div className="row"><b className="grow">{x.title}</b><Pill tone={stateTone(x.state)}>{x.state}</Pill>{x.mine && <Pill tone="acc">mənim</Pill>}</div>
@@ -44,7 +44,7 @@ export default function OnlineExams() {
             </div>))}
         </div>)}
       {creating && <NewExam onClose={() => setCreating(false)} onDone={() => { setCreating(false); reload() }} />}
-      {open && <Results id={open} archived={view === 'archived'} onClose={() => setOpen(null)} onChange={reload} />}
+      {open && <Results id={open} onClose={() => setOpen(null)} onChange={reload} />}
     </>
   )
 }
@@ -160,11 +160,12 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
 }
 
 // ---------------------------------------------------------------- sınaq jurnalı
-function Results({ id, archived, onClose, onChange }: { id: number; archived: boolean; onClose: () => void; onChange: () => void }) {
+function Results({ id, onClose, onChange }: { id: number; onClose: () => void; onChange: () => void }) {
   const [d, err, , reload] = useLoad<Res>(() => get(`/api/exams-online/${id}`), [id])
   const [tab, setTab] = useState<'rows' | 'classes' | 'questions'>('rows')
   const [cls, setCls] = useState('')
   const [att, setAtt] = useState<Row | null>(null)
+  const [delAsk, setDelAsk] = useState(false)
   const rows = d ? d.rows.filter(r => !cls || r.class_name === cls) : []
   const name = (r: Row) => r.full_name || `şagird (${r.class_name})`
   const print = () => {
@@ -178,9 +179,11 @@ function Results({ id, archived, onClose, onChange }: { id: number; archived: bo
   return (
     <Drawer title={d ? d.batch.title : 'Sınaq jurnalı'} onClose={onClose}
       footer={d && <><button className="btn" onClick={print}>Çap et</button><span className="grow" />
-        {archived ? <AsyncBtn className="btn" ok="Geri qaytarıldı" onClick={async () => { await post(`/api/exams-online/${id}/restore`); onChange(); onClose() }}>Geri qaytar</AsyncBtn>
-          : <AsyncBtn className="btn" ok="Arxivə köçürüldü" onClick={async () => { await post(`/api/exams-online/${id}/archive`); onChange(); onClose() }}>{d.access === 'full' ? 'Arxivə' : 'Sinfimdən götür'}</AsyncBtn>}</>}>
+        <button className="btn ghost" onClick={() => setDelAsk(true)}>{d.access === 'full' ? 'Sil' : 'Sinfimdən sil'}</button></>}>
       <ErrorBox error={err} />
+      {d && delAsk && <><p className="small muted">Sınaq {d.access === 'full' ? 'bütün siniflərdən' : 'sinfinizdən'} birdəfəlik silinir – nəticələr və şagird cəhdləri də (geri qaytarmaq olmur).</p>
+        <ConfirmName name={d.batch.title} action="Birdəfəlik sil" onCancel={() => setDelAsk(false)}
+          onConfirm={async () => { await apiDel(`/api/exams-online/${id}`); toast('Sınaq sistemdən silindi'); onChange(); onClose() }} /></>}
       {!d ? <Loading /> : (
         <div className="stack">
           <div className="kpis">

@@ -121,9 +121,20 @@ def test_online_exam_journal_rating_privacy(world, clock, monkeypatch):
     assert first['max_pct'] == 100.0 and 'rows' not in first
     assert me['delta'] == round(33.3 - 100, 1)
 
-    # arxiv: başqa müəllim yalnız öz sinfini götürür
-    assert ilqar.post(f'/api/exams-online/{bid}/archive').json()['archived'] == 1
+    # silmə: başqa müəllim yalnız öz sinfini silir; silinən sınaq tam gedir (şagirddə də)
+    assert ilqar.delete(f'/api/exams-online/{bid}').json()['deleted'] == 1
     assert admin.get(f'/api/exams-online/{bid}').json()['summary']['students'] == 5
+    assert admin.delete(f'/api/exams-online/{bid}').json()['deleted'] == 2
+    assert admin.get(f'/api/exams-online/{bid}').status_code == 404
+    assert all(x['id'] != bid for x in admin.get('/api/exams-online').json())
+    assert all(x['batch_id'] != bid for x in s0.get('/api/portal/exams').json()['items'])
+    with S() as db:
+        assert db.query(OnlineTask).filter_by(batch_id=bid).count() == 0
+    # «Onlayn tapşırıqlar»dan silinən sınaq da arxivə yox, tam silinir; boş qalan paket də gedir
+    assert admin.post(f'/api/tasks/{ta}/{t2}/archive').json()['deleted'] is True
+    assert admin.get(f'/api/exams-online/{b2}').status_code == 404
+    assert admin.get(f'/api/tasks/{ta}', params={'archived': True}).json() == []
+    assert s0.get('/api/portal/tasks').json() == []
 
 
 def test_exam_validation(world, clock, monkeypatch):

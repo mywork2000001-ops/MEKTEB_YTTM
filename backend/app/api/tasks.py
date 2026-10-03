@@ -7,7 +7,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -15,7 +15,7 @@ from ..deps import staff
 from ..domain.answers import check
 from ..domain.rules import summative_grade
 from ..models import (BankFile, BankQuestion, BankSource, Mark, OnlineTask, PlanLesson, TaskAttempt, TeachingAssignment,
-                      User, now)
+                      TestBatch, User, now)
 from ..services import own_assignment, roster
 from .common import audit, get_or_404
 
@@ -218,10 +218,33 @@ def archive_task(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
     t = get_or_404(db, OnlineTask, task_id, 'Tapşırıq')
     if t.assignment_id != ta_id:
         raise HTTPException(404, 'Tapşırıq tapılmadı')
+    if t.kind == 'sinaq':                         # silinən sınaq sistemdən tam silinir (müəllim və şagird üçün)
+        purge_tasks(db, [t])
+        audit(db, user, 'delete', 'task', task_id, kind='sinaq')
+        db.commit()
+        return {'ok': True, 'deleted': True}
     t.archived_at = now()
     audit(db, user, 'archive', 'task', t.id)
     db.commit()
     return {'ok': True}
+
+
+def purge_tasks(db: Session, tasks: list[OnlineTask]) -> int:
+    """Tapşırıqları cəhdləri ilə birlikdə birdəfəlik silir; boş qalan sınaq paketi də silinir."""
+    batches = {t.batch_id for t in tasks if t.batch_id}
+    ids = [t.id for t in tasks]
+    if not ids:
+        return 0
+    db.execute(delete(TaskAttempt).where(TaskAttempt.task_id.in_(ids)))
+    db.execute(update(Mark).where(Mark.task_id.in_(ids)).values(task_id=None))
+    for t in tasks:
+        db.delete(t)
+    db.flush()
+    for bid in batches:
+        b = db.get(TestBatch, bid)
+        if b and b.kind == 'sinaq' and db.scalar(select(OnlineTask.id).where(OnlineTask.batch_id == bid)) is None:
+            db.delete(b)
+    return len(ids)
 
 
 @router.post('/{ta_id}/{task_id}/restore')

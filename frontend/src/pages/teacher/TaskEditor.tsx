@@ -77,7 +77,8 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
     } catch (e) { setErr(e) }
   }
 
-  const bank = <BankPicker has={has} add={add} remove={remove} onTitle={t => !taskId && setF(x => ({ ...x, title: t }))} disabled={locked} first={bankFirst} />
+  const bank = <BankPicker has={has} add={add} remove={remove} onTitle={t => !taskId && setF(x => ({ ...x, title: t }))} disabled={locked} first={bankFirst}
+    kinds={taskId ? undefined : ['movzu', 'diaqnostik']} legend={taskId ? undefined : 'Test bazasından – mövzu testləri (sınaqlar «Sınaq imtahanları» bölməsindədir)'} />
   return (
     <Drawer title={taskId ? 'Tapşırığı redaktə et' : bankFirst ? 'Viktorinadan test əlavə et' : 'Yeni tapşırıq'} onClose={onClose}
       footer={<><span className="small muted grow">{qs.length} sual</span><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" onClick={submit}>{taskId ? 'Yadda saxla' : 'Yarat'}</button></>}>

@@ -25,7 +25,7 @@ from ..models import (AuditLog, OnlineTask, Role, SchoolClass, Student, TaskAtte
                       User, now)
 from ..services import class_grade, roster
 from .common import audit, need_school
-from .tasks import CustomQ, _snapshot, aware, custom_snapshot, expire_due, is_ok, score
+from .tasks import CustomQ, _snapshot, aware, custom_snapshot, expire_due, is_ok, purge_tasks, score
 
 router = APIRouter(prefix='/api/exams-online', tags=['exams-online'])
 
@@ -241,7 +241,7 @@ def create_exam(body: ExamIn, user: User = Depends(staff), db: Session = Depends
 
 
 @router.get('')
-def list_exams(archived: bool = False, user: User = Depends(staff), db: Session = Depends(get_db)):
+def list_exams(user: User = Depends(staff), db: Session = Depends(get_db)):
     """Görə bildiyim sınaqlar: yaratdıqlarım, siniflərimə göndərilənlər, admin – məktəbin hamısı."""
     st = select(TestBatch).where(TestBatch.kind == 'sinaq').order_by(TestBatch.id.desc())
     out = []
@@ -252,9 +252,9 @@ def list_exams(archived: bool = False, user: User = Depends(staff), db: Session 
             continue
         all_tasks = list(db.scalars(select(OnlineTask).where(OnlineTask.batch_id == b.id)))
         live = [t for t in all_tasks if t.archived_at is None]
-        if archived != (bool(all_tasks) and not live):
+        if not live:
             continue
-        ts = live or all_tasks
+        ts = live
         names = [db.get(SchoolClass, db.get(TeachingAssignment, t.assignment_id).class_id).name for t in ts]
         done = [a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id.in_([t.id for t in ts]),
                                                                 TaskAttempt.submitted_at.is_not(None))) if a.total]
@@ -374,29 +374,17 @@ def set_manual(batch_id: int, task_id: int, student_id: int, body: ManualIn, use
     return {'correct': a.correct, 'total': a.total}
 
 
-@router.post('/{batch_id}/archive')
-def archive_exam(batch_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
-    """Tam icazəli – bütün siniflər üzrə; digər müəllim – yalnız öz siniflərindən götürür."""
+@router.delete('/{batch_id}')
+def delete_exam(batch_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Sınaq sistemdən tam silinir (cəhdlər və nəticələr də – müəllim və şagird üçün). Tam icazəli – bütün siniflər üzrə;
+    digər müəllim – yalnız öz siniflərindən."""
     b, access = _batch(db, user, batch_id)
-    n = 0
-    for t in _tasks(db, b):
-        if access == 'full' or db.get(TeachingAssignment, t.assignment_id).teacher_id == user.id:
-            t.archived_at = now()
-            n += 1
-    audit(db, user, 'archive', 'test_batch', b.id, tasks=n)
+    mine = [t for t in db.scalars(select(OnlineTask).where(OnlineTask.batch_id == b.id))
+            if access == 'full' or db.get(TeachingAssignment, t.assignment_id).teacher_id == user.id]
+    n = purge_tasks(db, mine)
+    audit(db, user, 'delete', 'test_batch', batch_id, tasks=n)
     db.commit()
-    return {'archived': n}
-
-
-@router.post('/{batch_id}/restore')
-def restore_exam(batch_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
-    b, access = _batch(db, user, batch_id)
-    for t in db.scalars(select(OnlineTask).where(OnlineTask.batch_id == b.id)):
-        if access == 'full' or db.get(TeachingAssignment, t.assignment_id).teacher_id == user.id:
-            t.archived_at = None
-    audit(db, user, 'restore', 'test_batch', b.id)
-    db.commit()
-    return {'ok': True}
+    return {'deleted': n}
 
 
 # ---------------------------------------------------------------- şagird portalı üçün
