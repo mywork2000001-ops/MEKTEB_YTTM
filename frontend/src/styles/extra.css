@@ -156,3 +156,41 @@ body.exam-guard{-webkit-user-select:none;user-select:none;-webkit-touch-callout:
 body.exam-guard input,body.exam-guard textarea{-webkit-user-select:text;user-select:text}
 body.exam-guard img{-webkit-user-drag:none;pointer-events:none}
 .fs-guard{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;background:var(--bg)}
+
+/* ---- Telefon optimallaşdırması ---- */
+/* .sel sinifli input/textarea (tarix, çat sahəsi, test cavabı) – select.sel kimi görünsün */
+input.sel,textarea.sel{min-height:42px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);color:var(--ink);min-width:0;max-width:100%}
+textarea.sel{padding:10px 12px;line-height:1.4}
+/* uzun status yazısı kartdan çıxmasın */
+.pill{max-width:100%}
+/* jurnal: yadda saxla – sinif uzun olsa da düymə həmişə əl altında */
+.jsave{position:sticky;bottom:12px;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding:10px 12px 10px 16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+/* test rejimi: yalnız test – menyu və alt panel gizlənir */
+body.exam-guard .side,body.exam-guard .tabbar,body.exam-guard .topbar{display:none!important}
+body.exam-guard .app{grid-template-columns:1fr}
+body.exam-guard main{max-width:860px;margin:0 auto}
+.show-more{display:block;width:100%;margin-top:10px}
+@media (max-width:700px){
+  .pill{white-space:normal}
+  /* seq. düymələr (dövr filtri və s.) ekrana sığmasa – sürüşür, səhifə yox */
+  div.seg{max-width:100%;min-width:0;overflow-x:auto;scrollbar-width:none}
+  div.seg::-webkit-scrollbar{display:none}
+  div.seg button{flex:1 0 auto;padding:0 10px}
+  th,td{padding:10px}
+  .pat{display:none}
+  /* jurnal sətri: ad + ID bir sətirdə; davamiyyət tam enə; qiymət və ev tapşırığı bir sırada */
+  .jrow.jmark{grid-template-columns:auto minmax(110px,1fr)!important;gap:8px;padding:12px}
+  .jmark > :first-child,.jmark .att-btns{grid-column:1/-1}
+  .jmark .sub{display:inline;margin-left:4px}
+  .jmark .att-btns{flex-wrap:nowrap}
+  .jmark .att-btns button{flex:1;min-height:42px;font-size:14px}
+  .jmark .grade-sel{min-height:40px}
+  .jmark > select{width:100%}
+  .jsave{bottom:calc(76px + env(safe-area-inset-bottom,0px));padding:8px 8px 8px 14px}
+  /* test: naviqasiya düymələri ekranın altında sabit */
+  body.exam-guard main{padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+  .exam-nav{position:sticky;bottom:0;z-index:4;flex-wrap:nowrap!important;margin:16px -16px -16px!important;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line);border-radius:0 0 var(--r) var(--r)}
+  .exam-nav .btn{flex:1 1 0;min-width:0;min-height:46px;padding:0 8px}
+  .q-opt{min-height:48px;align-items:center}
+}
+@media (max-width:700px){.toast{bottom:calc(84px + env(safe-area-inset-bottom,0px));white-space:normal;max-width:calc(100% - 32px);text-align:center}body.exam-guard .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}}

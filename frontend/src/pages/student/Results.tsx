@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { get } from '../../api'
 import { useT } from '../../i18n'
 import { ErrorBox, fmt, fmtDate, gradeTone, Loading, Pill, Stat, Top, useLoad } from '../../ui'
@@ -9,6 +10,7 @@ export default function Results() {
   const t = useT()
   const [d, err] = useLoad<any>(() => get('/api/portal/results'), [])
   const [ex] = useLoad<any>(() => get('/api/portal/exams'), [])
+  const [allMistakes, setAllMistakes] = useState(false)
   if (!d) return err ? <ErrorBox error={err} /> : <Loading />
   return (
     <>
@@ -61,13 +63,14 @@ export default function Results() {
       </section>
       <section className="panel">
         <h2>{t('Səhvlərim')} <small>{d.mistakes.length}</small></h2>
-        {d.mistakes.length === 0 ? <p className="muted">Səhv yoxdur və ya cavablar hələ açılmayıb.</p> : d.mistakes.map((m: any, k: number) => (
+        {d.mistakes.length === 0 ? <p className="muted">Səhv yoxdur və ya cavablar hələ açılmayıb.</p> : d.mistakes.slice(0, allMistakes ? undefined : 10).map((m: any, k: number) => (
           <details key={k} style={{ borderBottom: '1px solid var(--line)', padding: '8px 0' }}>
             <summary style={{ cursor: 'pointer' }}><MathText text={ml(m.text)} /> <span className="small muted">· {m.task}</span></summary>
             {m.image && <img className="q-img" src={m.image} alt="" />}
             <p className="small">Sizin cavab: <b style={{ color: 'var(--bad)' }}>{m.kind === 'mcq' ? (m.given != null ? <MathText text={ml(m.options?.[m.given])} /> : '—') : m.given || '—'}</b> · Düzgün: <b style={{ color: 'var(--ok)' }}>{m.kind === 'mcq' ? <MathText text={ml(m.options?.[m.correct])} /> : String(m.answer).split('|')[0]}</b></p>
             {m.explanation && <p className="small muted" style={{ whiteSpace: 'pre-wrap' }}><MathText text={ml(m.explanation)} /></p>}
           </details>))}
+        {!allMistakes && d.mistakes.length > 10 && <button className="btn show-more" onClick={() => setAllMistakes(true)}>Hamısını göstər ({d.mistakes.length})</button>}
       </section>
     </>
   )

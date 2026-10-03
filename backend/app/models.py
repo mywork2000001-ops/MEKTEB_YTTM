@@ -443,6 +443,7 @@ class ChatMember(Base):
     room_id: Mapped[int] = mapped_column(ForeignKey('chat_rooms.id', ondelete='CASCADE'), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
     last_read_id: Mapped[int] = mapped_column(Integer, default=0)
+    cleared_id: Mapped[int] = mapped_column(Integer, default=0, server_default='0')   # «söhbəti sil» – bu id-yə qədər görünmür (yalnız özündə)
 
 
 class ChatMessage(Base):

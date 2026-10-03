@@ -23,6 +23,7 @@ export const ICONS: Record<string,string> = {
   more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
   plus:'<path d="M12 5v14M5 12h14"/>', search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.5"/>', edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+  trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   upload:'<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/>',
   groups:'<circle cx="7" cy="9" r="2.6"/><circle cx="17" cy="9" r="2.6"/><circle cx="12" cy="15" r="2.6"/><path d="M3 20c.5-2 2-3 4-3M21 20c-.5-2-2-3-4-3"/>',
   topics:'<path d="M4 5h16M4 10h10M4 15h16M4 20h10"/>',

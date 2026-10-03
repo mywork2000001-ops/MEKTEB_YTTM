@@ -185,7 +185,7 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
         ) : (
           <input className="sel w100" style={{ fontSize: 16 }} placeholder="Cavabınızı yazın" value={ans[q.index] ?? ''} onChange={e => set(q.index, e.target.value)} />
         )}
-        <div className="row" style={{ marginTop: 16 }}>
+        <div className="row exam-nav" style={{ marginTop: 16 }}>
           <button className="btn" disabled={i === 0} onClick={() => setI(i - 1)}>‹ Əvvəlki</button>
           {i < d.questions.length - 1 ? <button className="btn primary" onClick={() => { flush(); setI(i + 1) }}>Növbəti ›</button> : null}
           <AsyncBtn className="btn primary right" onClick={() => finish(false)}>{t('Təhvil ver')}</AsyncBtn>

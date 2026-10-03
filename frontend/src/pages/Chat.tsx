@@ -208,6 +208,7 @@ function RoomView({ room, onBack }: { room: Room; onBack: () => void }) {
   const [emoji, setEmoji] = useState(false)
   const [reads, setReads] = useState<Read[]>([])
   const [readers, setReaders] = useState<number | null>(null)
+  const [askClear, setAskClear] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const last = useRef(0)
@@ -277,7 +278,16 @@ function RoomView({ room, onBack }: { room: Room; onBack: () => void }) {
       <div className="row chat-top" style={{ flexWrap: 'nowrap' }}>
         <button className="btn" onClick={onBack} aria-label="Söhbətlərə qayıt">‹</button>
         <Avatar room={room} /><b className="grow ellipsis">{room.title}</b>
+        <button className="btn ghost" onClick={() => setAskClear(true)} aria-label="Söhbəti sil" title="Söhbəti sil"><Icon name="trash" /></button>
       </div>
+      {askClear && (
+        <div className="confirm" style={{ borderRadius: 0 }}>
+          <span className="grow">{room.kind === 'dm' ? 'Yazışma yalnız sizdə silinəcək – həmsöhbətdə qalır.' : 'Söhbət tarixçəsi yalnız sizdə təmizlənəcək – digər iştirakçılarda qalır.'}</span>
+          <button className="btn sm" onClick={() => setAskClear(false)}>Ləğv et</button>
+          <button className="btn sm danger" onClick={async () => {
+            try { await del(`/api/chat/rooms/${room.id}`); toast(room.kind === 'dm' ? 'Yazışma silindi' : 'Tarixçə təmizləndi'); onBack() } catch (e) { setErr(e); setAskClear(false) }
+          }}>Sil</button>
+        </div>)}
       <ErrorBox error={err} />
       <div className="msgs" ref={box}>
         {msgs.map(m => {

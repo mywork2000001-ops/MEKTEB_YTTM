@@ -147,7 +147,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
           const m = marks[s.id]
           const absent = out(att[s.id])
           return (
-            <div className="jrow cols" key={s.id} style={{ ['--cols' as any]: 'minmax(160px,1fr) auto auto auto' }}>
+            <div className="jrow cols jmark" key={s.id} style={{ ['--cols' as any]: 'minmax(160px,1fr) auto auto auto' }}>
               <span><b>{s.full_name}</b><span className="sub small muted"> {s.portal_code}</span></span>
               <div className="att-btns" role="group" aria-label="Davamiyyət">
                 {ATT.map(([v, short, cls]) => <button key={v} className={cls} title={v} aria-pressed={att[s.id] === v} onClick={() => { setAtt({ ...att, [s.id]: v }); if (out(v)) { setMark(s.id, null); if (hw[s.id]) { const n = { ...hw }; delete n[s.id]; setHw(n) } } }}>{short}</button>)}
@@ -179,10 +179,19 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
         <AsyncBtn className="btn" onClick={hold}>{lesson.held ? 'Saxlamanı götür' : 'Mövzunu saxla'}</AsyncBtn>
         <button className="btn" onClick={() => { try { sessionStorage.setItem('mk-pick-tasks', String(ta.id)) } catch { /* noop */ } nav('/tasks') }}>Onlayn test təyin et</button>
         <span className="small muted">«Mövzunu saxla» – mövzu növbəti dərsdə davam edir, plan bir dərs sürüşür (rəsmi plan dəyişmir).</span>
-        <AsyncBtn className="btn primary right" onClick={save}>Yadda saxla</AsyncBtn>
+      </div>
+      <div className="jsave">
+        <span className="small muted">{future ? 'Mövzu və ev tapşırığı' : `İştirak: ${present}/${students.length} · qiymət: ${Object.values(marks).filter(m => m.kind === 'test' ? m.test_correct != null : m.grade).length}`}</span>
+        <AsyncBtn className="btn primary" onClick={save}>Yadda saxla</AsyncBtn>
       </div>
     </section>
   )
+}
+
+/** Telefonda ata adı gizlənir – cədvəldə ad sütunu dar qalsın. */
+function ShortName({ name }: { name: string }) {
+  const w = name.split(' ')
+  return <>{w.slice(0, 2).join(' ')}{w.length > 2 && <span className="pat"> {w.slice(2).join(' ')}</span>}</>
 }
 
 function autoGrade(correct: number, total: number) {
@@ -475,7 +484,7 @@ function Grid({ ta }: { ta: MyLesson }) {
               {fmtDate(c.date).slice(0, 5)}{c.assessment && <><br /><small>{c.assessment}</small></>}{!c.written && !c.future && <><br /><small style={{ color: 'var(--bad)' }}>yazılmayıb</small></>}</th>))}
             <th className="r">Orta</th><th className="r">Buraxıb</th>{d.exams > 0 && <th className="r sinaq-col">Sınaq orta %</th>}</tr></thead>
           <tbody>{d.rows.map((r: any) => (
-            <tr key={r.student_id}><td style={{ whiteSpace: 'nowrap' }}>{r.full_name}</td>
+            <tr key={r.student_id}><td style={{ whiteSpace: 'nowrap' }}><ShortName name={r.full_name} /></td>
               {r.cells.map((c: any, i: number) => (
                 <td key={i} className={d.columns[i].sinaq ? 'sinaq-col' : undefined} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                   {c.sinaq && (c.sinaq === 'yox' ? <span className="muted small">yox</span> : <b className="small">{c.sinaq}</b>)}

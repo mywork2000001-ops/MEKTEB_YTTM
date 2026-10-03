@@ -135,9 +135,15 @@ def _ensure(db: Session, **kw) -> ChatRoom:
     return r
 
 
+def _cleared(db: Session, u: User, r: ChatRoom) -> int:
+    """«Söhbəti sil» – istifadəçi bu id-yə qədərki mesajları görmür (digər iştirakçılarda qalır)."""
+    m = db.get(ChatMember, (r.id, u.id))
+    return m.cleared_id if m else 0
+
+
 def _unread(db: Session, u: User, r: ChatRoom) -> int:
     m = db.get(ChatMember, (r.id, u.id))
-    last = m.last_read_id if m else 0
+    last = max(m.last_read_id, m.cleared_id) if m else 0
     return db.scalar(select(func.count()).select_from(ChatMessage).where(
         ChatMessage.room_id == r.id, ChatMessage.id > last, ChatMessage.sender_id != u.id,
         ChatMessage.deleted_at.is_(None))) or 0
@@ -169,10 +175,11 @@ def rooms(u: User = Depends(current_user), db: Session = Depends(get_db)):
     out = []
     for r in db.scalars(select(ChatRoom).where(ChatRoom.school_id == u.school_id)):
         if can_access(db, u, r):
-            last = db.scalar(select(ChatMessage).where(ChatMessage.room_id == r.id, ChatMessage.deleted_at.is_(None))
+            last = db.scalar(select(ChatMessage).where(ChatMessage.room_id == r.id, ChatMessage.deleted_at.is_(None),
+                                                      ChatMessage.id > _cleared(db, u, r))
                              .order_by(ChatMessage.id.desc()))
             if r.kind == 'dm' and not last:
-                continue                                          # boş şəxsi yazışma siyahını doldurmasın
+                continue                                          # boş (və ya silinmiş) şəxsi yazışma siyahını doldurmasın
             sender = last and db.get(User, last.sender_id)
             other = db.get(User, next(int(x) for x in r.dm_key.split(':')[1:] if int(x) != u.id)) if r.kind == 'dm' else None
             out.append({'id': r.id, 'kind': r.kind, 'title': _title(db, u, r), 'unread': _unread(db, u, r),
@@ -291,7 +298,7 @@ def msg_out(m: ChatMessage, db: Session) -> dict:
 def messages(room_id: int, after_id: int = 0, before_id: int | None = None, limit: int = 50,
              u: User = Depends(current_user), db: Session = Depends(get_db)):
     r = _room(db, u, room_id)
-    st = select(ChatMessage).where(ChatMessage.room_id == r.id, ChatMessage.id > after_id)
+    st = select(ChatMessage).where(ChatMessage.room_id == r.id, ChatMessage.id > max(after_id, _cleared(db, u, r)))
     if before_id:
         st = st.where(ChatMessage.id < before_id)
     rows = list(db.scalars(st.order_by(ChatMessage.id.desc()).limit(min(limit, 200))))[::-1]
@@ -327,7 +334,8 @@ def get_file(message_id: int, u: User = Depends(current_user), db: Session = Dep
     m = db.get(ChatMessage, message_id)
     if not m or not m.file_key or m.deleted_at:
         raise HTTPException(404, 'Fayl tapılmadı')
-    _room(db, u, m.room_id)
+    if m.id <= _cleared(db, u, _room(db, u, m.room_id)):
+        raise HTTPException(404, 'Fayl tapılmadı')
     from urllib.parse import quote
     from ..storage import storage_for_key
     st = storage_for_key(m.file_key)
@@ -363,9 +371,23 @@ def changes(room_id: int, since: dt.datetime, u: User = Depends(current_user), d
     """Açıq söhbətdə başqasının düzəltdiyi/sildiyi mesajlar (since – əvvəlki sorğunun server vaxtı)."""
     r = _room(db, u, room_id)
     since = since if since.tzinfo else since.replace(tzinfo=dt.timezone.utc)
-    rows = db.scalars(select(ChatMessage).where(ChatMessage.room_id == r.id, or_(ChatMessage.edited_at > since,
+    rows = db.scalars(select(ChatMessage).where(ChatMessage.room_id == r.id, ChatMessage.id > _cleared(db, u, r), or_(ChatMessage.edited_at > since,
                                                                                ChatMessage.deleted_at > since)))
     return {'now': now(), 'items': [msg_out(m, db) for m in rows]}
+
+
+@router.delete('/rooms/{room_id}')
+def clear_room(room_id: int, u: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Söhbəti silmək – YALNIZ özündə: mesajlar bu istifadəçiyə görünmür, həmsöhbətdə qalır (bildirilmiş
+    mesajlar sübut kimi qorunur). Şəxsi yazışma siyahıdan çıxır, yeni mesaj gələndə yenidən görünür."""
+    r = _room(db, u, room_id)
+    last = db.scalar(select(func.max(ChatMessage.id)).where(ChatMessage.room_id == r.id)) or 0
+    m = db.get(ChatMember, (r.id, u.id)) or ChatMember(room_id=r.id, user_id=u.id, last_read_id=0)
+    m.cleared_id = last
+    m.last_read_id = max(m.last_read_id or 0, last)
+    db.merge(m)
+    db.commit()
+    return {'ok': True}
 
 
 EDIT_WINDOW = dt.timedelta(hours=24)
