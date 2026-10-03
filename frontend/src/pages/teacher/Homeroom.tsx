@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, del, get, post, put } from '../../api'
 import { useAuth } from '../../auth'
 import { useT } from '../../i18n'
-import { esc, head, printDoc, table } from '../../print'
+import { esc, head, kpis, printDoc, SIGN, signs, table } from '../../print'
 import { AsyncBtn, Drawer, Empty, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, PickFirst, Pill, Seg, Stat, toast, Top, useLoad, useNarrow } from '../../ui'
 import { usePick } from './common'
 import { LessonCountTable, PerfStats } from './Reports'
@@ -352,41 +352,67 @@ function EventForm({ cid, e, kinds, students, onClose, onDone }: { cid: number; 
   )
 }
 
+/** Fənn sütunları: bölünən fənnin qrupları (eyni fənn, fərqli bağlılıq) bir sütunda – şagird hansı qrupdadırsa, o qiymət. */
+function subjectColumns(h: any): { name: string; group: boolean; tas: number[] }[] {
+  const out: { name: string; group: boolean; tas: number[] }[] = []
+  for (const x of h.subjects) {
+    const c = out.find(o => o.name === x.subject)
+    if (c) { c.tas.push(x.ta_id); c.group = c.group || !!x.group } else out.push({ name: x.subject, group: !!x.group, tas: [x.ta_id] })
+  }
+  return out
+}
+const gradeIn = (r: any, col: { tas: number[] }) => col.tas.map(id => r.grades[id]).find((g: any) => g != null) ?? ''
+const subjLabel = (x: any) => x.group ? `${x.subject} (${x.group} – ${x.group_kind === 'tədris' ? 'tədris qrupu' : 'bölünmə qrupu'})` : x.subject
+
 function PrintView({ h, sem }: { h: any; sem: string }) {
   const { me } = useAuth()
   const period = sem === '1' ? 'I yarımil' : sem === '2' ? 'II yarımil' : 'tədris ili'
   const s = h.summary
   const cats = Object.entries(s.categories).map(([k, v]) => `${k}: ${v}`).join(' · ')
-  const sign = `<p class="sign">Sinif rəhbəri: ${esc(h.class.homeroom?.name || me?.full_name || '')} ____________</p>`
-  const docs: [string, () => void][] = [
-    ['Qiymət cədvəli (fənlər üzrə)', () => printDoc({ landscape: true, title: `${h.class.name} – qiymət cədvəli`,
-      body: head(`${h.class.name} sinfi – ${period} üzrə qiymət cədvəli`, fmtDate(h.today)) +
-        table(['№', 'Şagird', ...h.subjects.map((x: any) => x.label), 'Orta', 'Kateqoriya'],
-          h.students.map((r: any, i: number) => [i + 1, r.full_name, ...h.subjects.map((x: any) => r.grades[x.ta_id] ?? ''), fmt(r.avg, 2), r.category || ''])) +
-        `<p>Müvəffəqiyyət: ${fmt(s.success_pct)}% · Keyfiyyət: ${fmt(s.quality_pct)}% · ${esc(cats)}</p>` + sign })],
-    ['Müvəffəqiyyət hesabatı (fənlər üzrə)', () => printDoc({ title: `${h.class.name} – müvəffəqiyyət`,
-      body: head(`${h.class.name} sinfi – ${period} üzrə müvəffəqiyyət hesabatı`, fmtDate(h.today)) +
-        table(['Fənn', 'Müəllim', 'Şagird', '«5»', '«4»', '«3»', '«2»', 'Müvəff. %', 'Keyf. %', 'SOU'],
-          h.subjects.map((x: any) => { const p = x.performance; return [x.label, x.teacher, p.graded, p.distribution[5], p.distribution[4], p.distribution[3], p.distribution[2], fmt(p.success_pct), fmt(p.quality_pct), fmt(p.sou)] }), [2, 3, 4, 5, 6, 7, 8, 9]) +
-        `<p>Sinif üzrə (şagird): müvəffəqiyyət ${fmt(s.success_pct)}%, keyfiyyət ${fmt(s.quality_pct)}%. ${esc(cats)}.</p>` + sign })],
-    ['Dərs sayı (fənlər üzrə)', () => printDoc({ landscape: true, title: `${h.class.name} – dərs sayı`,
+  const hr = h.class.homeroom?.name || me?.full_name || ''
+  const signers = [SIGN.homeroom(hr), SIGN.deputy()]
+  const cols = subjectColumns(h)
+  const groupNote = cols.some(c => c.group) ? '<p class="note">* – fənn qruplarla keçirilir (bölünmə və ya tədris qrupu); şagirdin öz qrupundakı qiyməti göstərilir.</p>' : ''
+  const docs: [string, string, () => void][] = [
+    ['Qiymət cədvəli (fənlər üzrə)', 'albom; bölünən fənn bir sütunda', () => printDoc({ landscape: true, title: `${h.class.name} – qiymət cədvəli`, signers,
+      body: head(`${h.class.name} sinfi – ${period} üzrə qiymət cədvəli`, `${fmtDate(h.today)} vəziyyəti`) +
+        table(['№', 'Şagird', ...cols.map(c => c.name + (c.group ? ' *' : '')), 'Orta', 'Kateqoriya'],
+          h.students.map((r: any, i: number) => [i + 1, r.full_name, ...cols.map(c => gradeIn(r, c)), fmt(r.avg, 2), r.category || ''])) +
+        groupNote + `<p class="note">Müvəffəqiyyət: ${fmt(s.success_pct)}% · Keyfiyyət: ${fmt(s.quality_pct)}% · ${esc(cats)}</p>` })],
+    ['Müvəffəqiyyət hesabatı (fənlər və qruplar üzrə)', 'hər qrup ayrıca sətir', () => printDoc({ title: `${h.class.name} – müvəffəqiyyət`, signers,
+      body: head(`${h.class.name} sinfi – ${period} üzrə müvəffəqiyyət hesabatı`, `${fmtDate(h.today)} vəziyyəti`) +
+        kpis([[s.students, 'şagird'], [`${s.graded}`, 'qiymətləndirilib'], [fmt(s.success_pct) + '%', 'müvəffəqiyyət'], [fmt(s.quality_pct) + '%', 'keyfiyyət']]) +
+        table(['Fənn / qrup', 'Müəllim', 'Şagird', '«5»', '«4»', '«3»', '«2»', 'Müvəff. %', 'Keyf. %', 'SOU'],
+          h.subjects.map((x: any) => { const p = x.performance; return [subjLabel(x), x.teacher, p.graded, p.distribution[5], p.distribution[4], p.distribution[3], p.distribution[2], fmt(p.success_pct), fmt(p.quality_pct), fmt(p.sou)] }), [2, 3, 4, 5, 6, 7, 8, 9]) +
+        `<p class="note">Sinif üzrə (şagird): ${esc(cats)}. Qrup sətirlərində yalnız bu sinfin şagirdləri.</p>` })],
+    ['Dərs sayı (fənlər və qruplar üzrə)', 'albom', () => printDoc({ landscape: true, title: `${h.class.name} – dərs sayı`, signers,
       body: head(`${h.class.name} sinfi – ${period} üzrə dərs sayı`, `${fmtDate(h.today)} tarixinə`) +
-        table(['Fənn', 'Müəllim', 'Həftədə', 'Planda', 'Cədvəldə', 'Keçilməli', 'Yazılıb', 'Yazılmayıb', 'Keçilən mövzu', 'Qalan', 'Geriləmə'],
-          h.subjects.map((x: any) => { const l = x.lessons; return [x.label, x.teacher, l.weekly_hours, l.plan_total, l.timetable_total, l.due, l.written, l.missing, l.covered, l.remaining, l.lag] }), [2, 3, 4, 5, 6, 7, 8, 9, 10]) + sign })],
-    ['Davamiyyət', () => printDoc({ title: `${h.class.name} – davamiyyət`,
-      body: head(`${h.class.name} sinfi – ${period} üzrə davamiyyət`, fmtDate(h.today)) +
+        table(['Fənn / qrup', 'Müəllim', 'Həftədə', 'Planda', 'Cədvəldə', 'Keçilməli', 'Yazılıb', 'Yazılmayıb', 'Keçilən mövzu', 'Qalan', 'Geriləmə'],
+          h.subjects.map((x: any) => { const l = x.lessons; return [subjLabel(x), x.teacher, l.weekly_hours, l.plan_total, l.timetable_total, l.due, l.written, l.missing, l.covered, l.remaining, l.lag] }), [2, 3, 4, 5, 6, 7, 8, 9, 10]) })],
+    ['Davamiyyət', 'bütün dərslər üzrə', () => printDoc({ title: `${h.class.name} – davamiyyət`, signers,
+      body: head(`${h.class.name} sinfi – ${period} üzrə davamiyyət`, `${fmtDate(h.today)} vəziyyəti`) +
         table(['№', 'Şagird', 'Dərs', 'Buraxıb', 'Üzrsüz', 'Üzrlü', 'Gecikib', '%'],
-          h.students.map((r: any, i: number) => [i + 1, r.full_name, r.lessons, r.missed, r.unexcused, r.excused, r.late, r.missed_pct == null ? '' : fmt(r.missed_pct, 0) + (r.absence_warning ? ' !' : '')]), [2, 3, 4, 5, 6, 7]) +
-        `<p>Davamiyyət: ${fmt(s.attendance_pct)}% · ${s.absence_limit_pct}%+ buraxan: ${s.absence_warnings}</p>` + sign })],
-    ['Valideynlərin siyahısı', () => printDoc({ title: `${h.class.name} – valideynlər`,
+          h.students.map((r: any, i: number) => [i + 1, r.full_name, r.lessons, r.missed, r.unexcused, r.excused, r.late, r.missed_pct == null ? '' : fmt(r.missed_pct, 0) + (r.absence_warning ? ' *' : '')]), [2, 3, 4, 5, 6, 7]) +
+        `<p class="note">Davamiyyət: ${fmt(s.attendance_pct)}% · * – ${s.absence_limit_pct}%-dən çox buraxıb (${s.absence_warnings} şagird).</p>` })],
+    ['Valideyn üçün hesabat kartları', 'hər şagird ayrıca səhifə', () => printDoc({ title: `${h.class.name} – valideyn üçün hesabat kartları`,
+      body: h.students.map((r: any, i: number) => (i ? '<div class="pb"></div>' : '') +
+        head('Şagirdin hesabat kartı', `${h.class.name} sinfi · ${period} · ${fmtDate(h.today)} vəziyyəti`) +
+        `<p><b>Şagird:</b> ${esc(r.full_name)}${r.portal_code ? ` · <b>Giriş kodu:</b> ${esc(r.portal_code)}` : ''}</p>` +
+        '<h2>Fənlər üzrə qiymət</h2>' + table(['Fənn', 'Qiymət'], cols.map(c => [c.name, gradeIn(r, c) || '—']), [1]) +
+        kpis([[fmt(r.avg, 2), 'orta qiymət'], [r.category || '—', 'kateqoriya'], [r.lessons, 'dərs'], [r.missed, 'buraxıb'],
+          [r.unexcused, 'üzrsüz'], [r.late, 'gecikib']]) +
+        (r.absence_warning ? `<p class="note"><b>Diqqət:</b> dərslərin ${s.absence_limit_pct}%-dən çoxu buraxılıb.</p>` : '') +
+        '<p class="note">Qiymət: yarımil qiyməti (KSQ×0,4 + BSQ×0,6), yoxdursa formativ qiymətlərin ortası (ən azı 3 qiymət).</p>' +
+        signs([SIGN.homeroom(hr), { role: 'Valideyn' }])).join('') })],
+    ['Valideynlərin siyahısı', '', () => printDoc({ title: `${h.class.name} – valideynlər`, signers: [SIGN.homeroom(hr)],
       body: head(`${h.class.name} sinfi – şagird və valideynlərin siyahısı`) +
         table(['№', 'Şagird', 'Doğum tarixi', 'Şagirdin telefonu', 'Valideyn', 'Valideyn telefonu'],
-          h.students.map((r: any, i: number) => [i + 1, r.full_name, r.birth_date ? fmtDate(r.birth_date) : '', r.phone || '', r.guardians.map((g: any) => `${g.relation}: ${g.name}`).join('; '), r.guardians.map((g: any) => g.phone || '').filter(Boolean).join('; ')])) + sign })],
+          h.students.map((r: any, i: number) => [i + 1, r.full_name, r.birth_date ? fmtDate(r.birth_date) : '', r.phone || '', r.guardians.map((g: any) => `${g.relation}: ${g.name}`).join('; '), r.guardians.map((g: any) => g.phone || '').filter(Boolean).join('; ')])) })],
   ]
   return (
-    <div className="jlist">{docs.map(([l, f]) => (
-      <div className="jrow" key={l}><span className="grow">{l}</span><button className="btn sm primary" onClick={f}>Çap / PDF</button></div>))}
-      <p className="small muted">A4, ağ-qara (Canon üçün). Önbaxışda «Çap et» və ya «PDF yüklə».</p>
+    <div className="jlist">{docs.map(([l, hint, f]) => (
+      <div className="jrow" key={l}><span className="grow">{l}{hint && <span className="sub">{hint}</span>}</span><button className="btn sm primary" onClick={f}>Çap / PDF</button></div>))}
+      <p className="small muted">A4, ağ-qara (Canon üçün) · altbilgidə tarix və səhifə nömrəsi · sinif rəhbəri və direktor müavininin imza yeri. Qruplar (bölünmə və tədris) fənn sətirlərində göstərilir.</p>
     </div>
   )
 }

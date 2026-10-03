@@ -31,6 +31,8 @@ const CSS = (landscape: boolean) => `
 body{font:12px/1.4 "Times New Roman","Liberation Serif","Tinos",serif;color:#000;background:#fff;margin:0}
 h1{font-size:16px;text-align:center;margin:0 0 4px}
 h2{font-size:14px;margin:14px 0 6px;page-break-after:avoid}
+h3{font-size:12.5px;margin:10px 0 4px;page-break-after:avoid}
+.heat-p{font-size:9.5px;table-layout:auto}.heat-p th,.heat-p td{padding:1px 2px;text-align:center}.heat-p td:first-child{text-align:left;white-space:nowrap}.heat-p th:first-child{text-align:left}
 .sch{text-align:center;font-weight:700;margin:0 0 2px}
 .sub{text-align:center;margin:0 0 12px}
 table{border-collapse:collapse;width:100%;page-break-inside:auto}
@@ -63,9 +65,16 @@ export type Doc = { title: string; body: string; landscape?: boolean; signers?: 
 export const signs = (list: Signer[]) => list.length ? `<section class="signs">${list.map(s =>
   `<div><span>${esc(s.role)}:</span><span><i></i><small>imza</small></span><span>${s.name ? esc(s.name) : '<i></i><small>ad, soyad</small>'}</span></div>`).join('')}</section>` : ''
 
+/** Köhnə imza sətri «<p class="sign">Müəllim: ____</p>» → vahid imza bloku (vəzifə + direktor müavini). */
+const LEGACY_SIGN = /<p class="sign">\s*([^<:]+):\s*([^<_]*?)\s*_{4,}\s*<\/p>/g
+const legacySigns = (body: string) => body.replace(LEGACY_SIGN, (_m, role: string, name: string) => {
+  const r = role.trim() === 'Müəllim' ? 'Fənn müəllimi' : role.trim()
+  return signs([{ role: r, name: name.trim() || null }, SIGN.deputy()])
+})
+
 export function docHtml(d: Doc): string {
   const stamp = d.internal ? '<span class="internal">Daxili istifadə üçün</span>' : ''
-  return `<!doctype html><html lang="az"><head><meta charset="utf-8"><title>${esc(d.title)}</title><style>${CSS(!!d.landscape)}</style></head><body>${stamp}${d.body}${signs(d.signers || [])}</body></html>`
+  return `<!doctype html><html lang="az"><head><meta charset="utf-8"><title>${esc(d.title)}</title><style>${CSS(!!d.landscape)}</style></head><body>${stamp}${legacySigns(d.body)}${signs(d.signers || [])}</body></html>`
 }
 
 /** Riyaziyyat mətnini ($…$, \(…\)) MathML-ə çevirir – çapda və serverdə (JS-siz) düzgün görünür. */

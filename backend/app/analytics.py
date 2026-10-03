@@ -202,8 +202,14 @@ def analyze(db: Session, ctx: PlanCtx, p: Period, links: bool = True) -> dict:
         r['place'], r['progress_place'] = places[r['student_id']], prog[r['student_id']]
     rows.sort(key=lambda r: (r['place'] is None, r['place'] or 0, r['full_name']))
     grades = [m.grade for m in data[1] if m.grade is not None]
+    group = None
+    if ctx.cls.kind == 'qrup':                        # çap başlığı üçün: qrupun növü və sinfi
+        from .models import SchoolClass
+        par = db.get(SchoolClass, ctx.cls.parent_id) if ctx.cls.parent_id else None
+        group = {'kind': 'bölünmə qrupu' if par else 'tədris qrupu',
+                 'classes': [par.name] if par else sorted({db.get(SchoolClass, s.class_id).name for s in studs})}
     return {
-        'from': p.a, 'to': p.b, 'class_name': ctx.cls.name, 'subject': ctx.ta.subject, 'ix_label': ix_label,
+        'from': p.a, 'to': p.b, 'class_name': ctx.cls.name, 'subject': ctx.ta.subject, 'ix_label': ix_label, 'group': group,
         'lessons_written': sum(not e.auto for e in data[0].values()), 'students': rows,
         'progress_split': {'first': halves[0].b, 'second_from': halves[1].a, 'to': halves[1].b} if halves else None,
         'overview': {

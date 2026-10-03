@@ -6,7 +6,7 @@ import { Drawer, ErrorBox, toast, fmt, fmtDate, gradeTone, levelTone, Loading, P
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { Contacts, IPlans } from './Classes'
 import SchoolReport from './SchoolReport'
-import { docHtml, downloadPdf, esc, fmtD, fmtN, head, kpis, printDoc, SIGN, table, type Doc } from '../../print'
+import { docHtml, downloadPdf, esc, fmtD, fmtN, head, kpis, printDoc, printLater, SIGN, signs, table, type Doc } from '../../print'
 import { useT } from '../../i18n'
 
 const TABS = [['overview', 'İcmal'], ['lessons', 'Dərs sayı'], ['performance', 'Müvəffəqiyyət'], ['rating', 'Reytinq'], ['levels', 'Güclü / orta / zəif'], ['risk', 'Risk'], ['attendance', 'Davamiyyət'], ['print', 'Çap / PDF']] as const
@@ -195,32 +195,66 @@ function Attendance({ ta, params, a }: { ta: number; params: Record<string, stri
 }
 
 /* ---------------------------------------------------------------- çap mərkəzi: seçilən bölmələr bir sənəddə */
-type Part = 'performance' | 'rating' | 'lessons' | 'attendance' | 'levels' | 'risk'
+type Part = 'performance' | 'rating' | 'lessons' | 'attendance' | 'heatmap' | 'levels' | 'groups' | 'risk'
 const PARTS: [Part, string][] = [['performance', 'Müvəffəqiyyət (rəsmi forma)'], ['rating', 'Reytinq'], ['lessons', 'Dərs sayı və yazılmamış dərslər'],
-  ['attendance', 'Davamiyyət'], ['levels', 'Güclü / orta / zəif'], ['risk', 'Risk (daxili istifadə üçün)']]
+  ['attendance', 'Davamiyyət (yekun)'], ['heatmap', 'Davamiyyət xəritəsi (albom: tarix × şagird)'], ['levels', 'Güclü / orta / zəif (analitika)'],
+  ['groups', 'Səviyyə qrupları (bölgü: bal və komponentlər)'], ['risk', 'Risk (daxili istifadə üçün)']]
+type Extra = { a: any; perf: any; lessons: any; att: any; lv: any }
+
+/** Bir sinif/qrup üçün çap məlumatı (bir dəfə yüklənir). */
+async function loadExtra(ta: number, sem: Sem, a?: any): Promise<Extra> {
+  const params: Record<string, string> = sem === 'all' ? {} : { semester: sem }
+  const [aa, perf, lessons, att, lv] = await Promise.all([a ? Promise.resolve(a) : get<any>(`/api/analytics/${ta}`, params),
+    get<any>(`/api/analytics/${ta}/performance`, params), get<any>(`/api/analytics/${ta}/lessons`), get<any>(`/api/analytics/${ta}/attendance`, params),
+    get<any>(`/api/levels/${ta}`).catch(() => null)])
+  return { a: aa, perf, lessons, att, lv }
+}
+
+const groupLine = (a: any) => (a.group ? ` · ${a.group.kind}${a.group.classes?.length ? ` (${a.group.classes.join(', ')})` : ''}` : '')
+
+/** Bir sinif/qrup üçün sənədin gövdəsi: başlıq + seçilən bölmələr. */
+function taBody(x: Extra, parts: Part[], sem: Sem, teacher: string) {
+  const a = x.a
+  return head(`${a.class_name}${a.group ? '' : ' sinfi'} – ${a.subject} fənni üzrə hesabat`,
+    `${semLabel(sem)}: ${fmtD(a.from)} – ${fmtD(a.to)}${groupLine(a)} · müəllim: ${teacher}`) + parts.map(k => SECTIONS[k](a, x)).join('')
+}
 
 function PrintCenter({ a, ta, sem }: { a: any; ta: number; sem: Sem }) {
   const { me } = useAuth()
   const narrow = useNarrow()
-  const [on, setOn] = useState<Record<Part, boolean>>({ performance: true, rating: true, lessons: true, attendance: false, levels: false, risk: false })
-  const [extra, setExtra] = useState<{ perf?: any; lessons?: any; att?: any }>({})
+  const [lessons] = useMyLessons()
+  const [on, setOn] = useState<Record<Part, boolean>>({ performance: true, rating: true, lessons: true, attendance: false, heatmap: false, levels: false, groups: false, risk: false })
+  const [extra, setExtra] = useState<Extra | null>(null)
   const [busy, setBusy] = useState(false)
-  const params: Record<string, string> = sem === 'all' ? {} : { semester: sem }
+  const [batch, setBatch] = useState<string | null>(null)
   useEffect(() => {
     let live = true
     setBusy(true)
-    Promise.all([get<any>(`/api/analytics/${ta}/performance`, params), get<any>(`/api/analytics/${ta}/lessons`), get<any>(`/api/analytics/${ta}/attendance`, params)])
-      .then(([perf, lessons, att]) => { if (live) setExtra({ perf, lessons, att }) }).finally(() => live && setBusy(false))
+    loadExtra(ta, sem, a).then(x => { if (live) setExtra(x) }).finally(() => live && setBusy(false))
     return () => { live = false }
-  }, [ta, sem])
-  const doc = useMemo<Doc | null>(() => {
-    if (!extra.perf) return null
-    const parts = PARTS.filter(([k]) => on[k]).map(([k]) => k)
-    const body = head(`${a.class_name} sinfi – ${a.subject} fənni üzrə hesabat`, `${semLabel(sem)}: ${fmtD(a.from)} – ${fmtD(a.to)} · müəllim: ${me?.full_name || ''}`) +
-      parts.map(k => SECTIONS[k](a, extra)).join('')
-    return { title: `${a.class_name} – ${a.subject} hesabatı ${fmtD(a.from)}–${fmtD(a.to)}`, body, internal: on.risk,
-      signers: [SIGN.teacher(me?.full_name), SIGN.deputy()] }
-  }, [a, extra, on, sem, me?.full_name])
+  }, [ta, sem, a])
+  const parts = PARTS.filter(([k]) => on[k]).map(([k]) => k)
+  const landscape = on.heatmap
+  const teacher = me?.full_name || ''
+  const doc = useMemo<Doc | null>(() => extra && ({
+    title: `${a.class_name} – ${a.subject} hesabatı ${fmtD(a.from)}–${fmtD(a.to)}`, body: taBody(extra, parts, sem, teacher),
+    internal: on.risk, landscape, signers: [SIGN.teacher(teacher), SIGN.deputy()],
+  }), [a, extra, on, sem, teacher])
+  /** Bütün sinif və qruplarım: hər biri yeni səhifədən, imza bloku hər birinin sonunda. */
+  const printAll = async () => {
+    const list = lessons || []
+    const w = printLater()
+    if (!w) return
+    try {
+      const bodies: string[] = []
+      for (const [i, l] of list.entries()) {
+        setBatch(`${i + 1} / ${list.length}: ${l.class_name}`)
+        const x = await loadExtra(l.id, sem)
+        bodies.push((i ? '<div class="pb"></div>' : '') + taBody(x, parts, sem, teacher) + signs([SIGN.teacher(teacher), SIGN.deputy()]))
+      }
+      w.show({ title: `Bütün sinif və qruplarım – ${semLabel(sem)}`, body: bodies.join(''), internal: on.risk, landscape })
+    } catch (e) { w.fail((e as Error).message) } finally { setBatch(null) }
+  }
   return (
     <>
       <section className="panel no-print" style={{ marginBottom: 12 }}>
@@ -228,21 +262,25 @@ function PrintCenter({ a, ta, sem }: { a: any; ta: number; sem: Sem }) {
         <div className="print-parts">{PARTS.map(([k, l]) => (
           <label key={k} className="check"><input type="checkbox" checked={on[k]} onChange={e => setOn({ ...on, [k]: e.target.checked })} />{l}</label>))}</div>
         {on.risk && <p className="small" style={{ color: 'var(--warn)', margin: '6px 0 0' }}>Risk göstəricisi daxili istifadə üçündür – sənədin üstündə «Daxili istifadə üçün» yazılacaq.</p>}
+        {landscape && <p className="small muted" style={{ margin: '6px 0 0' }}>Davamiyyət xəritəsi seçildiyi üçün sənəd albom (yatıq) A4 olacaq.</p>}
         <div className="row" style={{ marginTop: 12 }}>
-          <button className="btn primary" disabled={!doc} onClick={() => doc && printDoc(doc)}>Çap / PDF</button>
-          <button className="btn" disabled={!doc} onClick={() => doc && downloadPdf(doc).catch(e => toast((e as Error).message))}>PDF yüklə</button>
+          <button className="btn primary" disabled={!doc || !parts.length} onClick={() => doc && printDoc(doc)}>Çap / PDF</button>
+          <button className="btn" disabled={!doc || !parts.length} onClick={() => doc && downloadPdf(doc).catch(e => toast((e as Error).message))}>PDF yüklə</button>
           <a className="btn" href={`/api/reports/${ta}/xlsx${sem === 'all' ? '' : '?semester=' + sem}`}>Excel</a>
-          <span className="small muted">A4 portret, ağ-qara · altbilgidə tarix və səhifə nömrəsi</span>
+          <button className="btn" disabled={!parts.length || !!batch || !lessons?.length} onClick={printAll}>
+            {batch ? `Hazırlanır… ${batch}` : `Bütün sinif və qruplarım (${lessons?.length ?? 0})`}</button>
         </div>
+        <p className="small muted" style={{ margin: '8px 0 0' }}>A4, ağ-qara · altbilgidə tarix və səhifə nömrəsi · «Bütün sinif və qruplarım» – seçilən bölmələr hər sinif və qrup üçün yeni səhifədən.</p>
       </section>
       {busy && !doc ? <Loading /> : doc && (
-        <div className="paper-wrap"><iframe className={'pframe' + (narrow ? ' sm' : '')} title="Önbaxış" srcDoc={docHtml(doc)} /></div>)}
+        <div className="paper-wrap"><iframe className={'pframe' + (narrow ? ' sm' : '') + (landscape ? ' land' : '')} title="Önbaxış" srcDoc={docHtml(doc)} /></div>)}
     </>
   )
 }
 
 const NOTE = (t: string) => `<p class="note">${esc(t)}</p>`
-const SECTIONS: Record<Part, (a: any, x: { perf?: any; lessons?: any; att?: any }) => string> = {
+const ATT_CELL: Record<string, string> = { var: '', yox: 'q', 'üzrlü': 'ü', gecikdi: 'g' }
+const SECTIONS: Record<Part, (a: any, x: Extra) => string> = {
   performance: (_a, x) => {
     const p = x.perf, m = p.summary
     return `<h2>Müvəffəqiyyət</h2>` + kpis([[m.students, 'şagird'], [`${m.graded}`, 'qiymətləndirilib'], [fmtN(m.success_pct) + '%', 'müvəffəqiyyət'],
@@ -265,10 +303,29 @@ const SECTIONS: Record<Part, (a: any, x: { perf?: any; lessons?: any; att?: any 
   attendance: (_a, x) => `<h2>Davamiyyət</h2>` + table(['Şagird', 'Qeyd olunan dərs', 'Buraxıb', 'O cümlədən qayıb', 'Gecikmə', 'Buraxma %'],
     x.att.rows.map((r: any) => [r.full_name, r.cells.filter((c: any) => c).length, r.missed, r.unexcused, r.late, fmtN(r.missed_pct) + (r.warning ? ' *' : '')]), [1, 2, 3, 4, 5]) +
     NOTE(`* – ${x.att.limit_pct}%-dən çox buraxıb. Yalnız bu fənnin jurnalda yazılmış dərsləri.`),
-  levels: a => `<h2>Güclü / orta / zəif</h2>` + table(['Səviyyə', 'Say', 'Şagirdlər'], ['Güclü', 'Orta', 'Zəif'].map(k => {
+  heatmap: (_a, x) => {
+    const cols = x.att.columns as any[]
+    if (!cols.length) return '<h2>Davamiyyət xəritəsi</h2>' + NOTE('Bu dövrdə yazılmış dərs yoxdur.')
+    const per = 26                                          // albom A4-də bir cədvəldə ən çox 26 dərs sütunu
+    const chunks = Array.from({ length: Math.ceil(cols.length / per) }, (_, i) => i * per)
+    return chunks.map((from, ci) => `<h2>Davamiyyət xəritəsi${chunks.length > 1 ? ` (${ci + 1}/${chunks.length})` : ''}</h2>` +
+      `<table class="heat-p"><thead><tr><th>Şagird</th>${cols.slice(from, from + per).map((c: any) => `<th>${esc(fmtD(c.date).slice(0, 5))}<br>${c.period}</th>`).join('')}<th>%</th></tr></thead><tbody>` +
+      x.att.rows.map((r: any) => `<tr><td>${esc(r.full_name)}</td>${r.cells.slice(from, from + per).map((c: string | null) => `<td class="c">${c ? ATT_CELL[c] : '·'}</td>`).join('')}<td class="r">${esc(fmtN(r.missed_pct, 0))}${r.warning ? ' *' : ''}</td></tr>`).join('') +
+      '</tbody></table>').join('') + NOTE('q – qayıb, ü – üzrlü, g – gecikmə, · – qeyd yoxdur; boş – var. Sütun: tarix və dərs saatı. * – 25%-dən çox buraxıb.')
+  },
+  levels: a => `<h2>Güclü / orta / zəif (analitika)</h2>` + table(['Səviyyə', 'Say', 'Şagirdlər'], ['Güclü', 'Orta', 'Zəif'].map(k => {
     const r = a.students.filter((s: any) => s.level === k)
     return [k, r.length, r.map((s: any) => s.full_name).join(', ')]
   }), [1]),
+  groups: (_a, x) => {
+    if (!x.lv) return '<h2>Səviyyə qrupları</h2>' + NOTE('Səviyyə qrupları yüklənmədi.')
+    const L: Record<string, string> = { buraxilis: 'IX', sinaq: 'sınaq', reytinq: 'reytinq', diaqnostik: 'diaqn.' }
+    const comps = (c: any) => (c ? Object.entries(c).filter(([, v]) => v != null).map(([k, v]) => `${L[k] || k} ${fmtN(v as number, 0)}`).join(' · ') : '')
+    return '<h2>Səviyyə qrupları (bölgü)</h2>' + ['Güclü', 'Orta', 'Zəif', 'Təyin edilməyib'].filter(k => (x.lv.groups[k] || []).length).map(k =>
+      `<h3 class="grp">${esc(k)} – ${x.lv.groups[k].length} şagird</h3>` + table(['№', 'Şagird', 'Bal', 'Komponentlər', 'Mənbə'],
+        x.lv.groups[k].map((m: any, i: number) => [i + 1, m.full_name, fmtN(m.score), comps(m.components), m.source === 'manual' ? 'müəllim' + (m.locked ? ' (kilidli)' : '') : m.source ? 'bölgü' : '—']), [2])).join('') +
+      NOTE('Bölgü balı: IX buraxılış balı, sınaq ortası, fənn reytinqi və diaqnostik test (olanlar); ≥ 70 – güclü, 40–69,9 – orta, < 40 – zəif. Müəllimin qərarı kilidlidir.')
+  },
   risk: a => `<h2>Risk (daxili istifadə üçün)</h2>` + table(['Şagird', 'Status', 'Bal', 'Amillər'],
     [...a.students].filter((r: any) => r.risk.status !== 'Yaşıl').sort((x: any, y: any) => y.risk.score - x.risk.score)
       .map((r: any) => [r.full_name, r.risk.status, r.risk.score, r.risk.factors.filter((f: any) => f.bal).map((f: any) => f.izah).join('; ')]), [2]),

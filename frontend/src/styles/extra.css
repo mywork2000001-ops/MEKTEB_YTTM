@@ -215,3 +215,5 @@ body.exam-guard main{max-width:860px;margin:0 auto}
 .weekly h2{flex-wrap:wrap}
 .wk-row{padding:8px 0;border-top:1px dashed var(--line)}
 .wk-row:first-of-type{border-top:0}
+.pframe.land{width:1160px;height:820px}
+.pframe.land.sm{zoom:.26}

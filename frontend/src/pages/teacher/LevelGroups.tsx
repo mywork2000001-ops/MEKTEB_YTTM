@@ -4,7 +4,8 @@
 import { useState } from 'react'
 import { get, post, put } from '../../api'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, Loading, Pill, Seg, toast, useLoad } from '../../ui'
-import { head, printDoc, table } from '../../print'
+import { head, printDoc, SIGN, table } from '../../print'
+import { useAuth } from '../../auth'
 import { type MyLesson, useMyLessons } from './common'
 
 type Member = { student_id: number; full_name: string; source: 'auto' | 'manual' | null; locked: boolean; score: number | null; components: Record<string, number | null> | null; note: string | null }
@@ -15,14 +16,19 @@ const LABELS: Record<string, string> = { buraxilis: 'IX buraxılış', sinaq: 's
 const comps = (c: Record<string, number | null> | null) => (c ? Object.entries(c).filter(([, v]) => v != null).map(([k, v]) => `${LABELS[k] || k} ${fmt(v as number, 0)}`).join(' · ') : '')
 
 export default function LevelGroups({ ta }: { ta: MyLesson }) {
+  const { me } = useAuth()
   const [d, err, loading, reload] = useLoad<Groups>(() => get(`/api/levels/${ta.id}`), [ta.id])
   const [drawer, setDrawer] = useState<null | 'auto' | 'suggest' | 'history' | 'cross'>(null)
   const move = async (m: Member, level: string | null, locked = true) => {
     await put(`/api/levels/${ta.id}/${m.student_id}`, { level, locked })
     toast(level ? `${m.full_name.split(' ').slice(0, 2).join(' ')} → ${level}` : 'Səviyyə götürüldü'); reload()
   }
-  const print = () => d && printDoc({ title: `${ta.class_name} – səviyyə qrupları`, body: head(`${ta.class_name} – ${ta.subject}: səviyyə qrupları`) +
-    COLS.map(k => `<h3>${k} (${d.groups[k].length})</h3>` + table(['№', 'Şagird', 'Bal', 'Mənbə'], d.groups[k].map((m, i) => [i + 1, m.full_name, fmt(m.score), m.source === 'manual' ? 'müəllim' : 'bölgü']))).join('') })
+  const print = () => d && printDoc({ title: `${ta.class_name} – səviyyə qrupları`, signers: [SIGN.teacher(me?.full_name), SIGN.deputy()],
+    body: head(`${ta.class_name} – ${ta.subject}: səviyyə qrupları`, `${fmtDate(new Date().toISOString())} vəziyyəti · Zəif / Orta / Güclü – sinif daxilində fənn üzrə`) +
+      [...COLS, 'Təyin edilməyib'].filter(k => (d.groups[k] || []).length).map(k => `<h3>${k} – ${d.groups[k].length} şagird</h3>` +
+        table(['№', 'Şagird', 'Bal', 'Komponentlər', 'Mənbə'], d.groups[k].map((m, i) => [i + 1, m.full_name, fmt(m.score), comps(m.components),
+          m.source === 'manual' ? 'müəllim' + (m.locked ? ' (kilidli)' : '') : m.source ? 'bölgü' : '—']), [2])).join('') +
+      '<p class="note">Bölgü balı: IX buraxılış balı, sınaq ortası, fənn reytinqi və diaqnostik test (olanlar); ≥ 70 – güclü, 40–69,9 – orta, < 40 – zəif. Şagird öz səviyyə etiketini görmür.</p>' })
   if (!d) return err ? <ErrorBox error={err} /> : <Loading />
   const none = d.groups['Təyin edilməyib'] || []
   return (

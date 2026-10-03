@@ -112,8 +112,16 @@ def my_homerooms(all: bool = False, user: User = Depends(staff), db: Session = D
 
 
 def _assignments(db: Session, c: SchoolClass) -> list[TeachingAssignment]:
-    """Sinfin bütün fənləri: bütöv sinfə və onun qruplarına bağlılıqlar."""
+    """Sinfin bütün fənləri: bütöv sinfə, onun bölünmə qruplarına və sinfin şagirdlərinin üzv olduğu tədris qruplarına
+    (paralel siniflərdən yığılan, ana sinfi olmayan) bağlılıqlar. Qrupda yalnız bu sinfin şagirdləri hesablanır."""
+    from ..models import GroupMember
     groups = list(db.scalars(select(SchoolClass.id).where(SchoolClass.parent_id == c.id, SchoolClass.archived_at.is_(None))))
+    groups += list(db.scalars(select(SchoolClass.id).distinct()
+                              .join(GroupMember, GroupMember.group_id == SchoolClass.id)
+                              .join(Student, Student.id == GroupMember.student_id)
+                              .where(SchoolClass.kind == 'qrup', SchoolClass.parent_id.is_(None),
+                                     SchoolClass.archived_at.is_(None), Student.class_id == c.id,
+                                     Student.archived_at.is_(None))))
     return list(db.scalars(select(TeachingAssignment).where(
         TeachingAssignment.class_id.in_([c.id, *groups]), TeachingAssignment.archived_at.is_(None))
         .order_by(TeachingAssignment.subject)))
@@ -137,7 +145,8 @@ def homeroom_summary(cid: int, semester: int | None = None, user: User = Depends
         teacher = db.get(User, ta.teacher_id)
         label = ta.subject + (f' ({ctx.cls.name})' if ctx.cls.id != c.id else '')
         subjects.append({'ta_id': ta.id, 'subject': ta.subject, 'label': label, 'teacher': teacher.full_name,
-                         'group': ctx.cls.name if ctx.cls.id != c.id else None, 'students': len(members),
+                         'group': ctx.cls.name if ctx.cls.id != c.id else None,
+                         'group_kind': None if ctx.cls.id == c.id else ('bölünmə' if ctx.cls.parent_id == c.id else 'tədris'), 'students': len(members),
                          'lessons': lesson_counts(db, ctx, t, sem),
                          'performance': metrics([g[sid]['grade'] for sid in members])})
     # davamiyyət – bütün fənlər üzrə: fənn jurnalı + sinif rəhbərinin qeydi (homeroom_att.merged)
@@ -226,7 +235,30 @@ def school_performance(semester: int | None = None, user: User = Depends(staff),
     parallels = {}
     for r in out:
         parallels.setdefault(r['grade'], []).append(r)
-    return {'semester': sem, 'today': today(), 'classes': out,
+    # qruplar: bölünmə (ana sinifli) və tədris qrupları (paralel siniflərdən) – hər fənn bağlılığı ayrıca sətir
+    from ..models import GroupMember
+    groups = []
+    t = today()
+    for g in db.scalars(select(SchoolClass).where(SchoolClass.school_id == user.school_id, SchoolClass.archived_at.is_(None),
+                                                  SchoolClass.kind == 'qrup').order_by(SchoolClass.name)):
+        parent = db.get(SchoolClass, g.parent_id) if g.parent_id else None
+        member_classes = sorted({n for n in db.scalars(select(SchoolClass.name).join(Student, Student.class_id == SchoolClass.id)
+                                                         .join(GroupMember, GroupMember.student_id == Student.id)
+                                                         .where(GroupMember.group_id == g.id, Student.archived_at.is_(None)))})
+        for ta in db.scalars(select(TeachingAssignment).where(TeachingAssignment.class_id == g.id,
+                                                              TeachingAssignment.archived_at.is_(None))):
+            ctx = plan_ctx(db, ta)
+            sids = [s.id for s in roster(db, ta)]
+            gr = subject_grades(db, ctx, sem, sids)
+            m = metrics([gr[x]['grade'] for x in sids])
+            teacher = db.get(User, ta.teacher_id)
+            groups.append({'ta_id': ta.id, 'name': g.name, 'kind': 'bölünmə' if parent else 'tədris',
+                           'parent': parent.name if parent else None, 'classes': member_classes,
+                           'subject': ta.subject, 'teacher': teacher.full_name if teacher else None,
+                           'students': len(sids), 'graded': m['graded'], 'distribution': m['distribution'],
+                           'success_pct': m['success_pct'], 'quality_pct': m['quality_pct'], 'sou': m['sou'], 'avg': m['avg'],
+                           'lessons_missing': lesson_counts(db, ctx, t, sem)['missing']})
+    return {'semester': sem, 'today': today(), 'classes': out, 'groups': groups,
             'parallels': [{'grade': g, **total(rows)} for g, rows in sorted(parallels.items(), key=lambda x: (x[0] is None, x[0] or 0))],
             'school': total(out), 'failing': weak}
 

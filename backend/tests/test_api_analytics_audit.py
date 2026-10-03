@@ -97,3 +97,25 @@ def test_weekly_summary(world, monkeypatch):
     it = next(x for x in w['items'] if x['ta_id'] == ta)
     assert 'Zəif Şagird qızı' in it['red'] and 'Zəif Şagird qızı' in it['absence']
     assert any(m['date'] == '2026-09-29' for m in it['missing_week']) and w['week'].startswith('2026-W')
+
+
+def test_groups_in_school_and_homeroom(world):
+    as_, S = world
+    c, ta, good, weak, new = setup(world)
+    from app.models import GroupMember, SchoolClass, TeachingAssignment
+    with S() as db:                                  # tədris qrupu (ana sinfi yoxdur): X c-dən iki şagird
+        x = db.query(SchoolClass).filter_by(name='X c').one()
+        g = SchoolClass(school_id=x.school_id, year_id=x.year_id, name='Olimpiada qrupu', kind='qrup', code='OQ1')
+        db.add(g)
+        db.flush()
+        db.add_all([GroupMember(group_id=g.id, student_id=good), GroupMember(group_id=g.id, student_id=weak)])
+        me_ = db.query(TeachingAssignment).get(ta)
+        db.add(TeachingAssignment(teacher_id=me_.teacher_id, class_id=g.id, subject='Fizika', weekly_hours=1, slots={}))
+        db.commit()
+        cid = x.id
+    d = c.get('/api/school/performance').json()
+    grp = next(x for x in d['groups'] if x['name'] == 'Olimpiada qrupu')
+    assert grp['kind'] == 'tədris' and grp['classes'] == ['X c'] and grp['students'] == 2 and grp['subject'] == 'Fizika'
+    h = c.get(f'/api/homeroom/{cid}').json()
+    sub = next(x for x in h['subjects'] if x['subject'] == 'Fizika')
+    assert sub['group_kind'] == 'tədris' and sub['students'] == 2
