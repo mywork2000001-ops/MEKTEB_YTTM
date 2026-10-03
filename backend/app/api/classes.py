@@ -70,8 +70,8 @@ def class_out(db: Session, c: SchoolClass, user: User, mine: set[int] | None):
             'archived': c.archived_at is not None, 'students': n, 'can_open': visible,
             'homeroom': (lambda u: u and {'id': u.id, 'name': u.full_name})(db.get(User, c.homeroom_id) if c.homeroom_id else None),
             'teachers': [{'id': i, 'name': nm, 'subject': sb} for i, nm, sb in teachers],
-            'mine': my_ta and {'subject': my_ta.subject, 'weekly_hours': my_ta.weekly_hours, 'slots': my_ta.slots,
-                               'has_summative': my_ta.has_summative}}
+            'mine': my_ta and {'ta_id': my_ta.id, 'subject': my_ta.subject, 'weekly_hours': my_ta.weekly_hours, 'slots': my_ta.slots,
+                               'has_summative': my_ta.has_summative, 'program_id': my_ta.program_id}}
 
 
 @router.get('')
@@ -183,6 +183,7 @@ class JoinIn(BaseModel):
     weekly_hours: int = Field(ge=1, le=12)
     slots: dict[str, list[int]] = Field(default_factory=dict)     # {"0": [3, 5]} – həftə günü -> dərs saatları
     has_summative: bool = True
+    program_id: int | None = None          # əsas perspektiv plan proqramı (kitabxanadan) – qoşulanda əvvəldən seçilir
 
     @field_validator('slots')
     @classmethod
@@ -203,21 +204,30 @@ def join_class(cid: int, body: JoinIn, user: User = Depends(settings_unlocked), 
     ta = db.scalar(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id,
                                                     TeachingAssignment.class_id == cid,
                                                     TeachingAssignment.subject == body.subject))
+    vals = body.model_dump(exclude={'program_id'})
     if ta and not ta.archived_at:
-        for k, v in body.model_dump().items():
+        for k, v in vals.items():
             setattr(ta, k, v)
         action = 'update'
     elif ta:
         ta.archived_at = None
-        for k, v in body.model_dump().items():
+        for k, v in vals.items():
             setattr(ta, k, v)
         action = 'restore'
     else:
-        ta = TeachingAssignment(teacher_id=user.id, class_id=cid, **body.model_dump())
+        ta = TeachingAssignment(teacher_id=user.id, class_id=cid, **vals)
         db.add(ta)
         action = 'create'
     db.flush()
     audit(db, user, action, 'teaching', ta.id, class_id=cid, subject=body.subject)
+    if body.program_id and body.program_id != ta.program_id and ta.slots:
+        from ..models import PlanProgram
+        from ..programs import apply
+        p = db.get(PlanProgram, body.program_id)
+        if not p or p.archived_at or not (p.owner_id is None or p.owner_id == user.id):
+            raise HTTPException(404, 'Proqram tapılmadı')
+        rep = apply(db, p, ta, user)                     # əvvəlki plan (varsa) kitabxanada saxlanılır
+        audit(db, user, 'update', 'plan_program', ta.id, program_id=p.id, lessons=rep['lessons'])
     db.commit()
     return class_out(db, c, user, my_class_ids(db, user))
 

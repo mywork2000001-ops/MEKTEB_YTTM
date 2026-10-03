@@ -83,6 +83,9 @@ ardıcıllığı ilə **alternativ, ayrıca** proqramdır. Əvvəlki planlar kit
 - Tənzimləmələr → **Proqramlar**: əvvəl sinif/qrup seçilir → «Əsas proqram» (ad, mənbə, dəyiş) və «Əlavə proqramlar» (səviyyə
   qrupu ilə, dərs siyahısı, çap, ayır); aşağıda kitabxana – bu sinfə uyğun olanlar öndə («uyğun» nişanı), süzgəc (səviyyə),
   hər proqram üçün: Bax (bölmələr / mövzular), «Əsas proqram et» (önbaxış → təsdiq), «Əlavə proqram kimi qoş» (səviyyə seçimi).
+- **Əvvəldən seçim:** sinfə/qrupa qoşulanda (Tənzimləmələr → Siniflər → «Qoşul») əsas proqram elə formada seçilir (sinfə uyğun
+  olanlar öndə, «sonra seçəcəm» də mümkündür); qoşulduqdan sonra həmin formada («Cədvəl») və **Perspektiv plan** səhifəsində
+  «Proqramlar» bloku – əsas proqramı seç/dəyiş (önbaxışla), «+ Əlavə proqram» (bütün sinif və ya səviyyə qrupu), dərslər, ayır.
 - «Cari planı proqram kimi saxla», öz proqramına ad/sinif/səviyyə yazmaq, arxivləmə.
 - Perspektiv plan səhifəsində sinfin əsas proqramının adı və əlavə proqramların sayı.
 

@@ -3,12 +3,13 @@ import { api, ApiError, del, get, patch, post, put } from '../../api'
 import { useAuth } from '../../auth'
 import { esc, head, printDoc, table } from '../../print'
 import { kindLabel } from './common'
+import { ProgramBox } from './Programs'
 import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, isoDate, Loading, PickFirst, Pill, Seg, toast, useLoad, ord } from '../../ui'
 
 type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; group_type?: 'bölünmə' | 'tədris' | null; split_with: string | null; utis_class: string | null; grade?: number | null; grade_set?: number | null
   exam_date: string | null; bells: Record<string, string> | null; students: number; can_open: boolean; archived: boolean
   homeroom: { id: number; name: string } | null
-  teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number; slots: Record<string, number[]>; has_summative: boolean } | null }
+  teachers: { id: number; name: string; subject: string }[]; mine: { ta_id: number; subject: string; weekly_hours: number; slots: Record<string, number[]>; has_summative: boolean; program_id: number | null } | null }
 type Stud = { id: number; full_name: string; birth_date: string | null; gender: string | null; class_id: number; class_name: string; portal_code: string
   score_language: number | null; score_math: number | null; score_foreign: number | null; archived: boolean
   left_reason?: string | null; left_on?: string | null }
@@ -200,6 +201,8 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   const [summ, setSumm] = useState(cls.mine?.has_summative ?? cls.kind !== 'qrup')
   const [err, setErr] = useState<unknown>()
   const [leave, setLeave] = useState(false)
+  const [prog, setProg] = useState('')
+  const [lib] = useLoad<any[]>(() => (cls.mine ? Promise.resolve([]) : get('/api/programs', { class_id: String(cls.id) })), [cls.id])
   const hours = Object.values(slots).reduce((a, v) => a + v.length, 0)
   const toggle = (d: number, p: number) => {
     const cur = new Set(slots[d] || [])
@@ -209,15 +212,19 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   return (
     <Drawer title={`${cls.name} – ${cls.mine ? 'dərs cədvəli' : 'sinfə qoşul'}`} onClose={onClose}
       footer={<><span className="small muted grow">Həftədə {hours} saat</span><button className="btn" onClick={onClose}>Ləğv et</button>
-        <button className="btn primary" disabled={!hours || !subject} onClick={async () => { try { await post(`/api/classes/${cls.id}/join`, { subject, weekly_hours: hours, slots, has_summative: summ }); toast('Yadda saxlanıldı'); onDone() } catch (e) { setErr(e) } }}>Yadda saxla</button></>}>
+        <button className="btn primary" disabled={!hours || !subject} onClick={async () => { try { await post(`/api/classes/${cls.id}/join`, { subject, weekly_hours: hours, slots, has_summative: summ, program_id: prog ? Number(prog) : null }); toast('Yadda saxlanıldı'); onDone() } catch (e) { setErr(e) } }}>Yadda saxla</button></>}>
       <div className="stack">
         <Field label="Fənn"><input value={subject} onChange={e => setSubject(e.target.value)} /></Field>
         <label className="check"><input type="checkbox" checked={summ} onChange={e => setSumm(e.target.checked)} /> KSQ/BSQ keçirilir (bölünən qrupda adətən yox)</label>
+        {!cls.mine && <Field label="Əsas perspektiv plan proqramı" hint="jurnal və tarixlər ona görə; sinfə uyğun olanlar öndə. Əlavə proqramları qoşulandan sonra əlavə edə bilərsiniz">
+          <select value={prog} onChange={e => setProg(e.target.value)}><option value="">— sonra seçəcəm (və ya Word planı yükləyəcəm) —</option>
+            {(lib || []).map(p => <option key={p.id} value={p.id}>{p.fits && p.grade ? '✓ ' : ''}{p.title}{p.level ? ` · ${p.level}` : ''}</option>)}</select></Field>}
         <p className="small muted">Dərs saatlarını işarələyin (0 – birinci dərsdən əvvəlki saat, məs. XI peşə 08:00):</p>
         <div className="tbl-wrap"><table style={{ minWidth: 0 }}><thead><tr><th>Saat</th>{DAYS.map(d => <th key={d}>{d}</th>)}</tr></thead>
           <tbody>{Array.from({ length: 9 }, (_, p) => (
             <tr key={p}><th className="small">{p}</th>{DAYS.map((_, d) => (
               <td key={d} style={{ textAlign: 'center' }}><input type="checkbox" aria-label={`${DAYS[d]} ${ord(p)} saat`} checked={(slots[d] || []).includes(p)} onChange={() => toggle(d, p)} /></td>))}</tr>))}</tbody></table></div>
+        {cls.mine && <fieldset style={{ margin: 0 }}><legend>Perspektiv plan proqramları</legend><ProgramBox ta={cls.mine.ta_id} /></fieldset>}
         <ErrorBox error={err} />
         {cls.mine && (leave
           ? <ConfirmName name={cls.name} action="Dərsdən çıx" onCancel={() => setLeave(false)} onConfirm={async () => { await api(`/api/classes/${cls.id}/leave`, { method: 'POST', params: { subject: cls.mine!.subject } }); toast('Dərsdən çıxdınız'); onDone() }} />

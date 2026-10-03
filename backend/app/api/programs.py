@@ -43,7 +43,7 @@ def _out(p: PlanProgram, used: dict[int, list[str]], grade: int | None = None) -
 
 @router.get('')
 def list_programs(grade: int | None = None, subject: str | None = None, level: str | None = None, ta_id: int | None = None,
-                  user: User = Depends(staff), db: Session = Depends(get_db)):
+                  class_id: int | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Kitabxana. ta_id verilsə – həmin sinif/qrupun səviyyəsinə (sinif rəqəmi) uyğun olanlar «fits» ilə işarələnir."""
     ensure_builtin(db)
     ensure_current(db, user)
@@ -60,6 +60,10 @@ def list_programs(grade: int | None = None, subject: str | None = None, level: s
     if ta_id:
         ta = own_assignment(db, user, ta_id)
         tgrade = class_grade(db, db.get(SchoolClass, ta.class_id))
+    elif class_id:                                       # qoşulmazdan əvvəl (sinif/qrup seçilib, dərs bağlılığı hələ yoxdur)
+        c = db.get(SchoolClass, class_id)
+        if c and c.school_id == user.school_id:
+            tgrade = class_grade(db, c)
     used: dict[int, list[str]] = {}
     for ta, c in db.execute(select(TeachingAssignment, SchoolClass).join(SchoolClass).where(
             TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None),

@@ -26,7 +26,8 @@ export default function Programs() {
   const [attach, setAttach] = useState<Prog | null>(null)
   const [extra, setExtra] = useState<number | null>(null)
   const [edit, setEdit] = useState<Prog | null>(null)
-  const reload = () => { reloadFor(); reloadLib() }
+  const [ver, setVer] = useState(0)
+  const reload = () => { reloadFor(); reloadLib(); setVer(v => v + 1) }
   return (
     <>
       <p className="small muted" style={{ marginTop: 0 }}>Perspektiv plan proqramı sinfə bağlı deyil: hər sinif və qrup üçün səviyyəsinə uyğun proqramı özünüz seçirsiniz.
@@ -34,23 +35,7 @@ export default function Programs() {
         dərs siyahısı (jurnala qarışmır). Proqramlar bir-biri ilə qarışdırılmır.</p>
       <ErrorBox error={err0 || err1 || err2} />
       <div className="toolbar"><LessonSelect lessons={lessons} value={ta} onChange={setTa} /></div>
-      {!ta ? <PickFirst text="Proqram seçmək üçün sinif və ya qrup seçin" /> : !f ? <Loading /> : (
-        <div className="grid g2" style={{ marginBottom: 16 }}>
-          <section className="panel"><h2>Əsas proqram <small>{f.class_name} · {f.grade_roman ? `${f.grade_roman} sinif` : ''}</small></h2>
-            {f.main ? <ProgLine p={f.main} /> : <p className="muted">Hələ proqram yoxdur – aşağıdakı kitabxanadan seçin.</p>}
-            <div className="row" style={{ marginTop: 10 }}>
-              <AsyncBtn className="btn sm" ok="Cari plan proqram kimi saxlanıldı" onClick={async () => { await post(`/api/programs/save/${ta}`, {}); reload() }}>Cari planı ayrıca proqram kimi saxla</AsyncBtn>
-            </div></section>
-          <section className="panel"><h2>Əlavə proqramlar <small>{f.extra.length}</small></h2>
-            {f.extra.length === 0 ? <p className="muted small">Yoxdur. Kitabxanadan «Əlavə proqram kimi qoş» – bütün sinif və ya səviyyə qrupu (Zəif / Orta / Güclü) üçün.</p> :
-              f.extra.map(x => (
-                <div key={x.id} className="prog-x">
-                  <span className="grow"><b>{x.program.title}</b><span className="sub">{x.level ? <Pill tone={levelTone(x.level)}>{x.level} qrup</Pill> : 'bütün sinif'}{x.note ? ` · ${x.note}` : ''}</span></span>
-                  <button className="btn sm" onClick={() => setExtra(x.id)}>Dərslər</button>
-                  <AsyncBtn className="btn sm ghost" ok="Ayrıldı" onClick={async () => { await del(`/api/programs/attached/${x.id}`); reload() }}>Ayır</AsyncBtn>
-                </div>))}
-          </section>
-        </div>)}
+      {!ta ? <PickFirst text="Proqram seçmək üçün sinif və ya qrup seçin" /> : <div style={{ marginBottom: 16 }}><ProgramBox key={`${ta}-${ver}`} ta={ta} onChanged={() => { reloadFor(); reloadLib() }} /></div>}
       <h2 className="sec">Proqramlar kitabxanası <small>{ta && f ? `${f.grade_roman || ''} sinfə uyğun olanlar öndə` : 'bütün siniflər'}</small></h2>
       <div className="toolbar"><select className="sel keep" value={lvl} onChange={e => setLvl(e.target.value)} aria-label="Səviyyə">
         <option value="">Bütün səviyyələr</option>{LEVELS.map(l => <option key={l}>{l}</option>)}</select></div>
@@ -195,6 +180,66 @@ function EditProgram({ p, onClose, onDone }: { p: Prog; onClose: () => void; onD
           <option value="">Ümumi (bütün sinif)</option>{LEVELS.map(l => <option key={l}>{l}</option>)}</select></Field>
         <Field label="Təsvir" full><textarea value={f.description} onChange={e => setF({ ...f, description: e.target.value })} rows={3} /></Field>
       </div>
+    </Drawer>
+  )
+}
+
+
+/** Sinif/qrupun proqramları: əsas (seç / dəyiş – önbaxışla) və əlavə (+ əlavə, dərslər, ayır). Qoşulma formasında,
+ * Perspektiv plan səhifəsində və Tənzimləmələr → Proqramlar-da eyni blok. */
+export function ProgramBox({ ta, onChanged }: { ta: number; onChanged?: () => void }) {
+  const [f, err, , reload] = useLoad<For>(() => get(`/api/programs/for/${ta}`), [ta])
+  const [pick, setPick] = useState<null | 'main' | 'extra'>(null)
+  const [apply, setApply] = useState<Prog | null>(null)
+  const [attach, setAttach] = useState<Prog | null>(null)
+  const [extra, setExtra] = useState<number | null>(null)
+  const done = () => { reload(); onChanged?.() }
+  if (!f) return err ? <ErrorBox error={err} /> : <Loading />
+  return (
+    <div className="grid g2">
+      <section className="panel"><h2>Əsas proqram <small>{f.class_name}{f.grade_roman ? ` · ${f.grade_roman} sinif` : ''}</small></h2>
+        {f.main ? <ProgLine p={f.main} /> : <p className="muted small">Seçilməyib – jurnal və tarixlər əsas proqrama görə gedir.</p>}
+        <div className="row" style={{ marginTop: 10 }}>
+          <button className="btn sm primary" onClick={() => setPick('main')}>{f.main ? 'Əsas proqramı dəyiş' : 'Əsas proqramı seç'}</button>
+          {f.main && <AsyncBtn className="btn sm ghost" ok="Proqram kimi saxlanıldı" onClick={async () => { await post(`/api/programs/save/${ta}`, {}); done() }}>Cari planı ayrıca saxla</AsyncBtn>}
+        </div></section>
+      <section className="panel"><h2>Əlavə proqramlar <small>{f.extra.length}</small></h2>
+        {f.extra.length === 0 ? <p className="muted small">Yoxdur – bütün sinif və ya səviyyə qrupu (Zəif / Orta / Güclü) üçün əlavə edə bilərsiniz; jurnala qarışmır.</p> :
+          f.extra.map(x => (
+            <div key={x.id} className="prog-x">
+              <span className="grow prog-line"><b>{x.program.title}</b><span className="sub">{x.level ? <Pill tone={levelTone(x.level)}>{x.level} qrup</Pill> : 'bütün sinif'}{x.note ? ` · ${x.note}` : ''}</span></span>
+              <button className="btn sm" onClick={() => setExtra(x.id)}>Dərslər</button>
+              <AsyncBtn className="btn sm ghost" ok="Ayrıldı" onClick={async () => { await del(`/api/programs/attached/${x.id}`); done() }}>Ayır</AsyncBtn>
+            </div>))}
+        <div className="row" style={{ marginTop: 10 }}><button className="btn sm" onClick={() => setPick('extra')}>+ Əlavə proqram</button></div>
+      </section>
+      {pick && <PickProgram ta={ta} mode={pick} mainId={f.main?.id} onClose={() => setPick(null)}
+        onPick={p => { const m = pick; setPick(null); if (m === 'main') setApply(p); else setAttach(p) }} />}
+      {apply && <ApplyProgram p={apply} ta={ta} onClose={() => setApply(null)} onDone={() => { setApply(null); done() }} />}
+      {attach && <AttachProgram p={attach} ta={ta} onClose={() => setAttach(null)} onDone={() => { setAttach(null); done() }} />}
+      {extra && <ExtraLessons aid={extra} onClose={() => setExtra(null)} />}
+    </div>
+  )
+}
+
+/** Kitabxanadan seçim: bu sinif/qrupa uyğun olanlar öndə, səviyyə süzgəci. */
+function PickProgram({ ta, mode, mainId, onClose, onPick }: { ta: number; mode: 'main' | 'extra'; mainId?: number; onClose: () => void; onPick: (p: Prog) => void }) {
+  const [lvl, setLvl] = useState('')
+  const [lib, err] = useLoad<Prog[]>(() => get('/api/programs', { ta_id: String(ta), ...(lvl ? { level: lvl } : {}) }), [ta, lvl])
+  const [view, setView] = useState<Prog | null>(null)
+  return (
+    <Drawer title={mode === 'main' ? 'Əsas proqramı seçin' : 'Əlavə proqram seçin'} onClose={onClose}>
+      <p className="small muted" style={{ marginTop: 0 }}>{mode === 'main' ? 'Əsas proqram – jurnal, mövzu icrası və tarixlər ona görədir. Seçdikdən sonra önbaxış göstəriləcək.'
+        : 'Əlavə proqram jurnala yazılmır və əsas proqramla qarışmır – bütün sinif və ya səviyyə qrupu üçün ayrıca dərs siyahısıdır.'}</p>
+      <div className="toolbar"><select className="sel keep" value={lvl} onChange={e => setLvl(e.target.value)} aria-label="Səviyyə">
+        <option value="">Bütün səviyyələr</option>{LEVELS.map(l => <option key={l}>{l}</option>)}</select></div>
+      <ErrorBox error={err} />
+      {!lib ? <Loading /> : <div className="jlist">{lib.map(p => (
+        <div key={p.id} className="prog-row"><ProgLine p={p} />
+          <div className="row" style={{ gap: 6 }}><button className="btn sm" onClick={() => setView(p)}>Bax</button>
+            <button className="btn sm primary" disabled={mode === 'main' && p.id === mainId} onClick={() => onPick(p)}>{mode === 'main' && p.id === mainId ? 'Seçilib' : 'Seç'}</button></div>
+        </div>))}</div>}
+      {view && <ViewProgram p={view} onClose={() => setView(null)} />}
     </Drawer>
   )
 }

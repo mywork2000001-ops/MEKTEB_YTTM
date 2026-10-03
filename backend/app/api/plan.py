@@ -32,6 +32,9 @@ def bell(db: Session, cls: SchoolClass, period: int) -> str | None:
 
 @router.get('/my/lessons')
 def my_lessons(user: User = Depends(staff), db: Session = Depends(get_db)):
+    from ..programs import ensure_current
+    ensure_current(db, user)                 # hər sinif/qrupun mövcud planı əsas proqram kimi görünsün (əvvəldən)
+    db.commit()
     rows = db.execute(select(TeachingAssignment, SchoolClass).join(SchoolClass)
                       .where(TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None),
                              SchoolClass.archived_at.is_(None)).order_by(SchoolClass.name))

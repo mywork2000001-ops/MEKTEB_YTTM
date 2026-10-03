@@ -227,3 +227,6 @@ body.exam-guard main{max-width:860px;margin:0 auto}
 .prog-x:first-of-type{border-top:0}
 @media (max-width:700px){.prog-row{grid-template-columns:1fr}.prog-x{flex-wrap:wrap}}
 .prog-line b{display:block;font-weight:600;line-height:1.3}.prog-line .sub{display:block;font-size:12.5px;color:var(--muted)}
+.prog-details{margin-bottom:14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px}
+.prog-details > summary{cursor:pointer;font-size:14px}
+.prog-details[open] > summary{margin-bottom:12px}

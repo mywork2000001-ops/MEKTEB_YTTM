@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { get } from '../../api'
 import { ErrorBox, fmtDate, isoDate, Loading, PickFirst, Pill, Seg, Top, useLoad } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
+import { ProgramBox } from './Programs'
 import { head, printDoc, table } from '../../print'
 import TopicTest from './TopicTest'
 
@@ -29,7 +30,7 @@ const step = (d: string, view: string, dir: number) => {
 }
 
 export default function Plan() {
-  const [lessons, err0] = useMyLessons()
+  const [lessons, err0, , reloadLessons] = useMyLessons()
   const [ta, setTa] = usePick('plan')
   const [view, setView] = useState<'day' | 'week' | 'month' | 'semester'>('week')
   const [date, setDate] = useState(isoDate(new Date()))
@@ -46,6 +47,8 @@ export default function Plan() {
         <LessonSelect lessons={lessons} value={ta} onChange={setTa} />
         {ta && <Seg value={view} onChange={setView} options={[['day', 'Gün'], ['week', 'Həftə'], ['month', 'Ay'], ['semester', 'Yarımil']]} />}
       </div>
+      {ta && <details className="prog-details no-print"><summary>Proqramlar: <b>{cur?.program || 'əsas proqram seçilməyib'}</b>{cur?.extra_programs ? ` · əlavə: ${cur.extra_programs}` : ''} <span className="small muted">– seç / dəyiş</span></summary>
+        <ProgramBox ta={ta} onChanged={() => { reload(); reloadLessons() }} /></details>}
       {!ta ? <PickFirst /> : loading && !d ? <Loading /> : d && (
         <>
           <div className="row" style={{ marginBottom: 12 }}>

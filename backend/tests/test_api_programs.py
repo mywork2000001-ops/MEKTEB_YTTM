@@ -97,3 +97,22 @@ def test_level_fit_and_extra_programs(world):
     mine = next(p for p in c.get('/api/programs').json() if p['mine'])
     r = c.patch(f"/api/programs/{mine['id']}", json={'title': 'X c – güclü qrup proqramı', 'level': 'Güclü', 'grade': 10}).json()
     assert r['level'] == 'Güclü' and [p['id'] for p in c.get('/api/programs', params={'level': 'Güclü'}).json()] == [mine['id']]
+
+
+def test_choose_main_program_when_joining(world):
+    as_, S = world
+    c = as_('admin')
+    cid = c.post('/api/classes', json={'name': 'IX a'}).json()['id']
+    lib = c.get('/api/programs', params={'class_id': cid}).json()
+    p9 = next(p for p in lib if p['builtin'] and p['grade'] == 9)
+    assert p9['fits'] and lib[0]['id'] == p9['id']                          # sinfə uyğun olan öndə
+    r = c.post(f'/api/classes/{cid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 5, 'program_id': p9['id'],
+                                                  'slots': {'0': [1], '1': [1], '2': [1], '3': [1], '4': [1]}})
+    assert r.status_code == 200 and r.json()['mine']['program_id'] == p9['id']
+    ta = r.json()['mine']['ta_id']
+    with S() as db:
+        n = db.query(PlanLesson).filter_by(assignment_id=ta).count()
+        first = db.query(PlanLesson).filter_by(assignment_id=ta, seq=2).one().topic
+    assert n > 100 and first.startswith('IX sinif: ')
+    f = c.get(f'/api/programs/for/{ta}').json()
+    assert f['main']['id'] == p9['id'] and f['extra'] == []
