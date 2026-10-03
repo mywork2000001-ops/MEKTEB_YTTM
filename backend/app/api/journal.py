@@ -156,6 +156,7 @@ def grid(ta_id: int, month: str | None = None, user: User = Depends(staff), db: 
     «q» qayıb / «ü» üzrlü / «g» gecikmə, həmin gün keçirilən KSQ/BSQ qiyməti. İkinci hissə – mövzu və ev tapşırığı."""
     from ..domain.rules import grade_from_points
     from ..models import Exam, ExamScore
+    from .exams_online import exam_stats
     from ..services import journal_entries, taught_lesson
     ta = own_assignment(db, user, ta_id)
     ctx = plan_ctx(db, ta)
@@ -183,8 +184,16 @@ def grid(ta_id: int, month: str | None = None, user: User = Depends(staff), db: 
         for sc in db.scalars(select(ExamScore).where(ExamScore.exam_id == ex.id)):
             if col and sc.points is not None and not sc.absent:
                 ex_cell[(col, sc.student_id)] = f'{ex.kind}-{ex.no}: {grade_from_points(sc.points, ex.max_points)}'
+    from .exams_online import class_exams
+    exs = class_exams(db, ta, a, b)                    # sınaq – keçirildiyi günün ayrıca sütunu (ortaya daxil deyil)
+    order = sorted([(k[0], 0, k[1], k) for k in keys] + [(x['date'], 1, i, x) for i, x in enumerate(exs)],
+                   key=lambda z: z[:3])
     cols = []
-    for k in keys:
+    for d_, is_ex, _, k in order:
+        if is_ex:
+            cols.append({'date': d_, 'period': None, 'written': False, 'topic': k['title'], 'seq': None,
+                         'assessment': None, 'homework': None, 'future': d_ > today(), 'sinaq': k['title']})
+            continue
         e = entries.get(k)
         pl = taught_lesson(ctx, slots.get(k), e)
         cols.append({'date': k[0], 'period': k[1], 'written': e is not None, 'topic': (e.topic if e and e.topic else pl.topic if pl else None),
@@ -194,7 +203,13 @@ def grid(ta_id: int, month: str | None = None, user: User = Depends(staff), db: 
     rows = []
     for s in roster(db, ta):
         cells = []
-        for k in keys:
+        for _, is_ex, _, k in order:
+            if is_ex:
+                r = k['rows'].get(s.id)
+                cells.append({'marks': [], 'att': None, 'exam': None,
+                              'sinaq': (f"{r['pct']:g}%" if r['status'] == 'yazıb' else 'yox' if k['closed'] else None)
+                              if r else None})
+                continue
             e = entries.get(k)
             c = {'marks': [], 'att': None, 'exam': ex_cell.get((k, s.id))}
             if e:
@@ -202,17 +217,19 @@ def grid(ta_id: int, month: str | None = None, user: User = Depends(staff), db: 
                 c['att'] = CELL_ATT.get(att.get((e.id, s.id)))
             cells.append(c)
         g = [x for c in cells for x in c['marks']]
-        rows.append({'student_id': s.id, 'full_name': s.full_name, 'cells': cells,
+        rows.append({'student_id': s.id, 'full_name': s.full_name, 'cells': cells, **exam_stats(exs, s.id),
                      'avg': round(sum(g) / len(g), 2) if g else None, 'missed': sum(c['att'] in ('q', 'ü') for c in cells)})
     return {'month': f'{a:%Y-%m}', 'from': a, 'to': b, 'class_name': ctx.cls.name, 'subject': ta.subject,
-            'year_start': ctx.year.start, 'year_end': ctx.year.end, 'columns': cols, 'rows': rows}
+            'year_start': ctx.year.start, 'year_end': ctx.year.end, 'columns': cols, 'rows': rows, 'exams': len(exs)}
 
 
 @router.get('/{ta_id}/summary')
 def summary(ta_id: int, semester: int | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
-    """Şagird üzrə: formativ orta, davamiyyət %, ev tapşırığı icrası %, testlər."""
+    """Şagird üzrə: formativ orta, davamiyyət %, ev tapşırığı icrası %, testlər; sınaqlar – ayrıca (ortaya daxil deyil)."""
+    from .exams_online import class_exams, exam_stats
     ta = own_assignment(db, user, ta_id)
     ctx = plan_ctx(db, ta)
+    exs = class_exams(db, ta, ctx.year.sem2_start if semester == 2 else None, ctx.year.sem1_end if semester == 1 else None)
     st = select(JournalEntry.id).where(JournalEntry.assignment_id == ta.id)
     if semester == 1:
         st = st.where(JournalEntry.date <= ctx.year.sem1_end)
@@ -234,5 +251,5 @@ def summary(ta_id: int, semester: int | None = None, user: User = Depends(staff)
                     'tests': len(t), 'test_pct': round(sum(m.test_correct for m in t) * 100 / sum(m.test_total for m in t), 1) if t else None,
                     'lessons': len(a), 'absent': a.count('yox') + a.count('üzrlü'), 'late': a.count('gecikdi'),
                     'attendance_pct': round((len(a) - a.count('yox') - a.count('üzrlü')) * 100 / len(a), 1) if a else None,
-                    'homework_pct': round(sum(h) * 100 / len(h), 1) if h else None})
-    return {'lessons_written': len(eids), 'students': out}
+                    'homework_pct': round(sum(h) * 100 / len(h), 1) if h else None, **exam_stats(exs, s.id)})
+    return {'lessons_written': len(eids), 'students': out, 'exams': len(exs)}

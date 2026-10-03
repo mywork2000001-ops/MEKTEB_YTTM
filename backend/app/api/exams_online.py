@@ -390,6 +390,36 @@ def delete_exam(batch_id: int, user: User = Depends(staff), db: Session = Depend
     return {'deleted': n}
 
 
+# ---------------------------------------------------------------- formativ jurnal üçün (ayrıca sütun, ortaya daxil deyil)
+def class_exams(db: Session, ta: TeachingAssignment, a: dt.date | None = None, b: dt.date | None = None) -> list[dict]:
+    """Bu dərsin sınaqları keçirildiyi gün (açılma tarixi, məktəb vaxtı) üzrə: hər şagirdin faizi və qiyməti.
+    Formativ jurnalda ayrıca «Sınaq» sütunu və yekunda ayrıca göstəricilər üçün – formativ ortaya qarışmır."""
+    from zoneinfo import ZoneInfo
+    from ..services import SCHOOL_TZ
+    out, t0 = [], now()
+    for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, OnlineTask.kind == 'sinaq',
+                                                 OnlineTask.archived_at.is_(None)).order_by(OnlineTask.opens_at)):
+        d = aware(t.opens_at).astimezone(ZoneInfo(SCHOOL_TZ)).date()
+        bt = db.get(TestBatch, t.batch_id) if t.batch_id else None
+        if not bt or (a and d < a) or (b and d > b):
+            continue
+        closed = t0 >= aware(t.closes_at)
+        rows = {r['student_id']: {'status': r['status'] if r['status'] == 'yazıb' or not closed else 'yazmayıb',
+                                  'pct': r['pct'], 'grade': r['grade']}
+                for r in results(db, bt)['rows'] if r['task_id'] == t.id}
+        out.append({'task_id': t.id, 'batch_id': bt.id, 'title': bt.title, 'date': d, 'closed': closed, 'rows': rows})
+    return out
+
+
+def exam_stats(exs: list[dict], student_id: int) -> dict:
+    """Yekun üçün: yazdığı sınaq sayı, orta faiz, son faiz və dinamika (son − əvvəlki)."""
+    got = [x['rows'][student_id]['pct'] for x in exs
+           if student_id in x['rows'] and x['rows'][student_id]['status'] == 'yazıb']
+    return {'exam_count': len(got), 'exam_pct': round(sum(got) / len(got), 1) if got else None,
+            'exam_last': got[-1] if got else None,
+            'exam_delta': round(got[-1] - got[-2], 1) if len(got) >= 2 else None}
+
+
 # ---------------------------------------------------------------- şagird portalı üçün
 def student_exams(db: Session, s: Student, task_ids: list[int]) -> list[dict]:
     """Şagirdin sınaqları: öz balı, sinifdə/ümumi yeri, orta və ən yüksək bal (başqasının adı yoxdur).

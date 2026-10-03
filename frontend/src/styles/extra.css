@@ -147,3 +147,6 @@
   .drawer:has(.dplan-wide) footer .btn{width:100%;min-height:44px;justify-content:center}
   .drawer:has(.dplan-wide) footer .grow{grid-column:1/-1}
 }
+
+/* formativ jurnal: sınaq imtahanı – ayrıca sütun (ortaya daxil deyil) */
+th.sinaq-col,td.sinaq-col{background:var(--info-soft);color:var(--info)}

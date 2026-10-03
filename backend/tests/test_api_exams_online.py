@@ -121,6 +121,18 @@ def test_online_exam_journal_rating_privacy(world, clock, monkeypatch):
     assert first['max_pct'] == 100.0 and 'rows' not in first
     assert me['delta'] == round(33.3 - 100, 1)
 
+    # formativ jurnal: sınaq keçirildiyi günün ayrıca sütunundadır, formativ ortaya daxil deyil; yekunda ayrıca
+    monkeypatch.setattr('app.api.journal.today', lambda: dt.date(2026, 10, 7))
+    g = admin.get(f'/api/journal/{ta}/grid', params={'month': '2026-09'}).json()
+    ci = next(i for i, c in enumerate(g['columns']) if c.get('sinaq'))
+    assert g['columns'][ci]['date'] == '2026-09-29' and g['exams'] == 1
+    r0 = next(r for r in g['rows'] if r['student_id'] == st[0]['id'])
+    assert r0['cells'][ci]['sinaq'] == '100%' and r0['avg'] is None and r0['exam_count'] == 1
+    sm = admin.get(f'/api/journal/{ta}/summary').json()
+    assert sm['exams'] == 2 and next(x for x in sm['students'] if x['student_id'] == st[1]['id'])['exam_count'] == 2
+    assert next(x for x in admin.get(f'/api/exams/{ta}/semester/1').json()['students']
+                if x['student_id'] == st[0]['id'])['exam_pct'] is not None
+
     # silmə: başqa müəllim yalnız öz sinfini silir; silinən sınaq tam gedir (şagirddə də)
     assert ilqar.delete(f'/api/exams-online/{bid}').json()['deleted'] == 1
     assert admin.get(f'/api/exams-online/{bid}').json()['summary']['students'] == 5

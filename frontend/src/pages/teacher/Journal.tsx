@@ -199,15 +199,17 @@ function Semester({ ta }: { ta: MyLesson }) {
       <div className="row" style={{ marginBottom: 12 }}>
         {[1, 2].map(s => <button key={s} className="chip" aria-pressed={sem === s} onClick={() => setSem(s)}>{s}-ci yarımil</button>)}
         <span className="small muted">{d?.formula}</span>
-        {d && <button className="btn sm right" onClick={() => printDoc({ title: `${ta.class_name} – ${sem}-ci yarımil qiymətləri`, body: head(`${ta.class_name} – ${ta.subject}: ${sem}-ci yarımil`, d.formula) + table(['№', 'Şagird', 'KSQ', 'KSQ orta', 'BSQ', 'Yarımil'], d.students.map((s: any, i: number) => [i + 1, s.full_name, s.ksq.map(([n, g]: [number, number | null]) => `${n}: ${g ?? '—'}`).join('  '), fmtN(s.ksq_avg, 2), s.bsq ?? '—', s.semester_grade ?? '—']), [3, 4, 5]) + '<p class="sign">Müəllim: ____________</p>' })}>Çap / PDF</button>}
+        {d && <button className="btn sm right" onClick={() => printDoc({ title: `${ta.class_name} – ${sem}-ci yarımil qiymətləri`, body: head(`${ta.class_name} – ${ta.subject}: ${sem}-ci yarımil`, d.formula) + table(['№', 'Şagird', 'KSQ', 'KSQ orta', 'BSQ', 'Yarımil', ...(d.exams ? ['Sınaq', 'Sınaq orta %'] : [])], d.students.map((s: any, i: number) => [i + 1, s.full_name, s.ksq.map(([n, g]: [number, number | null]) => `${n}: ${g ?? '—'}`).join('  '), fmtN(s.ksq_avg, 2), s.bsq ?? '—', s.semester_grade ?? '—', ...(d.exams ? [`${s.exam_count}/${d.exams}`, fmtN(s.exam_pct)] : [])]), [3, 4, 5, 6, 7]) + (d.exams ? '<p>Sınaq imtahanları yarımil qiymətinə daxil deyil – ayrıca göstərilir.</p>' : '') + '<p class="sign">Müəllim: ____________</p>' })}>Çap / PDF</button>}
       </div>
       <ErrorBox error={err} />
-      <div className="tbl-wrap"><table><thead><tr><th>Şagird</th><th>KSQ</th><th className="r">KSQ orta</th><th className="r">BSQ</th><th className="r">Yarımil</th></tr></thead>
+      <div className="tbl-wrap"><table><thead><tr><th>Şagird</th><th>KSQ</th><th className="r">KSQ orta</th><th className="r">BSQ</th><th className="r">Yarımil</th>{d?.exams > 0 && <><th className="r sinaq-col">Sınaq</th><th className="r sinaq-col">Sınaq orta %</th></>}</tr></thead>
         <tbody>{d?.students.map((s: any) => (
           <tr key={s.student_id}><td>{s.full_name}</td>
             <td className="small">{s.ksq.map(([n, g]: [number, number | null]) => <span key={n} style={{ marginRight: 6 }}>{n}: <b>{g ?? '—'}</b></span>)}</td>
             <td className="r num">{fmt(s.ksq_avg, 2)}</td><td className="r num">{s.bsq ?? '—'}</td>
-            <td className="r">{s.semester_grade ? <Pill tone={gradeTone(s.semester_grade)}>{s.semester_grade}</Pill> : '—'}</td></tr>))}</tbody></table></div>
+            <td className="r">{s.semester_grade ? <Pill tone={gradeTone(s.semester_grade)}>{s.semester_grade}</Pill> : '—'}</td>
+            {d.exams > 0 && <><td className="r num sinaq-col">{s.exam_count}/{d.exams}</td><td className="r num sinaq-col">{fmt(s.exam_pct)}</td></>}</tr>))}</tbody></table></div>
+      {d?.exams > 0 && <p className="small muted">Sınaq imtahanları ({d.exams}) yarımil qiymətinə daxil deyil – ayrıca, məlumat üçün göstərilir.</p>}
     </>
   )
 }
@@ -390,11 +392,15 @@ function Summary({ ta }: { ta: MyLesson }) {
     <>
       <ErrorBox error={err} />
       <div className="row" style={{ marginBottom: 8 }}>{([['1', 'I yarımil'], ['2', 'II yarımil'], ['all', 'Bütün il']] as const).map(([k, l]) => <button key={k} className="chip" aria-pressed={sem === k} onClick={() => setSem(k)}>{l}</button>)}</div>
-      {d && <div className="row"><p className="muted small grow">Yazılmış dərs: {d.lessons_written}</p><button className="btn sm" onClick={() => printDoc({ title: `${ta.class_name} – jurnal xülasəsi`, body: head(`${ta.class_name} – ${ta.subject}: jurnal xülasəsi (${sem === 'all' ? 'bütün il' : sem + '-ci yarımil'})`, `Yazılmış dərs: ${d.lessons_written}`) + table(['№', 'Şagird', 'Orta qiymət', 'Qiymət sayı', 'Test %', 'Davamiyyət %', 'Ev tapşırığı %'], d.students.map((s: any, i: number) => [i + 1, s.full_name, fmtN(s.avg_grade, 2), s.marks, fmtN(s.test_pct), fmtN(s.attendance_pct), fmtN(s.homework_pct)]), [2, 3, 4, 5, 6]) })}>Çap / PDF</button></div>}
-      <div className="tbl-wrap"><table><thead><tr><th>Şagird</th><th className="r">Orta qiymət</th><th className="r">Qiymət sayı</th><th className="r">Test %</th><th className="r">Davamiyyət %</th><th className="r">Ev tapşırığı %</th></tr></thead>
+      {d && <div className="row"><p className="muted small grow">Yazılmış dərs: {d.lessons_written}</p><button className="btn sm" onClick={() => printDoc({ title: `${ta.class_name} – jurnal xülasəsi`, body: head(`${ta.class_name} – ${ta.subject}: jurnal xülasəsi (${sem === 'all' ? 'bütün il' : sem + '-ci yarımil'})`, `Yazılmış dərs: ${d.lessons_written}`) + table(['№', 'Şagird', 'Orta qiymət', 'Qiymət sayı', 'Test %', 'Davamiyyət %', 'Ev tapşırığı %', ...(d.exams ? ['Sınaq', 'Sınaq orta %', 'Son sınaq %', 'Dinamika'] : [])], d.students.map((s: any, i: number) => [i + 1, s.full_name, fmtN(s.avg_grade, 2), s.marks, fmtN(s.test_pct), fmtN(s.attendance_pct), fmtN(s.homework_pct), ...(d.exams ? [`${s.exam_count}/${d.exams}`, fmtN(s.exam_pct), fmtN(s.exam_last), s.exam_delta == null ? '' : (s.exam_delta > 0 ? '+' : '') + fmtN(s.exam_delta)] : [])]), [2, 3, 4, 5, 6, 7, 8, 9, 10]) + (d.exams ? '<p>Sınaq imtahanları formativ orta qiymətə daxil deyil – ayrıca göstərilir.</p>' : '') })}>Çap / PDF</button></div>}
+      <div className="tbl-wrap"><table><thead><tr><th>Şagird</th><th className="r">Orta qiymət</th><th className="r">Qiymət sayı</th><th className="r">Test %</th><th className="r">Davamiyyət %</th><th className="r">Ev tapşırığı %</th>
+          {d?.exams > 0 && <><th className="r sinaq-col">Sınaq</th><th className="r sinaq-col">Sınaq orta %</th><th className="r sinaq-col">Son sınaq %</th><th className="r sinaq-col">Dinamika</th></>}</tr></thead>
         <tbody>{d?.students.map((s: any) => (
           <tr key={s.student_id}><td>{s.full_name}</td><td className="r num">{fmt(s.avg_grade, 2)}</td><td className="r num">{s.marks}</td>
-            <td className="r num">{fmt(s.test_pct)}</td><td className="r num">{fmt(s.attendance_pct)}</td><td className="r num">{fmt(s.homework_pct)}</td></tr>))}</tbody></table></div>
+            <td className="r num">{fmt(s.test_pct)}</td><td className="r num">{fmt(s.attendance_pct)}</td><td className="r num">{fmt(s.homework_pct)}</td>
+            {d.exams > 0 && <><td className="r num sinaq-col">{s.exam_count}/{d.exams}</td><td className="r num sinaq-col"><b>{fmt(s.exam_pct)}</b></td><td className="r num sinaq-col">{fmt(s.exam_last)}</td>
+              <td className="r num sinaq-col" style={{ color: s.exam_delta > 0 ? 'var(--ok)' : s.exam_delta < 0 ? 'var(--bad)' : undefined }}>{s.exam_delta == null ? '' : (s.exam_delta > 0 ? '+' : '') + fmt(s.exam_delta)}</td></>}</tr>))}</tbody></table></div>
+      {d?.exams > 0 && <p className="small muted">Sınaq imtahanları ({d.exams}) formativ orta qiymətə daxil deyil – ayrıca göstərilir. Hər sınaq jurnal səhifəsində keçirildiyi günün «Sınaq» sütunundadır.</p>}
     </>
   )
 }
@@ -442,15 +448,16 @@ function Grid({ ta }: { ta: MyLesson }) {
   const step = (n: number) => { const [y, m] = month.split('-').map(Number); const x = new Date(y, m - 1 + n, 1); setMonth(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}`) }
   const MN = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'İyun', 'İyul', 'Avqust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr']
   const title = `${MN[Number(month.slice(5)) - 1]} ${month.slice(0, 4)}`
-  const cellText = (c: any) => [...c.marks, c.att, c.exam && c.exam.split(': ')[1]].filter(Boolean).join(' ')
+  const cellText = (c: any) => [...c.marks, c.att, c.exam && c.exam.split(': ')[1], c.sinaq].filter(Boolean).join(' ')
   const print = () => printDoc({
     landscape: true, title: `${ta.class_name} – jurnal ${title}`,
     body: head(`${ta.class_name} – ${ta.subject}: jurnal səhifəsi`, title) +
-      table(['№', 'Şagird', ...d.columns.map((c: any) => fmtDate(c.date).slice(0, 5)), 'Orta', 'Buraxıb'],
-        d.rows.map((r: any, i: number) => [i + 1, r.full_name, ...r.cells.map(cellText), fmtN(r.avg, 2), r.missed || ''])) +
+      table(['№', 'Şagird', ...d.columns.map((c: any) => (c.sinaq ? 'Sınaq ' : '') + fmtDate(c.date).slice(0, 5)), 'Orta', 'Buraxıb', ...(d.exams ? ['Sınaq orta %'] : [])],
+        d.rows.map((r: any, i: number) => [i + 1, r.full_name, ...r.cells.map(cellText), fmtN(r.avg, 2), r.missed || '', ...(d.exams ? [fmtN(r.exam_pct)] : [])])) +
       '<h2>Keçilən mövzular və ev tapşırıqları</h2>' +
-      table(['Tarix', 'Saat', '№', 'Mövzu', 'Ev tapşırığı'], d.columns.filter((c: any) => c.written).map((c: any) => [fmtDate(c.date), c.period, c.seq ?? '', (c.assessment ? c.assessment + ' · ' : '') + (c.topic || ''), c.homework || ''])) +
-      '<p>q – qayıb, ü – üzrlü, g – gecikmə; KSQ/BSQ qiyməti həmin günün sütunundadır.</p><p class="sign">Müəllim: ____________</p>',
+      (d.exams ? '<h2>Sınaq imtahanları</h2>' + table(['Tarix', 'Sınaq'], d.columns.filter((c: any) => c.sinaq).map((c: any) => [fmtDate(c.date), c.sinaq])) : '') +
+      '<h2>Dərslər</h2>' + table(['Tarix', 'Saat', '№', 'Mövzu', 'Ev tapşırığı'], d.columns.filter((c: any) => c.written).map((c: any) => [fmtDate(c.date), c.period, c.seq ?? '', (c.assessment ? c.assessment + ' · ' : '') + (c.topic || ''), c.homework || ''])) +
+      '<p>q – qayıb, ü – üzrlü, g – gecikmə; KSQ/BSQ qiyməti həmin günün sütunundadır. «Sınaq» sütunu – sınaq imtahanının faizi (keçirildiyi gün; formativ ortaya daxil deyil), «yox» – yazmayıb.</p><p class="sign">Müəllim: ____________</p>',
   })
   return (
     <>
@@ -462,17 +469,20 @@ function Grid({ ta }: { ta: MyLesson }) {
       {loading && !d ? <Loading /> : d && (d.columns.length === 0 ? <div className="empty">Bu ayda dərs yoxdur.</div> : <>
         <div className="tbl-wrap"><table className="sticky-first" style={{ minWidth: 0 }}>
           <thead><tr><th style={{ textAlign: 'left' }}>Şagird</th>{d.columns.map((c: any, i: number) => (
+            c.sinaq ? <th key={i} className="sinaq-col" title={`Sınaq imtahanı: ${c.sinaq}`} style={{ opacity: c.future ? 0.5 : 1, textAlign: 'center' }}>
+              {fmtDate(c.date).slice(0, 5)}<br /><small>Sınaq</small></th> :
             <th key={i} title={`${ord(c.period)} saat · ${c.topic || ''}`} style={{ opacity: c.future ? 0.5 : 1, textAlign: 'center', background: c.assessment ? 'var(--warn-soft)' : undefined }}>
               {fmtDate(c.date).slice(0, 5)}{c.assessment && <><br /><small>{c.assessment}</small></>}{!c.written && !c.future && <><br /><small style={{ color: 'var(--bad)' }}>yazılmayıb</small></>}</th>))}
-            <th className="r">Orta</th><th className="r">Buraxıb</th></tr></thead>
+            <th className="r">Orta</th><th className="r">Buraxıb</th>{d.exams > 0 && <th className="r sinaq-col">Sınaq orta %</th>}</tr></thead>
           <tbody>{d.rows.map((r: any) => (
             <tr key={r.student_id}><td style={{ whiteSpace: 'nowrap' }}>{r.full_name}</td>
               {r.cells.map((c: any, i: number) => (
-                <td key={i} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                <td key={i} className={d.columns[i].sinaq ? 'sinaq-col' : undefined} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                  {c.sinaq && (c.sinaq === 'yox' ? <span className="muted small">yox</span> : <b className="small">{c.sinaq}</b>)}
                   {c.marks.map((g: number, j: number) => <b key={j} style={{ color: `var(--${gradeTone(g)})`, marginRight: 2 }}>{g}</b>)}
                   {c.att && <span style={{ color: c.att === 'q' ? 'var(--bad)' : c.att === 'ü' ? 'var(--warn)' : 'var(--info)' }}>{c.att}</span>}
                   {c.exam && <Pill tone="warn">{c.exam.split(': ')[1]}</Pill>}</td>))}
-              <td className="r num">{fmt(r.avg, 2)}</td><td className="r num">{r.missed || ''}</td></tr>))}</tbody>
+              <td className="r num">{fmt(r.avg, 2)}</td><td className="r num">{r.missed || ''}</td>{d.exams > 0 && <td className="r num sinaq-col">{fmt(r.exam_pct)}</td>}</tr>))}</tbody>
         </table></div>
         <section className="panel" style={{ marginTop: 12 }}><h2>Keçilən mövzular və ev tapşırıqları</h2>
           <div className="jlist">{d.columns.filter((c: any) => c.written).map((c: any, i: number) => (
@@ -481,7 +491,7 @@ function Grid({ ta }: { ta: MyLesson }) {
               <span>{c.assessment && <Pill tone="warn">{c.assessment}</Pill>} {c.topic}{c.homework && <span className="sub small"><br />Ev tapşırığı: <b>{c.homework}</b></span>}</span>
             </div>))}</div>
         </section>
-        <p className="small muted">q – qayıb, ü – üzrlü, g – gecikmə. Sarı sütun – KSQ/BSQ günü (qiymət nəticələrdən).</p>
+        <p className="small muted">q – qayıb, ü – üzrlü, g – gecikmə. Sarı sütun – KSQ/BSQ günü (qiymət nəticələrdən). Mavi «Sınaq» sütunu – sınaq imtahanının faizi keçirildiyi gün; formativ «Orta»ya daxil deyil, «yox» – yazmayıb.</p>
       </>)}
     </>
   )

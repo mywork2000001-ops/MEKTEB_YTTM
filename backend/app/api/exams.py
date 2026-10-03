@@ -221,6 +221,10 @@ def semester(ta_id: int, sem: int, user: User = Depends(staff), db: Session = De
                             .order_by(Exam.kind.desc(), Exam.no)))
     scores = {(sc.exam_id, sc.student_id): sc for sc in db.scalars(
         select(ExamScore).where(ExamScore.exam_id.in_([e.id for e in exams])))}
+    from ..services import plan_ctx
+    from .exams_online import class_exams, exam_stats
+    y = plan_ctx(db, ta).year
+    exs = class_exams(db, ta, None if sem == 1 else y.sem2_start, y.sem1_end if sem == 1 else None)
     out = []
     for s in roster(db, ta):
         ksq = [(e.no, _row(e, scores.get((e.id, s.id)))['grade']) for e in exams if e.kind == 'KSQ']
@@ -228,5 +232,6 @@ def semester(ta_id: int, sem: int, user: User = Depends(staff), db: Session = De
         ksq_grades = [g for _, g in ksq if g is not None]
         out.append({'student_id': s.id, 'full_name': s.full_name, 'ksq': ksq, 'bsq': bsq,
                     'ksq_avg': round(sum(ksq_grades) / len(ksq_grades), 2) if ksq_grades else None,
-                    'semester_grade': semester_grade(ksq_grades, bsq)})
-    return {'semester': sem, 'formula': '(KSQ qiymətləri cəmi / sayı) × 0,4 + BSQ × 0,6', 'students': out}
+                    'semester_grade': semester_grade(ksq_grades, bsq), **exam_stats(exs, s.id)})
+    return {'semester': sem, 'formula': '(KSQ qiymətləri cəmi / sayı) × 0,4 + BSQ × 0,6', 'students': out,
+            'exams': len(exs)}
