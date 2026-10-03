@@ -75,6 +75,32 @@ def overview(user: User = Depends(staff), db: Session = Depends(get_db)):
     return sorted(out, key=lambda x: x['class_name'])
 
 
+@router.get('/my/weekly')
+def weekly(user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Həftəlik xülasə (Əsas səhifə; serverdə saxlanmır – hər dəfə hesablanır): siniflərim üzrə qırmızı risk,
+    25%-dən çox buraxanlar, son 7 gündə yazılmamış dərslər. week – ISO həftə (cihazda «oxundu» açarı)."""
+    from ..performance import lesson_counts
+    from ..services import today
+    t = today()
+    out = []
+    for ta in db.scalars(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id,
+                                                          TeachingAssignment.archived_at.is_(None))):
+        ctx = plan_ctx(db, ta)
+        if ctx.cls.archived_at:
+            continue
+        sem = 2 if t >= ctx.year.sem2_start else 1
+        a = analyze(db, ctx, _period(ctx, None, None, sem), links=False)
+        lc = lesson_counts(db, ctx, t, sem)
+        recent = [m for m in lc['missing_list'] if (t - m['date']).days <= 7]
+        red = [r['full_name'] for r in a['students'] if r['risk']['status'] == 'Qırmızı']
+        absent = [r['full_name'] for r in a['students'] if r['absence_warning']]
+        if red or absent or recent:
+            out.append({'ta_id': ta.id, 'class_name': ctx.cls.name, 'subject': ta.subject, 'red': red,
+                        'absence': absent, 'missing_week': recent, 'missing_total': lc['missing']})
+    y, w, _ = t.isocalendar()
+    return {'week': f'{y}-W{w:02d}', 'today': t, 'items': sorted(out, key=lambda x: x['class_name'])}
+
+
 class LevelIn(BaseModel):
     level: Literal['Güclü', 'Orta', 'Zəif'] | None = None     # None – avtomatik
     note: str | None = Field(None, max_length=300)

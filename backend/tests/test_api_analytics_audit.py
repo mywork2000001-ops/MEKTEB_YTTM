@@ -73,3 +73,27 @@ def test_sinaq_risk_factor_and_current_semester(world):
     assert next(x for x in risk_score(RiskInput()).factors if x['amil'] == 'sinaq')['bal'] == 0
     c, ta, *_ = setup(world)
     assert next(x for x in c.get('/api/my/lessons').json() if x['id'] == ta)['semester'] in (1, 2)
+
+
+def test_school_performance_admin_only_and_consistent(world):
+    as_, _ = world
+    c, ta, good, weak, new = setup(world)
+    r = c.get('/api/school/performance', params={'semester': 1})
+    assert r.status_code == 200
+    d = r.json()
+    cls = next(x for x in d['classes'] if x['class_name'] == 'X c')
+    hr = c.get(f"/api/homeroom/{cls['class_id']}", params={'semester': 1}).json()['summary']
+    assert cls['success_pct'] == hr['success_pct'] and cls['quality_pct'] == hr['quality_pct']
+    assert cls['categories'] == hr['categories'] and d['school']['students'] >= cls['students']
+    assert any(p['grade'] == 10 for p in d['parallels'])
+    assert any(f['full_name'] == 'Zəif Şagird qızı' and 'Riyaziyyat' in f['subjects'] for f in d['failing'])
+    assert as_('ilqar').get('/api/school/performance').status_code == 403
+
+
+def test_weekly_summary(world, monkeypatch):
+    monkeypatch.setattr('app.services.today', lambda: dt.date(2026, 9, 30))
+    c, ta, good, weak, new = setup(world)
+    w = c.get('/api/my/weekly').json()
+    it = next(x for x in w['items'] if x['ta_id'] == ta)
+    assert 'Zəif Şagird qızı' in it['red'] and 'Zəif Şagird qızı' in it['absence']
+    assert any(m['date'] == '2026-09-29' for m in it['missing_week']) and w['week'].startswith('2026-W')

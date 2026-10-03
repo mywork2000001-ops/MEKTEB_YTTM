@@ -5,6 +5,7 @@ import { useAuth } from '../../auth'
 import { Drawer, ErrorBox, toast, fmt, fmtDate, gradeTone, levelTone, Loading, PickFirst, Pill, riskTone, Seg, Stat, Top, useLoad, ord, useNarrow } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { Contacts, IPlans } from './Classes'
+import SchoolReport from './SchoolReport'
 import { docHtml, downloadPdf, esc, fmtD, fmtN, head, kpis, printDoc, SIGN, table, type Doc } from '../../print'
 import { useT } from '../../i18n'
 
@@ -13,6 +14,19 @@ type Sem = '1' | '2' | 'all'
 const semLabel = (s: Sem) => (s === 'all' ? 'bütün il' : `${s}-ci yarımil`)
 
 export default function Reports() {
+  const { me } = useAuth()
+  const [scope, setScope] = useState<'class' | 'school'>('class')
+  if (me?.role !== 'admin') return <ClassReports />
+  return (
+    <>
+      <div className="row no-print" style={{ marginBottom: 10 }}>
+        <Seg value={scope} onChange={setScope} options={[['class', 'Sinif / fənn'], ['school', 'Məktəb üzrə']]} /></div>
+      {scope === 'class' ? <ClassReports /> : <SchoolReport />}
+    </>
+  )
+}
+
+function ClassReports() {
   const t = useT()
   const [lessons, err0] = useMyLessons()
   const [ta, setTa] = usePick('reports')

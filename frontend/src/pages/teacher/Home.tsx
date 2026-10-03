@@ -66,6 +66,7 @@ export default function Home() {
         </div>
       </section>
       <ErrorBox error={err1 || err2} />
+      <Weekly />
       <div className="grid g2">
         <section className="panel">
           <h2>Bugünkü dərslər <small>{lessons.length}</small></h2>
@@ -117,5 +118,35 @@ export default function Home() {
             </button>))}</div>
         </section>)}
     </>
+  )
+}
+
+/** Həftəlik xülasə: qırmızı risk, 25%+ buraxanlar, son 7 gündə yazılmamış dərslər – həftə ərzində «Oxudum» ilə gizlənir. */
+function Weekly() {
+  const nav = useNavigate()
+  const [w] = useLoad<any>(() => get('/api/my/weekly'), [])
+  const key = w ? `mk-weekly-${w.week}` : ''
+  const [closed, setClosed] = useState('')
+  const seen = (() => { try { return !!key && localStorage.getItem(key) === '1' } catch { return false } })()
+  if (!w || !w.items.length || seen || closed === key) return null
+  const hide = () => { try { localStorage.setItem(key, '1') } catch { /* noop */ } setClosed(key) }
+  return (
+    <section className="panel weekly" style={{ marginBottom: 16 }}>
+      <h2>Bu həftə diqqət <small>siniflərim üzrə</small><button className="btn sm ghost right" onClick={hide}>Oxudum</button></h2>
+      {w.items.map((x: any) => (
+        <div key={x.ta_id} className="wk-row">
+          <b>{x.class_name} <span className="small muted">{x.subject}</span></b>
+          <div className="row" style={{ gap: 6 }}>
+            {x.missing_week.length > 0 && <Pill tone="warn">son 7 gündə yazılmayıb: {x.missing_week.length} dərs</Pill>}
+            {x.red.length > 0 && <Pill tone="bad">qırmızı risk: {x.red.length}</Pill>}
+            {x.absence.length > 0 && <Pill tone="warn">25%+ buraxır: {x.absence.length}</Pill>}
+          </div>
+          {(x.red.length > 0 || x.absence.length > 0) && <p className="small muted" style={{ margin: '4px 0 0' }}>{[...new Set([...x.red, ...x.absence])].join(', ')}</p>}
+        </div>))}
+      <div className="row" style={{ marginTop: 10 }}>
+        <button className="btn sm" onClick={() => nav('/journal')}>Jurnala keç</button>
+        <button className="btn sm" onClick={() => nav('/reports')}>Analitika → Risk</button>
+      </div>
+    </section>
   )
 }

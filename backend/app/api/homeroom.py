@@ -186,6 +186,51 @@ def homeroom_summary(cid: int, semester: int | None = None, user: User = Depends
     }
 
 
+# ---------------------------------------------------------------- məktəb üzrə hesabat (admin / direktor müavini)
+@router.get('/school/performance')
+def school_performance(semester: int | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Bütün bütöv siniflər üzrə müvəffəqiyyət, keyfiyyət, SOU, «2»-lilər, yazılmamış dərslər, 25%+ buraxanlar;
+    paralel (X a/b/c…) və məktəb cəmi. Rəqəmlər sinif rəhbəri cədvəli ilə EYNİ funksiyadan gəlir. Yalnız admin."""
+    if user.role != Role.admin:
+        raise HTTPException(403, 'Məktəb üzrə hesabata yalnız admin baxır')
+    from ..services import class_grade
+    sem = _sem(semester)
+    classes = list(db.scalars(select(SchoolClass).where(SchoolClass.school_id == user.school_id,
+                                                        SchoolClass.archived_at.is_(None), SchoolClass.kind != 'qrup')
+                              .order_by(SchoolClass.name)))
+    out, weak = [], []
+    for c in classes:
+        h = homeroom_summary(c.id, sem, user, db)
+        s = h['summary']
+        failing = [r for r in h['students'] if r['category'] == 'Geridə qalan']
+        for r in failing:
+            subj = [x['subject'] for x in h['subjects'] if r['grades'].get(str(x['ta_id'])) == 2]
+            weak.append({'class_name': c.name, 'full_name': r['full_name'], 'subjects': subj})
+        out.append({'class_id': c.id, 'class_name': c.name, 'grade': class_grade(db, c), 'homeroom': h['class']['homeroom'],
+                    'students': s['students'], 'graded': s['graded'], 'categories': s['categories'],
+                    'success_pct': s['success_pct'], 'quality_pct': s['quality_pct'], 'sou': s['grades']['sou'],
+                    'avg': s['grades']['avg'], 'attendance_pct': s['attendance_pct'],
+                    'absence_warnings': s['absence_warnings'], 'lessons_due': s['lessons_due'],
+                    'lessons_written': s['lessons_written'], 'lessons_missing': s['lessons_missing'],
+                    'missing_by_subject': [{'subject': x['label'], 'teacher': x['teacher'], 'missing': x['lessons']['missing']}
+                                           for x in h['subjects'] if x['lessons']['missing']]})
+
+    def total(rows: list[dict]) -> dict:
+        n = sum(r['graded'] for r in rows)
+        cats = {k: sum(r['categories'][k] for r in rows) for k in CATEGORIES}
+        return {'classes': len(rows), 'students': sum(r['students'] for r in rows), 'graded': n, 'categories': cats,
+                'success_pct': round((n - cats['Geridə qalan']) * 100 / n, 1) if n else None,
+                'quality_pct': round((cats['Əlaçı'] + cats['Zərbəçi']) * 100 / n, 1) if n else None,
+                'absence_warnings': sum(r['absence_warnings'] for r in rows),
+                'lessons_missing': sum(r['lessons_missing'] for r in rows)}
+    parallels = {}
+    for r in out:
+        parallels.setdefault(r['grade'], []).append(r)
+    return {'semester': sem, 'today': today(), 'classes': out,
+            'parallels': [{'grade': g, **total(rows)} for g, rows in sorted(parallels.items(), key=lambda x: (x[0] is None, x[0] or 0))],
+            'school': total(out), 'failing': weak}
+
+
 # ---------------------------------------------------------------- valideyn məlumatı (yalnız rəhbər/admin)
 class GuardianIn(BaseModel):
     name: str = Field(min_length=2, max_length=120)

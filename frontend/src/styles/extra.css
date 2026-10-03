@@ -211,3 +211,7 @@ body.exam-guard main{max-width:860px;margin:0 auto}
   .rtabs button{border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;background:var(--surface)}
   .rtabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 }
+.weekly{border-left:4px solid var(--warn)}
+.weekly h2{flex-wrap:wrap}
+.wk-row{padding:8px 0;border-top:1px dashed var(--line)}
+.wk-row:first-of-type{border-top:0}
