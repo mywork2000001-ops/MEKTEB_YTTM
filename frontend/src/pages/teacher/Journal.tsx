@@ -13,7 +13,7 @@ type MarkRow = { student_id: number; kind: 'şifahi' | 'yazılı' | 'test'; grad
 type Lesson = {
   period: number; time: string | null; held: boolean; shift: number; homework_to_check: string | null
   plan: { topic: string; assessment_type: string; section: string | null; resources: string | null; seq: number; standards: string[] | null; tasks: { kind: string; label: string; start: number; end: number }[] | null } | null
-  entry: { exists: boolean; topic?: string | null; homework?: string | null; note?: string | null; attendance: Record<string, string>; marks: MarkRow[]; homework_checks: Record<string, string> }
+  entry: { exists: boolean; auto?: boolean; topic?: string | null; homework?: string | null; note?: string | null; attendance: Record<string, string>; marks: MarkRow[]; homework_checks: Record<string, string> }
 }
 type Day = { date: string; weekday: string | null; class_name: string; lessons: Lesson[]; students: Stud[] }
 
@@ -79,7 +79,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
   const [topic, setTopic] = useState(e.topic || '')
   const [homework, setHomework] = useState(e.homework || '')
   const [note, setNote] = useState(e.note || '')
-  const [att, setAtt] = useState<Record<string, string>>(() => e.exists ? e.attendance : Object.fromEntries(students.map(s => [s.id, 'var'])))
+  const [att, setAtt] = useState<Record<string, string>>(() => e.exists && !e.auto ? e.attendance : Object.fromEntries(students.map(s => [s.id, 'var'])))
   const [marks, setMarks] = useState<Record<string, MarkRow>>(() => Object.fromEntries(e.marks.map(m => [m.student_id, m])))
   const [hw, setHw] = useState<Record<string, string>>(e.homework_checks)
   const [testTotal, setTestTotal] = useState<number>(() => e.marks.find(m => m.kind === 'test')?.test_total || 10)
@@ -116,7 +116,8 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
       <h2 style={{ flexWrap: 'wrap' }}>{ord(lesson.period)} saat <small>{lesson.time}</small>
         {isExam && <Pill tone="warn">{lesson.plan!.assessment_type}</Pill>}
         {lesson.shift > 0 && <Pill tone="warn">geriləmə: {lesson.shift} dərs</Pill>}
-        {e.exists && <Pill tone="ok">yazılıb</Pill>}
+        {e.exists && !e.auto && <Pill tone="ok">yazılıb</Pill>}
+        {e.auto && <Pill tone="info">onlayn test qiymətləri var · dərs hələ yazılmayıb</Pill>}
       </h2>
       <div className="fg" style={{ marginBottom: 12 }}>
         <label className="f full">Mövzu <span className="hint">perspektiv plandan avtomatik{lesson.plan ? ` (№${lesson.plan.seq})` : ''}</span>

@@ -7,7 +7,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -29,7 +29,7 @@ def _entry_payload(db: Session, e: JournalEntry | None) -> dict:
     if not e:
         return {'exists': False, 'attendance': {}, 'marks': [], 'homework_checks': {}}
     return {
-        'exists': True, 'id': e.id, 'topic': e.topic, 'homework': e.homework, 'note': e.note,
+        'exists': True, 'auto': bool(e.auto), 'id': e.id, 'topic': e.topic, 'homework': e.homework, 'note': e.note,
         'attendance': {a.student_id: a.status for a in db.scalars(select(Attendance).where(Attendance.entry_id == e.id))},
         'marks': [{'student_id': m.student_id, 'kind': m.kind, 'grade': m.grade, 'test_correct': m.test_correct,
                    'test_total': m.test_total, 'comment': m.comment, 'task_id': m.task_id}
@@ -136,6 +136,7 @@ def save_entry(ta_id: int, body: EntryIn, user: User = Depends(staff), db: Sessi
     e.plan_lesson_id = pl.id if pl else None
     e.topic = body.topic if body.topic and (not pl or body.topic.strip() != pl.topic) else None
     e.homework, e.note = body.homework, body.note
+    e.auto = False                         # müəllim saxladı – dərs yazılıb
     db.flush()
     for model in (Attendance, Mark, HomeworkCheck):
         db.query(model).filter(model.entry_id == e.id).delete()
@@ -196,7 +197,7 @@ def grid(ta_id: int, month: str | None = None, user: User = Depends(staff), db: 
             continue
         e = entries.get(k)
         pl = taught_lesson(ctx, slots.get(k), e)
-        cols.append({'date': k[0], 'period': k[1], 'written': e is not None, 'topic': (e.topic if e and e.topic else pl.topic if pl else None),
+        cols.append({'date': k[0], 'period': k[1], 'written': e is not None and not e.auto,'topic': (e.topic if e and e.topic else pl.topic if pl else None),
                      'seq': pl.seq if pl else None, 'assessment': (f"{pl.assessment_type}-{pl.exam_no}" if pl and pl.exam_no else
                                                                   pl.assessment_type if pl and pl.assessment_type != 'formativ' else None),
                      'homework': e.homework if e else None, 'future': k[0] > today()})
@@ -252,4 +253,5 @@ def summary(ta_id: int, semester: int | None = None, user: User = Depends(staff)
                     'lessons': len(a), 'absent': a.count('yox') + a.count('üzrlü'), 'late': a.count('gecikdi'),
                     'attendance_pct': round((len(a) - a.count('yox') - a.count('üzrlü')) * 100 / len(a), 1) if a else None,
                     'homework_pct': round(sum(h) * 100 / len(h), 1) if h else None, **exam_stats(exs, s.id)})
-    return {'lessons_written': len(eids), 'students': out, 'exams': len(exs)}
+    written = db.scalar(select(func.count()).select_from(JournalEntry).where(JournalEntry.id.in_(eids), JournalEntry.auto.is_(False))) if eids else 0
+    return {'lessons_written': written, 'students': out, 'exams': len(exs)}

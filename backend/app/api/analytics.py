@@ -69,7 +69,7 @@ def overview(user: User = Depends(staff), db: Session = Depends(get_db)):
         ctx = plan_ctx(db, ta)
         if ctx.cls.archived_at:
             continue
-        a = analyze(db, ctx, _period(ctx, None, None, None))
+        a = analyze(db, ctx, _period(ctx, None, None, None), links=False)
         out.append({'ta_id': ta.id, 'class_name': ctx.cls.name, 'subject': ta.subject, **a['overview'],
                     'lessons_written': a['lessons_written']})
     return sorted(out, key=lambda x: x['class_name'])
@@ -198,50 +198,122 @@ def upd_iplan(sid: int, pid: int, body: PlanIn, user: User = Depends(staff), db:
 # ---------------------------------------------------------------- Excel ixracı
 @router.get('/reports/{ta_id}/xlsx')
 def export_xlsx(ta_id: int, semester: int | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
-    """Sinif hesabatı (ağ-qara çap üçün): reytinq, göstəricilər, səviyyə, risk, davamiyyət."""
+    """Sinif hesabatı (ağ-qara çap üçün, A4): vərəqlər – Reytinq, Müvəffəqiyyət, Davamiyyət, Dərs sayı.
+    Hər vərəqdə məktəb adı, sənədin adı, dövr və imza sətirləri; başlıq sətri hər səhifədə təkrarlanır."""
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from ..analytics import attendance_map
+    from ..models import School
+    from ..performance import MIN_MARKS, lesson_counts, metrics, subject_grades
+    from ..services import roster, today
+    from .lessonplans import SCHOOL_DEFAULT
     ctx = plan_ctx(db, own_assignment(db, user, ta_id))
     p = _period(ctx, None, None, semester)
     a = analyze(db, ctx, p)
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Hesabat'
+    sc = db.get(School, user.school_id) if user.school_id else None
+    school = sc.name if sc and sc.name else SCHOOL_DEFAULT
+    deputy = ((sc.doc_settings or {}) if sc else {}).get('deputy') or ''
+    sem_label = f'{semester}-ci yarımil' if semester in (1, 2) else 'bütün il'
     thin = Side(style='thin', color='000000')
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
     grey = PatternFill('solid', fgColor='D9D9D9')                 # Canon ağ-qara: rəng yox, yalnız boz fon
-    ws.append([f'{a["class_name"]} – {a["subject"]}: hesabat ({p.a:%d.%m.%Y} – {p.b:%d.%m.%Y})'])
-    ws['A1'].font = Font(bold=True, size=12)
-    ws.append([f'Müəllim: {user.full_name}'])
-    ws.append([])
-    head = ['Yer', 'Şagird', 'IX riy.', 'Formativ orta', 'KSQ orta %', 'Onlayn %', 'Ev tapşırığı %',
-            'Davamiyyət %', 'Reytinq', 'İrəliləyiş', 'Səviyyə', 'Risk']
-    ws.append(head)
-    for c in ws[4]:
-        c.font, c.fill, c.border = Font(bold=True), grey, border
-        c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    for r in a['students']:
-        ws.append([r['place'], r['full_name'], r['ix_math'], r['avg_grade'], r['ksq_avg_pct'], r['online_pct'],
-                   r['homework_pct'], r['attendance_pct'], r['rating'], r['progress'], r['level'],
-                   f"{r['risk']['status']} ({r['risk']['score']})"])
-        for c in ws[ws.max_row]:
-            c.border = border
-            if r['absence_warning'] and c.column == 8:
-                c.font = Font(bold=True)
-    widths = [5, 34, 8, 10, 10, 9, 11, 11, 9, 10, 9, 13]
-    for i, w in enumerate(widths, 1):
-        ws.column_dimensions[chr(64 + i)].width = w
-    ws.page_setup.orientation = 'portrait'
-    ws.page_setup.paperSize = ws.PAPERSIZE_A4
-    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.print_title_rows = '4:4'
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    def sheet(title: str, doc: str, head: list[str], rows: list[list], widths: list[int], notes: tuple[str, ...] = ()):
+        ws = wb.create_sheet(title)
+        n = len(head)
+        lines = [(school, True, 11), (doc, True, 12),
+                 (f'{a["class_name"]} · {a["subject"]} · {sem_label}: {p.a:%d.%m.%Y} – {p.b:%d.%m.%Y} · '
+                  f'müəllim: {user.full_name}', False, 10)]
+        for i, (txt, bold, size) in enumerate(lines, 1):
+            ws.cell(i, 1, txt).font = Font(bold=bold, size=size)
+            ws.merge_cells(start_row=i, start_column=1, end_row=i, end_column=n)
+            ws.cell(i, 1).alignment = Alignment(horizontal='center')
+        hr = 5
+        for j, h in enumerate(head, 1):
+            c = ws.cell(hr, j, h)
+            c.font, c.fill, c.border = Font(bold=True), grey, border
+            c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        for r in rows:
+            ws.append(r)
+            for c in ws[ws.max_row]:
+                c.border = border
+        last = ws.max_row + 2
+        for t in notes:
+            ws.cell(last, 1, t).font = Font(italic=True, size=9)
+            last += 1
+        last += 1
+        for role, name in (('Fənn müəllimi', user.full_name), ('Direktor müavini (tədris işləri üzrə)', deputy)):
+            ws.cell(last, 1, f'{role}:')
+            ws.cell(last, 3, '______________ (imza)')
+            ws.cell(last, 5, name or '______________')
+            last += 2
+        ws.cell(last, 1, f'Tərtib edildi: {today():%d.%m.%Y}').font = Font(size=9)
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+        ws.page_setup.orientation = 'portrait'
+        ws.page_setup.paperSize = ws.PAPERSIZE_A4
+        ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.print_title_rows = f'{hr}:{hr}'
+        ws.oddFooter.right.text = 'Səhifə &P / &N'
+        return ws
+
+    # 1. Reytinq
+    ws = sheet('Reytinq', 'Şagirdlərin reytinqi',
+               ['Yer', 'Şagird', 'IX bal', 'Formativ orta', 'KSQ orta %', 'Onlayn %', 'Ev tapşırığı %', 'Davamiyyət %',
+                'Sınaq %', 'Reytinq', 'İrəliləyiş', 'Səviyyə'],
+               [[r['place'], r['full_name'], r['ix_score'], r['avg_grade'], r['ksq_avg_pct'], r['online_pct'], r['homework_pct'],
+                 r['attendance_pct'], r['sinaq_pct'], r['rating'], r['progress'], r['level']] for r in a['students']],
+               [5, 32, 7, 9, 9, 9, 10, 11, 8, 8, 10, 9],
+               (f'IX bal – {a["ix_label"]}. Reytinq: qiymət 40% · KSQ 30% · ev tapşırığı 15% · davamiyyət 15%; sınaq daxil deyil.',
+                'Qalın davamiyyət – dərslərin 25%-dən çoxunu buraxıb.'))
+    for i, r in enumerate(a['students'], 6):
+        if r['absence_warning']:
+            ws.cell(i, 8).font = Font(bold=True)
+    # 2. Müvəffəqiyyət
+    studs = roster(db, ctx.ta)
+    g = subject_grades(db, ctx, semester if semester in (1, 2) else None, [s.id for s in studs])
+    m = metrics([g[s.id]['grade'] for s in studs])
+    sheet('Müvəffəqiyyət', 'Müvəffəqiyyət hesabatı',
+          ['№', 'Şagird', 'Qiymət', 'Mənbə', 'Formativ orta', 'Qiymət sayı', 'Yarımil'],
+          [[i, s.full_name, g[s.id]['grade'], g[s.id]['source'] or 'qiymət yoxdur', g[s.id]['formative_avg'], g[s.id]['marks'],
+            g[s.id]['semester_grade']] for i, s in enumerate(studs, 1)],
+          [5, 32, 8, 14, 11, 10, 9],
+          (f'Şagird: {m["students"]} · qiymətləndirilib: {m["graded"]} · «5» {m["distribution"][5]} · «4» {m["distribution"][4]} · '
+           f'«3» {m["distribution"][3]} · «2» {m["distribution"][2]}',
+           f'Müvəffəqiyyət: {_pct(m["success_pct"])} · keyfiyyət: {_pct(m["quality_pct"])} · orta qiymət: {m["avg"] or "—"} · '
+           f'SOU: {_pct(m["sou"])}',
+           f'Qiymət: yarımil qiyməti (KSQ×0,4 + BSQ×0,6), yoxdursa formativ orta (ən azı {MIN_MARKS} qiymət).'))
+    # 3. Davamiyyət
+    am = attendance_map(db, ctx, p)
+    sheet('Davamiyyət', 'Davamiyyət',
+          ['Şagird', 'Qeyd olunan dərs', 'Buraxıb', 'O cümlədən qayıb', 'Gecikmə', 'Buraxma %'],
+          [[r['full_name'], sum(1 for c in r['cells'] if c), r['missed'], r['unexcused'], r['late'], r['missed_pct']]
+           for r in am['rows']],
+          [32, 12, 10, 12, 10, 11],
+          (f'Hədd: {am["limit_pct"]:g}% · yalnız bu fənnin jurnalda yazılmış dərsləri.',))
+    # 4. Dərs sayı
+    t = today()
+    rows = [('I yarımil', lesson_counts(db, ctx, t, 1)), ('II yarımil', lesson_counts(db, ctx, t, 2)),
+            ('Bütün il', lesson_counts(db, ctx, t))]
+    sheet('Dərs sayı', f'Dərs sayı ({t:%d.%m.%Y} vəziyyəti)',
+          ['Dövr', 'Həftədə', 'Planda', 'Cədvəldə', 'Keçilməli idi', 'Yazılıb', 'Yazılmayıb', 'Keçilən mövzu', 'Qalan', 'Geriləmə'],
+          [[n, x['weekly_hours'], x['plan_total'], x['timetable_total'], x['due'], x['written'], x['missing'], x['covered'],
+            x['remaining'], x['lag']] for n, x in rows],
+          [14, 9, 9, 10, 12, 9, 11, 13, 8, 10])
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     name = f'hesabat_{ctx.cls.code}_{p.a:%Y%m%d}-{p.b:%Y%m%d}.xlsx'
     return StreamingResponse(buf, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                              headers={'Content-Disposition': f'attachment; filename="{name}"'})
+
+
+def _pct(v) -> str:
+    return '—' if v is None else f'{v:.1f}%'.replace('.', ',')
 
 
 # ---------------------------------------------------------------- audit jurnalı (admin)

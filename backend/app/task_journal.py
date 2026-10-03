@@ -63,7 +63,7 @@ def write_topic_marks(db: Session, task: OnlineTask, by: int | None = None) -> d
         out['status'] = 'gözləyir'
         return out
     if e is None:
-        e = JournalEntry(assignment_id=ta.id, date=d, period=period, plan_lesson_id=pl.id)
+        e = JournalEntry(assignment_id=ta.id, date=d, period=period, plan_lesson_id=pl.id, auto=True)
         db.add(e)
         db.flush()
     names = {s.id: s.full_name for s in roster(db, ta)}

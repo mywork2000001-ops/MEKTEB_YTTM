@@ -85,7 +85,9 @@ def test_excel_export_and_audit(world):
     assert r.status_code == 200 and r.headers['content-type'].startswith('application/vnd.openxml')
     from openpyxl import load_workbook
     ws = load_workbook(io.BytesIO(r.content)).active
-    assert ws['B5'].value == 'Güclü Şagird oğlu' and ws.page_setup.orientation == 'portrait'
+    assert ws.title == 'Reytinq' and ws['B6'].value == 'Güclü Şagird oğlu' and ws.page_setup.orientation == 'portrait'
+    wb = load_workbook(io.BytesIO(r.content))
+    assert wb.sheetnames == ['Reytinq', 'Müvəffəqiyyət', 'Davamiyyət', 'Dərs sayı'] and 'Səhifə' in ws.oddFooter.right.text
     log = c.get('/api/audit', params={'entity': 'exam_scores'}).json()
     assert log and log[0]['user'] == 'Həsənov Fərid'
     assert as_('ilqar').get('/api/audit').status_code == 403

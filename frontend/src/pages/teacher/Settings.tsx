@@ -90,7 +90,8 @@ function SchoolPanel({ admin }: { admin: boolean }) {
   const [q, setQ] = useState('')
   const [found, setFound] = useState<any[]>([])
   const [f, setF] = useState<any>(null)
-  useEffect(() => { if (school) setF({ name: school.name, utis: school.utis || '', short_name: school.short_name || '', region: school.region || '', bells: school.bells || {} }) }, [school])
+  useEffect(() => { if (school) setF({ name: school.name, utis: school.utis || '', short_name: school.short_name || '', region: school.region || '', bells: school.bells || {},
+    deputy: school.doc_settings?.deputy || '', director: school.doc_settings?.director || '' }) }, [school])
   useEffect(() => {
     if (q.trim().length < 2) { setFound([]); return }
     const t = setTimeout(() => get<any[]>('/api/schools', { q }).then(setFound, () => setFound([])), 300)
@@ -116,12 +117,18 @@ function SchoolPanel({ admin }: { admin: boolean }) {
             <Field label="UTİS kodu" hint="yalnız rəqəm"><input inputMode="numeric" value={f.utis} onChange={e => setF({ ...f, utis: e.target.value.replace(/\D/g, '') })} /></Field>
             <Field label="Region"><input value={f.region} onChange={e => setF({ ...f, region: e.target.value })} /></Field>
           </div>
+          <h3 className="small muted" style={{ margin: '14px 0 6px' }}>Rəsmi sənədlərdə imza (çap / PDF)</h3>
+          <div className="fg">
+            <Field label="Direktor müavini (tədris işləri üzrə)" hint="ad, soyad – hesabatların altında"><input value={f.deputy} onChange={e => setF({ ...f, deputy: e.target.value })} /></Field>
+            <Field label="Direktor" hint="məktəb üzrə hesabatda"><input value={f.director} onChange={e => setF({ ...f, director: e.target.value })} /></Field>
+          </div>
           <h3 className="small muted" style={{ margin: '14px 0 6px' }}>Dərs vaxtları (bütün məktəb)</h3>
           <div className="fg">{Array.from({ length: 8 }, (_, i) => String(i + 1)).map(k => (
             <Field key={k} label={`${ord(k)} saat`}><input value={f.bells[k] || ''} placeholder="08:50–09:35" onChange={e => setF({ ...f, bells: { ...f.bells, [k]: e.target.value } })} /></Field>))}</div>
           <AsyncBtn className="btn primary" ok="Yadda saxlanıldı" onClick={async () => {
             const bells = Object.fromEntries(Object.entries(f.bells).filter(([, v]) => v))
-            await patch(`/api/schools/${school.id}`, { name: f.name, utis: f.utis || null, short_name: f.short_name || null, region: f.region || null, bells }); reload()
+            await patch(`/api/schools/${school.id}`, { name: f.name, utis: f.utis || null, short_name: f.short_name || null, region: f.region || null, bells,
+              doc_settings: { deputy: f.deputy.trim() || null, director: f.director.trim() || null } }); reload(); await refresh()
           }}>Yadda saxla</AsyncBtn>
         </section>)}
     </div>

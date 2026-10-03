@@ -10,7 +10,7 @@ import datetime as dt
 import enum
 
 from sqlalchemy import (JSON, Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, LargeBinary, String, Text,
-                        UniqueConstraint, func)
+                        UniqueConstraint, func, text)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -39,6 +39,8 @@ class School(Base, Archivable):
     short_name: Mapped[str | None] = mapped_column(String(120))
     region: Mapped[str | None] = mapped_column(String(120))
     bells: Mapped[dict | None] = mapped_column(JSON)                      # {"1": "08:50–09:35", ...}
+    # rəsmi sənədlər: {'deputy': 'Direktor müavini (tədris işləri üzrə) adı', 'director': '...'}
+    doc_settings: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -314,6 +316,8 @@ class JournalEntry(Base):
     topic: Mapped[str | None] = mapped_column(Text)                    # əl ilə dəyişdirilibsə
     homework: Mapped[str | None] = mapped_column(Text)
     note: Mapped[str | None] = mapped_column(Text)
+    # onlayn mövzu testinin nəticəsi üçün avtomatik yaranıb, müəllim hələ saxlamayıb – «yazılmış dərs» sayılmır
+    auto: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text('false'))
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
     __table_args__ = (UniqueConstraint('assignment_id', 'date', 'period'),)
 

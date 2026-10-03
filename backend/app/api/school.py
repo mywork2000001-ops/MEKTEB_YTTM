@@ -22,7 +22,7 @@ router = APIRouter(prefix='/api', tags=['school'])
 def school_out(s: School, full: bool = True):
     d = {'id': s.id, 'name': s.name, 'short_name': s.short_name, 'region': s.region}
     if full:
-        d.update(utis=s.utis, bells=s.bells)
+        d.update(utis=s.utis, bells=s.bells, doc_settings=s.doc_settings or {})
     return d
 
 
@@ -52,6 +52,7 @@ class SchoolIn(BaseModel):
     short_name: str | None = Field(None, max_length=120)
     region: str | None = Field(None, max_length=120)
     bells: dict[str, str] | None = None
+    doc_settings: dict[str, str | None] | None = None      # {'deputy': ad, 'director': ad} – rəsmi sənəd imzaları
 
 
 def _check_utis(db: Session, utis: str | None, exclude_id: int | None = None):

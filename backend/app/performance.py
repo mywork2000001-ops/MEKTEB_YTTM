@@ -9,7 +9,8 @@ Müvəffəqiyyət (məktəb hesabatındakı kimi):
 - müvəffəqiyyət % = «2» almayanlar / qiymətləndirilənlər × 100;
 - keyfiyyət %     = «4» və «5» alanlar / qiymətləndirilənlər × 100;
 - təlim səviyyəsi (SOU) = (100·n5 + 64·n4 + 36·n3 + 16·n2) / n;
-- qiyməti olmayan şagirdlər hesabdan çıxır və ayrıca sayılır."""
+- qiyməti olmayan şagirdlər hesabdan çıxır və ayrıca sayılır; yarımil qiyməti yoxdursa və formativ qiymət
+  MIN_MARKS-dan azdırsa – «az qiymət» (qiymətləndirilməyib), ilin əvvəlində tək testdən faiz çıxmasın."""
 from __future__ import annotations
 
 import datetime as dt
@@ -22,6 +23,7 @@ from .models import Exam, ExamScore, JournalEntry, Mark
 from .services import PlanCtx, roster
 
 SOU_W = {5: 100, 4: 64, 3: 36, 2: 16}
+MIN_MARKS = 3        # yarımil qiyməti yoxdursa, formativ ortadan fənn qiyməti ən azı bu qədər qiymətlə çıxarılır
 
 
 def sem_range(ctx: PlanCtx, sem: int | None) -> tuple[dt.date, dt.date]:
@@ -34,7 +36,8 @@ def lesson_counts(db: Session, ctx: PlanCtx, today: dt.date, sem: int | None = N
     slots = [s for s in ctx.slots if a <= s.date <= b]
     due = [s for s in slots if s.date <= today]
     written = {(e.date, e.period) for e in db.scalars(select(JournalEntry).where(
-        JournalEntry.assignment_id == ctx.ta.id, JournalEntry.date >= a, JournalEntry.date <= b))}
+        JournalEntry.assignment_id == ctx.ta.id, JournalEntry.date >= a, JournalEntry.date <= b,
+        JournalEntry.auto.is_(False)))}                   # yalnız onlayn test qiyməti olan dərs yazılmış sayılmır
     missing = [s for s in due if (s.date, s.period) not in written]
     plan = [pl for pl in ctx.lessons if sem is None or pl.semester == sem]
     seqs = {pl.id for pl in plan}
@@ -105,9 +108,12 @@ def subject_grades(db: Session, ctx: PlanCtx, sem: int | None, sids: list[int] |
         f = marks.get(sid, [])
         favg = round(sum(f) / len(f), 2) if f else None
         sem_g = sg.get(sid, {}).get('semester_grade')
+        few = sem_g is None and 0 < len(f) < MIN_MARKS
         grade, src = (sem_g, 'yarımil') if sem_g is not None else \
+            (None, 'az qiymət') if few else \
             (max(2, min(5, round_half_up(favg))), 'formativ') if favg is not None else (None, None)
-        out[sid] = {'grade': grade, 'source': src, 'formative_avg': favg, 'marks': len(f), 'semester_grade': sem_g}
+        out[sid] = {'grade': grade, 'source': src, 'formative_avg': favg, 'marks': len(f), 'semester_grade': sem_g,
+                    'few_marks': few}
     return out
 
 

@@ -48,6 +48,27 @@ def class_grade(db: Session, c: SchoolClass) -> int | None:
     return grades.pop() if len(grades) == 1 else None
 
 
+IX_SUBJECTS = {'math': ('riyaziyyat', 'cəbr', 'həndəsə'),
+               'foreign': ('ingilis', 'xarici', 'rus dili', 'alman', 'fransız'),
+               'language': ('azərbaycan dili', 'ədəbiyyat', 'tədris dili')}
+IX_LABELS = {'math': 'IX sinif buraxılış balı (riyaziyyat)', 'foreign': 'IX sinif buraxılış balı (xarici dil)',
+             'language': 'IX sinif buraxılış balı (Azərbaycan dili)'}
+
+
+def ix_kind(subject: str) -> str | None:
+    """Fənnə uyğun IX sinif buraxılış imtahanı: riyaziyyat / xarici dil / dil; uyğun gəlmirsə None."""
+    sub = (subject or '').lower()
+    return next((k for k, keys in IX_SUBJECTS.items() if any(x in sub for x in keys)), None)
+
+
+def ix_score(s, subject: str, grade: int | None) -> float | None:
+    """Şagirdin bu fənnə uyğun IX sinif balı – yalnız X–XI siniflərdə (sinif rəqəmi bilinmirsə də götürülür)."""
+    if grade is not None and grade < 10:
+        return None
+    k = ix_kind(subject)
+    return {'math': s.score_math, 'foreign': s.score_foreign, 'language': s.score_language}.get(k) if k else None
+
+
 @dataclass
 class PlanCtx:
     ta: TeachingAssignment

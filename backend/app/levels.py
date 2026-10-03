@@ -16,24 +16,13 @@ from sqlalchemy.orm import Session
 
 from .domain.rules import LEVEL_HIGH, LEVEL_MID
 from .models import BankFile, BankQuestion, LevelOverride, OnlineTask, TaskAttempt
-from .services import PlanCtx, class_grade, roster
+from .services import PlanCtx, class_grade, ix_score, roster
 
 LEVELS = ('Zəif', 'Orta', 'Güclü')
 WEIGHTS = {'buraxilis': 30, 'sinaq': 40, 'reytinq': 30, 'diaqnostik': 30}
 LABELS = {'buraxilis': 'IX buraxılış balı', 'sinaq': 'sınaq ortası', 'reytinq': 'fənn reytinqi', 'diaqnostik': 'diaqnostik test'}
 HYSTERESIS = 5.0
 MIN_GROUP = 3
-
-
-def _exam_score(s, subject: str) -> float | None:
-    sub = subject.lower()
-    if any(k in sub for k in ('riyaziyyat', 'cəbr', 'həndəsə')):
-        return s.score_math
-    if any(k in sub for k in ('ingilis', 'xarici', 'rus dili', 'alman', 'fransız')):
-        return s.score_foreign
-    if any(k in sub for k in ('azərbaycan dili', 'ədəbiyyat', 'tədris dili')):
-        return s.score_language
-    return None
 
 
 def _task_pcts(db: Session, tasks: list[OnlineTask]) -> dict[int, list[float]]:
@@ -64,11 +53,11 @@ def components(db: Session, ctx: PlanCtx) -> dict[int, dict[str, float | None]]:
     tasks = list(db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ctx.ta.id)))
     sinaq = _task_pcts(db, [t for t in tasks if t.kind == 'sinaq'])
     diag = _task_pcts(db, _diagnostic_tasks(db, [t for t in tasks if t.kind != 'sinaq']))
-    rating = {r['student_id']: r['rating'] for r in analyze(db, ctx, Period(ctx.year.start, ctx.year.end))['students']}
+    rating = {r['student_id']: r['rating'] for r in analyze(db, ctx, Period(ctx.year.start, ctx.year.end), links=False)['students']}
     out = {}
     for s in studs:
         avg = lambda v: round(sum(v) / len(v), 1) if v else None
-        out[s.id] = {'buraxilis': _exam_score(s, ctx.ta.subject) if grade is None or grade >= 10 else None,
+        out[s.id] = {'buraxilis': ix_score(s, ctx.ta.subject, grade),
                      'sinaq': avg(sinaq.get(s.id)), 'reytinq': rating.get(s.id), 'diaqnostik': avg(diag.get(s.id))}
     return out
 

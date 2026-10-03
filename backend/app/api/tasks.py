@@ -415,7 +415,7 @@ def to_journal(ta_id: int, task_id: int, body: ToJournalIn, user: User = Depends
     if pl and pl.assessment_type in SUMMATIVE:
         raise HTTPException(400, f'{pl.assessment_type} dərsinə formativ qiymət köçürülmür – başqa dərs seçin')
     if e is None:
-        e = JournalEntry(assignment_id=ta.id, date=d, period=s.period, plan_lesson_id=pl.id if pl else None)
+        e = JournalEntry(assignment_id=ta.id, date=d, period=s.period, plan_lesson_id=pl.id if pl else None, auto=True)
         db.add(e)
         db.flush()
     out_ids = {a.student_id for a in db.scalars(select(Attendance).where(

@@ -102,7 +102,7 @@ function StudentCard({ s, onClose }: { s: Stud; onClose: () => void }) {
   )
 }
 
-function Contacts({ sid }: { sid: number }) {
+export function Contacts({ sid }: { sid: number }) {
   const [rows, err, , reload] = useLoad<any[]>(() => get(`/api/students/${sid}/contacts`), [sid])
   const [f, setF] = useState({ date: new Date().toISOString().slice(0, 10), method: 'zəng', topic: '', outcome: '' })
   return (
@@ -121,7 +121,7 @@ function Contacts({ sid }: { sid: number }) {
   )
 }
 
-function IPlans({ sid }: { sid: number }) {
+export function IPlans({ sid }: { sid: number }) {
   const [rows, err, , reload] = useLoad<any[]>(() => get(`/api/students/${sid}/plans`), [sid])
   const [goal, setGoal] = useState('')
   const [steps, setSteps] = useState('')

@@ -11,13 +11,14 @@ LEVEL_MID = 40.0      # Orta 40–69,9; Zəif < 40
 GRADE_BANDS: list[tuple[float, int]] = [(30, 2), (60, 3), (80, 4), (100, 5)]
 
 RISK_WEIGHTS = {
-    'ix_riyaziyyat': 25,     # IX sinif riyaziyyat balı < 40
+    'ix_bal': 25,            # IX sinif buraxılış balı (fənnə uyğun) < 40
     'formativ': 25,          # son 5 formativ qiymətin ortası < 3
     'ksq': 20,               # son KSQ < 31%
     'davamiyyet': 15,        # davamiyyət < 85%
     'tapshiriq': 15,         # tapşırıq icrası < 60%
+    'sinaq': 20,             # son 2 sınaq imtahanının ortası < 40%
 }
-RISK_THRESHOLDS = {'ix_riyaziyyat': 40, 'formativ': 3.0, 'ksq': 31, 'davamiyyet': 85, 'tapshiriq': 60}
+RISK_THRESHOLDS = {'ix_bal': 40, 'formativ': 3.0, 'ksq': 31, 'davamiyyet': 85, 'tapshiriq': 60, 'sinaq': 40}
 RISK_YELLOW, RISK_RED = 30, 60
 
 RATING_WEIGHTS = {'qiymet': 0.40, 'ksq': 0.30, 'tapshiriq': 0.15, 'davamiyyet': 0.15}
@@ -61,11 +62,13 @@ def summative_grade(pct: float, bands: list[tuple[float, int]] = GRADE_BANDS) ->
 # ---------------------------------------------------------------- risk
 @dataclass
 class RiskInput:
-    ix_math: float | None = None             # IX sinif riyaziyyat balı (0–100)
+    ix_score: float | None = None            # IX sinif buraxılış balı – fənnə uyğun (0–100)
+    ix_label: str = 'IX sinif buraxılış balı'
     last_formative: list[int] = field(default_factory=list)   # xronoloji
     last_ksq_pct: float | None = None
     attendance_pct: float | None = None
     homework_pct: float | None = None
+    sinaq_pcts: list[float] = field(default_factory=list)     # sınaq faizləri, xronoloji
 
 
 @dataclass
@@ -89,8 +92,8 @@ def risk_score(x: RiskInput, w: dict = RISK_WEIGHTS, t: dict = RISK_THRESHOLDS,
         return pts
 
     s = 0
-    s += add('ix_riyaziyyat', 'IX sinif riyaziyyat balı', x.ix_math,
-             x.ix_math is not None and x.ix_math < t['ix_riyaziyyat'], fmt(x.ix_math))
+    s += add('ix_bal', x.ix_label, x.ix_score,
+             x.ix_score is not None and x.ix_score < t['ix_bal'], fmt(x.ix_score))
     f5 = x.last_formative[-5:]
     avg = sum(f5) / len(f5) if f5 else None
     s += add('formativ', f'Son {len(f5)} formativ qiymətin ortası', avg,
@@ -101,6 +104,9 @@ def risk_score(x: RiskInput, w: dict = RISK_WEIGHTS, t: dict = RISK_THRESHOLDS,
              x.attendance_pct is not None and x.attendance_pct < t['davamiyyet'], fmt(x.attendance_pct) + '%')
     s += add('tapshiriq', 'Tapşırıq icrası', x.homework_pct,
              x.homework_pct is not None and x.homework_pct < t['tapshiriq'], fmt(x.homework_pct) + '%')
+    s2 = x.sinaq_pcts[-2:]
+    savg = sum(s2) / len(s2) if s2 else None
+    s += add('sinaq', f'Son {len(s2)} sınağın ortası', savg, savg is not None and savg < t['sinaq'], fmt(savg) + '%')
     status = 'Qırmızı' if s >= red else 'Sarı' if s >= yellow else 'Yaşıl'
     return RiskResult(s, status, factors)
 

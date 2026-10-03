@@ -30,11 +30,18 @@ class MeOut(BaseModel):
     school_id: int | None
     language: str
     theme: str | None
+    school_name: str | None = None       # rəsmi sənədlərin başlığı (çap)
+    school_doc: dict | None = None        # imza verənlər: deputy, director
 
 
 def _me(u: User) -> MeOut:
+    from sqlalchemy.orm import object_session
+    from ..models import School
+    db = object_session(u)
+    sc = db.get(School, u.school_id) if db is not None and u.school_id else None
     return MeOut(id=u.id, role=u.role, login=u.login, full_name=u.full_name, school_id=u.school_id,
-                 language=u.language, theme=u.theme)
+                 language=u.language, theme=u.theme, school_name=sc.name if sc else None,
+                 school_doc=(sc.doc_settings or {}) if sc else None)
 
 
 def _set_cookie(response: Response, u: User):

@@ -20,7 +20,7 @@ from ..db import get_db
 from ..deps import staff
 from ..domain.rules import ABSENCE_WARN_PCT, absence_warning
 from ..models import ClassEvent, Role, SchoolClass, Student, TeachingAssignment, User
-from ..performance import CATEGORIES, category, lesson_counts, metrics, subject_grades
+from ..performance import CATEGORIES, MIN_MARKS, category, lesson_counts, metrics, subject_grades
 from ..services import own_assignment, plan_ctx, roster, today
 from .common import audit, get_or_404, settings_unlocked
 
@@ -49,7 +49,9 @@ def my_performance(ta_id: int, semester: int | None = None, user: User = Depends
     g = subject_grades(db, ctx, _sem(semester), [s.id for s in studs])
     rows = [{'student_id': s.id, 'full_name': s.full_name, **g[s.id]} for s in studs]
     return {'class_name': ctx.cls.name, 'subject': ctx.ta.subject, 'semester': semester,
-            'summary': metrics([r['grade'] for r in rows]), 'students': rows}
+            'summary': {**metrics([r['grade'] for r in rows]), 'few_marks': sum(r['few_marks'] for r in rows),
+                        'min_marks': MIN_MARKS},
+            'students': rows}
 
 
 # ---------------------------------------------------------------- sinif rəhbəri: təyin

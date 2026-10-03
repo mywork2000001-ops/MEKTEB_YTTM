@@ -42,8 +42,9 @@ def render_pdf(html: str, landscape: bool = False) -> bytes:
             page = ctx.new_page()
             page.route('**/*', lambda r: r.continue_() if r.request.url.startswith(('data:', 'about:')) else r.abort())
             page.set_content(html, wait_until='load', timeout=30_000)
-            return page.pdf(format='A4', landscape=landscape, print_background=True,
-                            margin={'top': '12mm', 'bottom': '12mm', 'left': '12mm', 'right': '12mm'})
+            # sənədin CSS-i (@page: A4, kənarlar, altbilgidə tarix və «Səhifə X / Y») əsasdır
+            return page.pdf(format='A4', landscape=landscape, print_background=True, prefer_css_page_size=True,
+                            margin={'top': '12mm', 'bottom': '15mm', 'left': '12mm', 'right': '12mm'})
         finally:
             b.close()
 

@@ -31,7 +31,13 @@ SCHOOL_DEFAULT = 'Tərtər şəhər Rafiq Nuriyev adına 6 nömrəli tam orta ü
 
 def header_school(user: User) -> str:
     """Başlıqda məktəbin adı: müəllimin seçimi, yoxdursa rəsmi ad (XI peşə də daxil – eyni məktəb)."""
-    return (user.ai_settings or {}).get('header_school') or SCHOOL_DEFAULT
+    if (h := (user.ai_settings or {}).get('header_school')):
+        return h
+    from sqlalchemy.orm import object_session
+    from ..models import School
+    db = object_session(user)
+    sc = db.get(School, user.school_id) if db is not None and user.school_id else None
+    return sc.name if sc and sc.name else SCHOOL_DEFAULT
 DAYS_FULL = ['Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə', 'Bazar']
 
 

@@ -1,11 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { clearOfflineData, get, patch, post, setSettingsToken } from './api'
 import { applyLook, lookString, parseLook, storedLook, type Look } from './prefs'
+import { setDocContext } from './doccontext'
 import type { Lang } from './i18n'
 
 export type Me = {
   id: number; role: 'admin' | 'teacher' | 'student'; login: string; full_name: string
   school_id: number | null; language: Lang; theme: string | null; weak_password?: boolean
+  school_name?: string | null; school_doc?: { deputy?: string | null; director?: string | null } | null
 }
 
 type Ctx = {
@@ -26,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const adopt = (m: Me | null) => {
     setMe(m)
+    setDocContext(m?.school_name, m?.school_doc)
     applyLook(m?.theme ? parseLook(m.theme) : storedLook())
     document.documentElement.lang = m?.language || 'az'
   }

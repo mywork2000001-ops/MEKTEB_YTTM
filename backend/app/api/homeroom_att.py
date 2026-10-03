@@ -139,7 +139,8 @@ def _written(db: Session, sysl, a: dt.date, b: dt.date) -> set[tuple[dt.date, in
     """Jurnalı yazılmış dərslər: (tarix, saat, bağlılıq)."""
     tas = [x['ta_id'] for v in sysl.values() for x in v]
     return {(e.date, e.period, e.assignment_id) for e in db.scalars(select(JournalEntry).where(
-        JournalEntry.assignment_id.in_(tas), JournalEntry.date >= a, JournalEntry.date <= b))} if tas else set()
+        JournalEntry.assignment_id.in_(tas), JournalEntry.date >= a, JournalEntry.date <= b,
+        JournalEntry.auto.is_(False)))} if tas else set()
 
 
 def _students(db: Session, c: SchoolClass) -> list[Student]:

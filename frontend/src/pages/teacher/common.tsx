@@ -5,7 +5,7 @@ import { useT } from '../../i18n'
 
 export type MyLesson = {
   id: number; class_id: number; class_name: string; kind: string; subject: string; weekly_hours: number
-  slots: Record<string, number[]>; has_summative: boolean; split_with: string | null; plan_lessons: number; lag: number; unfit: number
+  slots: Record<string, number[]>; has_summative: boolean; split_with: string | null; plan_lessons: number; lag: number; unfit: number; semester?: 1 | 2
 }
 
 export function useMyLessons() {

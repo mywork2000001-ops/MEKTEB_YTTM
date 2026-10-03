@@ -194,3 +194,20 @@ body.exam-guard main{max-width:860px;margin:0 auto}
   .q-opt{min-height:48px;align-items:center}
 }
 @media (max-width:700px){.toast{bottom:calc(84px + env(safe-area-inset-bottom,0px));white-space:normal;max-width:calc(100% - 32px);text-align:center}body.exam-guard .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}}
+
+/* ---- Analitika: reytinq kartları (telefon), çap mərkəzi ---- */
+.rank-card{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
+.rank-card:last-child{border-bottom:0}
+.rank-card .rk-pl{font:600 17px/1 var(--f-disp);text-align:center;font-variant-numeric:tabular-nums}
+.rank-card .rk-n{min-width:0}.rank-card .rk-n b{display:block;font-weight:600;line-height:1.3}
+.rank-card .rk-n .sub{display:block;font-size:12px;color:var(--muted)}
+.rank-card .rk-v{text-align:right}.rank-card .rk-v b{display:block;font:600 18px/1.1 var(--f-disp);font-variant-numeric:tabular-nums}
+.rank-card .rk-v small{font-size:12px;font-weight:600}
+.print-parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:2px 16px}
+.pframe{display:block;width:820px;height:1160px;margin:0 auto;border:0;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.18)}
+.pframe.sm{zoom:.37}
+@media (max-width:700px){
+  .rtabs{flex-wrap:wrap;gap:6px;border-bottom:0;overflow:visible}
+  .rtabs button{border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;background:var(--surface)}
+  .rtabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+}
