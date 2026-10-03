@@ -3,8 +3,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError, get, post, put } from '../../api'
 import { useT } from '../../i18n'
-import { AsyncBtn, Drawer, ErrorBox, gradeTone, Loading, Pill, toast, Top, useLoad } from '../../ui'
+import { AsyncBtn, Drawer, ErrorBox, gradeTone, Loading, Pill, Seg, toast, Top, useLoad } from '../../ui'
 import { MathText } from '../../MathText'
+import { PeriodBar, usePeriod } from '../../periods'
 
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 const hm = (s: string) => new Date(s).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -25,24 +26,36 @@ export default function Tasks() {
     nav('/tasks', { replace: true })
   }, [linkId, list])
   const [review, setReview] = useState<number | null>(null)
+  const [tab, setTab] = useState<'movzu' | 'sinaq'>('movzu')
+  const f = usePeriod('st-tasks', 'date')
+  // mövzu testləri – perspektiv plandan; qalanı (plandan kənar) – sınaqlar
+  const mine = (list || []).filter(x => (x.kind === 'movzu') === (tab === 'movzu'))
+  const shown = mine.filter(x => f.has(x.opens_at)).sort(f.sort === 'topic'
+    ? (a, b) => a.subject.localeCompare(b.subject, 'az') || (tab === 'movzu' ? (a.topic_seq ?? 1e9) - (b.topic_seq ?? 1e9) : a.title.localeCompare(b.title, 'az', { numeric: true }))
+    : (a, b) => Date.parse(b.opens_at) - Date.parse(a.opens_at))
+  const open = (x: any) => x.status === 'açıq' || x.status === 'həll edilir'
+  const count = (k: 'movzu' | 'sinaq') => (list || []).filter(x => (x.kind === 'movzu') === (k === 'movzu') && open(x)).length
   if (solving) return <Solver id={solving} onDone={() => { setSolving(null); reload() }} />
   return (
     <>
       <Top title={t('Tapşırıqlar')} sub="Vaxtlı testlər – açılma və bağlanma vaxtına diqqət edin" />
       <ErrorBox error={err} />
-      {loading && !list ? <Loading /> : (
+      <div className="toolbar"><Seg label="Bölmə" value={tab} onChange={setTab}
+        options={[['movzu', `Mövzu testləri${count('movzu') ? ` · ${count('movzu')} açıq` : ''}`], ['sinaq', `Sınaqlar${count('sinaq') ? ` · ${count('sinaq')} açıq` : ''}`]]} /></div>
+      {tab === 'sinaq' && <p className="small muted" style={{ marginTop: 0 }}>Sınaqda yeriniz və balınız test bağlanandan sonra «Nəticələrim»dədir.</p>}
+      {loading && !list ? <Loading /> : (<>
+        {mine.length > 0 && <PeriodBar f={f} count={shown.length} total={mine.length} topicLabel={tab === 'movzu' ? 'Mövzu üzrə' : 'Ad üzrə'} />}
         <div className="jlist">
-          {list?.length === 0 && <div className="empty">Tapşırıq yoxdur.</div>}
-          {list && [...list.filter(x => x.kind !== 'sinaq'), ...list.filter(x => x.kind === 'sinaq')].map((x, i, all) => (
-            <div key={x.id} style={{ display: 'contents' }}>
-            {x.kind === 'sinaq' && all[i - 1]?.kind !== 'sinaq' && <h3 className="small muted" style={{ margin: '14px 0 4px' }}>Sınaq imtahanları <small>– yeriniz və balınız «Nəticələrim»də</small></h3>}
-            <div className="jrow">
-              <span><b>{x.title}</b><span className="sub small muted"><br />{x.subject} · {x.teacher} · {hm(x.opens_at)} – {hm(x.closes_at).slice(-5)} · {x.duration_min} dəq · {x.questions} sual</span></span>
+          {list && mine.length === 0 && <div className="empty">{tab === 'movzu' ? 'Mövzu testi yoxdur.' : 'Sınaq yoxdur.'}</div>}
+          {mine.length > 0 && shown.length === 0 && <div className="empty">Bu dövrdə test yoxdur – «‹ ›» ilə başqa dövrə keçin və ya «Hamısı»nı seçin.</div>}
+          {shown.map(x => (
+            <div key={x.id} className="jrow">
+              <span><b>{x.title}</b><span className="sub small muted"><br />{x.subject}{x.topic_seq ? ` · mövzu №${x.topic_seq}` : ''} · {x.teacher} · {hm(x.opens_at)} – {hm(x.closes_at).slice(-5)} · {x.duration_min} dəq · {x.questions} sual</span></span>
               <span className="row">{x.result ? <Pill tone={gradeTone(x.result.grade)}>{x.result.correct}/{x.result.total} → {x.result.grade}</Pill> : <Pill tone={x.status === 'açıq' || x.status === 'həll edilir' ? 'ok' : x.status === 'buraxılıb' ? 'bad' : undefined}>{x.status}</Pill>}</span>
               <span>{(x.status === 'açıq' || x.status === 'həll edilir') && <button className="btn primary sm" onClick={() => setSolving(x.id)}>{x.status === 'açıq' ? t('Başla') : 'Davam et'}</button>}
                 {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>Cavablara bax</button>}</span>
-            </div></div>))}
-        </div>)}
+            </div>))}
+        </div></>)}
       {review && <Review id={review} onClose={() => setReview(null)} />}
     </>
   )

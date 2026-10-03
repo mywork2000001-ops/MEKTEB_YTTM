@@ -1,7 +1,7 @@
 """Test: yenidən göndər (surət, başqa sinfə), silinəni geri qaytar, bir şagirdə təkrar icazə."""
 import datetime as dt
 
-from .test_api_portal import UTC, clock, mk_task, setup, student_client  # noqa: F401
+from .test_api_portal import UTC, as_topic, clock, mk_task, setup, student_client  # noqa: F401
 
 
 def test_copy_restore_and_retake(world, clock):
@@ -32,12 +32,19 @@ def test_copy_restore_and_retake(world, clock):
     assert admin.post(f'/api/tasks/{ta}/{t["id"]}/copy', json={**body, 'duration_min': 90}).status_code == 400
     assert admin.post(f'/api/tasks/{ta}/{t["id"]}/copy', json={**body, 'student_ids': [99999]}).status_code == 400
 
-    # sil → silinənlərdə görünür → geri qaytar
+    assert c1.json()['kind'] == c2['kind'] == 'sinaq'                 # plandan kənar test – sınaq
+    # sınaq silinəndə tam gedir
+    assert admin.post(f'/api/tasks/{ta}/{c1.json()["id"]}/archive').json()['deleted'] is True
+    assert admin.get(f'/api/tasks/{ta}', params={'archived': True}).json() == []
+    # mövzu testi: sil → silinənlərdə görünür → geri qaytar
+    as_topic(world[1], t['id'])
     admin.post(f'/api/tasks/{ta}/{t["id"]}/archive')
     assert t['id'] not in [x['id'] for x in admin.get(f'/api/tasks/{ta}').json()]
     assert [x['id'] for x in admin.get(f'/api/tasks/{ta}', params={'archived': True}).json()] == [t['id']]
     assert admin.post(f'/api/tasks/{ta}/{t["id"]}/restore').status_code == 200
     assert t['id'] in [x['id'] for x in admin.get(f'/api/tasks/{ta}').json()]
+    # «Silinənlər»dən birdəfəlik silmə: aktiv mövzu testi birbaşa silinmir
+    assert admin.delete(f'/api/tasks/{ta}/{t["id"]}').status_code == 400
     # bağlanmış testə təkrar icazə olmaz
     clock.t = dt.datetime(2026, 9, 29, 17, 0, tzinfo=UTC)
     assert admin.delete(f'/api/tasks/{ta}/{t["id"]}/attempts/{st[0]["id"]}').status_code == 409

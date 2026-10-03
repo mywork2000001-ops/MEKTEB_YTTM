@@ -320,6 +320,9 @@ def rating(subject: str | None = None, grade: int | None = None, user: User = De
 def exam_results(batch_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     b, access = _batch(db, user, batch_id)
     res = _private(results(db, b), user, access)
+    for c in res['classes']:                       # öz dərsim – testi idarə edə bilərəm (link, redaktə, yenidən göndər)
+        ta = db.get(TeachingAssignment, db.get(OnlineTask, c['task_id']).assignment_id)
+        c['ta_id'], c['own'] = ta.id, ta.teacher_id == user.id
     db.commit()                                    # expire_due avtomatik təhvilləri saxlasın
     return {**res, 'access': access}
 

@@ -6,6 +6,8 @@ import { MathText } from '../../MathText'
 import { ConfirmName, Drawer, ErrorBox, Field, fmt, Loading, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
 import { esc, head, printDoc, table } from '../../print'
 import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
+import { TaskActions } from './Tasks'
+import { PeriodBar, usePeriod } from '../../periods'
 
 type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; teacher: string; mine: boolean; students: number }
 type Exam = { id: number; title: string; subject: string; grade: number | null; classes: string[]; opens_at: string | null; closes_at: string | null
@@ -15,7 +17,7 @@ type Row = { student_id: number | null; full_name: string | null; class_name: st
   place_all: number | null; place_class: number | null; retake: boolean }
 type Res = { batch: { id: number; title: string; subject: string; grade: number | null; penalty: number; questions: number }
   summary: { students: number; wrote: number; avg_pct: number | null; max_pct: number | null; min_pct: number | null }
-  classes: { task_id: number; class_name: string; students: number; wrote: number; avg_pct: number | null; max_pct: number | null; place: number | null; state: string; opens_at: string; closes_at: string }[]
+  classes: { task_id: number; ta_id: number; own: boolean; class_name: string; students: number; wrote: number; avg_pct: number | null; max_pct: number | null; place: number | null; state: string; opens_at: string; closes_at: string }[]
   rows: Row[]; questions: { index: number; text: any; kind: string; correct: number; of: number; pct: number | null }[]; access: 'full' | 'own' }
 
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
@@ -28,6 +30,11 @@ export default function OnlineExams() {
   const [list, err, loading, reload] = useLoad<Exam[]>(() => get('/api/exams-online'), [])
   const [creating, setCreating] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
+  const f = usePeriod('exams', 'date')
+  const all = list || []
+  const shown = all.filter(x => !x.opens_at || f.has(x.opens_at)).sort(f.sort === 'topic'
+    ? (a, b) => a.title.localeCompare(b.title, 'az', { numeric: true }) || Date.parse(b.opens_at || '') - Date.parse(a.opens_at || '')
+    : (a, b) => Date.parse(b.opens_at || '') - Date.parse(a.opens_at || ''))
   return (
     <>
       <Top title="Sınaq imtahanları" sub="Onlayn sınaq bir neçə sinfə eyni anda · sınaq jurnalı · sinif və ümumi reytinq (formativ qiymətə təsir etmir)"
@@ -35,14 +42,16 @@ export default function OnlineExams() {
       <div className="toolbar"><Seg value={view} onChange={setView} options={[['list', 'Sınaqlar'], ['rating', 'Reytinq']]} /></div>
       <ErrorBox error={err} />
       {view === 'rating' ? <Rating /> : loading && !list ? <Loading /> : (
+        <>{all.length > 0 && <PeriodBar f={f} count={shown.length} total={all.length} topicLabel="Ad üzrə" />}
         <div className="jlist">
           {list?.length === 0 && <div className="empty">Hələ sınaq yoxdur – «+ Yeni sınaq» ilə test bazasından sınaq seçin.</div>}
-          {list?.map(x => (
+          {all.length > 0 && shown.length === 0 && <div className="empty">Bu dövrdə sınaq yoxdur – «‹ ›» ilə başqa dövrə keçin və ya «Hamısı»nı seçin.</div>}
+          {shown.map(x => (
             <div key={x.id} className="jrow cols click" onClick={() => setOpen(x.id)} style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 6 }}>
               <div className="row"><b className="grow">{x.title}</b><Pill tone={stateTone(x.state)}>{x.state}</Pill>{x.mine && <Pill tone="acc">mənim</Pill>}</div>
               <span className="small muted">{x.subject}{x.grade ? ` · ${x.grade}-cu sinif` : ''} · {x.classes.join(', ')} · {dt(x.opens_at)} – {dt(x.closes_at)} · {x.questions} sual · {x.wrote} yazıb{x.avg_pct != null ? ` · orta ${fmt(x.avg_pct)}%` : ''}</span>
             </div>))}
-        </div>)}
+        </div></>)}
       {creating && <NewExam onClose={() => setCreating(false)} onDone={() => { setCreating(false); reload() }} />}
       {open && <Results id={open} onClose={() => setOpen(null)} onChange={reload} />}
     </>
@@ -190,6 +199,14 @@ function Results({ id, onClose, onChange }: { id: number; onClose: () => void; o
             <Stat value={`${d.summary.wrote}/${d.summary.students}`} label="yazıb" /><Stat value={fmt(d.summary.avg_pct) + '%'} label="orta" />
             <Stat value={fmt(d.summary.max_pct) + '%'} label="ən yüksək" /><Stat value={d.batch.penalty ? `${d.batch.penalty} səhv = −1` : 'yox'} label="cərimə" />
           </div>
+          {d.classes.some(c => c.own) && (
+            <section className="panel"><h2>Testi idarə et <small>öz siniflərim</small></h2>
+              <div className="jlist">{d.classes.filter(c => c.own).map(c => (
+                <div key={c.task_id} className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 6 }}>
+                  <div className="row"><b className="grow">{c.class_name}</b><Pill tone={stateTone(c.state)}>{c.state}</Pill></div>
+                  <TaskActions ta={c.ta_id} id={c.task_id} cls={c.class_name} onChange={() => { reload(); onChange() }} />
+                </div>))}</div>
+            </section>)}
           {d.access === 'own' && <p className="small muted" style={{ margin: 0 }}>Başqa müəllimlərin siniflərindəki şagirdlərin adı göstərilmir – yalnız yer və bal.</p>}
           <div className="row">
             <Seg value={tab} onChange={setTab} options={[['rows', 'Jurnal'], ['classes', 'Siniflər'], ['questions', 'Suallar']]} />

@@ -4,6 +4,8 @@ import { del as apiDel, get, post } from '../../api'
 import { MathText } from '../../MathText'
 import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, PickFirst, Pill, Seg, toast, Top, useLoad, ord } from '../../ui'
 import { LessonSelect, type MyLesson, useMyLessons, usePick } from './common'
+import { PeriodBar, usePeriod } from '../../periods'
+import { Link } from 'react-router-dom'
 import TaskEditor from './TaskEditor'
 import { esc, head, mathHtml, printDoc, table } from '../../print'
 
@@ -20,62 +22,100 @@ export default function Tasks() {
   const [view, setView] = useState<'active' | 'archived'>('active')
   const [list, err, , reload] = useLoad<Task[] | null>(() => (ta ? get(`/api/tasks/${ta}`, view === 'archived' ? { archived: true } : {}) : Promise.resolve(null)), [ta, view])
   const [resend, setResend] = useState<Task | null>(null)
-  const [editor, setEditor] = useState<null | { mode: 'new' | 'bank' | 'edit'; id?: number }>(null)
+  const [edit, setEdit] = useState<number | null>(null)
   const [watch, setWatch] = useState<number | null>(null)
   const [share, setShare] = useState<Task | null>(null)
   const [del, setDel] = useState<Task | null>(null)
+  const f = usePeriod('tasks', 'topic')
   const cls = lessons?.find(l => l.id === ta)
+  // yalnız perspektiv planın mövzu testləri; plandan kənar testlər – «Sınaq imtahanları»nda
+  const topics = (list || []).filter(t => t.kind === 'movzu')
+  const shown = topics.filter(t => f.has(t.opens_at)).sort(f.sort === 'topic'
+    ? (a, b) => (a.topic?.seq ?? 1e9) - (b.topic?.seq ?? 1e9) || Date.parse(a.opens_at) - Date.parse(b.opens_at)
+    : (a, b) => Date.parse(b.opens_at) - Date.parse(a.opens_at))
   return (
     <>
-      <Top title="Onlayn tapşırıqlar" sub="Vaxtlı testlər: tarix + saat aralığı + həll müddəti; vaxt bitəndə avtomatik təhvil"
-        actions={ta ? <><button className="btn" onClick={() => setEditor({ mode: 'bank' })}>Viktorinadan test əlavə et</button><button className="btn primary" onClick={() => setEditor({ mode: 'new' })}>+ Yeni tapşırıq</button></> : undefined} />
+      <Top title="Onlayn tapşırıqlar" sub="Perspektiv planın mövzu testləri · yeni test planda mövzunun «🧪 Test» düyməsi ilə yaradılır · plandan kənar testlər «Sınaq imtahanları»ndadır"
+        actions={<Link className="btn" to="/exams-online">Sınaq imtahanları →</Link>} />
       <ErrorBox error={err0 || err} />
       <div className="toolbar"><LessonSelect lessons={lessons} value={ta} onChange={setTa} />
-        {ta && <Seg value={view} onChange={setView} options={[['active', 'Testlər'], ['archived', 'Silinənlər']]} />}</div>
-      {!ta ? <PickFirst /> : (
+        {ta && <Seg value={view} onChange={setView} options={[['active', 'Mövzu testləri'], ['archived', 'Silinənlər']]} />}</div>
+      {!ta ? <PickFirst /> : (<>
+        {topics.length > 0 && <PeriodBar f={f} count={shown.length} total={topics.length} />}
         <div className="jlist">
-          {list?.length === 0 && <div className="empty">{view === 'archived' ? 'Silinmiş test yoxdur.' : 'Hələ tapşırıq yoxdur.'}</div>}
-          {list && [...list.filter(t => t.kind !== 'sinaq'), ...list.filter(t => t.kind === 'sinaq')].map((t, i, all) => {
+          {list && topics.length === 0 && <div className="empty">{view === 'archived' ? 'Silinmiş mövzu testi yoxdur.' : 'Hələ mövzu testi yoxdur – «Perspektiv plan»da mövzunun yanındakı «🧪 Test» ilə yaradın.'}</div>}
+          {topics.length > 0 && shown.length === 0 && <div className="empty">Bu dövrdə test yoxdur – «‹ ›» ilə başqa dövrə keçin və ya «Hamısı»nı seçin.</div>}
+          {shown.map(t => {
             const now = Date.now(), o = Date.parse(t.opens_at), c = Date.parse(t.closes_at)
             const live = now >= o && now < c
-            const section = t.kind === 'sinaq' && all[i - 1]?.kind !== 'sinaq'
-            return (<div key={t.id} style={{ display: 'contents' }}>
-              {section && <h3 className="small muted" style={{ margin: '14px 0 4px' }}>Sınaq imtahanları <small>– jurnal və reytinq «Sınaq imtahanları» bölməsində</small></h3>}
-              <div className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 8 }}>
-                <div className="row">
+            return (
+              <div className="jrow cols" key={t.id} style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 8 }}>
+                <div className="row" style={{ flexWrap: 'wrap' }}>
+                  <Pill tone="acc">{t.topic ? `№${t.topic.seq}` : 'mövzu planda yoxdur'}</Pill>
                   <b className="grow">{t.title}</b>
-                  {t.kind === 'sinaq' && <Pill tone="acc">sınaq imtahanı</Pill>}
-                  {t.kind === 'movzu' && <Pill tone="acc">{t.topic ? `mövzu testi · №${t.topic.seq}` : 'mövzu planda yoxdur'}</Pill>}
-                  {t.kind === 'movzu' && t.journal_auto && <Pill tone={t.journal_done_at ? 'ok' : undefined}>{t.journal_done_at ? 'jurnala yazılıb' : 'jurnala yazılacaq'}</Pill>}
+                  {t.journal_auto && <Pill tone={t.journal_done_at ? 'ok' : undefined}>{t.journal_done_at ? 'jurnala yazılıb' : 'jurnala yazılacaq'}</Pill>}
                   {now < o ? <Pill>gözlənilir</Pill> : live ? <Pill tone="ok">● açıqdır</Pill> : <Pill tone="info">bağlanıb</Pill>}
                 </div>
-                <span className="small muted">{dt(t.opens_at)} – {t.opens_at.slice(0, 10) === t.closes_at.slice(0, 10) ? hm(t.closes_at) : dt(t.closes_at)} · {t.duration_min} dəq{t.topic ? ` · «${t.topic.topic}»` : ''} · {t.questions} sual · {t.student_ids ? `${t.student_ids.length} şagird` : 'bütün sinif'} · {t.submitted} təhvil · orta {fmt(t.avg_pct)}%{t.created_at ? ` · yaradılıb: ${dt(t.created_at)}` : ''}</span>
+                <span className="small muted">{dt(t.opens_at)} – {t.opens_at.slice(0, 10) === t.closes_at.slice(0, 10) ? hm(t.closes_at) : dt(t.closes_at)} · {t.duration_min} dəq{t.topic ? ` · «${t.topic.topic}»` : ''} · {t.questions} sual · {t.student_ids ? `${t.student_ids.length} şagird` : 'bütün sinif'} · {t.submitted} təhvil · orta {fmt(t.avg_pct)}%</span>
                 {view === 'archived' ? (
-                  <div className="row" style={{ gap: 6 }}>
+                  <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                     <AsyncBtn className="btn sm primary" ok="Test geri qaytarıldı" onClick={async () => { await post(`/api/tasks/${ta}/${t.id}/restore`); reload() }}>Geri qaytar</AsyncBtn>
-                    <button className="btn sm" onClick={() => setResend(t)}>Yenidən göndər</button>
                     <button className="btn sm" onClick={() => setWatch(t.id)}>Nəticələr</button>
+                    <button className="btn sm ghost" onClick={() => setDel(t)}>Birdəfəlik sil</button>
                   </div>
                 ) : (
-                <div className="row" style={{ gap: 6 }}>
+                <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                   <button className={'btn sm' + (live ? ' primary' : '')} onClick={() => setWatch(t.id)}>{live ? 'Canlı izlə' : 'Nəticələr'}</button>
                   <button className="btn sm" onClick={() => setShare(t)}>Link göndər</button>
                   <button className="btn sm" onClick={() => setResend(t)}>Yenidən göndər</button>
                   <button className="btn sm" onClick={() => paper(ta!, t.id, cls?.class_name || '')}>Kağız variant</button>
-                  <button className="btn sm" onClick={() => setEditor({ mode: 'edit', id: t.id })}>Redaktə</button>
+                  <button className="btn sm" onClick={() => setEdit(t.id)}>Redaktə</button>
                   <button className="btn sm ghost" onClick={() => setDel(t)}>Sil</button>
                 </div>)}
-                {del?.id === t.id && <ConfirmName name={t.title} action={t.kind === 'sinaq' ? 'Birdəfəlik sil' : 'Sil'} onCancel={() => setDel(null)}
-                  onConfirm={async () => { await post(`/api/tasks/${ta}/${t.id}/archive`); toast(t.kind === 'sinaq' ? 'Sınaq sistemdən silindi (nəticələri ilə)' : 'Test silindi – «Silinənlər»dən geri qaytarmaq olar'); setDel(null); reload() }} />}
-              </div></div>)
+                {del?.id === t.id && <ConfirmName name={t.title} action={view === 'archived' ? 'Birdəfəlik sil' : 'Sil'} onCancel={() => setDel(null)}
+                  onConfirm={async () => {
+                    if (view === 'archived') { await apiDel(`/api/tasks/${ta}/${t.id}`); toast('Test sistemdən birdəfəlik silindi') }
+                    else { await post(`/api/tasks/${ta}/${t.id}/archive`); toast('Test silindi – «Silinənlər»dən geri qaytarmaq və ya birdəfəlik silmək olar') }
+                    setDel(null); reload() }} />}
+              </div>)
           })}
-        </div>
+        </div></>
       )}
-      {editor && ta && <TaskEditor ta={ta} taskId={editor.id} fromBank={editor.mode === 'bank'} onClose={() => setEditor(null)} onDone={() => { setEditor(null); reload() }} />}
+      {edit && ta && <TaskEditor ta={ta} taskId={edit} fromBank={false} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
       {watch && ta && <Watch ta={ta} id={watch} onClose={() => { setWatch(null); reload() }} />}
       {share && <Share task={share} cls={cls?.class_name || ''} onClose={() => setShare(null)} />}
       {resend && ta && <Resend ta={ta} task={resend} lessons={lessons || []} onClose={() => setResend(null)}
-        onDone={(t, sameClass) => { setResend(null); if (sameClass) { setView('active'); reload() } setShare(t) }} />}
+        onDone={(t, sameClass) => {
+          setResend(null)
+          if (t.kind === 'sinaq') toast('Hədəf sinfin planında bu mövzu yoxdur – test sınaq kimi «Sınaq imtahanları»na düşdü')
+          if (sameClass) { setView('active'); reload() }
+          setShare(t) }} />}
+    </>
+  )
+}
+
+/** Bir testin idarəsi (sınaq bölməsində hər sinif üçün): canlı izlə, link, yenidən göndər, kağız variant, redaktə. */
+export function TaskActions({ ta, id, cls, onChange }: { ta: number; id: number; cls: string; onChange: () => void }) {
+  const [lessons] = useMyLessons()
+  const [mode, setMode] = useState<null | 'watch' | 'share' | 'resend' | 'edit'>(null)
+  const [task, setTask] = useState<Task | null>(null)
+  const open = async (m: 'share' | 'resend') => {
+    try { setTask(await get<Task>(`/api/tasks/${ta}/${id}/full`)); setMode(m) } catch (e) { toast('Xəta: ' + (e as Error).message) }
+  }
+  return (
+    <>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <button className="btn sm" onClick={() => setMode('watch')}>Canlı izlə / nəticələr</button>
+        <button className="btn sm" onClick={() => open('share')}>Link göndər</button>
+        <button className="btn sm" onClick={() => open('resend')}>Yenidən göndər</button>
+        <button className="btn sm" onClick={() => paper(ta, id, cls)}>Kağız variant</button>
+        <button className="btn sm" onClick={() => setMode('edit')}>Redaktə</button>
+      </div>
+      {mode === 'watch' && <Watch ta={ta} id={id} onClose={() => { setMode(null); onChange() }} />}
+      {mode === 'share' && task && <Share task={task} cls={cls} onClose={() => setMode(null)} />}
+      {mode === 'resend' && task && <Resend ta={ta} task={task} lessons={lessons || []} onClose={() => setMode(null)}
+        onDone={t => { setTask(t); setMode('share'); onChange() }} />}
+      {mode === 'edit' && <TaskEditor ta={ta} taskId={id} fromBank={false} onClose={() => setMode(null)} onDone={() => { setMode(null); onChange() }} />}
     </>
   )
 }

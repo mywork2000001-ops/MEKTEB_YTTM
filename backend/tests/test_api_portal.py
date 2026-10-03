@@ -63,6 +63,15 @@ def setup(world):
         return admin, ta.id, cid, st, [q.id for q in qs]
 
 
+def as_topic(S, task_id: int):
+    """Testi mövzu testinə çevirir (plandan kənar test sınaq sayılır – arxiv/jurnal qaydaları mövzu testi üçündür)."""
+    from app.models import OnlineTask
+    with S() as db:
+        t = db.get(OnlineTask, task_id)
+        t.kind, t.batch_id = 'movzu', None
+        db.commit()
+
+
 def mk_task(admin, ta, ids, **kw):
     body = {'title': 'Test 1', 'opens_at': '2026-09-29T15:00:00Z', 'closes_at': '2026-09-29T16:00:00Z',
             'duration_min': 40, 'bank_ids': ids, 'shuffle': True, **kw}

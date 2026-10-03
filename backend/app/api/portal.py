@@ -15,8 +15,8 @@ from ..deps import require
 from ..domain.answers import check
 from ..domain.plan import view_range
 from ..domain.rules import grade_from_points, semester_grade
-from ..models import (Attendance, Exam, ExamScore, GroupMember, HomeworkCheck, JournalEntry, Mark, OnlineTask, Role,
-                      SchoolClass, Student, TaskAttempt, TeachingAssignment, User, now)
+from ..models import (Attendance, Exam, ExamScore, GroupMember, HomeworkCheck, JournalEntry, Mark, OnlineTask, PlanLesson,
+                      Role, SchoolClass, Student, TaskAttempt, TeachingAssignment, User, now)
 from ..services import SCHOOL_TZ, journal_entries, plan_ctx, roster, taught_lesson, today
 from .plan import WEEKDAYS, bell
 from .tasks import aware, expire_due, finalize
@@ -253,12 +253,14 @@ def tasks(user: User = Depends(student_only), db: Session = Depends(get_db)):
         expire_due(db, t)
         a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
         ta = db.get(TeachingAssignment, t.assignment_id)
+        pl = db.get(PlanLesson, t.plan_lesson_id) if t.kind == 'movzu' and t.plan_lesson_id else None
         out.append({'id': t.id, 'title': t.title, 'description': t.description, 'subject': ta.subject,
                     'teacher': _teacher(db, ta), 'opens_at': aware(t.opens_at), 'closes_at': aware(t.closes_at),
                     'duration_min': t.duration_min, 'questions': len(t.questions), 'status': _status(t, a, at),
                     'deadline': aware(a.deadline) if a else None,
                     'result': {'correct': a.correct, 'total': a.total, 'grade': a.grade} if a and a.submitted_at else None,
-                    'can_review': _can_review(t, a, at), 'kind': t.kind})
+                    'can_review': _can_review(t, a, at), 'kind': t.kind,
+                    'topic_seq': pl.seq if pl else None, 'topic': pl.topic if pl else None})
     return out
 
 

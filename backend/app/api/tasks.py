@@ -16,7 +16,7 @@ from ..domain.answers import check
 from ..domain.rules import summative_grade
 from ..models import (BankFile, BankQuestion, BankSource, Mark, OnlineTask, PlanLesson, TaskAttempt, TeachingAssignment,
                       TestBatch, User, now)
-from ..services import own_assignment, roster
+from ..services import class_grade, own_assignment, roster
 from .common import audit, get_or_404
 
 router = APIRouter(prefix='/api/tasks', tags=['tasks'])
@@ -145,6 +145,16 @@ def task_out(t: OnlineTask) -> dict:
             'created_at': aware(t.created_at) if t.created_at else None}   # kim/nə vaxt – təsadüfi yaradılanı tanımaq üçün
 
 
+def exam_batch(db: Session, ta: TeachingAssignment, title: str, user: User) -> TestBatch:
+    """Plandan kənar test «Sınaq imtahanları»na düşür: hər biri öz sınaq paketi ilə."""
+    from ..models import SchoolClass
+    b = TestBatch(kind='sinaq', title=title, subject=ta.subject, grade=class_grade(db, db.get(SchoolClass, ta.class_id)),
+                  created_by=user.id)
+    db.add(b)
+    db.flush()
+    return b
+
+
 @router.post('/{ta_id}')
 def create_task(ta_id: int, body: TaskIn, user: User = Depends(staff), db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)
@@ -153,13 +163,14 @@ def create_task(ta_id: int, body: TaskIn, user: User = Depends(staff), db: Sessi
         if bad or not body.student_ids:
             raise HTTPException(400, 'Şagirdlər bu sinifdən/qrupdan seçilməlidir')
     qs = _snapshot(db, body.bank_ids) + [custom_snapshot(q) for q in body.custom]
+    b = exam_batch(db, ta, body.title, user)          # perspektiv plana bağlı olmayan test – sınaq
     t = OnlineTask(assignment_id=ta.id, title=body.title, description=body.description,
                    opens_at=aware(body.opens_at), closes_at=aware(body.closes_at), duration_min=body.duration_min,
                    questions=qs, shuffle=body.shuffle, show_answers=body.show_answers,
-                   student_ids=body.student_ids, created_by=user.id)
+                   student_ids=body.student_ids, created_by=user.id, kind='sinaq', batch_id=b.id)
     db.add(t)
     db.flush()
-    audit(db, user, 'create', 'task', t.id, questions=len(qs))
+    audit(db, user, 'create', 'task', t.id, questions=len(qs), kind='sinaq', batch=b.id)
     db.commit()
     return task_out(t)
 
@@ -229,6 +240,21 @@ def archive_task(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
     return {'ok': True}
 
 
+@router.delete('/{ta_id}/{task_id}')
+def delete_task(ta_id: int, task_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«Silinənlər»dəki test birdəfəlik silinir – nəticələri və şagird cəhdləri ilə (geri qaytarılmır)."""
+    own_assignment(db, user, ta_id)
+    t = get_or_404(db, OnlineTask, task_id, 'Tapşırıq')
+    if t.assignment_id != ta_id:
+        raise HTTPException(404, 'Tapşırıq tapılmadı')
+    if t.archived_at is None and t.kind != 'sinaq':
+        raise HTTPException(400, 'Əvvəlcə testi silin – sonra «Silinənlər»dən birdəfəlik silmək olar')
+    purge_tasks(db, [t])
+    audit(db, user, 'delete', 'task', task_id, kind=t.kind)
+    db.commit()
+    return {'deleted': True}
+
+
 def purge_tasks(db: Session, tasks: list[OnlineTask]) -> int:
     """Tapşırıqları cəhdləri ilə birlikdə birdəfəlik silir; boş qalan sınaq paketi də silinir."""
     batches = {t.batch_id for t in tasks if t.batch_id}
@@ -291,14 +317,34 @@ def copy_task(ta_id: int, task_id: int, body: CopyIn, user: User = Depends(staff
         if bad or not body.student_ids:
             raise HTTPException(400, 'Şagirdlər seçilən sinifdən/qrupdan olmalıdır')
     import copy as _copy
-    t = OnlineTask(assignment_id=target.id, title=body.title or src.title, description=src.description,
+    title = body.title or src.title
+    pl_id = _target_topic(db, src, target) if src.kind == 'movzu' else None
+    if pl_id:                                     # mövzu testi – hədəf sinfin planında həmin mövzuya
+        kind, batch_id = 'movzu', None
+    else:                                         # plandan kənar – sınaq
+        kind, batch_id = 'sinaq', exam_batch(db, target, title, user).id
+    t = OnlineTask(assignment_id=target.id, title=title, description=src.description,
                    opens_at=o, closes_at=c, duration_min=dur, questions=_copy.deepcopy(src.questions),
-                   shuffle=src.shuffle, show_answers=src.show_answers, student_ids=body.student_ids, created_by=user.id)
+                   shuffle=src.shuffle, show_answers=src.show_answers, student_ids=body.student_ids, created_by=user.id,
+                   kind=kind, batch_id=batch_id, plan_lesson_id=pl_id)
     db.add(t)
     db.flush()
     audit(db, user, 'create', 'task', t.id, copied_from=src.id, target_ta=target.id)
     db.commit()
     return task_out(t)
+
+
+def _target_topic(db: Session, src: OnlineTask, target: TeachingAssignment) -> int | None:
+    """Mövzu testinin surəti: həmin dərsdə – eyni mövzu, başqa sinifdə – planda eyni adlı mövzu."""
+    from .topic_tests import norm_topic
+    pl = db.get(PlanLesson, src.plan_lesson_id) if src.plan_lesson_id else None
+    if not pl:
+        return None
+    if target.id == src.assignment_id:
+        return pl.id
+    key = norm_topic(pl.topic)
+    return next((x.id for x in db.scalars(select(PlanLesson).where(PlanLesson.assignment_id == target.id)
+                                          .order_by(PlanLesson.seq)) if norm_topic(x.topic) == key), None)
 
 
 @router.delete('/{ta_id}/{task_id}/attempts/{student_id}')

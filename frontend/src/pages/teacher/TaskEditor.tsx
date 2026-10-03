@@ -71,14 +71,13 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
         toast('Tapşırıq yeniləndi')
       } else {
         await post(`/api/tasks/${ta}`, { ...meta, bank_ids: [], custom: qs.map(toCustom), student_ids: targets ?? null })
-        toast('Tapşırıq yaradıldı')
+        toast('Sınaq yaradıldı – «Sınaq imtahanları»nda da görünür')
       }
       onDone()
     } catch (e) { setErr(e) }
   }
 
-  const bank = <BankPicker has={has} add={add} remove={remove} onTitle={t => !taskId && setF(x => ({ ...x, title: t }))} disabled={locked} first={bankFirst}
-    kinds={taskId ? undefined : ['movzu', 'diaqnostik']} legend={taskId ? undefined : 'Test bazasından – mövzu testləri (sınaqlar «Sınaq imtahanları» bölməsindədir)'} />
+  const bank = <BankPicker has={has} add={add} remove={remove} onTitle={t => !taskId && setF(x => ({ ...x, title: t }))} disabled={locked} first={bankFirst} />
   return (
     <Drawer title={taskId ? 'Tapşırığı redaktə et' : bankFirst ? 'Viktorinadan test əlavə et' : 'Yeni tapşırıq'} onClose={onClose}
       footer={<><span className="small muted grow">{qs.length} sual</span><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" onClick={submit}>{taskId ? 'Yadda saxla' : 'Yarat'}</button></>}>

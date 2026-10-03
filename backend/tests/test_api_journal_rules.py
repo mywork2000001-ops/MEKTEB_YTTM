@@ -4,7 +4,7 @@ import datetime as dt
 from app.models import PlanLesson
 
 from .test_api_analytics import setup as setup_class
-from .test_api_portal import UTC, clock, mk_task, setup, student_client  # noqa: F401 – clock fixture
+from .test_api_portal import UTC, as_topic, clock, mk_task, setup, student_client  # noqa: F401 – clock fixture
 
 
 def test_task_to_journal(world, clock, monkeypatch):
@@ -14,6 +14,8 @@ def test_task_to_journal(world, clock, monkeypatch):
     as_, S = world
     admin, ta, cid, st, ids = setup(world)
     t = mk_task(admin, ta, ids, opens_at='2026-09-29T05:00:00Z', closes_at='2026-09-29T06:00:00Z').json()
+    assert admin.post(f'/api/tasks/{ta}/{t["id"]}/to-journal', json={}).status_code == 400   # sınaq – formativə yox
+    as_topic(S, t['id'])
     clock.t = dt.datetime(2026, 9, 29, 5, 10, tzinfo=UTC)
     for i, stu in enumerate(st[:2]):
         s = student_client(stu['portal_code'], stu['initial_pin'])
