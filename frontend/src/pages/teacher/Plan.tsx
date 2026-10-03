@@ -40,7 +40,7 @@ export default function Plan() {
   let lastDate = ''
   return (
     <>
-      <Top title="Perspektiv plan" sub={cur ? `${cur.class_name} · işçi plan (rəsmi plan dəyişmir)` : 'Əvvəlcə sinif seçin'} />
+      <Top title="Perspektiv plan" sub={cur ? `${cur.class_name} · ${cur.program ? 'proqram: ' + cur.program : 'işçi plan'}${cur.extra_programs ? ` · əlavə proqram: ${cur.extra_programs}` : ''}` : 'Əvvəlcə sinif seçin'} />
       <ErrorBox error={err0 || err} />
       <div className="toolbar">
         <LessonSelect lessons={lessons} value={ta} onChange={setTa} />

@@ -7,6 +7,7 @@ import { useT } from '../../i18n'
 
 import SettingsRoster from './SettingsRoster'
 import SettingsAdmin from './SettingsAdmin'
+import Programs from './Programs'
 const Roster = SettingsRoster
 const Admin = SettingsAdmin
 
@@ -32,7 +33,7 @@ export default function Settings() {
   if (!lock) return <Loading />
   if (lock.has_password && !unlocked) return <Unlock onDone={() => setUnlocked(true)} />
 
-  const tabs: [string, string][] = [['look', 'Görünüş'], ['account', 'Hesab'], ['school', 'Məktəb'], ['classes', 'Siniflər'],
+  const tabs: [string, string][] = [['look', 'Görünüş'], ['account', 'Hesab'], ['school', 'Məktəb'], ['classes', 'Siniflər'], ['programs', 'Proqramlar'],
     ['students', 'Şagirdlər'], ['archive', 'Arxiv'], ['ai', 'Süni intellekt'], ['lock', 'Kilid'],
     ...(admin ? [['teachers', 'Müəllimlər'], ['bank', 'Test bazası'], ['audit', 'Audit jurnalı']] as [string, string][] : [])]
   return (
@@ -45,6 +46,7 @@ export default function Settings() {
         {tab === 'account' && <PasswordPanel student={false} />}
         {tab === 'school' && <SchoolPanel admin={admin} />}
         {(tab === 'classes' || tab === 'students' || tab === 'archive') && <Roster tab={tab} />}
+        {tab === 'programs' && <Programs />}
         {tab === 'ai' && <AiPanel />}
         {tab === 'lock' && <LockPanel has={lock.has_password} onChange={reloadLock} />}
         {(tab === 'teachers' || tab === 'bank' || tab === 'audit') && <Admin tab={tab} />}

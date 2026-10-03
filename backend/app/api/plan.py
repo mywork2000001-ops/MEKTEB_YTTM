@@ -42,8 +42,11 @@ def my_lessons(user: User = Depends(staff), db: Session = Depends(get_db)):
         y = ctx.year
         # cari yarımil: II yarımil başlayıbsa – 2, əks halda 1 (qış tətilində bitmiş I yarımil)
         sem = 2 if today() >= y.sem2_start else 1
+        from ..models import AssignmentProgram, PlanProgram
+        prog = db.get(PlanProgram, ta.program_id) if ta.program_id else None
+        n_extra = len(list(db.scalars(select(AssignmentProgram.id).where(AssignmentProgram.assignment_id == ta.id))))
         out.append({'id': ta.id, 'class_id': c.id, 'class_name': c.name, 'kind': c.kind, 'subject': ta.subject,
-                    'semester': sem,
+                    'semester': sem, 'program': prog.title if prog else None, 'extra_programs': n_extra,
                     'weekly_hours': ta.weekly_hours, 'slots': ta.slots, 'has_summative': ta.has_summative,
                     'split_with': c.split_with, 'plan_lessons': len(ctx.lessons),
                     'lag': cur.shift if cur else 0, 'unfit': len(ctx.unfit)})

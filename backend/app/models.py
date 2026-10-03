@@ -150,9 +150,46 @@ class TeachingAssignment(Base, Archivable):
     weekly_hours: Mapped[int] = mapped_column(Integer)
     slots: Mapped[dict] = mapped_column(JSON)                            # {"0": [3, 5], "1": [3, 6, 7]}
     has_summative: Mapped[bool] = mapped_column(Boolean, default=True)
+    # cari perspektiv plan proqramı (kitabxanadan seçilib; None – köhnə qaydada yüklənmiş plan)
+    program_id: Mapped[int | None] = mapped_column(ForeignKey('plan_programs.id', ondelete='SET NULL', use_alter=True))
     __table_args__ = (UniqueConstraint('teacher_id', 'class_id', 'subject'),)
     teacher: Mapped[User] = relationship()
     cls: Mapped[SchoolClass] = relationship()
+
+
+class PlanProgram(Base, Archivable):
+    """Perspektiv plan proqramı – sinfə bağlı deyil; müəllim sinif/qrup üçün seçib tətbiq edir.
+    fixed – hazır dərs siyahısı (əvvəlki Word planlar, sinifdən saxlanmış planlar);
+    adaptive – bölmə/mövzu şablonu (məs. DİM «Sinif testləri»), sinfin cədvəlinə görə dərslərə açılır."""
+    __tablename__ = 'plan_programs'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str | None] = mapped_column(String(60), unique=True)          # daxili proqramlar: dim-sinif-testleri-10
+    school_id: Mapped[int | None] = mapped_column(ForeignKey('schools.id'))   # None – ümumi (hamıya görünür)
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'))       # None – ümumi
+    title: Mapped[str] = mapped_column(String(200))
+    subject: Mapped[str] = mapped_column(String(60))
+    grade: Mapped[int | None] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(10))                              # fixed | adaptive
+    source: Mapped[str | None] = mapped_column(String(300))
+    description: Mapped[str | None] = mapped_column(Text)
+    weekly_hours: Mapped[int | None] = mapped_column(Integer)
+    level: Mapped[str | None] = mapped_column(String(10))                      # None – ümumi; Zəif | Orta | Güclü
+    data: Mapped[dict] = mapped_column(JSON)                                    # fixed: {"lessons": [...]}, adaptive: şablon
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AssignmentProgram(Base):
+    """Sinif/qrupun ƏLAVƏ proqramları (əsas proqram – TeachingAssignment.program_id, jurnal ona görə gedir).
+    Əlavə proqram jurnala qarışmır: öz dərs siyahısı sinfin cədvəlinə görə ayrıca göstərilir və çap olunur;
+    level – sinif daxilində səviyyə qrupu üçün (Zəif / Orta / Güclü), None – bütün sinif."""
+    __tablename__ = 'assignment_programs'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assignment_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'))
+    program_id: Mapped[int] = mapped_column(ForeignKey('plan_programs.id', ondelete='CASCADE'))
+    level: Mapped[str | None] = mapped_column(String(10))
+    note: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('assignment_id', 'program_id', 'level'),)
 
 
 # ---------------------------------------------------------------- əlavə test bazası (viktorina.html – avtomatik yenilənir)

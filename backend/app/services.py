@@ -139,6 +139,7 @@ def import_plan(db: Session, ta: TeachingAssignment, path: str | Path) -> dict:
     removed = [pl for s, pl in existing.items() if s not in seen]
     for pl in removed:
         db.delete(pl)
+    ta.program_id = None              # Word planı – kitabxanaya yeni «cari plan» proqramı kimi düşəcək
     db.flush()
     return {'file': p.file, 'lessons': len(p.lessons), 'removed': len(removed), 'warnings': p.warnings,
             'ksq': sum(l.assessment_type == 'KSQ' for l in p.lessons),
