@@ -3,7 +3,10 @@ import { del, get, post, put } from '../../api'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, Loading, PickFirst, Pill, Seg, toast, Top, useLoad, ord } from '../../ui'
 import { ATT, HW, LessonSelect, type MyLesson, useMyLessons, usePick } from './common'
 import Exams from './Exams'
-import { fmtN, head, printDoc, table } from '../../print'
+import { fmtN, head, printDoc, SIGN, table } from '../../print'
+import JournalPrint from './JournalPrint'
+
+const sg = () => [{ role: 'Fənn müəllimi' }, SIGN.deputy()]
 import { useNavigate } from 'react-router-dom'
 import { useT } from '../../i18n'
 import LevelGroups from './LevelGroups'
@@ -25,6 +28,7 @@ export default function Journal() {
   const [ta, setTa] = usePick('journal')
   const [tab, setTab] = useState<(typeof TABS)[number][0]>('day')
   const [date, setDate] = useState(isoDate(new Date()))
+  const [print, setPrint] = useState(false)
   const cur = lessons?.find(l => l.id === ta)
   return (
     <>
@@ -33,7 +37,9 @@ export default function Journal() {
       <div className="toolbar">
         <LessonSelect lessons={lessons} value={ta} onChange={setTa} />
         {ta && tab === 'day' && <input type="date" className="sel" value={date} onChange={e => setDate(e.target.value)} aria-label="Tarix" />}
+        {cur && <button className="btn" onClick={() => setPrint(true)}>Çap / PDF</button>}
       </div>
+      {print && cur && <JournalPrint ta={cur} all={lessons || []} date={date} onClose={() => setPrint(false)} />}
       {!ta || !cur ? <PickFirst /> : (
         <>
           <div className="tabs" role="tablist">
@@ -209,7 +215,7 @@ function Semester({ ta }: { ta: MyLesson }) {
       <div className="row" style={{ marginBottom: 12 }}>
         {[1, 2].map(s => <button key={s} className="chip" aria-pressed={sem === s} onClick={() => setSem(s)}>{s}-ci yarımil</button>)}
         <span className="small muted">{d?.formula}</span>
-        {d && <button className="btn sm right" onClick={() => printDoc({ title: `${ta.class_name} – ${sem}-ci yarımil qiymətləri`, body: head(`${ta.class_name} – ${ta.subject}: ${sem}-ci yarımil`, d.formula) + table(['№', 'Şagird', 'KSQ', 'KSQ orta', 'BSQ', 'Yarımil', ...(d.exams ? ['Sınaq', 'Sınaq orta %'] : [])], d.students.map((s: any, i: number) => [i + 1, s.full_name, s.ksq.map(([n, g]: [number, number | null]) => `${n}: ${g ?? '—'}`).join('  '), fmtN(s.ksq_avg, 2), s.bsq ?? '—', s.semester_grade ?? '—', ...(d.exams ? [`${s.exam_count}/${d.exams}`, fmtN(s.exam_pct)] : [])]), [3, 4, 5, 6, 7]) + (d.exams ? '<p>Sınaq imtahanları yarımil qiymətinə daxil deyil – ayrıca göstərilir.</p>' : '') + '<p class="sign">Müəllim: ____________</p>' })}>Çap / PDF</button>}
+        {d && <button className="btn sm right" onClick={() => printDoc({ signers: sg(), title: `${ta.class_name} – ${sem}-ci yarımil qiymətləri`, body: head(`${ta.class_name} – ${ta.subject}: ${sem}-ci yarımil`, d.formula) + table(['№', 'Şagird', 'KSQ', 'KSQ orta', 'BSQ', 'Yarımil', ...(d.exams ? ['Sınaq', 'Sınaq orta %'] : [])], d.students.map((s: any, i: number) => [i + 1, s.full_name, s.ksq.map(([n, g]: [number, number | null]) => `${n}: ${g ?? '—'}`).join('  '), fmtN(s.ksq_avg, 2), s.bsq ?? '—', s.semester_grade ?? '—', ...(d.exams ? [`${s.exam_count}/${d.exams}`, fmtN(s.exam_pct)] : [])]), [3, 4, 5, 6, 7]) + (d.exams ? '<p>Sınaq imtahanları yarımil qiymətinə daxil deyil – ayrıca göstərilir.</p>' : '') + '<p class="sign">Müəllim: ____________</p>' })}>Çap / PDF</button>}
       </div>
       <ErrorBox error={err} />
       <div className="tbl-wrap"><table><thead><tr><th>Şagird</th><th>KSQ</th><th className="r">KSQ orta</th><th className="r">BSQ</th><th className="r">Yarımil</th>{d?.exams > 0 && <><th className="r sinaq-col">Sınaq</th><th className="r sinaq-col">Sınaq orta %</th></>}</tr></thead>
@@ -289,7 +295,7 @@ function Topics({ ta }: { ta: MyLesson }) {
         {([['', 'Hamısı'], ['done', 'Keçilib'], ['qismən', 'Qismən'], ['gecikir', 'Gecikir'], ['gözlənilir', 'Gözlənilir']] as const).map(([k, l]) =>
           <button key={k} className="chip" aria-pressed={st === k} onClick={() => setSt(k)}>{l}</button>)}
         <button className="btn sm" onClick={() => setBulk(true)}>Toplu qeyd</button>
-        <button className="btn sm" onClick={() => printDoc({ title: `${ta.class_name} – mövzu icrası`, body: head(`${ta.class_name} – ${ta.subject}: mövzu icrası`, `Keçilib ${s.done}/${s.total} · fərq ${s.delta > 0 ? '+' : ''}${s.delta} dərs`) + table(['№', 'Mövzu', 'Rəsmi tarix', 'Status', 'Keçildi', 'Gecikmə (gün)', 'Qeyd'], p.topics.map(t => [t.seq, t.topic, fmtDate(t.official_date), t.status, t.done_on ? fmtDate(t.done_on) : '', t.delay_days ?? '', t.note || ''])) })}>Çap / PDF</button>
+        <button className="btn sm" onClick={() => printDoc({ signers: sg(), title: `${ta.class_name} – mövzu icrası`, body: head(`${ta.class_name} – ${ta.subject}: mövzu icrası`, `Keçilib ${s.done}/${s.total} · fərq ${s.delta > 0 ? '+' : ''}${s.delta} dərs`) + table(['№', 'Mövzu', 'Rəsmi tarix', 'Status', 'Keçildi', 'Gecikmə (gün)', 'Qeyd'], p.topics.map(t => [t.seq, t.topic, fmtDate(t.official_date), t.status, t.done_on ? fmtDate(t.done_on) : '', t.delay_days ?? '', t.note || ''])) })}>Çap / PDF</button>
       </div>
       <div className="jlist">
         {list.map(r => (
@@ -402,7 +408,7 @@ function Summary({ ta }: { ta: MyLesson }) {
     <>
       <ErrorBox error={err} />
       <div className="row" style={{ marginBottom: 8 }}>{([['1', 'I yarımil'], ['2', 'II yarımil'], ['all', 'Bütün il']] as const).map(([k, l]) => <button key={k} className="chip" aria-pressed={sem === k} onClick={() => setSem(k)}>{l}</button>)}</div>
-      {d && <div className="row"><p className="muted small grow">Yazılmış dərs: {d.lessons_written}</p><button className="btn sm" onClick={() => printDoc({ title: `${ta.class_name} – jurnal xülasəsi`, body: head(`${ta.class_name} – ${ta.subject}: jurnal xülasəsi (${sem === 'all' ? 'bütün il' : sem + '-ci yarımil'})`, `Yazılmış dərs: ${d.lessons_written}`) + table(['№', 'Şagird', 'Orta qiymət', 'Qiymət sayı', 'Test %', 'Davamiyyət %', 'Ev tapşırığı %', ...(d.exams ? ['Sınaq', 'Sınaq orta %', 'Son sınaq %', 'Dinamika'] : [])], d.students.map((s: any, i: number) => [i + 1, s.full_name, fmtN(s.avg_grade, 2), s.marks, fmtN(s.test_pct), fmtN(s.attendance_pct), fmtN(s.homework_pct), ...(d.exams ? [`${s.exam_count}/${d.exams}`, fmtN(s.exam_pct), fmtN(s.exam_last), s.exam_delta == null ? '' : (s.exam_delta > 0 ? '+' : '') + fmtN(s.exam_delta)] : [])]), [2, 3, 4, 5, 6, 7, 8, 9, 10]) + (d.exams ? '<p>Sınaq imtahanları formativ orta qiymətə daxil deyil – ayrıca göstərilir.</p>' : '') })}>Çap / PDF</button></div>}
+      {d && <div className="row"><p className="muted small grow">Yazılmış dərs: {d.lessons_written}</p><button className="btn sm" onClick={() => printDoc({ signers: sg(), title: `${ta.class_name} – jurnal xülasəsi`, body: head(`${ta.class_name} – ${ta.subject}: jurnal xülasəsi (${sem === 'all' ? 'bütün il' : sem + '-ci yarımil'})`, `Yazılmış dərs: ${d.lessons_written}`) + table(['№', 'Şagird', 'Orta qiymət', 'Qiymət sayı', 'Test %', 'Davamiyyət %', 'Ev tapşırığı %', ...(d.exams ? ['Sınaq', 'Sınaq orta %', 'Son sınaq %', 'Dinamika'] : [])], d.students.map((s: any, i: number) => [i + 1, s.full_name, fmtN(s.avg_grade, 2), s.marks, fmtN(s.test_pct), fmtN(s.attendance_pct), fmtN(s.homework_pct), ...(d.exams ? [`${s.exam_count}/${d.exams}`, fmtN(s.exam_pct), fmtN(s.exam_last), s.exam_delta == null ? '' : (s.exam_delta > 0 ? '+' : '') + fmtN(s.exam_delta)] : [])]), [2, 3, 4, 5, 6, 7, 8, 9, 10]) + (d.exams ? '<p>Sınaq imtahanları formativ orta qiymətə daxil deyil – ayrıca göstərilir.</p>' : '') })}>Çap / PDF</button></div>}
       <div className="tbl-wrap"><table><thead><tr><th>Şagird</th><th className="r">Orta qiymət</th><th className="r">Qiymət sayı</th><th className="r">Test %</th><th className="r">Davamiyyət %</th><th className="r">Ev tapşırığı %</th>
           {d?.exams > 0 && <><th className="r sinaq-col">Sınaq</th><th className="r sinaq-col">Sınaq orta %</th><th className="r sinaq-col">Son sınaq %</th><th className="r sinaq-col">Dinamika</th></>}</tr></thead>
         <tbody>{d?.students.map((s: any) => (
@@ -429,7 +435,7 @@ function StudentsLevels({ ta }: { ta: MyLesson }) {
       <ErrorBox error={err} />
       <div className="row" style={{ marginBottom: 10 }}>
         {counts.map(([k, n]) => <Pill key={k} tone={tone(k)}>{k}: {n}</Pill>)}
-        <button className="btn sm" onClick={() => printDoc({ title: `${ta.class_name} – şagirdlər və səviyyələr`, body: head(`${ta.class_name} – şagirdlər: IX sinif balları və səviyyə`) + table(['№', 'Şagird', 'Tədris dili', 'Riyaziyyat', 'Xarici dil', 'Səviyyə'], rows.map((r: any, i: number) => [i + 1, r.full_name, fmtN(r.score_language), fmtN(r.ix_math), fmtN(r.score_foreign), (r.level || '—') + (r.manual_level ? ' (müəllim)' : '')]), [2, 3, 4]) })}>Çap / PDF</button>
+        <button className="btn sm" onClick={() => printDoc({ signers: sg(), title: `${ta.class_name} – şagirdlər və səviyyələr`, body: head(`${ta.class_name} – şagirdlər: IX sinif balları və səviyyə`) + table(['№', 'Şagird', 'Tədris dili', 'Riyaziyyat', 'Xarici dil', 'Səviyyə'], rows.map((r: any, i: number) => [i + 1, r.full_name, fmtN(r.score_language), fmtN(r.ix_math), fmtN(r.score_foreign), (r.level || '—') + (r.manual_level ? ' (müəllim)' : '')]), [2, 3, 4]) })}>Çap / PDF</button>
         <span className="small muted">Avtomatik: nəticələrə görə (yoxdursa IX riyaziyyat balı: ≥70 güclü, 40–70 orta, &lt;40 zəif). Müəllim əl ilə dəyişə bilər.</span>
       </div>
       <div className="tbl-wrap"><table style={{ minWidth: 760 }}>
@@ -460,14 +466,13 @@ function Grid({ ta }: { ta: MyLesson }) {
   const title = `${MN[Number(month.slice(5)) - 1]} ${month.slice(0, 4)}`
   const cellText = (c: any) => [...c.marks, c.att, c.exam && c.exam.split(': ')[1], c.sinaq].filter(Boolean).join(' ')
   const print = () => printDoc({
-    landscape: true, title: `${ta.class_name} – jurnal ${title}`,
+    landscape: true, signers: sg(), title: `${ta.class_name} – jurnal ${title}`,
     body: head(`${ta.class_name} – ${ta.subject}: jurnal səhifəsi`, title) +
       table(['№', 'Şagird', ...d.columns.map((c: any) => (c.sinaq ? 'Sınaq ' : '') + fmtDate(c.date).slice(0, 5)), 'Orta', 'Buraxıb', ...(d.exams ? ['Sınaq orta %'] : [])],
         d.rows.map((r: any, i: number) => [i + 1, r.full_name, ...r.cells.map(cellText), fmtN(r.avg, 2), r.missed || '', ...(d.exams ? [fmtN(r.exam_pct)] : [])])) +
-      '<h2>Keçilən mövzular və ev tapşırıqları</h2>' +
       (d.exams ? '<h2>Sınaq imtahanları</h2>' + table(['Tarix', 'Sınaq'], d.columns.filter((c: any) => c.sinaq).map((c: any) => [fmtDate(c.date), c.sinaq])) : '') +
-      '<h2>Dərslər</h2>' + table(['Tarix', 'Saat', '№', 'Mövzu', 'Ev tapşırığı'], d.columns.filter((c: any) => c.written).map((c: any) => [fmtDate(c.date), c.period, c.seq ?? '', (c.assessment ? c.assessment + ' · ' : '') + (c.topic || ''), c.homework || ''])) +
-      '<p>q – qayıb, ü – üzrlü, g – gecikmə; KSQ/BSQ qiyməti həmin günün sütunundadır. «Sınaq» sütunu – sınaq imtahanının faizi (keçirildiyi gün; formativ ortaya daxil deyil), «yox» – yazmayıb.</p><p class="sign">Müəllim: ____________</p>',
+      '<h2>Keçilən mövzular və ev tapşırıqları</h2>' + table(['Tarix', 'Saat', '№', 'Mövzu', 'Ev tapşırığı'], d.columns.filter((c: any) => c.written).map((c: any) => [fmtDate(c.date), c.period, c.seq ?? '', (c.assessment ? c.assessment + ' · ' : '') + (c.topic || ''), c.homework || ''])) +
+      '<p class="note">q – qayıb, ü – üzrlü, g – gecikmə; KSQ/BSQ qiyməti həmin günün sütunundadır. «Sınaq» sütunu – sınaq imtahanının faizi (keçirildiyi gün; formativ ortaya daxil deyil), «yox» – yazmayıb.</p>',
   })
   return (
     <>

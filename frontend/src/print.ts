@@ -32,6 +32,7 @@ body{font:12px/1.4 "Times New Roman","Liberation Serif","Tinos",serif;color:#000
 h1{font-size:16px;text-align:center;margin:0 0 4px}
 h2{font-size:14px;margin:14px 0 6px;page-break-after:avoid}
 h3{font-size:12.5px;margin:10px 0 4px;page-break-after:avoid}
+.jg{font-size:10.5px}.jg th,.jg td{padding:2px 3px;text-align:center}.jg td:nth-child(2),.jg th:nth-child(2){text-align:left;white-space:nowrap}
 .grid-p td{height:7.5mm}.grid-p td:first-child{width:8mm;text-align:center}.grid-p td:nth-child(2){white-space:nowrap}
 .heat-p{font-size:9.5px;table-layout:auto}.heat-p th,.heat-p td{padding:1px 2px;text-align:center}.heat-p td:first-child{text-align:left;white-space:nowrap}.heat-p th:first-child{text-align:left}
 .sch{text-align:center;font-weight:700;margin:0 0 2px}

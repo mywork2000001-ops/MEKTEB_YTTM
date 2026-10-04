@@ -54,3 +54,15 @@ Bütün hesabat çaplarında `signers` (fənn müəllimi / sinif rəhbəri / dir
 ## 4. Qəbul meyarları
 Hər qrup ən azı bir rəsmi sənəddə görünür (məktəb, sinif rəhbəri, analitika); bölünən fənn sinif cədvəlində bir sütundur;
 bütün hesabat çapları eyni şablondadır; toplu çap işləyir; bütün testlər keçir.
+
+## 5. Jurnal çapı – audit və genişləndirmə (04.10.2026)
+
+| № | Tapıntı | Həll |
+|---|---|---|
+| J1 | «Gündəlik» vərəqinin çapı yox idi | Gündəlik dərs vərəqi: mövzu, ev tapşırığı, davamiyyət, qiymət; «boş vərəq» – internet olmayanda kağızda doldurmaq üçün |
+| J2 | Jurnal səhifəsi yalnız bir ay | Dövr: bu ay / I yarımil / II yarımil / bütün il – hər ay yeni səhifədən, 22-dən çox dərs olanda cədvəl hissələrə bölünür, albom A4 |
+| J3 | Jurnal səhifəsi çapında başlıqlar qarışıq idi («Keçilən mövzular» boş qalırdı) | Başlıqlar düzəldildi; qeyd sətri «note» üslubunda |
+| J4 | Şagird adı sıxılıb iki sətrə keçirdi | Jurnal cədvəli üslubu: ad bir sətirdə, xanalar mərkəzdə |
+| J5 | Yarımil, mövzu icrası, xülasə, şagirdlər, KSQ/BSQ çaplarında imza yox idi | Hamısında fənn müəllimi + direktor müavini |
+| J6 | Bütün sinif və qrupları birdən çap etmək olmurdu | Jurnal → «Çap / PDF»: seçilən bölmələr bir sənəddə (jurnal kitabçası), «Bütün sinif və qruplarım» – hər biri yeni səhifədən |
+| J7 | Mövzu icrası çapında göstəricilər yox idi | Keçilib / keçilməli / fərq / gecikir / sığmır göstəriciləri + dövr üzrə mövzular |
