@@ -3,8 +3,8 @@ import { get, post, put } from '../../api'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, levelTone, Loading, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
 import { kindLabel, usePick } from './common'
 import { useNavigate } from 'react-router-dom'
-import { fmtD, fmtN, head, printDoc, table } from '../../print'
 import { NewStudent } from './SettingsRoster'
+import ClassListPrint from './ClassListPrint'
 
 type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; students: number; can_open: boolean; split_with: string | null
   teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number } | null; exam_date: string | null; homeroom?: { id: number; name: string } | null }
@@ -39,13 +39,14 @@ export default function Classes() {
           {mine.length === 0 && <div className="empty">Hələ heç bir sinfə qoşulmamısınız – Tənzimləmələr → Siniflər.</div>}
         </div>
       )}
-      {!cur ? <PickFirst text="Şagirdləri görmək üçün sinif seçin" /> : <StudentList cls={cur} onOpen={setCard} />}
+      {!cur ? <PickFirst text="Şagirdləri görmək üçün sinif seçin" /> : <StudentList cls={cur} all={mine} onOpen={setCard} />}
       {card && <StudentCard s={card} onClose={() => setCard(null)} />}
     </>
   )
 }
 
-function StudentList({ cls, onOpen }: { cls: Cls; onOpen: (s: Stud) => void }) {
+function StudentList({ cls, all, onOpen }: { cls: Cls; all: Cls[]; onOpen: (s: Stud) => void }) {
+  const [print, setPrint] = useState(false)
   const [rows, err, , reload] = useLoad<Stud[]>(() => get('/api/students', { class_id: cls.id }), [cls.id])
   const [q, setQ] = useState('')
   const [inv, setInv] = useState(false)
@@ -56,8 +57,9 @@ function StudentList({ cls, onOpen }: { cls: Cls; onOpen: (s: Stud) => void }) {
   const canAdd = cls.kind !== 'qrup' || !!cls.parent_id
   return (
     <>
-      <h2 className="sec">{cls.name} <small>ID: {cls.code} · {rows?.length ?? ''} şagird</small><span className="row" style={{ marginLeft: 'auto' }}>{canAdd && <button className="btn sm primary" onClick={() => setAdd(true)}>+ Şagird</button>}{rows && <button className="btn sm" onClick={() => printDoc({ title: `${cls.name} – şagird siyahısı`, body: head(`${cls.name} sinfi – şagird siyahısı`, `${rows.length} şagird`) + table(['№', 'Şagird', 'Doğum tarixi', 'Giriş kodu', 'IX: dil', 'IX: riyaziyyat', 'IX: xarici', 'Yekun'], rows.map((s, i) => [i + 1, s.full_name, fmtD(s.birth_date), s.portal_code, fmtN(s.score_language), fmtN(s.score_math), fmtN(s.score_foreign), fmtN(s.score_total)]), [4, 5, 6, 7]) })}>Çap / PDF</button>}{cls.kind !== 'qrup' && <button className="btn sm" onClick={() => setInv(true)}>Qeydiyyat linki</button>}</span></h2>
+      <h2 className="sec">{cls.name} <small>ID: {cls.code} · {rows?.length ?? ''} şagird</small><span className="row" style={{ marginLeft: 'auto' }}>{canAdd && <button className="btn sm primary" onClick={() => setAdd(true)}>+ Şagird</button>}<button className="btn sm" onClick={() => setPrint(true)}>Çap / PDF</button>{cls.kind !== 'qrup' && <button className="btn sm" onClick={() => setInv(true)}>Qeydiyyat linki</button>}</span></h2>
       {inv && <Invites cls={cls} onClose={() => setInv(false)} />}
+      {print && <ClassListPrint cls={cls} all={all} onClose={() => setPrint(false)} />}
       {add && <Drawer title={`${cls.name} (ID: ${cls.code}) – yeni şagird`} onClose={() => setAdd(false)}>
         {cls.parent_id && <p className="small muted">Şagird ana sinfə yazılır və dərhal bu bölünmə qrupuna üzv olur.</p>}
         <NewStudent classId={cls.parent_id || cls.id} groupId={cls.parent_id ? cls.id : undefined} className={cls.name} onDone={() => reload()} /></Drawer>}

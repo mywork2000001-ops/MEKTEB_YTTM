@@ -178,8 +178,8 @@ function CrossClass({ ta, onClose }: { ta: MyLesson; onClose: () => void }) {
       <div className="stack">
         <p className="small muted" style={{ margin: 0 }}>Seçilən siniflərdə bu səviyyədəki şagirdlərdən sərbəst tədris qrupu yaranır (məs. buraxılışa hazırlıq,
           olimpiada, təkrar). Ona onlayn test və əlavə məşğələ təyin edə bilərsiniz; şagirdlər öz siniflərində qalır.</p>
-        <Field label="Səviyyə"><Seg value={level} onChange={v => { setLevel(v); setName(n => n.replace(/(zəif|orta|güclü) qrup$/i, `${v.toLowerCase()} qrup`)) }}
-          options={[['Zəif', 'Zəif'], ['Orta', 'Orta'], ['Güclü', 'Güclü']]} /></Field>
+        <div className="stack" style={{ gap: 5 }}><span className="small muted">Səviyyə</span><Seg value={level} onChange={v => { setLevel(v); setName(n => n.replace(/(zəif|orta|güclü) qrup$/i, `${v.toLowerCase()} qrup`)) }}
+          options={[['Zəif', 'Zəif'], ['Orta', 'Orta'], ['Güclü', 'Güclü']]} /></div>
         <Field label="Qrupun adı"><input value={name} maxLength={60} onChange={e => setName(e.target.value)} /></Field>
         <fieldset><legend>Siniflər ({ta.subject})</legend>
           {same.map(l => (
