@@ -229,7 +229,7 @@ function ResendDrawer({ students, onClose, onDone }: { students: MStud[]; onClos
     const m = new Map<string, { ta_id: number; task_id: number; student_ids: number[]; title: string }>()
     for (const s of students) for (const t of (onlyLast ? s.tests.slice(-1) : s.tests)) {
       const k = `${t.ta_id}:${t.task_id}`
-      const it = m.get(k) || { ta_id: t.ta_id, task_id: t.task_id, student_ids: [], title: t.title }
+      const it = m.get(k) || { ta_id: t.ta_id, task_id: t.task_id, student_ids: [], title: `${t.title} · ${s.class_name}` }
       it.student_ids.push(s.student_id); m.set(k, it)
     }
     return [...m.values()]
