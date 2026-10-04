@@ -131,7 +131,7 @@ def conflicts(db: Session, user: User, ta_ids: list[int], schedule: list[dict]) 
         for t in tas:
             cls = db.get(SchoolClass, t.class_id)
             for p in (t.slots or {}).get(str(sl['weekday']), []):
-                if _overlap(sl['start'], sl['end'], bell(db, cls, p)):
+                if _overlap(sl['start'], sl['end'], bell(db, cls, p, t, wd=sl['weekday'])):
                     who = 'sizin dərsiniz' if t.teacher_id == user.id else f'{cls.name} sinfinin dərsi'
                     out.append(f'{DAYS[sl["weekday"]]} {sl["start"]}–{sl["end"]}: {who} ({cls.name}, {t.subject}, {p}-ci saat)')
     return list(dict.fromkeys(out))

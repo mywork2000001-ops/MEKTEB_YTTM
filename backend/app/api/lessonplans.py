@@ -165,7 +165,7 @@ def _context(db: Session, user: User, ctx, s, notes: str | None) -> tuple[dict, 
     c = {'kind': ctx.cls.kind, 'levels': _composition(db, ctx), 'school': header_school(user), 'teacher': user.full_name, 'subject': ctx.ta.subject,
          'class_name': ctx.cls.name, 'group': ctx.cls.kind == 'qrup', 'students': len(roster(db, ctx.ta)),
          'date': s.date.isoformat(), 'date_text': s.date.strftime('%d.%m.%Y'), 'weekday': DAYS_FULL[s.date.weekday()],
-         'period': s.period, 'time': bell(db, ctx.cls, s.period), 'minutes': dp.LESSON_MIN,
+         'period': s.period, 'time': bell(db, ctx.cls, s.period, ctx.ta, s.date), 'minutes': dp.LESSON_MIN,
          'semester': pl.semester, 'seq': pl.seq, 'total': len(ctx.lessons), 'section': pl.section,
          'section_pos': (sec.index(pl) + 1) if sec else None, 'section_len': len(sec) or None,
          'topic': pl.topic, 'standards': list(pl.standards or []), 'assessment_type': pl.assessment_type,
@@ -235,7 +235,7 @@ def _items(db: Session, tas, a: dt.date, b: dt.date) -> list[dict]:
         for s in slots:
             pl = taught_lesson(ctx, s, entries.get((s.date, s.period)))
             items.append({'ta_id': ta.id, 'class_name': ctx.cls.name, 'subject': ta.subject, 'date': s.date,
-                          'weekday': WEEKDAYS[s.date.weekday()], 'period': s.period, 'time': bell(db, ctx.cls, s.period),
+                          'weekday': WEEKDAYS[s.date.weekday()], 'period': s.period, 'time': bell(db, ctx.cls, s.period, ctx.ta, s.date),
                           'held': s.held,
                           'lesson': pl and {'seq': pl.seq, 'topic': pl.topic, 'section': pl.section,
                                             'standards': pl.standards, 'assessment_type': pl.assessment_type,

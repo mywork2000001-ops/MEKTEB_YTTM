@@ -108,7 +108,7 @@ def day(date: dt.date | None = None, user: User = Depends(student_only), db: Ses
         for _, period, sl in _slots_with_entries(ctx, d, d, entries):
             e = entries.get((d, period))
             pl = taught_lesson(ctx, sl, e)
-            item = {'date': d, 'period': period, 'time': bell(db, c, period), 'subject': ta.subject, 'class_name': c.name,
+            item = {'date': d, 'period': period, 'time': bell(db, c, period, ta, d), 'subject': ta.subject, 'class_name': c.name,
                     'teacher': _teacher(db, ta), **_plan_fields(pl, sl, e), 'homework': e.homework if e else None,
                     'attendance': None, 'marks': [], 'homework_check': None}
             if e:
@@ -142,7 +142,7 @@ def plan(view: str = 'week', date: dt.date | None = None, user: User = Depends(s
             e = entries.get((d_, period))
             pl = taught_lesson(ctx, sl, e)
             items.append({'date': d_, 'weekday': WEEKDAYS[d_.weekday()], 'period': period,
-                          'time': bell(db, c, period), 'subject': ta.subject, 'class_name': c.name,
+                          'time': bell(db, c, period, ta, d_), 'subject': ta.subject, 'class_name': c.name,
                           'group': c.kind == 'qrup',
                           **_plan_fields(pl, sl, e), 'homework': e.homework if e else None})
     items.sort(key=lambda x: (x['date'], x['time'] or '', x['period']))
@@ -213,7 +213,7 @@ def upcoming(user: User = Depends(student_only), db: Session = Depends(get_db)):
         if hws and after:
             homework.append({'subject': ta.subject, 'class_name': c.name, 'homework': '; '.join(dict.fromkeys(hws)),
                              'given': last_day, 'due': after.date, 'due_period': after.period,
-                             'due_time': bell(db, c, after.period)})
+                             'due_time': bell(db, c, after.period, ta, after.date)})
     exams.sort(key=lambda x: x['date'])
     homework.sort(key=lambda x: (x['due'], x['due_time'] or ''))
     return {'today': d, 'exams': exams, 'homework': homework}

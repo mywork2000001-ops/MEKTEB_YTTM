@@ -24,7 +24,14 @@ router = APIRouter(prefix='/api', tags=['plan'])
 WEEKDAYS = ['B.e.', 'Ç.a.', 'Ç.', 'C.a.', 'C.', 'Ş.', 'B.']     # Ş./B. – yalnız fərdi məkanda
 
 
-def bell(db: Session, cls: SchoolClass, period: int) -> str | None:
+def bell(db: Session, cls: SchoolClass, period: int, ta: TeachingAssignment | None = None, d: dt.date | None = None,
+         wd: int | None = None) -> str | None:
+    """Dərsin vaxtı: fərdi qrupun real vaxtı (ta.times, gün + sıra) → sinfin zəngi → məktəbin zəngi."""
+    if ta is not None and ta.times:
+        w = d.weekday() if d is not None else wd
+        t = ta.times.get(f'{w}:{period}') if w is not None else None
+        if t:
+            return t
     if cls.bells and str(period) in cls.bells:
         return cls.bells[str(period)]
     s = db.get(School, cls.school_id)
@@ -68,7 +75,7 @@ def plan_view(ta_id: int, view: str = 'week', date: dt.date | None = None, user:
     except ValueError:
         raise HTTPException(400, 'görünüş: day, week, month, semester')
     items = [{'date': s.date, 'weekday': WEEKDAYS[s.date.weekday()], 'period': s.period,
-              'time': bell(db, ctx.cls, s.period), 'held': s.held, 'shift': s.shift,
+              'time': bell(db, ctx.cls, s.period, ctx.ta, s.date), 'held': s.held, 'shift': s.shift,
               'lesson': lesson_out(ctx.lesson_for(s))} for s in ctx.slots if a <= s.date <= b]
     from .topic_tests import topic_tests
     tests = topic_tests(db, ta, {i['lesson']['id'] for i in items if i['lesson']})
@@ -260,7 +267,7 @@ def timetable(date: dt.date | None = None, user: User = Depends(staff), db: Sess
                 pl = ctx.lesson_for(s)
                 grid[str(s.date)].setdefault(str(s.period), []).append({
                     'ta_id': ta.id, 'class_name': ctx.cls.name, 'subject': ta.subject,
-                    'time': bell(db, ctx.cls, s.period), 'topic': pl.topic if pl else None,
+                    'time': bell(db, ctx.cls, s.period, ctx.ta, s.date), 'topic': pl.topic if pl else None,
                     'assessment_type': pl.assessment_type if pl else None, 'held': s.held})
     # şənbə/bazar – yalnız həmin gün dərs varsa (fərdi qrup); məktəb həftəsi 5 gün qalır
     return {'week_start': a, 'days': [{'date': x, 'weekday': WEEKDAYS[i], 'periods': grid[str(x)]}

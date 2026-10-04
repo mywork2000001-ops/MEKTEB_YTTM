@@ -57,7 +57,7 @@ def day(ta_id: int, date: dt.date | None = None, user: User = Depends(staff), db
     for s in (x for x in ctx.slots if x.date == d):
         e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == d,
                                                  JournalEntry.period == s.period))
-        lessons.append({'period': s.period, 'time': bell(db, ctx.cls, s.period), 'held': s.held, 'shift': s.shift,
+        lessons.append({'period': s.period, 'time': bell(db, ctx.cls, s.period, ctx.ta, s.date), 'held': s.held, 'shift': s.shift,
                         'plan': lesson_out(taught_lesson(ctx, s, e)), 'entry': _entry_payload(db, e),
                         'homework_to_check': _prev_homework(db, ta.id, d, s.period)})
     return {'date': d, 'weekday': WEEKDAYS[d.weekday()],

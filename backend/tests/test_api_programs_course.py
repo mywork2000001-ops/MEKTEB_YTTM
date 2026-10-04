@@ -94,3 +94,36 @@ def test_prep_builtins_and_custom_course(world):
     u = t.put(f"/api/programs/{c['id']}/course", json={'title': 'Olimpiada hazırlığı', 'outline': '# A\nx\ny', 'grade': 8})
     assert u.status_code == 200 and u.json()['topics'] == 2
     assert t.put(f"/api/programs/{prep[9]['id']}/course", json={'title': 'Xxx', 'outline': 'a'}).status_code == 403
+
+
+def test_private_real_times(world):
+    as_, _ = world
+    t, admin = as_('ilqar'), as_('admin')
+    sc = admin.post('/api/classes', json={'name': 'X t'}).json()['id']
+    times = [{'weekday': 1, 'start': '17:00', 'end': '18:30'}, {'weekday': 5, 'start': '10:00', 'end': '11:00'}]
+    assert admin.post(f'/api/classes/{sc}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 2, 'times': times}).status_code == 400
+    a = t.post('/api/classes', json={'name': 'IX hazırlıq', 'kind': 'adi', 'private': True}).json()['id']
+    b = t.post('/api/classes', json={'name': 'XI hazırlıq', 'kind': 'adi', 'private': True}).json()['id']
+    bad = [{'weekday': 1, 'start': '17:00', 'end': '16:00'}]
+    assert t.post(f'/api/classes/{a}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'times': bad}).status_code == 400
+    over = [{'weekday': 1, 'start': '17:00', 'end': '18:30'}, {'weekday': 1, 'start': '18:00', 'end': '19:00'}]
+    assert t.post(f'/api/classes/{a}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 2, 'times': over}).status_code == 400
+    r = t.post(f'/api/classes/{a}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'times': times})
+    assert r.status_code == 200, r.text
+    m = r.json()['mine']
+    assert m['weekly_hours'] == 2 and m['slots'] == {'1': [0], '5': [0]}
+    assert [(x['weekday'], x['start'], x['end']) for x in m['times']] == [(1, '17:00', '18:30'), (5, '10:00', '11:00')]
+    # başqa fərdi qrupla toqquşma
+    r2 = t.post(f'/api/classes/{b}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'times': [{'weekday': 1, 'start': '18:00', 'end': '19:00'}]})
+    assert r2.status_code == 409 and 'IX hazırlıq' in r2.json()['detail']
+    # jurnal və həftəlik cədvəl real vaxtı göstərir
+    ta = m['ta_id']
+    day = t.get(f'/api/journal/{ta}/day', params={'date': '2026-10-06'}).json()
+    assert [l['time'] for l in day['lessons']] == ['17:00–18:30']
+    tt = t.get('/api/timetable', params={'date': '2026-10-06'}).json()
+    sat = next(d for d in tt['days'] if d['weekday'] == 'Ş.')
+    assert [c['time'] for cs in sat['periods'].values() for c in cs] == ['10:00–11:00']
+    # vaxt əlavə olunanda köhnə dərs öz sırasını saxlayır
+    more = [{'weekday': 1, 'start': '15:00', 'end': '16:00'}] + times
+    m2 = t.post(f'/api/classes/{a}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 3, 'times': more}).json()['mine']
+    assert {(x['weekday'], x['start']): x['period'] for x in m2['times']}[(1, '17:00')] == 0 and m2['weekly_hours'] == 3

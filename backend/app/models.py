@@ -106,6 +106,8 @@ class SchoolClass(Base, Archivable):
     split_with: Mapped[str | None] = mapped_column(String(120))          # bölünmə: paralel fənn (Biologiya – Şərqiyə m.)
     utis_class: Mapped[str | None] = mapped_column(String(20))           # UTİS: «10 e»
     grade: Mapped[int | None] = mapped_column(Integer)                   # sinif rəqəmi (IX a -> 9); eyni mövzulu siniflər üçün
+    # fərdi hazırlıq qrupunun məqsədi: sinif | buraxilis9 | buraxilis11 | qebul | olimpiada | diger (məktəb sinfində – None)
+    purpose: Mapped[str | None] = mapped_column(String(20))
     exam_date: Mapped[dt.date | None] = mapped_column(Date)              # buraxılış/qəbul imtahanı (sayğac)
     bells: Mapped[dict | None] = mapped_column(JSON)                     # sinfin öz zəngi (XI peşə)
     homeroom_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'))   # sinif rəhbəri (yalnız bütöv sinif)
@@ -159,6 +161,10 @@ class TeachingAssignment(Base, Archivable):
     # kurs müddəti (fərdi qrup: məs. noyabr–yanvar); None – tədris ilinin əvvəli / sonu
     starts_on: Mapped[dt.date | None] = mapped_column(Date)
     ends_on: Mapped[dt.date | None] = mapped_column(Date)
+    # fərdi qrupun real dərs vaxtları: {"<həftə günü>:<sıra>": "17:00–18:30"}; None – məktəb zəngi (slots-dakı sıra = dərs saatı)
+    times: Mapped[dict | None] = mapped_column(JSON)
+    # əsas proqramdan seçilmiş bölmələr (None – hamısı)
+    program_sections: Mapped[list | None] = mapped_column(JSON)
     __table_args__ = (UniqueConstraint('teacher_id', 'class_id', 'subject'),)
     teacher: Mapped[User] = relationship()
     cls: Mapped[SchoolClass] = relationship()
@@ -195,6 +201,7 @@ class AssignmentProgram(Base):
     program_id: Mapped[int] = mapped_column(ForeignKey('plan_programs.id', ondelete='CASCADE'))
     level: Mapped[str | None] = mapped_column(String(10))
     note: Mapped[str | None] = mapped_column(String(300))
+    sections: Mapped[list | None] = mapped_column(JSON)                         # seçilmiş bölmələr (None – hamısı)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
     __table_args__ = (UniqueConstraint('assignment_id', 'program_id', 'level'),)
 

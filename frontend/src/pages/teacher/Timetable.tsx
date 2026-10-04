@@ -1,3 +1,4 @@
+import { docCtx } from '../../doccontext'
 // Həftəlik dərs cədvəli – məktəb cədvəli üslubunda: sətir = real vaxt (08:00, 08:50, …), sütun = gün,
 // nahar fasiləsi ayrıca sətir, boş saat «Sərbəst», hər sinfin sabit rəngi, içində perspektiv plandan mövzu.
 import { useMemo, useState } from 'react'
@@ -23,6 +24,7 @@ export default function Timetable() {
   const shift = (n: number) => { const x = new Date(date + 'T00:00'); x.setDate(x.getDate() + 7 * n); setDate(isoDate(x)) }
   const todayIso = isoDate(new Date())
 
+  const priv = docCtx.private                       // fərdi hazırlıq: real vaxtlar, məktəb zəngi və «nahar fasiləsi» yoxdur
   const { rows, byTime, colors, totals } = useMemo(() => {
     const byTime = new Map<string, Map<string, (Cell & { p: number })[]>>()   // vaxt -> tarix -> dərslər
     const times = new Set<string>()
@@ -41,11 +43,11 @@ export default function Timetable() {
         }
       }
     }
-    for (const b of Object.values<string>(school?.bells || {})) if (b && /\d:\d\d/.test(b)) times.add(b)
+    if (!priv) for (const b of Object.values<string>(school?.bells || {})) if (b && /\d:\d\d/.test(b)) times.add(b)
     const sorted = [...times].filter(t => /\d:\d\d/.test(t)).sort((a, b) => startOf(a) - startOf(b))
     const rows: Row[] = []
     sorted.forEach((t, i) => {
-      if (i > 0) {
+      if (i > 0 && !priv) {
         const gap = startOf(t) - endOf(sorted[i - 1])
         if (gap >= 20) {
           const f = (x: number) => `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`
@@ -57,12 +59,12 @@ export default function Timetable() {
     classes.sort((a, b) => a.localeCompare(b, 'az'))
     const colors = Object.fromEntries(classes.map((c, i) => [c, PALETTE[i % PALETTE.length]]))
     return { rows, byTime, colors, totals }
-  }, [d, school])
+  }, [d, school, priv])
 
   const weekTotal = [...totals.values()].reduce((a, b) => a + b, 0)
   const CellBox = ({ c }: { c: Cell & { p: number } }) => (
     <div className="ttc" style={{ ['--cc' as any]: colors[c.class_name] }}>
-      <div className="ttc-h"><b>{c.class_name}</b><span>{ord(c.p)} saat</span></div>
+      <div className="ttc-h"><b>{c.class_name}</b><span>{priv ? c.time : `${ord(c.p)} saat`}</span></div>
       {c.subject !== 'Riyaziyyat' && <div className="small">{c.subject}</div>}
       <div className="ttc-t">{c.topic || <span className="muted">plan yüklənməyib</span>}</div>
       {(c.assessment_type === 'KSQ' || c.assessment_type === 'BSQ' || c.held) && (

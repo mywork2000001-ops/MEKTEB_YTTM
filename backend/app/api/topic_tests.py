@@ -38,9 +38,9 @@ def norm_topic(s: str | None) -> str:
     return re.sub(r'\s+', ' ', s).strip()
 
 
-def _lesson_end(db: Session, cls: SchoolClass, d: dt.date, period: int) -> dt.datetime:
-    """Dərsin bitmə anı (sinfin / məktəbin zəngi); zəng yoxdursa – 15:00."""
-    t = bell(db, cls, period) or ''
+def _lesson_end(db: Session, cls: SchoolClass, d: dt.date, period: int, ta=None) -> dt.datetime:
+    """Dərsin bitmə anı (fərdi qrupun vaxtı / sinfin / məktəbin zəngi); zəng yoxdursa – 15:00."""
+    t = bell(db, cls, period, ta, d) or ''
     m = re.search(r'(\d{1,2}):(\d{2})\s*$', t.replace('–', '-'))
     h, mi = (int(m.group(1)), int(m.group(2))) if m else (15, 0)
     return dt.datetime(d.year, d.month, d.day, h, mi, tzinfo=TZ)
@@ -52,7 +52,7 @@ def _defaults(db: Session, ctx, pl_id: int) -> dict:
     if not slots:
         return {'working_date': None, 'period': None, 'opens_at': None, 'closes_at': None}
     s = slots[-1]
-    o = _lesson_end(db, ctx.cls, s.date, s.period)
+    o = _lesson_end(db, ctx.cls, s.date, s.period, ctx.ta)
     c = dt.datetime.combine(s.date + dt.timedelta(days=1), dt.time(22, 0), tzinfo=TZ)
     return {'working_date': s.date, 'period': s.period, 'opens_at': o, 'closes_at': c}
 

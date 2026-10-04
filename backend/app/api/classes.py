@@ -72,7 +72,7 @@ def class_out(db: Session, c: SchoolClass, user: User, mine: set[int] | None):
             'teachers': [{'id': i, 'name': nm, 'subject': sb} for i, nm, sb in teachers],
             'mine': my_ta and {'ta_id': my_ta.id, 'subject': my_ta.subject, 'weekly_hours': my_ta.weekly_hours, 'slots': my_ta.slots,
                                'has_summative': my_ta.has_summative, 'program_id': my_ta.program_id,
-                               'starts_on': my_ta.starts_on, 'ends_on': my_ta.ends_on}}
+                               'starts_on': my_ta.starts_on, 'ends_on': my_ta.ends_on, 'times': times_out(my_ta)}}
 
 
 @router.get('')
@@ -186,6 +186,81 @@ def update_class(cid: int, body: ClassPatch, user: User = Depends(settings_unloc
 
 
 # ---------------------------------------------------------------- qoşulma (müəllim – sinif – fənn)
+class TimeIn(BaseModel):
+    """Fərdi qrupun dərsi: həftə günü (0 – B.e. … 6 – B.) və real vaxt."""
+    weekday: int = Field(ge=0, le=6)
+    start: str = Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
+    end: str = Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
+
+
+def _mins(t: str) -> int:
+    h, m = t.split(':')
+    return int(h) * 60 + int(m)
+
+
+def private_times(db: Session, user: User, c: SchoolClass, ta: TeachingAssignment | None, times: list[TimeIn]) -> tuple[dict, dict]:
+    """Fərdi qrupun vaxtlarını yoxlayır və {gün: [sıra]} + {"gün:sıra": "HH:MM–HH:MM"} qaytarır. Mövcud vaxtlar öz
+    sırasını saxlayır (jurnal yazıları (tarix, sıra) ilə bağlıdır), yeni vaxta ən kiçik boş sıra verilir."""
+    from ..domain.calendar import WEEKDAYS
+    rows = sorted(times, key=lambda x: (x.weekday, x.start))
+    for x in rows:
+        dur = _mins(x.end) - _mins(x.start)
+        if dur <= 0:
+            raise HTTPException(400, f'{WEEKDAYS[x.weekday]} {x.start}–{x.end}: bitmə başlamadan sonra olmalıdır')
+        if not 20 <= dur <= 240:
+            raise HTTPException(400, f'{WEEKDAYS[x.weekday]} {x.start}–{x.end}: dərsin müddəti 20 dəqiqə – 4 saat olmalıdır')
+    for a, b in zip(rows, rows[1:]):
+        if a.weekday == b.weekday and _mins(b.start) < _mins(a.end):
+            raise HTTPException(400, f'{WEEKDAYS[a.weekday]}: {a.start}–{a.end} və {b.start}–{b.end} üst-üstə düşür')
+    others = db.scalars(select(TeachingAssignment).join(SchoolClass).where(
+        TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None), SchoolClass.school_id == c.school_id,
+        SchoolClass.archived_at.is_(None), TeachingAssignment.class_id != c.id, TeachingAssignment.times.is_not(None)))
+    for o in others:
+        oc = db.get(SchoolClass, o.class_id)
+        for k, v in (o.times or {}).items():
+            wd = int(k.split(':')[0])
+            s2, e2 = v.split('–')
+            for x in rows:
+                if x.weekday == wd and _mins(x.start) < _mins(e2) and _mins(s2) < _mins(x.end):
+                    raise HTTPException(409, f'{WEEKDAYS[wd]} {x.start}–{x.end} – «{oc.name}» qrupunun dərsi ({v}) ilə üst-üstə düşür')
+    old_by_day: dict[int, dict[str, int]] = {}
+    for k, v in ((ta.times or {}) if ta else {}).items():
+        wd, p = map(int, k.split(':'))
+        old_by_day.setdefault(wd, {})[v] = p
+    slots: dict[str, list[int]] = {}
+    tmap: dict[str, str] = {}
+    for wd in sorted({x.weekday for x in rows}):
+        day = [x for x in rows if x.weekday == wd]
+        if len(day) > 10:
+            raise HTTPException(400, f'{WEEKDAYS[wd]}: gündə ən çox 10 dərs')
+        prev = old_by_day.get(wd, {})
+        used: set[int] = set()
+        assigned: list[tuple[TimeIn, int]] = []
+        for x in day:                                       # vaxtı dəyişməyən dərs köhnə sırasını saxlayır
+            t = f'{x.start}–{x.end}'
+            if t in prev and prev[t] not in used:
+                used.add(prev[t]); assigned.append((x, prev[t]))
+        free = (p for p in range(10) if p not in used)
+        for x in day:
+            if not any(x is a for a, _ in assigned):
+                p = next(free); used.add(p); assigned.append((x, p))
+        slots[str(wd)] = sorted(p for _, p in assigned)
+        for x, p in assigned:
+            tmap[f'{wd}:{p}'] = f'{x.start}–{x.end}'
+    return slots, tmap
+
+
+def times_out(ta: TeachingAssignment) -> list[dict] | None:
+    if not ta.times:
+        return None
+    out = []
+    for k, v in ta.times.items():
+        wd, p = map(int, k.split(':'))
+        s, e = v.split('–')
+        out.append({'weekday': wd, 'period': p, 'start': s, 'end': e})
+    return sorted(out, key=lambda x: (x['weekday'], x['start']))
+
+
 class JoinIn(BaseModel):
     subject: str = Field(min_length=2, max_length=60)
     weekly_hours: int = Field(ge=1, le=12)
@@ -195,6 +270,7 @@ class JoinIn(BaseModel):
     grade: int | None = Field(None, ge=1, le=12)   # sinif rəqəmi müəyyən deyilsə (qarışıq qrup) – proqram uyğunluğu üçün
     starts_on: dt.date | None = None       # kurs müddəti (fərdi qrup); boş – tədris ilinin əvvəli / sonu
     ends_on: dt.date | None = None
+    times: list[TimeIn] | None = None      # fərdi qrup: real dərs vaxtları (slots və weekly_hours bundan hesablanır)
 
     @field_validator('slots')
     @classmethod
@@ -210,9 +286,20 @@ def join_class(cid: int, body: JoinIn, user: User = Depends(settings_unlocked), 
     c = get_or_404(db, SchoolClass, cid, 'Sinif')
     if c.school_id != need_school(user) or c.archived_at:
         raise HTTPException(404, 'Sinif tapılmadı')
+    from ..models import School
+    private = db.get(School, c.school_id).kind == 'private'
+    ta_prev = db.scalar(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id, TeachingAssignment.class_id == cid,
+                                                         TeachingAssignment.subject == body.subject))
+    tmap = None
+    if body.times is not None:
+        if not private:
+            raise HTTPException(400, 'Real dərs vaxtları yalnız fərdi (repetitor) məkanın qruplarında; məktəbdə dərs saatı seçilir')
+        if not body.times:
+            raise HTTPException(400, 'Ən azı bir dərs vaxtı əlavə edin')
+        body.slots, tmap = private_times(db, user, c, ta_prev, body.times)
+        body.weekly_hours = len(tmap)
     if any(k in ('5', '6') for k in body.slots):
-        from ..models import School
-        if db.get(School, c.school_id).kind != 'private':
+        if not private:
             raise HTTPException(400, 'Şənbə və bazar dərsləri yalnız fərdi (repetitor) məkanın siniflərində olur')
     if body.starts_on or body.ends_on:
         from ..models import AcademicYear
@@ -228,7 +315,8 @@ def join_class(cid: int, body: JoinIn, user: User = Depends(settings_unlocked), 
     ta = db.scalar(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id,
                                                     TeachingAssignment.class_id == cid,
                                                     TeachingAssignment.subject == body.subject))
-    vals = body.model_dump(exclude={'program_id', 'grade'})
+    vals = body.model_dump(exclude={'program_id', 'grade', 'times'})
+    vals['times'] = tmap
     if body.grade and not c.grade:
         c.grade = body.grade
     if ta and not ta.archived_at:

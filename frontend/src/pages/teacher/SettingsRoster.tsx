@@ -9,7 +9,8 @@ import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, isoDate, 
 type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; group_type?: 'bölünmə' | 'tədris' | null; split_with: string | null; utis_class: string | null; grade?: number | null; grade_set?: number | null
   exam_date: string | null; bells: Record<string, string> | null; students: number; can_open: boolean; archived: boolean
   homeroom: { id: number; name: string } | null
-  teachers: { id: number; name: string; subject: string }[]; mine: { ta_id: number; subject: string; weekly_hours: number; slots: Record<string, number[]>; has_summative: boolean; program_id: number | null; starts_on?: string | null; ends_on?: string | null } | null }
+  teachers: { id: number; name: string; subject: string }[]; mine: { ta_id: number; subject: string; weekly_hours: number; slots: Record<string, number[]>; has_summative: boolean; program_id: number | null; starts_on?: string | null; ends_on?: string | null
+    times?: { weekday: number; start: string; end: string }[] | null } | null }
 type Stud = { id: number; full_name: string; birth_date: string | null; gender: string | null; class_id: number; class_name: string; portal_code: string
   score_language: number | null; score_math: number | null; score_foreign: number | null; archived: boolean
   left_reason?: string | null; left_on?: string | null }
@@ -207,7 +208,10 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   const [subject, setSubject] = useState(cls.mine?.subject || 'Riyaziyyat')
   const [slots, setSlots] = useState<Record<string, number[]>>(cls.mine?.slots || {})
   const { me } = useAuth()
-  const days = me?.workspace === 'private' ? [...DAYS, 'Ş.', 'B.'] : DAYS   // fərdi qrupda şənbə və bazar da dərs günüdür
+  const priv = me?.workspace === 'private'
+  const days = priv ? [...DAYS, 'Ş.', 'B.'] : DAYS   // fərdi qrupda şənbə və bazar da dərs günüdür
+  // fərdi hazırlıq məktəb deyil: dərs – həftə günü + real başlama/bitmə vaxtı (məktəb zəngi və «saat» yoxdur)
+  const [times, setTimes] = useState<{ weekday: number; start: string; end: string }[]>(cls.mine?.times || [])
   const [summ, setSumm] = useState(cls.mine?.has_summative ?? (cls.kind !== 'qrup' && me?.workspace !== 'private'))   // fərdi sinifdə defolt – yox
   const [err, setErr] = useState<unknown>()
   const [leave, setLeave] = useState(false)
@@ -215,7 +219,8 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   const [course, setCourse] = useState({ from: cls.mine?.starts_on || '', to: cls.mine?.ends_on || '' })   // kurs müddəti (boş – tədris ili)
   const [grade, setGrade] = useState('')            // sinif rəqəmi müəyyən deyilsə (qarışıq qrup) – proqram uyğunluğu üçün
   const [lib] = useLoad<any[]>(() => (cls.mine ? Promise.resolve([]) : get('/api/programs', { class_id: String(cls.id), ...(grade ? { grade_hint: grade } : {}) })), [cls.id, grade])
-  const hours = Object.values(slots).reduce((a, v) => a + v.length, 0)
+  const hours = priv ? times.length : Object.values(slots).reduce((a, v) => a + v.length, 0)
+  const minutes = times.reduce((a, t) => a + Math.max(0, toMin(t.end) - toMin(t.start)), 0)
   const toggle = (d: number, p: number) => {
     const cur = new Set(slots[d] || [])
     cur.has(p) ? cur.delete(p) : cur.add(p)
@@ -223,8 +228,8 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   }
   return (
     <Drawer title={`${cls.name} – ${cls.mine ? 'dərs cədvəli' : 'sinfə qoşul'}`} onClose={onClose}
-      footer={<><span className="small muted grow">Həftədə {hours} saat</span><button className="btn" onClick={onClose}>Ləğv et</button>
-        <button className="btn primary" disabled={!hours || !subject} onClick={async () => { try { await post(`/api/classes/${cls.id}/join`, { subject, weekly_hours: hours, slots, has_summative: summ, program_id: prog ? Number(prog) : null, grade: grade ? Number(grade) : null, starts_on: course.from || null, ends_on: course.to || null }); toast('Yadda saxlanıldı'); onDone() } catch (e) { setErr(e) } }}>Yadda saxla</button></>}>
+      footer={<><span className="small muted grow">{priv ? `Həftədə ${hours} dərs · ${Math.floor(minutes / 60)} saat${minutes % 60 ? ` ${minutes % 60} dəq.` : ''}` : `Həftədə ${hours} saat`}</span><button className="btn" onClick={onClose}>Ləğv et</button>
+        <button className="btn primary" disabled={!hours || !subject} onClick={async () => { try { await post(`/api/classes/${cls.id}/join`, { subject, weekly_hours: hours, slots: priv ? {} : slots, ...(priv ? { times } : {}), has_summative: summ, program_id: prog ? Number(prog) : null, grade: grade ? Number(grade) : null, starts_on: course.from || null, ends_on: course.to || null }); toast('Yadda saxlanıldı'); onDone() } catch (e) { setErr(e) } }}>Yadda saxla</button></>}>
       <div className="stack">
         <Field label="Fənn"><input value={subject} onChange={e => setSubject(e.target.value)} /></Field>
         <label className="check"><input type="checkbox" checked={summ} onChange={e => setSumm(e.target.checked)} /> KSQ/BSQ keçirilir (bölünən qrupda adətən yox)</label>
@@ -236,11 +241,12 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
             {(lib || []).map(p => <option key={p.id} value={p.id}>{p.fits && p.grade ? '✓ ' : ''}{p.title}{p.level ? ` · ${p.level}` : ''}</option>)}</select></Field>}
         {me?.workspace === 'private' || course.from || course.to ? <CourseDates v={course} onChange={setCourse} />
           : <details><summary className="small muted">Kurs müddəti (istəyə görə)</summary><CourseDates v={course} onChange={setCourse} /></details>}
+        {priv ? <LessonTimes v={times} onChange={setTimes} /> : <>
         <p className="small muted">Dərs saatlarını işarələyin (0 – birinci dərsdən əvvəlki saat, məs. XI peşə 08:00):</p>
         <div className="tbl-wrap"><table style={{ minWidth: 0 }}><thead><tr><th>Saat</th>{days.map(d => <th key={d}>{d}</th>)}</tr></thead>
           <tbody>{Array.from({ length: 9 }, (_, p) => (
             <tr key={p}><th className="small">{p}</th>{days.map((_, d) => (
-              <td key={d} style={{ textAlign: 'center' }}><input type="checkbox" aria-label={`${days[d]} ${ord(p)} saat`} checked={(slots[d] || []).includes(p)} onChange={() => toggle(d, p)} /></td>))}</tr>))}</tbody></table></div>
+              <td key={d} style={{ textAlign: 'center' }}><input type="checkbox" aria-label={`${days[d]} ${ord(p)} saat`} checked={(slots[d] || []).includes(p)} onChange={() => toggle(d, p)} /></td>))}</tr>))}</tbody></table></div></>}
         {cls.mine && <fieldset style={{ margin: 0 }}><legend>Perspektiv plan proqramları</legend><ProgramBox ta={cls.mine.ta_id} /></fieldset>}
         <ErrorBox error={err} />
         {cls.mine && (leave
@@ -248,6 +254,41 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
           : <button className="btn danger" onClick={() => setLeave(true)}>Bu sinifdəki dərsimdən çıx</button>)}
       </div>
     </Drawer>
+  )
+}
+
+const DAYS7 = ['Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə', 'Bazar']
+const toMin = (t: string) => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m }
+
+/** Fərdi qrupun dərs vaxtları: gün + başlama + bitmə (günlərə görə fərqli ola bilər). */
+function LessonTimes({ v, onChange }: { v: { weekday: number; start: string; end: string }[]; onChange: (v: { weekday: number; start: string; end: string }[]) => void }) {
+  const set = (i: number, k: 'weekday' | 'start' | 'end', x: string) => onChange(v.map((t, j) => (j === i ? { ...t, [k]: k === 'weekday' ? Number(x) : x } : t)))
+  const add = () => {
+    const last = v[v.length - 1]
+    const dur = last ? toMin(last.end) - toMin(last.start) : 90
+    const wd = last ? (last.weekday + 2) % 7 : 1
+    const st = last?.start || '17:00'
+    const f = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+    onChange([...v, { weekday: wd, start: st, end: f(toMin(st) + (dur > 0 ? dur : 90)) }])
+  }
+  return (
+    <fieldset style={{ margin: 0 }}><legend>Dərs vaxtları</legend>
+      <p className="small muted" style={{ marginTop: 0 }}>Fərdi hazırlıqda məktəb zəngi yoxdur – hər dərsin gününü və real vaxtını yazın (məs. Ç.a. 17:00–18:30, Ş. 10:00–11:30).</p>
+      {v.length === 0 && <p className="small muted">Hələ dərs vaxtı yoxdur.</p>}
+      {v.map((t, i) => {
+        const bad = toMin(t.end) <= toMin(t.start)
+        return (
+          <div key={i} className="row" style={{ gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
+            <select value={t.weekday} onChange={e => set(i, 'weekday', e.target.value)} aria-label="Gün">{DAYS7.map((d, k) => <option key={k} value={k}>{d}</option>)}</select>
+            <input type="time" value={t.start} onChange={e => set(i, 'start', e.target.value)} aria-label="Başlayır" style={{ width: 110 }} />
+            <span>–</span>
+            <input type="time" value={t.end} onChange={e => set(i, 'end', e.target.value)} aria-label="Bitir" style={{ width: 110 }} />
+            <span className="small" style={{ color: bad ? 'var(--bad)' : 'var(--muted)' }}>{bad ? 'bitmə başlamadan sonra olmalıdır' : `${toMin(t.end) - toMin(t.start)} dəq.`}</span>
+            <button className="btn sm ghost right" onClick={() => onChange(v.filter((_, j) => j !== i))} aria-label="Sil">✕</button>
+          </div>)
+      })}
+      <button className="btn sm" onClick={add}>+ Dərs vaxtı</button>
+    </fieldset>
   )
 }
 
