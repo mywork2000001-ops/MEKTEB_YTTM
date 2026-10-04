@@ -3,10 +3,10 @@ import { api, ApiError, del, get, patch, post, put } from '../../api'
 import { useAuth } from '../../auth'
 import { esc, head, printDoc, table } from '../../print'
 import { kindLabel } from './common'
-import { ProgramBox } from './Programs'
+import { ProgramBox, PURPOSES } from './Programs'
 import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, isoDate, Loading, PickFirst, Pill, Seg, toast, useLoad, ord } from '../../ui'
 
-type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; group_type?: 'bölünmə' | 'tədris' | null; split_with: string | null; utis_class: string | null; grade?: number | null; grade_set?: number | null
+type Cls = { id: number; name: string; code: string; kind: string; purpose?: string | null; parent_id: number | null; group_type?: 'bölünmə' | 'tədris' | null; split_with: string | null; utis_class: string | null; grade?: number | null; grade_set?: number | null
   exam_date: string | null; bells: Record<string, string> | null; students: number; can_open: boolean; archived: boolean
   homeroom: { id: number; name: string } | null
   teachers: { id: number; name: string; subject: string }[]; mine: { ta_id: number; subject: string; weekly_hours: number; slots: Record<string, number[]>; has_summative: boolean; program_id: number | null; starts_on?: string | null; ends_on?: string | null
@@ -43,7 +43,7 @@ function ClassesTab() {
       <div className="jlist">
         {(classes || []).map(c => (
           <div className="jrow" key={c.id}>
-            <span><span className="badge" title="Sinif ID-si">{c.code}</span> <b>{c.name}</b> <span className="small muted">{kindLabel(c)}{c.parent_id ? ' · ' + ((classes || []).find(p => p.id === c.parent_id)?.name || '') : ''}{c.split_with ? ' · paralel: ' + c.split_with : ''} · {c.students} şagird</span>
+            <span><span className="badge" title="Sinif ID-si">{c.code}</span> <b>{c.name}</b> <span className="small muted">{kindLabel(c)}{c.parent_id ? ' · ' + ((classes || []).find(p => p.id === c.parent_id)?.name || '') : ''}{c.split_with ? ' · paralel: ' + c.split_with : ''} · {c.students} şagird</span>{c.purpose && <> <Pill tone="acc">{PURPOSES[c.purpose] || c.purpose}</Pill></>}
               <span className="sub small muted"><br />{c.teachers.map(t => `${t.name} (${t.subject})`).join(', ') || 'müəllim yoxdur'}</span>
               {c.kind !== 'qrup' && <span className="sub small muted"><br />Sinif rəhbəri: {c.homeroom?.name || '—'}</span>}</span>
             <span className="row">{c.mine ? <Pill tone="ok">{c.mine.subject} · {c.mine.weekly_hours} saat</Pill> : <Pill>qoşulmamısınız</Pill>}</span>
@@ -97,7 +97,8 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
   // növ: TOM / adi – bütöv sinif; split – sinif daxilində bölünmə qrupu; study – müxtəlif siniflərdən tədris qrupu
   const type0 = !cls ? 'TOM' : cls.kind !== 'qrup' ? cls.kind : cls.parent_id ? 'split' : 'study'
   const [f, setF] = useState({ name: cls?.name || '', code: cls?.code || '', type: type0, parent_id: cls?.parent_id || '', split_with: cls?.split_with || '',
-    utis_class: cls?.utis_class || '', grade: cls?.grade_set ? String(cls.grade_set) : '', exam_date: cls?.exam_date || '', bells: (cls?.bells || {}) as Record<string, string> })
+    utis_class: cls?.utis_class || '', grade: cls?.grade_set ? String(cls.grade_set) : '', exam_date: cls?.exam_date || '', bells: (cls?.bells || {}) as Record<string, string>,
+    purpose: cls?.purpose || '' })
   const [ownBells, setOwnBells] = useState(!!cls?.bells && Object.keys(cls.bells).length > 0)
   const { me } = useAuth()
   const [where, setWhere] = useState<'school' | 'private'>(me?.workspace === 'private' ? 'private' : 'school')
@@ -107,10 +108,12 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
   const [lessons] = useLoad<any[]>(() => get('/api/my/lessons'), [])
   const ta = lessons?.find(l => l.class_id === cls?.id)
   const group = f.type === 'split' || f.type === 'study'
+  const priv = cls ? me?.workspace === 'private' : where === 'private'      // fərdi hazırlıq: məqsəd, real vaxtlar (zəng yox)
   const save = async () => {
     try {
       const body: any = { name: f.name, split_with: f.type === 'split' ? f.split_with || null : null, utis_class: group ? null : f.utis_class || null, grade: f.grade ? Number(f.grade) : null,
-        exam_date: f.exam_date || null, bells: ownBells ? Object.fromEntries(Object.entries(f.bells).filter(([, v]) => v.trim())) : {} }
+        exam_date: f.exam_date || null, bells: ownBells && !priv ? Object.fromEntries(Object.entries(f.bells).filter(([, v]) => v.trim())) : {},
+        ...(priv ? { purpose: f.purpose || null } : {}) }
       if (cls) await patch(`/api/classes/${cls.id}`, { ...body, ...(group ? {} : { kind: f.type }), ...(f.code && f.code !== cls.code ? { code: f.code } : {}) })
       else await post('/api/classes', { ...body, kind: group ? 'qrup' : f.type, parent_id: f.type === 'split' && f.parent_id ? Number(f.parent_id) : null, private: where === 'private' })
       if (!cls && where === 'private' && me?.workspace !== 'private') { toast('Fərdi sinif yaradıldı – fərdi məkana keçilir'); setTimeout(() => location.reload(), 600); return }
@@ -143,18 +146,22 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
             ? <input readOnly value={all.find(c => c.id === cls.parent_id)?.name || ''} />
             : <select value={f.parent_id} onChange={e => setF({ ...f, parent_id: e.target.value })}><option value="">—</option>{all.filter(c => c.kind !== 'qrup').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}</Field>}
           {f.type === 'split' && <Field label="Paralel fənn (sinfin digər yarısı)" full><input value={f.split_with} onChange={e => setF({ ...f, split_with: e.target.value })} placeholder="Biologiya – Şərqiyə müəllimə" /></Field>}
-          {!group && <Field label="UTİS sinfi"><input value={f.utis_class} onChange={e => setF({ ...f, utis_class: e.target.value })} placeholder="10 e" /></Field>}
+          {priv && <Field label="Hazırlıq məqsədi" hint="uyğun proqram (məs. IX buraxılış hazırlığı) qoşulanda öndə çıxır və əvvəlcədən seçilir">
+            <select value={f.purpose} onChange={e => setF({ ...f, purpose: e.target.value })}><option value="">— seçilməyib —</option>
+              {Object.entries(PURPOSES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>}
+          {!group && !priv && <Field label="UTİS sinfi"><input value={f.utis_class} onChange={e => setF({ ...f, utis_class: e.target.value })} placeholder="10 e" /></Field>}
           <Field label="Sinif rəqəmi" hint="boş – addan (IX a → 9); eyni mövzulu sinifləri tapmaq üçün"><select value={f.grade} onChange={e => setF({ ...f, grade: e.target.value })}>
             <option value="">avtomatik{cls?.grade ? ` (${cls.grade})` : ''}</option>{Array.from({ length: 11 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select></Field>
           <Field label="İmtahan tarixi" hint="şagird portalında sayğac"><input type="date" value={f.exam_date} onChange={e => setF({ ...f, exam_date: e.target.value })} /></Field>
         </div>
         {f.type === 'study' && <p className="small muted" style={{ margin: 0 }}>Tədris qrupu (olimpiada, hazırlıq, dərnək): yaratdıqdan sonra «Qoşul» ilə cədvəli, «Üzvlər» ilə müxtəlif siniflərdən şagirdləri seçin.</p>}
+        {priv ? <p className="small muted" style={{ margin: 0 }}>Fərdi hazırlıqda məktəb zəngi yoxdur: dərs günlərini və real vaxtlarını «Qoşul» pəncərəsində yazırsınız.</p> :
         <fieldset><legend>Dərs vaxtları</legend>
           <label className="check"><input type="checkbox" checked={ownBells} onChange={e => setOwnBells(e.target.checked)} /> Bu sinfin öz zəngi var (məs. XI peşə 08:00)</label>
           {ownBells && <div className="fg" style={{ marginTop: 8 }}>{Array.from({ length: 9 }, (_, i) => String(i)).map(k => (
             <Field key={k} label={`${ord(k)} saat`}><input value={f.bells[k] || ''} placeholder="08:00–08:45" onChange={e => setF({ ...f, bells: { ...f.bells, [k]: e.target.value } })} /></Field>))}</div>}
           {!ownBells && <p className="small muted" style={{ margin: '4px 0 0' }}>Məktəbin ümumi zəngi işlənir.</p>}
-        </fieldset>
+        </fieldset>}
         {cls && cls.kind !== 'qrup' && <HomeroomField cls={cls} onDone={onDone} />}
         {cls && ta && (
           <fieldset><legend>Rəsmi perspektiv plan (.docx)</legend>
@@ -219,6 +226,12 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   const [course, setCourse] = useState({ from: cls.mine?.starts_on || '', to: cls.mine?.ends_on || '' })   // kurs müddəti (boş – tədris ili)
   const [grade, setGrade] = useState('')            // sinif rəqəmi müəyyən deyilsə (qarışıq qrup) – proqram uyğunluğu üçün
   const [lib] = useLoad<any[]>(() => (cls.mine ? Promise.resolve([]) : get('/api/programs', { class_id: String(cls.id), ...(grade ? { grade_hint: grade } : {}) })), [cls.id, grade])
+  const [auto, setAuto] = useState(true)
+  useEffect(() => {
+    if (!auto || !lib || !cls.purpose) return
+    const best = lib.find(p => p.purpose_fits && p.fits)
+    setProg(best ? String(best.id) : '')
+  }, [lib, auto, cls.purpose])
   const hours = priv ? times.length : Object.values(slots).reduce((a, v) => a + v.length, 0)
   const minutes = times.reduce((a, t) => a + Math.max(0, toMin(t.end) - toMin(t.start)), 0)
   const toggle = (d: number, p: number) => {
@@ -237,8 +250,9 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
           <select value={grade} onChange={e => setGrade(e.target.value)}><option value="">— müəyyən deyil (qarışıq qrup) —</option>
             {Array.from({ length: 11 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select></Field>}
         {!cls.mine && <Field label="Əsas perspektiv plan proqramı" hint="jurnal və tarixlər ona görə; sinfə uyğun olanlar öndə. Əlavə proqramları qoşulandan sonra əlavə edə bilərsiniz">
-          <select value={prog} onChange={e => setProg(e.target.value)}><option value="">— sonra seçəcəm (və ya Word planı yükləyəcəm) —</option>
-            {(lib || []).map(p => <option key={p.id} value={p.id}>{p.fits && p.grade ? '✓ ' : ''}{p.title}{p.level ? ` · ${p.level}` : ''}</option>)}</select></Field>}
+          <select value={prog} onChange={e => { setAuto(false); setProg(e.target.value) }}><option value="">— sonra seçəcəm (və ya Word planı yükləyəcəm) —</option>
+            {(lib || []).map(p => <option key={p.id} value={p.id}>{p.purpose_fits ? '★ ' : p.fits && p.grade ? '✓ ' : ''}{p.title}{p.level ? ` · ${p.level}` : ''}</option>)}</select></Field>}
+        {!cls.mine && cls.purpose && <p className="small muted" style={{ margin: 0 }}>Qrupun məqsədi: <b>{PURPOSES[cls.purpose] || cls.purpose}</b> – ★ uyğun proqramlar öndədir.</p>}
         {me?.workspace === 'private' || course.from || course.to ? <CourseDates v={course} onChange={setCourse} />
           : <details><summary className="small muted">Kurs müddəti (istəyə görə)</summary><CourseDates v={course} onChange={setCourse} /></details>}
         {priv ? <LessonTimes v={times} onChange={setTimes} /> : <>

@@ -48,7 +48,7 @@ def _workspace(p: PlanProgram) -> str | None:
     return s.kind if s else None
 
 
-def _out(p: PlanProgram, used: dict[int, list[str]], grade: int | None = None) -> dict:
+def _out(p: PlanProgram, used: dict[int, list[str]], grade: int | None = None, purpose: str | None = None) -> dict:
     tpl = p.data.get('template') if p.kind == 'adaptive' else None
     return {'id': p.id, 'title': p.title, 'subject': p.subject, 'grade': p.grade, 'grade_roman': ROMAN.get(p.grade),
             'kind': p.kind, 'source': p.source, 'description': p.description, 'weekly_hours': p.weekly_hours,
@@ -56,7 +56,7 @@ def _out(p: PlanProgram, used: dict[int, list[str]], grade: int | None = None) -
             'course': is_course(p), 'purposes': purposes(p),
             'level': p.level, 'mine': p.owner_id is not None, 'builtin': p.key is not None, 'used_by': used.get(p.id, []),
             'fits': grade is None or p.grade is None or p.grade == grade, 'created_at': p.created_at,
-            'workspace': _workspace(p)}
+            'workspace': _workspace(p), 'purpose_fits': bool(purpose) and purpose in purposes(p)}
 
 
 @router.get('')
@@ -76,14 +76,15 @@ def list_programs(grade: int | None = None, subject: str | None = None, level: s
         st = st.where(PlanProgram.subject == subject)
     if level:
         st = st.where(PlanProgram.level == level)
-    tgrade = None
+    tgrade, tpurpose = None, None
     if ta_id:
         ta = own_assignment(db, user, ta_id)
-        tgrade = class_grade(db, db.get(SchoolClass, ta.class_id))
+        tc = db.get(SchoolClass, ta.class_id)
+        tgrade, tpurpose = class_grade(db, tc), tc.purpose
     elif class_id:                                       # qoşulmazdan əvvəl (sinif/qrup seçilib, dərs bağlılığı hələ yoxdur)
         c = db.get(SchoolClass, class_id)
         if c and c.school_id == user.school_id:
-            tgrade = class_grade(db, c)
+            tgrade, tpurpose = class_grade(db, c), c.purpose
     if tgrade is None and grade_hint:
         tgrade = grade_hint
     used: dict[int, list[str]] = {}
@@ -96,10 +97,11 @@ def list_programs(grade: int | None = None, subject: str | None = None, level: s
                             .join(SchoolClass, SchoolClass.id == TeachingAssignment.class_id).where(TeachingAssignment.teacher_id == user.id, ws_cond(user))):
         used.setdefault(ap.program_id, []).append(f'{c.name} (əlavə{" – " + ap.level if ap.level else ""})')
     private = _is_private(db, user)
-    # uyğun sinif öndə; məktəbdə sinif proqramları kursdan əvvəl, fərdi məkanda – əksinə
-    rows.sort(key=lambda p: (tgrade is not None and p.grade not in (None, tgrade), is_course(p) != private, p.key is None,
-                             p.grade or 0, p.title))
-    return [_out(p, used, tgrade) for p in rows]
+    # qrupun hazırlıq məqsədinə uyğun olanlar öndə, sonra sinfi uyğun olanlar; məktəbdə sinif proqramları kursdan əvvəl,
+    # fərdi məkanda – əksinə
+    rows.sort(key=lambda p: (bool(tpurpose) and tpurpose not in purposes(p), tgrade is not None and p.grade not in (None, tgrade),
+                             is_course(p) != private, p.key is None, p.grade or 0, p.title))
+    return [_out(p, used, tgrade, tpurpose) for p in rows]
 
 
 @router.get('/{pid}')

@@ -127,3 +127,21 @@ def test_private_real_times(world):
     more = [{'weekday': 1, 'start': '15:00', 'end': '16:00'}] + times
     m2 = t.post(f'/api/classes/{a}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 3, 'times': more}).json()['mine']
     assert {(x['weekday'], x['start']): x['period'] for x in m2['times']}[(1, '17:00')] == 0 and m2['weekly_hours'] == 3
+
+
+def test_private_group_purpose_and_program_choice(world):
+    as_, _ = world
+    t, admin = as_('ilqar'), as_('admin')
+    assert admin.post('/api/classes', json={'name': 'IX z', 'purpose': 'buraxilis9'}).status_code == 400   # məktəbdə məqsəd yox
+    g = t.post('/api/classes', json={'name': 'Buraxılış qrupu', 'kind': 'qrup', 'private': True, 'grade': 9, 'purpose': 'buraxilis9'}).json()
+    assert g['purpose'] == 'buraxilis9' and g['grade'] == 9
+    lib = t.get('/api/programs', params={'class_id': g['id']}).json()
+    assert lib[0]['purpose_fits'] and lib[0]['course'] and lib[0]['grade'] == 9
+    q = t.post('/api/classes', json={'name': 'Qəbul qrupu', 'kind': 'qrup', 'private': True, 'grade': 11, 'purpose': 'qebul'}).json()
+    assert t.get('/api/programs', params={'class_id': q['id']}).json()[0]['title'].startswith('Buraxılış və qəbul')
+    r = t.patch(f"/api/classes/{q['id']}", json={'purpose': 'olimpiada'})
+    assert r.status_code == 200 and r.json()['purpose'] == 'olimpiada'
+    # məktəb sinfində (IX) DİM sinif proqramı öndə qalır
+    sc = admin.post('/api/classes', json={'name': 'IX q'}).json()['id']
+    top = admin.get('/api/programs', params={'class_id': sc}).json()[0]
+    assert top['grade'] == 9 and not top['course']

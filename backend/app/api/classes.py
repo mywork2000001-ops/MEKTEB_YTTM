@@ -10,6 +10,8 @@ import datetime as dt
 import re
 
 from fastapi import APIRouter, Depends, HTTPException
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -66,7 +68,7 @@ def class_out(db: Session, c: SchoolClass, user: User, mine: set[int] | None):
         n = db.scalar(select(func.count()).select_from(GroupMember).where(GroupMember.group_id == c.id))
     return {'id': c.id, 'name': c.name, 'code': c.code, 'kind': c.kind, 'parent_id': c.parent_id,
             'group_type': group_type(c),
-            'utis_class': c.utis_class, 'grade': class_grade(db, c), 'grade_set': c.grade, 'exam_date': c.exam_date, 'bells': c.bells, 'split_with': c.split_with,
+            'utis_class': c.utis_class, 'grade': class_grade(db, c), 'grade_set': c.grade, 'purpose': c.purpose, 'exam_date': c.exam_date, 'bells': c.bells, 'split_with': c.split_with,
             'archived': c.archived_at is not None, 'students': n, 'can_open': visible,
             'homeroom': (lambda u: u and {'id': u.id, 'name': u.full_name})(db.get(User, c.homeroom_id) if c.homeroom_id else None),
             'teachers': [{'id': i, 'name': nm, 'subject': sb} for i, nm, sb in teachers],
@@ -86,6 +88,16 @@ def list_classes(archived: bool = False, user: User = Depends(staff), db: Sessio
     return [class_out(db, c, user, mine) for c in rows]
 
 
+# fərdi hazırlıq qrupunun məqsədi (docs/repetitor-proqramlar-promtu.md §7)
+PURPOSE = Literal['sinif', 'buraxilis9', 'buraxilis11', 'qebul', 'olimpiada', 'diger']
+
+
+def _private_school(db: Session, sid: int) -> bool:
+    from ..models import School
+    s = db.get(School, sid)
+    return bool(s and s.kind == 'private')
+
+
 class ClassIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     kind: str = 'TOM'
@@ -96,6 +108,7 @@ class ClassIn(BaseModel):
     exam_date: dt.date | None = None
     bells: dict[str, str] | None = None
     private: bool = False          # fərdi (repetitor) sinif – məktəbə aid deyil, müəllimin fərdi məkanında yaranır
+    purpose: PURPOSE | None = None  # fərdi hazırlıq qrupunun məqsədi (proqram təklifi buna görə)
 
     @field_validator('kind')
     @classmethod
@@ -121,6 +134,8 @@ def create_class(body: ClassIn, user: User = Depends(settings_unlocked), db: Ses
     if dup:
         raise HTTPException(409, {'message': f'«{dup.name}» sinfi artıq var – ona qoşulun',
                                   'class_id': dup.id, 'archived': dup.archived_at is not None})
+    if body.purpose and not _private_school(db, sid):
+        raise HTTPException(400, 'Hazırlıq məqsədi yalnız fərdi (repetitor) məkanın qruplarında')
     if body.parent_id and body.kind != 'qrup':
         raise HTTPException(400, 'Ana sinif yalnız bölünmə qrupu üçün seçilir')
     if body.parent_id:
@@ -131,7 +146,7 @@ def create_class(body: ClassIn, user: User = Depends(settings_unlocked), db: Ses
             raise HTTPException(400, 'Ana sinif bütöv sinif olmalıdır (qrup yox)')
     c = SchoolClass(school_id=sid, year_id=year.id, name=name, code=_unique_code(db, sid, year.id, class_code(name)),
                     kind=body.kind, parent_id=body.parent_id, split_with=body.split_with, utis_class=body.utis_class, exam_date=body.exam_date,
-                    bells=body.bells, created_by=user.id, grade=body.grade or grade_of(name, body.utis_class))
+                    bells=body.bells, created_by=user.id, grade=body.grade or grade_of(name, body.utis_class), purpose=body.purpose)
     db.add(c)
     db.flush()
     audit(db, user, 'create', 'class', c.id, name=c.name)
@@ -148,11 +163,13 @@ class ClassPatch(BaseModel):
     grade: int | None = Field(None, ge=1, le=12)
     exam_date: dt.date | None = None
     bells: dict[str, str] | None = None
+    purpose: PURPOSE | None = None
 
 
 def _editable(db: Session, user: User, c: SchoolClass):
     """Ortaq məlumatı (ad, imtahan tarixi, zəng) sinfin müəllimi və ya admin dəyişə bilər."""
-    if c.school_id != user.school_id or (user.role != Role.admin and not can_see_class(db, user, c)):
+    if c.school_id != user.school_id or (user.role != Role.admin and not can_see_class(db, user, c)
+                                          and not _private_school(db, c.school_id)):      # fərdi məkanda – sahibi
         raise HTTPException(403, 'Bu sinif sizin siniflərinizdən deyil')
 
 
@@ -161,6 +178,8 @@ def update_class(cid: int, body: ClassPatch, user: User = Depends(settings_unloc
     c = get_or_404(db, SchoolClass, cid, 'Sinif')
     _editable(db, user, c)
     data = body.model_dump(exclude_unset=True)
+    if data.get('purpose') and not _private_school(db, c.school_id):
+        raise HTTPException(400, 'Hazırlıq məqsədi yalnız fərdi (repetitor) məkanın qruplarında')
     if 'kind' in data and (data['kind'] not in ('TOM', 'adi') or c.kind == 'qrup'):
         raise HTTPException(400, 'Növ yalnız TOM ↔ adi dəyişir; sinif qrupa (və ya əksinə) çevrilmir')
     if data.get('bells') is not None:                         # boş xanalar atılır; hamısı boşdursa – məktəbin zəngi
