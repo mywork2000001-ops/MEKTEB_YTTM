@@ -11,7 +11,7 @@ const whoLine = (me: Who, cls?: string) =>
   `<p><b>Şagird:</b> ${esc(me?.full_name || '')}${cls ? ` · <b>Sinif:</b> ${esc(cls)}` : ''}${me?.login ? ` · <b>Giriş kodu:</b> ${esc(me.login)}` : ''}</p>`
 
 /** Nəticələrim: fənlər, yarımil qiymətləri, KSQ/BSQ (tapşırıq təhlili, təkrarlanacaq standartlar), sınaqlar, onlayn tapşırıqlar; istəyə görə səhvlər. */
-export function printResults(d: any, ex: any, me: Who, withMistakes: boolean) {
+export function printResults(d: any, ex: any, me: Who, withMistakes: boolean, tr: any[] = []) {
   const cls = d.subjects[0]?.class_name
   let body = head('Nəticələrim', `${fmtD(new Date().toISOString())} vəziyyəti`) + whoLine(me, cls)
   for (const s of d.subjects) {
@@ -24,6 +24,9 @@ export function printResults(d: any, ex: any, me: Who, withMistakes: boolean) {
         (e.items || []).map((it: any) => `${it.n}${it.ok ? '✓' : '✗'}`).join(' '), (e.weak_standards || []).join(', ')]), [2, 3, 4])
   }
   body += NOTE('Yarımil qiyməti = (KSQ ortası) × 0,4 + BSQ × 0,6.')
+  if (tr.length) body += '<h2>Mövzu testləri</h2>' + table(['Fənn', 'Yazıb / verilən', 'Orta %', 'Son %', 'Dinamika', 'Sinifdə yer', 'Sinif ortası %'],
+    tr.map((x: any) => [x.subject, `${x.wrote} / ${x.given}`, fmtN(x.avg_pct), fmtN(x.last_pct), x.delta == null ? '—' : (x.delta > 0 ? '+' : '') + fmtN(x.delta),
+      x.place_class ? `${x.place_class}/${x.class_count}` : '—', fmtN(x.class_avg)]), [1, 2, 3, 4, 5, 6])
   const sin = (ex?.items || []).filter((x: any) => x.closed && x.status === 'yazıb')
   if (sin.length) body += '<h2>Sınaq imtahanları</h2>' + table(['Sınaq', 'Tarix', '%', 'Düz / səhv / boş', 'Sinifdə yer', 'Ümumi yer', 'Sinif ortası %'],
     sin.map((x: any) => [x.title, fmtD(x.opens_at), fmtN(x.pct), `${x.correct} / ${x.wrong} / ${x.blank}`, `${x.place_class}/${x.class_count}`,

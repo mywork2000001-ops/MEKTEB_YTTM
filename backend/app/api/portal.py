@@ -403,6 +403,26 @@ def my_exams(user: User = Depends(student_only), db: Session = Depends(get_db)):
             'delta': round(got[-1]['pct'] - got[-2]['pct'], 1) if len(got) >= 2 else None}
 
 
+@router.get('/topic-rating')
+def topic_rating(user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Mövzu testləri üzrə öz yerim (fənn üzrə, sinifdə): orta, son, dinamika, sinif ortası – başqasının adı yoxdur."""
+    from ..test_stats import collect, rating
+    s = me_student(db, user)
+    out = []
+    for ta, cls in my_assignments(db, s):
+        rt = rating(collect(db, None, 'movzu', {ta.id}))
+        me = next((r for r in rt['rows'] if r['student_id'] == s.id), None)
+        if not me or not me['given'] and not me['wrote']:
+            continue
+        ranked = [r for r in rt['rows'] if r['avg_pct'] is not None]
+        out.append({'subject': ta.subject, 'class_name': cls.name, 'tests': len(rt['tests']),
+                    **{k: me[k] for k in ('avg_pct', 'last_pct', 'delta', 'given', 'wrote', 'missed', 'place_class')},
+                    'class_count': len(ranked),
+                    'class_avg': round(sum(r['avg_pct'] for r in ranked) / len(ranked), 1) if ranked else None})
+    db.commit()
+    return out
+
+
 @router.get('/notifications')
 def notifications(user: User = Depends(student_only), db: Session = Depends(get_db)):
     """Bildirişlər (serverdə saxlanmır – hər dəfə hesablanır): açıq və 24 saat ərzində açılacaq testlər,

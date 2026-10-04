@@ -723,3 +723,16 @@ class ExtraAttendance(Base):
     student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
     status: Mapped[str | None] = mapped_column(String(10))             # var | yox | üzrlü | gecikdi (müəllim təsdiqi)
     joined_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))   # şagird «Qoşul» basıb (onlayn)
+
+
+class AiReview(Base):
+    """Süni intellekt köməkçisinin pedaqoji rəyi (Test nəticələri): müəllim, əhatə (şagird/sinif/qrup/ümumi), son rəy."""
+    __tablename__ = 'ai_reviews'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
+    school_id: Mapped[int | None] = mapped_column(ForeignKey('schools.id', ondelete='CASCADE'))
+    scope: Mapped[str] = mapped_column(String(10))                     # student | class | group | overall
+    key: Mapped[str] = mapped_column(String(80))                       # «student:12», «class:5:Zəif», «overall»
+    payload: Mapped[dict] = mapped_column(JSON)                        # {xulase, guclu, zeif, sebebler, tovsiyeler, valideyne, diqqet}
+    model: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)

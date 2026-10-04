@@ -12,14 +12,15 @@ export default function Results() {
   const t = useT()
   const [d, err] = useLoad<any>(() => get('/api/portal/results'), [])
   const [ex] = useLoad<any>(() => get('/api/portal/exams'), [])
+  const [tr] = useLoad<any[]>(() => get('/api/portal/topic-rating'), [])
   const [allMistakes, setAllMistakes] = useState(false)
   const { me } = useAuth()
   if (!d) return err ? <ErrorBox error={err} /> : <Loading />
   return (
     <>
       <Top title={t('Nəticələrim')} actions={<span className="row no-print" style={{ gap: 6 }}>
-        <button className="btn sm" onClick={() => printResults(d, ex, me, false)}>Çap / PDF</button>
-        {d.mistakes.length > 0 && <button className="btn sm" onClick={() => printResults(d, ex, me, true)}>Səhvlərlə birlikdə</button>}</span>} />
+        <button className="btn sm" onClick={() => printResults(d, ex, me, false, tr || [])}>Çap / PDF</button>
+        {d.mistakes.length > 0 && <button className="btn sm" onClick={() => printResults(d, ex, me, true, tr || [])}>Səhvlərlə birlikdə</button>}</span>} />
       {d.badges.length > 0 && (
         <section className="panel" style={{ marginBottom: 16 }}><h2>{t('Nailiyyətlər')}</h2>
           <div className="row">{d.badges.map((b: any) => <Pill key={b.key} tone="acc">★ {b.title} – {b.text}</Pill>)}</div></section>)}
@@ -43,6 +44,21 @@ export default function Results() {
                   <td className="r num">{e.absent ? 'yox idi' : e.points != null ? `${fmt(e.points, 1)} / ${e.max_points}` : '—'}</td><td className="r num">{fmt(e.pct)}</td>
                   <td className="r">{e.grade ? <Pill tone={gradeTone(e.grade)}>{e.grade}</Pill> : '—'}</td></tr>))}</tbody></table></div>)}
         </section>))}
+      {(tr || []).length > 0 && (
+        <section className="panel" style={{ marginBottom: 16 }}>
+          <h2>Mövzu testləri <small>öz yerin – başqasının adı görünmür</small></h2>
+          {tr!.map((x: any) => (
+            <div key={x.subject + x.class_name} style={{ borderBottom: '1px solid var(--line)', padding: '8px 0' }}>
+              <div className="row"><b className="grow">{x.subject}</b><span className="small muted">{x.wrote}/{x.given} test yazmısan</span></div>
+              <div className="row" style={{ gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                {x.avg_pct != null && <Pill tone={x.avg_pct >= 70 ? 'ok' : x.avg_pct >= 40 ? 'warn' : 'bad'}>orta {fmt(x.avg_pct)}%</Pill>}
+                {x.place_class && <Pill tone="acc">sinifdə {x.place_class}/{x.class_count}</Pill>}
+                {x.delta != null && <Pill tone={x.delta > 0 ? 'ok' : x.delta < 0 ? 'bad' : undefined}>dinamika {x.delta > 0 ? '+' : ''}{fmt(x.delta)}</Pill>}
+                <span className="small muted">sinif ortası {fmt(x.class_avg)}%</span>
+                {x.missed > 0 && <span className="small" style={{ color: 'var(--bad)' }}>{x.missed} testi yazmamısan</span>}
+              </div>
+            </div>))}
+        </section>)}
       {ex?.items?.length > 0 && (
         <section className="panel" style={{ marginBottom: 16 }}>
           <h2>Sınaq imtahanları <small>{ex.items.length}{ex.delta != null ? ` · son dinamika ${ex.delta > 0 ? '+' : ''}${fmt(ex.delta)}%` : ''}</small></h2>

@@ -38,6 +38,7 @@ const T = {
   Timetable: lazy(() => import('./pages/teacher/Timetable')),
   Tasks: lazy(() => import('./pages/teacher/Tasks')),
   OnlineExams: lazy(() => import('./pages/teacher/OnlineExams')),
+  ResultsCenter: lazy(() => import('./pages/teacher/ResultsCenter')),
   ExtraCourses: lazy(() => import('./pages/teacher/ExtraCourses')),
   Materials: lazy(() => import('./pages/teacher/Materials')),
   Reports: lazy(() => import('./pages/teacher/Reports')),
@@ -98,6 +99,7 @@ export default function App() {
                 <Route path="/timetable" element={<T.Timetable />} />
                 <Route path="/tasks" element={<T.Tasks />} />
                 <Route path="/exams-online" element={<T.OnlineExams />} />
+                <Route path="/results-center" element={<T.ResultsCenter />} />
                 <Route path="/extra" element={<T.ExtraCourses />} />
                 <Route path="/t/:id" element={<Navigate to="/tasks" replace />} />
                 <Route path="/materials" element={<T.Materials />} />

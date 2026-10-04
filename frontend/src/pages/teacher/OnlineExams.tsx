@@ -8,6 +8,7 @@ import { ConfirmName, Drawer, ErrorBox, Field, fmt, Loading, Pill, Seg, Stat, to
 import { esc, head, printDoc, table } from '../../print'
 import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
 import { TaskActions } from './Tasks'
+import { RatingPanel } from './ResultsCenter'
 import { PeriodBar, usePeriod } from '../../periods'
 
 type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; teacher: string; mine: boolean; students: number }
@@ -42,7 +43,7 @@ export default function OnlineExams() {
         actions={<button className="btn primary" onClick={() => setCreating(true)}>+ Yeni sınaq</button>} />
       <div className="toolbar"><Seg value={view} onChange={setView} options={[['list', 'Sınaqlar'], ['rating', 'Reytinq']]} /></div>
       <ErrorBox error={err} />
-      {view === 'rating' ? <Rating /> : loading && !list ? <Loading /> : (
+      {view === 'rating' ? <RatingPanel initial="sinaq" /> : loading && !list ? <Loading /> : (
         <>{all.length > 0 && <PeriodBar f={f} count={shown.length} total={all.length} topicLabel="Ad üzrə" />}
         <div className="jlist">
           {list?.length === 0 && <div className="empty">Hələ sınaq yoxdur – «+ Yeni sınaq» ilə test bazasından sınaq seçin.</div>}
@@ -273,42 +274,5 @@ function Attempt({ batch, r, onClose, onDone }: { batch: number; r: Row; onClose
             </div>))}
         </div>)}
     </Drawer>
-  )
-}
-
-// ---------------------------------------------------------------- kumulyativ reytinq
-function Rating() {
-  const [subject, setSubject] = useState('')
-  const [d, err, loading] = useLoad<{ batches: { id: number; title: string; avg_pct: number | null }[]; rows: any[]; total: number; improved: any[] }>(
-    () => get('/api/exams-online/rating', subject ? { subject } : {}), [subject])
-  const print = () => d && printDoc({ title: 'Sınaq reytinqi', body: head('Sınaq imtahanları – kumulyativ reytinq', `${d.batches.length} sınaq · ${d.total} şagird`) +
-    table(['Ümumi yer', 'Sinifdə', 'Şagird', 'Sinif', 'Sınaq', 'Orta %', 'Son %', 'Dinamika'],
-      d.rows.map(r => [r.place_all, r.place_class, r.full_name, r.class_name, r.count, fmt(r.avg_pct), fmt(r.last_pct), r.delta == null ? '—' : (r.delta > 0 ? '+' : '') + fmt(r.delta)]), [4, 5, 6, 7]) })
-  return (
-    <>
-      <div className="toolbar">
-        <input className="sel" placeholder="Fənn (boş – hamısı)" value={subject} onChange={e => setSubject(e.target.value)} />
-        {d && d.rows.length > 0 && <button className="btn sm right" onClick={print}>Çap et</button>}
-      </div>
-      <ErrorBox error={err} />
-      {loading && !d ? <Loading /> : d && (d.rows.length === 0 ? <div className="empty">Hələ nəticə yoxdur.</div> : (
-        <div className="grid g2">
-          <section className="panel" style={{ gridColumn: '1 / -1' }}>
-            <h2>Kumulyativ reytinq <small>{d.batches.length} sınaq · ümumi yer {d.total} şagird arasında</small></h2>
-            <div className="tbl-wrap"><table>
-              <thead><tr><th className="r">Yer</th><th className="r">Sinifdə</th><th>Şagird</th><th className="r">Sınaq</th><th className="r">Orta %</th><th className="r">Son %</th><th className="r">Dinamika</th></tr></thead>
-              <tbody>{d.rows.map(r => (
-                <tr key={r.student_id}><td className="r num"><b>{r.place_all ?? '—'}</b></td><td className="r num">{r.place_class ?? '—'}</td>
-                  <td><b>{r.full_name}</b><span className="sub">{r.class_name}</span></td><td className="r num">{r.count}</td>
-                  <td className="r num"><b>{fmt(r.avg_pct)}</b></td><td className="r num">{fmt(r.last_pct)}</td>
-                  <td className="r num">{r.delta == null ? '—' : <Pill tone={r.delta > 0 ? 'ok' : r.delta < 0 ? 'bad' : undefined}>{r.delta > 0 ? '+' : ''}{fmt(r.delta)}</Pill>}</td></tr>))}</tbody>
-            </table></div>
-          </section>
-          {d.improved.length > 0 && <section className="panel"><h2>Ən çox irəliləyənlər</h2>
-            {d.improved.map(r => <div key={r.student_id} className="row small"><b className="grow">{r.full_name}</b><span className="muted">{r.class_name}</span><Pill tone="ok">+{fmt(r.delta)}</Pill></div>)}</section>}
-          <section className="panel"><h2>Sınaqlar üzrə orta</h2>
-            {d.batches.map(b => <div key={b.id} className="row small"><span className="grow">{b.title}</span><b>{fmt(b.avg_pct)}%</b></div>)}</section>
-        </div>))}
-    </>
   )
 }

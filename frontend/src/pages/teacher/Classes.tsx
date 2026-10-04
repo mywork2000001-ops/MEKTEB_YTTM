@@ -80,6 +80,7 @@ function StudentList({ cls, all, onOpen }: { cls: Cls; all: Cls[]; onOpen: (s: S
 }
 
 function StudentCard({ s, onClose }: { s: Stud; onClose: () => void }) {
+  const nav = useNavigate()
   const [tab, setTab] = useState<'info' | 'contacts' | 'plans'>('info')
   return (
     <Drawer title={s.full_name} onClose={onClose}>
@@ -91,6 +92,7 @@ function StudentCard({ s, onClose }: { s: Stud; onClose: () => void }) {
             <dt>Sinif</dt><dd>{s.class_name}</dd><dt>ID (giriş kodu)</dt><dd className="mono">{s.portal_code}</dd>
             <dt>Doğum tarixi</dt><dd>{fmtDate(s.birth_date)}</dd><dt>Cins</dt><dd>{s.gender || '—'}</dd>
           </dl>
+          <button className="btn sm" style={{ marginTop: 12 }} onClick={() => nav(`/results-center?student=${s.id}`)}>Test nəticələri və AI rəyi →</button>
           <h3 className="small muted" style={{ margin: '16px 0 8px' }}>IX sinif buraxılış balları</h3>
           <div className="scores">
             <div className="score-b"><b>{fmt(s.score_language)}</b><span>Tədris dili</span></div>
