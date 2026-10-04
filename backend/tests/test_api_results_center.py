@@ -93,6 +93,9 @@ def test_results_center(world, clock, monkeypatch):
     admin.put(f'/api/analytics/{ta}/levels/{st[0]["id"]}', json={'level': 'Güclü'})
     g = admin.get(f'/api/results-center/class/{ta}', params={'level': 'Güclü'}).json()
     assert g['parts']['movzu']['summary']['students'] == 1
+    al = admin.get('/api/results-center/class', params={'level': 'Güclü'}).json()          # «Hamısı» – bütün siniflərim
+    assert al['ta_id'] is None and al['class_name'] == 'Bütün siniflərim' and al['parts']['movzu']['summary']['students'] == 1
+    assert admin.get('/api/results-center/class').json()['parts']['movzu']['summary']['avg_pct'] == 66.7
     o = admin.get('/api/results-center/overview').json()
     assert o['classes'][0]['class_name'] == 'X e' and o['summary']['sinaq']['tests'] == 1
     assert {x['full_name'] for x in admin.get('/api/results-center/students').json()} == {s['full_name'] for s in st}
@@ -118,4 +121,6 @@ def test_results_center(world, clock, monkeypatch):
     assert r.status_code == 200 and all(s['full_name'] not in sent['text'] for s in st)
     assert r.json()['review']['payload']['valideyne'] == ''
     assert admin.post('/api/results-center/ai-review', json={'scope': 'group', 'ta_id': ta}).status_code == 400
+    r = admin.post('/api/results-center/ai-review', json={'scope': 'class', 'kind': 'sinaq'})       # bütün siniflər, yalnız sınaq
+    assert r.status_code == 200 and r.json()['review']['key'] == 'class:all:sinaq' and 'mövzu testləri' not in sent['text']
     assert admin.post('/api/results-center/ai-review', json={'scope': 'overall'}).status_code == 200

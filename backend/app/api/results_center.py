@@ -149,17 +149,23 @@ def my_students(user: User = Depends(staff), db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------- sinif / qrup
-def _class_data(db: Session, user: User, ta_id: int, level: str | None, date_from=None, date_to=None) -> dict:
-    ta = own_assignment(db, user, ta_id)
-    cls = db.get(SchoolClass, ta.class_id)
-    lv = {o.student_id: o.level for o in db.scalars(select(LevelOverride).where(LevelOverride.assignment_id == ta.id))}
+def _class_data(db: Session, user: User, ta_id: int | None, level: str | None, date_from=None, date_to=None) -> dict:
+    """Bir dərs (sinif / qrup) və ya ta_id=None – «Hamısı»: bütün dərslərim. Səviyyə hər dərsin öz bölgüsündən."""
+    tas = [own_assignment(db, user, ta_id)] if ta_id else _my_tas(db, user)
+    raw = {(o.assignment_id, o.student_id): o.level for o in db.scalars(
+        select(LevelOverride).where(LevelOverride.assignment_id.in_([t.id for t in tas] or [-1])))}
     if level and level not in LEVELS:
         raise HTTPException(400, 'Səviyyə: Zəif, Orta və ya Güclü')
-    keep = (lambda sid: lv.get(sid) == level) if level else (lambda sid: True)
-    out = {'ta_id': ta.id, 'class_name': cls.name, 'subject': ta.subject, 'level': level, 'parts': {}}
+    rlv = lambda r: raw.get((r['ta_id'], r['student_id']))
+    if ta_id:
+        name, subj = db.get(SchoolClass, tas[0].class_id).name, tas[0].subject
+    else:
+        name, subj = 'Bütün siniflərim', ', '.join(sorted({t.subject for t in tas})) or '—'
+    out = {'ta_id': ta_id, 'class_name': name, 'subject': subj, 'level': level, 'parts': {}}
     for k in KINDS:
-        data = collect(db, user, k, {ta.id}, date_from, date_to)
-        rows = [r for r in data['rows'] if keep(r['student_id'])]
+        data = collect(db, user, k, {t.id for t in tas} or {-1}, date_from, date_to)
+        rows = [r for r in data['rows'] if r['visible'] and (not level or rlv(r) == level)]
+        lv = {r['student_id']: rlv(r) for r in rows}
         ps = per_student(rows)
         tests = []
         for t in data['tests']:
@@ -177,8 +183,8 @@ def _class_data(db: Session, user: User, ta_id: int, level: str | None, date_fro
                 dist[summative_grade(r['pct']) or 2] += 1
         levels = {}
         for name in LEVELS:
-            v = [r['pct'] for r in rows if r['status'] == 'yazıb' and lv.get(r['student_id']) == name]
-            levels[name] = {'avg_pct': avg(v), 'students': len({r['student_id'] for r in rows if lv.get(r['student_id']) == name})}
+            v = [r['pct'] for r in rows if r['status'] == 'yazıb' and rlv(r) == name]
+            levels[name] = {'avg_pct': avg(v), 'students': len({r['student_id'] for r in rows if rlv(r) == name})}
         topics: dict[str, list] = {}
         for r in rows:
             if r['topic'] and r['status'] == 'yazıb':
@@ -199,8 +205,9 @@ def _class_data(db: Session, user: User, ta_id: int, level: str | None, date_fro
     return out
 
 
+@router.get('/class')
 @router.get('/class/{ta_id}')
-def class_report(ta_id: int, level: str | None = None, date_from: dt.date | None = None, date_to: dt.date | None = None,
+def class_report(ta_id: int | None = None, level: str | None = None, date_from: dt.date | None = None, date_to: dt.date | None = None,
                  user: User = Depends(staff), db: Session = Depends(get_db)):
     out = _class_data(db, user, ta_id, level, date_from, date_to)
     db.commit()
@@ -271,13 +278,16 @@ class ReviewIn(BaseModel):
     ta_id: int | None = None
     student_id: int | None = None
     level: str | None = None
+    kind: Kind | None = None                 # None – «Hamısı»: iki hissə ayrıca
     date_from: dt.date | None = None
     date_to: dt.date | None = None
 
 
 def _key(b: ReviewIn) -> str:
-    return {'student': f'student:{b.student_id}', 'class': f'class:{b.ta_id}', 'group': f'class:{b.ta_id}:{b.level}',
-            'overall': 'overall'}[b.scope]
+    ta = b.ta_id or 'all'
+    k = {'student': f'student:{b.student_id}', 'class': f'class:{ta}', 'group': f'class:{ta}:{b.level}',
+         'overall': 'overall'}[b.scope]
+    return f'{k}:{b.kind}' if b.kind else k
 
 
 class Coder:
@@ -320,11 +330,10 @@ def _context(db: Session, user: User, b: ReviewIn, code: Coder) -> tuple[str, st
             {'movzu': 'mövzu testləri', 'sinaq': 'sınaqlar'}[k]: {
                 'yekun': p['summary'], 'sinifdə şagird sayı': p['class_size'],
                 'testlər': [pick(x, ('date', 'title', 'topic', 'status', 'pct', 'class_avg', 'diff', 'place_class')) for x in p['items']][-25:],
-                'zəif mövzular': p['weak_topics'], 'güclü mövzular': p['strong_topics']} for k, p in d['parts'].items()}}
+                'zəif mövzular': p['weak_topics'], 'güclü mövzular': p['strong_topics']} for k, p in d['parts'].items()
+            if not b.kind or k == b.kind}}
         title = f"Şagird: {d['student']['full_name']}"
     elif b.scope in ('class', 'group'):
-        if not b.ta_id:
-            raise HTTPException(400, 'Sinif seçin')
         d = _class_data(db, user, b.ta_id, b.level if b.scope == 'group' else None, b.date_from, b.date_to)
         ctx = {'növ': 'səviyyə qrupu' if b.scope == 'group' else 'sinif', 'sinif': d['class_name'], 'fənn': d['subject'],
                'səviyyə': d['level'], 'hissələr': {
@@ -334,12 +343,17 @@ def _context(db: Session, user: User, b: ReviewIn, code: Coder) -> tuple[str, st
                        'zəif mövzular': p['weak_topics'], 'güclü mövzular': p['strong_topics'],
                        'şagirdlər': [{**pick(x, ('avg_pct', 'delta', 'participation', 'missed', 'level', 'attention', 'chronic')),
                                       'kod': code(x['full_name'])} for x in p['students']]}
-                   for k, p in d['parts'].items()}}
+                   for k, p in d['parts'].items() if not b.kind or k == b.kind}}
         title = f"{'Səviyyə qrupu' if b.scope == 'group' else 'Sinif'}: {d['class_name']} · {d['subject']}" + (f' · {b.level}' if b.level and b.scope == 'group' else '')
     else:
         d = _overview_data(db, user, b.date_from, b.date_to)
+        if b.kind:
+            d = {'summary': {b.kind: d['summary'][b.kind]}, 'months': {b.kind: d['months'][b.kind]},
+                 'classes': [{f: c[f] for f in ('class_name', 'subject', b.kind)} for c in d['classes']]}
         ctx = {'növ': 'ümumi (müəllimin bütün sinifləri)', 'yekun': d['summary'], 'siniflər': d['classes'], 'aylar': d['months']}
         title = 'Ümumi: bütün siniflərim'
+    if b.kind:
+        title += ' · ' + {'movzu': 'mövzu testləri', 'sinaq': 'sınaqlar'}[b.kind]
     return title, period + '\n' + json.dumps(ctx, ensure_ascii=False, default=str)
 
 
@@ -350,9 +364,9 @@ def _review_out(r: AiReview | None) -> dict | None:
 
 @router.get('/ai-review')
 def last_review(scope: Literal['student', 'class', 'group', 'overall'], ta_id: int | None = None,
-                student_id: int | None = None, level: str | None = None, user: User = Depends(staff),
-                db: Session = Depends(get_db)):
-    key = _key(ReviewIn(scope=scope, ta_id=ta_id, student_id=student_id, level=level))
+                student_id: int | None = None, level: str | None = None, kind: Kind | None = None,
+                user: User = Depends(staff), db: Session = Depends(get_db)):
+    key = _key(ReviewIn(scope=scope, ta_id=ta_id, student_id=student_id, level=level, kind=kind))
     r = db.scalar(select(AiReview).where(AiReview.user_id == user.id, AiReview.school_id == user.school_id,
                                          AiReview.key == key).order_by(AiReview.id.desc()).limit(1))
     return {'review': _review_out(r)}

@@ -11,6 +11,22 @@ import { periodRange, type Period } from '../../periods'
 import { useMyLessons, type MyLesson } from './common'
 
 type Kind = 'movzu' | 'sinaq'
+type KF = 'all' | Kind
+const KF_OPTS: [KF, string][] = [['all', 'Hamısı'], ['movzu', 'Mövzu testləri'], ['sinaq', 'Sınaqlar']]
+const kindsOf = (k: KF): Kind[] => (k === 'all' ? ['movzu', 'sinaq'] : [k])
+type Sort = 'place' | 'delta' | 'part'
+const SORTS: [Sort, string][] = [['place', 'Yer'], ['delta', 'Dinamika'], ['part', 'İştirak (az → çox)']]
+
+/** Excel üçün CSV: UTF-8 BOM, «;» ayırıcı – Azərbaycan hərfləri düz açılır. */
+function downloadCsv(name: string, heads: string[], rows: (string | number | null | undefined)[][]) {
+  const cell = (v: unknown) => { const t = String(v ?? '').replace(/"/g, '""'); return /[;"\n]/.test(t) ? `"${t}"` : t }
+  const text = '\ufeff' + [heads, ...rows].map(r => r.map(cell).join(';')).join('\r\n')
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
+  a.download = name.replace(/[\\/:*?"<>|]+/g, ' ').trim() + '.csv'
+  document.body.appendChild(a); a.click(); a.remove()
+  setTimeout(() => URL.revokeObjectURL(a.href), 30_000)
+}
 const KIND_LABEL: Record<Kind, string> = { movzu: 'Mövzu testləri', sinaq: 'Sınaqlar' }
 const KIND_ONE: Record<string, string> = { movzu: 'mövzu testi', sinaq: 'sınaq' }
 const TABS = [['rating', 'Reytinq'], ['missing', 'Yazmayanlar'], ['student', 'Şagird'], ['class', 'Sinif və qrup'], ['overall', 'Ümumi']] as const
@@ -46,7 +62,7 @@ function PeriodPick({ f }: { f: PP }) {
   )
 }
 
-function ClassSelect({ lessons, value, onChange, all = 'Bütün siniflərim' }: { lessons?: MyLesson[]; value: number | null; onChange: (v: number | null) => void; all?: string | null }) {
+function ClassSelect({ lessons, value, onChange, all = 'Hamısı (bütün siniflərim)' }: { lessons?: MyLesson[]; value: number | null; onChange: (v: number | null) => void; all?: string | null }) {
   return (
     <select className="sel" aria-label="Sinif / qrup" value={value ?? ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}>
       <option value="">{all ?? '— Sinif / qrup seçin —'}</option>
@@ -63,17 +79,23 @@ export default function ResultsCenter() {
   const f = usePeriodParams()
   const [lessons] = useMyLessons()
   const openStudent = (id: number) => { setStudent(id); setTab('student') }
+  const [kf, setKfRaw] = useState<KF>(() => { try { return (localStorage.getItem('mk-rc-kind') as KF) || 'all' } catch { return 'all' } })
+  const setKf = (v: KF) => { setKfRaw(v); try { localStorage.setItem('mk-rc-kind', v) } catch { /* noop */ } }
+  const kinds = kindsOf(kf)
+  const [miss] = useLoad<{ students: { chronic: boolean }[] }>(() => get('/api/results-center/missing', { kind: kf, ...f.params }), [kf, f.label])
+  const chronic = miss?.students.filter(x => x.chronic).length || 0
   useEffect(() => { if (sp.get('student') || sp.get('tab')) setSp({}, { replace: true }) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
       <Top title="Test nəticələri" sub="Mövzu testləri və sınaqlar ayrıca · yazmayanlar · şagird, sinif, qrup və ümumi analitika · süni intellektin pedaqoji rəyi" />
-      <div className="tabs rtabs no-print">{TABS.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
-      <div className="toolbar no-print"><PeriodPick f={f} /></div>
-      {tab === 'rating' && <RatingPanel f={f} lessons={lessons} onStudent={openStudent} />}
-      {tab === 'missing' && <Missing f={f} lessons={lessons} onStudent={openStudent} />}
-      {tab === 'student' && <StudentPanel f={f} id={student} setId={setStudent} />}
-      {tab === 'class' && <ClassPanel f={f} lessons={lessons} onStudent={openStudent} />}
-      {tab === 'overall' && <Overall f={f} />}
+      <div className="tabs rtabs no-print">{TABS.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{l}
+        {k === 'missing' && chronic > 0 && <span className="pill bad" style={{ marginLeft: 6 }} title="xroniki yazmayanlar">{chronic}</span>}</button>)}</div>
+      <div className="toolbar no-print" style={{ flexWrap: 'wrap' }}><Seg label="Növ" value={kf} onChange={setKf} options={KF_OPTS} /><PeriodPick f={f} /></div>
+      {tab === 'rating' && <RatingTab f={f} lessons={lessons} onStudent={openStudent} kinds={kinds} />}
+      {tab === 'missing' && <Missing f={f} lessons={lessons} onStudent={openStudent} kind={kf} />}
+      {tab === 'student' && <StudentPanel f={f} id={student} setId={setStudent} kinds={kinds} kf={kf} />}
+      {tab === 'class' && <ClassPanel f={f} lessons={lessons} onStudent={openStudent} kinds={kinds} kf={kf} />}
+      {tab === 'overall' && <Overall f={f} kinds={kinds} kf={kf} />}
     </>
   )
 }
@@ -86,12 +108,39 @@ type RTest = { unit: string; title: string; date: string; topic: string | null; 
 type RData = { kind: Kind; tests: RTest[]; rows: RRow[]; total: number; classes: { class_name: string; avg_pct: number | null; participation: number | null; wrote: number; given: number; place: number | null }[]
   improved: RRow[]; attention: RRow[] }
 
-/** İki hissəli reytinq – «Sınaq imtahanları» bölməsində də istifadə olunur (initial='sinaq'). */
-export function RatingPanel({ f, lessons, onStudent, initial = 'movzu' }: { f?: PP; lessons?: MyLesson[]; onStudent?: (id: number) => void; initial?: Kind }) {
-  const [kind, setKind] = useState<Kind>(initial)
+/** «Hamısı» – iki ayrı reytinq ardıcıl (ortalar qarışmır); sinif və sıralama ümumi. */
+function RatingTab({ f, lessons, onStudent, kinds }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kinds: Kind[] }) {
   const [ta, setTa] = useState<number | null>(null)
+  const [sort, setSort] = useState<Sort>('place')
+  return (
+    <>
+      <div className="toolbar no-print" style={{ flexWrap: 'wrap' }}>
+        <ClassSelect lessons={lessons} value={ta} onChange={setTa} />
+        <Seg label="Sıralama" value={sort} onChange={setSort} options={SORTS} />
+      </div>
+      {kinds.map(k => <div key={k} style={{ marginBottom: 18 }}><RatingPanel f={f} lessons={lessons} onStudent={onStudent} kind={k} ta={ta} sort={sort} /></div>)}
+    </>
+  )
+}
+
+const sortRows = (rows: RRow[], s: Sort) => (s === 'place' ? rows : [...rows].sort(s === 'delta'
+  ? (a, b) => (a.delta == null ? 1 : 0) - (b.delta == null ? 1 : 0) || (b.delta ?? 0) - (a.delta ?? 0)
+  : (a, b) => (a.participation == null ? 1 : 0) - (b.participation == null ? 1 : 0) || (a.participation ?? 0) - (b.participation ?? 0) || b.missed - a.missed))
+
+/** Bir hissənin reytinqi. «Test nəticələri»ndə kind/ta/sort yuxarıdan gəlir; «Sınaq imtahanları»nda öz seçimi (initial='sinaq'). */
+export function RatingPanel({ f, lessons, onStudent, initial = 'movzu', kind: fixed, ta: taIn, sort: sortIn }: { f?: PP; lessons?: MyLesson[]; onStudent?: (id: number) => void
+  initial?: Kind; kind?: Kind; ta?: number | null; sort?: Sort }) {
+  const [own, setKind] = useState<Kind>(initial)
+  const [taOwn, setTa] = useState<number | null>(null)
+  const [sortOwn, setSort] = useState<Sort>('place')
+  const kind = fixed ?? own
+  const ta = fixed ? taIn ?? null : taOwn
+  const sort = sortIn ?? sortOwn
   const params = { kind, ...(ta ? { ta_id: ta } : {}), ...(f?.params || {}) }
-  const [d, err, loading] = useLoad<RData>(() => get('/api/results-center/rating', params), [kind, ta, f?.label])
+  const [d0, err, loading] = useLoad<RData>(() => get('/api/results-center/rating', params), [kind, ta, f?.label])
+  const d = d0 && { ...d0, rows: sortRows(d0.rows, sort) }
+  const csv = () => d && downloadCsv(`Reytinq – ${KIND_LABEL[kind]}`, ['Yer', 'Sinifdə', 'Şagird', 'Sinif', 'Yazıb', 'Verilən', 'İştirak %', 'Orta %', 'Son %', 'Dinamika', 'Qeyd'],
+    d.rows.map(r => [r.place_all, r.place_class, r.full_name, r.class_name, r.wrote, r.given, fmtN(r.participation), fmtN(r.avg_pct), fmtN(r.last_pct), sgn(r.delta), flags(r).join(', ')]))
   const narrow = useNarrow()
   const cls = lessons?.find(l => l.id === ta)
   const print = () => d && printDoc({
@@ -106,10 +155,12 @@ export function RatingPanel({ f, lessons, onStudent, initial = 'movzu' }: { f?: 
   })
   return (
     <>
-      <div className="toolbar no-print">
-        <Seg value={kind} onChange={setKind} options={[['movzu', 'Mövzu testləri'], ['sinaq', 'Sınaqlar']]} />
-        {lessons && <ClassSelect lessons={lessons} value={ta} onChange={setTa} />}
-        {d && d.rows.length > 0 && <button className="btn sm right" onClick={print}>Çap / PDF</button>}
+      <div className="toolbar no-print" style={{ flexWrap: 'wrap' }}>
+        {fixed ? <b>{KIND_LABEL[kind]}</b> : <>
+          <Seg value={kind} onChange={setKind} options={[['movzu', 'Mövzu testləri'], ['sinaq', 'Sınaqlar']]} />
+          {lessons && <ClassSelect lessons={lessons} value={ta} onChange={setTa} />}
+          <Seg label="Sıralama" value={sort} onChange={setSort} options={SORTS} /></>}
+        {d && d.rows.length > 0 && <span className="row right" style={{ gap: 6 }}><button className="btn sm" onClick={csv}>Excel (CSV)</button><button className="btn sm" onClick={print}>Çap / PDF</button></span>}
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : d && (d.rows.length === 0 ? <div className="empty">{kind === 'movzu' ? 'Bu dövrdə mövzu testi nəticəsi yoxdur – Perspektiv plan → mövzu → «Test təyin et».' : 'Bu dövrdə sınaq nəticəsi yoxdur.'}</div> : (
@@ -159,8 +210,7 @@ type MTest = { unit: string; kind: Kind; title: string; date: string; topic: str
 type MStud = { student_id: number; full_name: string; class_name: string; given: number; missed: number; last_missed: string; chronic: boolean; tests: MTest[] }
 type MData = { students: MStud[]; tests: { unit: string; kind: Kind; title: string; date: string; topic: string | null; given: number; missed: number }[] }
 
-function Missing({ f, lessons, onStudent }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void }) {
-  const [kind, setKind] = useState<'all' | Kind>('all')
+function Missing({ f, lessons, onStudent, kind }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kind: KF }) {
   const [ta, setTa] = useState<number | null>(null)
   const [sel, setSel] = useState<Set<number>>(new Set())
   const [resend, setResend] = useState(false)
@@ -181,9 +231,11 @@ function Missing({ f, lessons, onStudent }: { f: PP; lessons?: MyLesson[]; onStu
   return (
     <>
       <div className="toolbar no-print">
-        <Seg value={kind} onChange={v => { setKind(v); setSel(new Set()) }} options={[['all', 'Hamısı'], ['movzu', 'Mövzu testləri'], ['sinaq', 'Sınaqlar']]} />
         {lessons && <ClassSelect lessons={lessons} value={ta} onChange={v => { setTa(v); setSel(new Set()) }} />}
-        {d && d.students.length > 0 && <button className="btn sm right" onClick={print}>Çap / PDF</button>}
+        {d && d.students.length > 0 && <span className="row right" style={{ gap: 6 }}>
+          <button className="btn sm" onClick={() => downloadCsv('Testi yazmayanlar', ['Şagird', 'Sinif', 'Yazmayıb', 'Verilən', 'Son', 'Xroniki', 'Testlər'],
+            d.students.map(x => [x.full_name, x.class_name, x.missed, x.given, fmtD(x.last_missed), x.chronic ? 'bəli' : '', x.tests.map(t => `${fmtD(t.date)} ${t.title}`).join('; ')]))}>Excel (CSV)</button>
+          <button className="btn sm" onClick={print}>Çap / PDF</button></span>}
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : d && (d.students.length === 0 ? <div className="empty">Bu dövrdə bağlanmış testləri yazmayan şagird yoxdur.</div> : (
@@ -307,7 +359,7 @@ type SItem = { unit: string; kind: Kind; title: string; date: string; topic: str
 type SPart = { summary: (RRow & { participation: number | null }) | null; class_size: number; items: SItem[]; weak_topics: { topic: string; pct: number; n: number }[]; strong_topics: { topic: string; pct: number; n: number }[] }
 type SData = { student: { id: number; full_name: string; class_name: string | null }; parts: Record<Kind, SPart> }
 
-function StudentPanel({ f, id, setId }: { f: PP; id: number | null; setId: (v: number | null) => void }) {
+function StudentPanel({ f, id, setId, kinds, kf }: { f: PP; id: number | null; setId: (v: number | null) => void; kinds: Kind[]; kf: KF }) {
   const [list] = useLoad<{ id: number; full_name: string; class_name: string }[]>(() => get('/api/results-center/students'), [])
   const [q, setQ] = useState('')
   const [d, err, loading] = useLoad<SData | null>(() => (id ? get(`/api/results-center/student/${id}`, f.params) : Promise.resolve(null)), [id, f.label])
@@ -316,7 +368,7 @@ function StudentPanel({ f, id, setId }: { f: PP; id: number | null; setId: (v: n
   const print = () => d && printDoc({
     title: `Şagird hesabatı – ${d.student.full_name}`, signers: [SIGN.teacher(), SIGN.deputy()],
     body: head('Şagirdin onlayn test nəticələri', `${d.student.full_name} · ${d.student.class_name || ''} · ${f.label}`) +
-      (['movzu', 'sinaq'] as Kind[]).map(k => { const p = d.parts[k]; const s = p.summary
+      kinds.map(k => { const p = d.parts[k]; const s = p.summary
         return `<h2>${KIND_LABEL[k]}</h2>` + (s ? kpis([[pct(s.avg_pct), 'orta'], [pct(s.last_pct), 'son'], [sgn(s.delta), 'dinamika'], [`${s.wrote} / ${s.given}`, 'yazıb / verilən'],
           [s.place_class ? `${s.place_class} / ${p.class_size}` : '—', 'sinifdə yer']]) : '<p>Nəticə yoxdur.</p>') +
           (p.items.length ? table(['Tarix', 'Test', k === 'movzu' ? 'Mövzu' : 'Sinif', 'Status', '%', 'Qiymət', 'Sinif ortası', 'Fərq', 'Yer'],
@@ -339,16 +391,16 @@ function StudentPanel({ f, id, setId }: { f: PP; id: number | null; setId: (v: n
         <div className="grid g2">
           <section className="panel" style={{ gridColumn: '1 / -1' }}>
             <h2>{d.student.full_name} <small>{d.student.class_name}</small></h2>
-            <div className="grid g2">{(['movzu', 'sinaq'] as Kind[]).map(k => { const s = d.parts[k].summary
+            <div className="grid g2">{kinds.map(k => { const s = d.parts[k].summary
               return <div key={k}><h3 className="small muted" style={{ margin: '4px 0 6px' }}>{KIND_LABEL[k]}</h3>
                 {s ? <div className="kpis"><Stat value={pct(s.avg_pct)} label="orta" /><Stat value={sgn(s.delta)} label="dinamika" />
                   <Stat value={`${s.wrote}/${s.given}`} label="yazıb / verilən" /><Stat value={s.place_class ? `${s.place_class}/${d.parts[k].class_size}` : '—'} label="sinifdə yer" /></div>
                   : <div className="small muted">Nəticə yoxdur</div>}
                 {s && <Flags r={s} />}</div> })}</div>
-            <Trend series={(['movzu', 'sinaq'] as Kind[]).filter(k => d.parts[k].items.some(x => x.pct != null)).map(k => ({
+            <Trend series={kinds.filter(k => d.parts[k].items.some(x => x.pct != null)).map(k => ({
               name: KIND_LABEL[k], color: COLOR[k], pts: d.parts[k].items.filter(x => x.status === 'yazıb').map(x => ({ label: x.title, v: x.pct, ref: x.class_avg })) }))} />
           </section>
-          {(['movzu', 'sinaq'] as Kind[]).map(k => d.parts[k].items.length > 0 && (
+          {kinds.map(k => d.parts[k].items.length > 0 && (
             <section key={k} className="panel" style={{ gridColumn: '1 / -1' }}><h2>{KIND_LABEL[k]} <small>{d.parts[k].items.length} test</small></h2>
               <div className="tbl-wrap"><table>
                 <thead><tr><th>Tarix</th><th>Test</th><th className="r">%</th><th className="r">Qiymət</th><th className="r">Sinif ortası</th><th className="r">Fərq</th><th className="r">Yer</th></tr></thead>
@@ -362,7 +414,7 @@ function StudentPanel({ f, id, setId }: { f: PP; id: number | null; setId: (v: n
               <Topics weak={d.parts[k].weak_topics} strong={d.parts[k].strong_topics} />
             </section>))}
           <section className="panel" style={{ gridColumn: '1 / -1' }}>
-            <AiPanel scope="student" student_id={id} params={f.params} onReview={setReview} /></section>
+            <AiPanel scope="student" student_id={id} kind={kf} params={f.params} onReview={setReview} /></section>
         </div>)}
     </>
   )
@@ -390,17 +442,16 @@ type CPart = { summary: { tests: number; students: number; avg_pct: number | nul
   students: (RRow & { level: string | null })[] }
 type CData = { ta_id: number; class_name: string; subject: string; level: string | null; parts: Record<Kind, CPart> }
 
-function ClassPanel({ f, lessons, onStudent }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void }) {
-  const [ta, setTa] = useState<number | null>(() => lessons?.[0]?.id ?? null)
-  useEffect(() => { if (ta == null && lessons?.length) setTa(lessons[0].id) }, [lessons])   // eslint-disable-line react-hooks/exhaustive-deps
+function ClassPanel({ f, lessons, onStudent, kinds, kf }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kinds: Kind[]; kf: KF }) {
+  const [ta, setTa] = useState<number | null>(null)            // null – «Hamısı (bütün siniflərim)»
   const [level, setLevel] = useState<'all' | (typeof LV)[number]>('all')
-  const [d, err, loading] = useLoad<CData | null>(() => (ta ? get(`/api/results-center/class/${ta}`, { ...(level !== 'all' ? { level } : {}), ...f.params }) : Promise.resolve(null)), [ta, level, f.label])
+  const [d, err, loading] = useLoad<CData>(() => get(ta ? `/api/results-center/class/${ta}` : '/api/results-center/class', { ...(level !== 'all' ? { level } : {}), ...f.params }), [ta, level, f.label])
   const [review, setReview] = useState<Review | null>(null)
   const title = d ? `${d.class_name} · ${d.subject}${d.level ? ` · ${d.level} qrup` : ''}` : ''
   const print = () => d && printDoc({
     title: `Sinif hesabatı – ${title}`, signers: [SIGN.teacher(), SIGN.deputy()],
     body: head(d.level ? 'Səviyyə qrupunun onlayn test nəticələri' : 'Sinfin onlayn test nəticələri', `${title} · ${f.label}`) +
-      (['movzu', 'sinaq'] as Kind[]).map(k => { const p = d.parts[k]; const s = p.summary
+      kinds.map(k => { const p = d.parts[k]; const s = p.summary
         return `<h2>${KIND_LABEL[k]}</h2>` + kpis([[s.tests, 'test'], [pct(s.avg_pct), 'orta'], [pct(s.participation), 'iştirak'], [s.missed, 'yazılmayan iş'], [s.chronic, 'xroniki'], [s.attention, 'diqqət']]) +
           `<p class="note">Qiymət paylanması: «5» – ${p.distribution['5'] || 0}, «4» – ${p.distribution['4'] || 0}, «3» – ${p.distribution['3'] || 0}, «2» – ${p.distribution['2'] || 0}` +
           (!d.level ? ` · Səviyyələr: ${LV.map(l => `${l} ${pct(p.levels[l]?.avg_pct)} (${p.levels[l]?.students || 0})`).join(', ')}` : '') + '</p>' +
@@ -412,16 +463,16 @@ function ClassPanel({ f, lessons, onStudent }: { f: PP; lessons?: MyLesson[]; on
   return (
     <>
       <div className="toolbar no-print">
-        <ClassSelect lessons={lessons} value={ta} onChange={setTa} all={null} />
-        <Seg value={level} onChange={setLevel} options={[['all', 'Bütün sinif'], ['Zəif', 'Zəif'], ['Orta', 'Orta'], ['Güclü', 'Güclü']]} />
+        <ClassSelect lessons={lessons} value={ta} onChange={setTa} />
+        <Seg label="Səviyyə" value={level} onChange={setLevel} options={[['all', 'Hamısı'], ['Zəif', 'Zəif'], ['Orta', 'Orta'], ['Güclü', 'Güclü']]} />
         {d && <button className="btn sm right" onClick={print}>Çap / PDF</button>}
       </div>
       <ErrorBox error={err} />
-      {!ta ? <PickFirst /> : loading && !d ? <Loading /> : d && (
+      {loading && !d ? <Loading /> : d && (
         <div className="grid g2">
-          {(['movzu', 'sinaq'] as Kind[]).map(k => { const p = d.parts[k]; const s = p.summary; const tot = Object.values(p.distribution).reduce((a, b) => a + b, 0) || 1
+          {kinds.map(k => { const p = d.parts[k]; const s = p.summary; const tot = Object.values(p.distribution).reduce((a, b) => a + b, 0) || 1
             return (
-              <section key={k} className="panel">
+              <section key={k} className="panel" style={kinds.length === 1 ? { gridColumn: '1 / -1' } : undefined}>
                 <h2>{KIND_LABEL[k]} <small>{s.tests} test · {s.students} şagird</small></h2>
                 {s.tests === 0 ? <div className="small muted">Bu dövrdə test yoxdur.</div> : <>
                   <div className="kpis"><Stat value={pct(s.avg_pct)} label="orta" /><Stat value={pct(s.participation)} label="iştirak" /><Stat value={s.chronic} label="xroniki yazmayan" /><Stat value={s.attention} label="diqqət tələb edir" /></div>
@@ -436,7 +487,7 @@ function ClassPanel({ f, lessons, onStudent }: { f: PP; lessons?: MyLesson[]; on
                 </>}
               </section>) })}
           <section className="panel" style={{ gridColumn: '1 / -1' }}>
-            <AiPanel scope={level === 'all' ? 'class' : 'group'} ta_id={ta} level={level === 'all' ? undefined : level} params={f.params} onReview={setReview} /></section>
+            <AiPanel scope={level === 'all' ? 'class' : 'group'} ta_id={ta} level={level === 'all' ? undefined : level} kind={kf} params={f.params} onReview={setReview} /></section>
         </div>)}
     </>
   )
@@ -449,7 +500,7 @@ type OData = { classes: ({ ta_id: number; class_name: string; subject: string } 
 const MON = ['yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avq', 'sen', 'okt', 'noy', 'dek']
 const monLabel = (m: string) => `${MON[Number(m.slice(5)) - 1]} ${m.slice(2, 4)}`
 
-function Overall({ f }: { f: PP }) {
+function Overall({ f, kinds, kf }: { f: PP; kinds: Kind[]; kf: KF }) {
   const [d, err, loading] = useLoad<OData>(() => get('/api/results-center/overview', f.params), [f.label])
   const [review, setReview] = useState<Review | null>(null)
   const { me } = useAuth()
@@ -484,8 +535,8 @@ function Overall({ f }: { f: PP }) {
             </table></div>
           </section>
           {months.length > 1 && <section className="panel" style={{ gridColumn: '1 / -1' }}><h2>Aylar üzrə dinamika</h2>
-            <Trend series={(['movzu', 'sinaq'] as Kind[]).map(k => ({ name: KIND_LABEL[k], color: COLOR[k], pts: months.map(m => ({ label: monLabel(m), v: d.months[k].find(x => x.month === m)?.avg_pct ?? null })) }))} /></section>}
-          <section className="panel" style={{ gridColumn: '1 / -1' }}><AiPanel scope="overall" params={f.params} onReview={setReview} /></section>
+            <Trend series={kinds.map(k => ({ name: KIND_LABEL[k], color: COLOR[k], pts: months.map(m => ({ label: monLabel(m), v: d.months[k].find(x => x.month === m)?.avg_pct ?? null })) }))} /></section>}
+          <section className="panel" style={{ gridColumn: '1 / -1' }}><AiPanel scope="overall" kind={kf} params={f.params} onReview={setReview} /></section>
         </div>))}
     </>
   )
@@ -495,15 +546,16 @@ function Overall({ f }: { f: PP }) {
 type Review = { id: number; created_at: string; model: string | null; payload: { title: string; xulase: string; guclu: string[]; zeif: string[]; sebebler: string[]
   tovsiyeler: { ne: string; kim: string; muddet: string }[]; valideyne: string; diqqet: string[] } }
 
-function AiPanel({ scope, ta_id, student_id, level, params, onReview }: { scope: 'student' | 'class' | 'group' | 'overall'; ta_id?: number | null; student_id?: number | null
-  level?: string; params: Record<string, string>; onReview: (r: Review | null) => void }) {
-  const q = { scope, ...(ta_id ? { ta_id } : {}), ...(student_id ? { student_id } : {}), ...(level ? { level } : {}) }
+function AiPanel({ scope, ta_id, student_id, level, kind = 'all', params, onReview }: { scope: 'student' | 'class' | 'group' | 'overall'; ta_id?: number | null; student_id?: number | null
+  level?: string; kind?: KF; params: Record<string, string>; onReview: (r: Review | null) => void }) {
+  const q = { scope, ...(ta_id ? { ta_id } : {}), ...(student_id ? { student_id } : {}), ...(level ? { level } : {}), ...(kind !== 'all' ? { kind } : {}) }
   const key = JSON.stringify(q)
   const [last, err] = useLoad<{ review: Review | null }>(() => get('/api/results-center/ai-review', q), [key])
   const [r, setR] = useState<Review | null>(null)
   useEffect(() => { setR(last?.review ?? null) }, [last])
   useEffect(() => { onReview(r) }, [r])   // eslint-disable-line react-hooks/exhaustive-deps
-  const what = { student: 'şagird', class: 'sinif', group: 'səviyyə qrupu', overall: 'bütün siniflər' }[scope]
+  const what = { student: 'şagird', class: ta_id ? 'sinif' : 'bütün siniflərim', group: 'səviyyə qrupu', overall: 'bütün siniflər' }[scope] +
+    (kind !== 'all' ? ` · ${KIND_LABEL[kind].toLowerCase()}` : '')
   return (
     <>
       <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
