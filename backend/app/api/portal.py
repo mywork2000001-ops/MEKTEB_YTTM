@@ -129,11 +129,12 @@ def plan(view: str = 'week', date: dt.date | None = None, user: User = Depends(s
          db: Session = Depends(get_db)):
     s = me_student(db, user)
     d = date or today()
-    items = []
+    items, rng = [], (d, d)
     for ta, c in my_assignments(db, s):
         ctx = plan_ctx(db, ta)
         try:
             a, b = view_range(view, d, ctx.year.sem1_end, ctx.year.sem2_start, ctx.year.start, ctx.year.end)
+            rng = (a, b)
         except ValueError:
             raise HTTPException(400, 'görünüş: day, week, month, semester')
         entries = journal_entries(db, ta.id, a, b)
@@ -145,7 +146,7 @@ def plan(view: str = 'week', date: dt.date | None = None, user: User = Depends(s
                           'group': c.kind == 'qrup',
                           **_plan_fields(pl, sl, e), 'homework': e.homework if e else None})
     items.sort(key=lambda x: (x['date'], x['time'] or '', x['period']))
-    return {'view': view, 'items': items}
+    return {'view': view, 'from': rng[0], 'to': rng[1], 'items': items}
 
 
 @router.get('/progress')

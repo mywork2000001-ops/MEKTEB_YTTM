@@ -3,11 +3,14 @@ import { get } from '../../api'
 import { useT } from '../../i18n'
 import { examLabel, PlanNotes } from './Plan'
 import { ErrorBox, fmtDate, gradeTone, isoDate, Loading, Pill, Top, useLoad } from '../../ui'
+import { useAuth } from '../../auth'
+import { printDay } from './studentPrint'
 
 const ATT: Record<string, [string, any]> = { var: ['dərsdə idim', 'ok'], yox: ['qayıb', 'bad'], 'üzrlü': ['üzrlü', 'warn'], gecikdi: ['gecikdim', 'info'] }
 
 export default function Lesson() {
   const t = useT()
+  const { me } = useAuth()
   const [date, setDate] = useState(isoDate(new Date()))
   const [d, err, loading] = useLoad<any>(() => get('/api/portal/day', { date }), [date])
   const step = (n: number) => { const x = new Date(date + 'T00:00'); x.setDate(x.getDate() + n); setDate(isoDate(x)) }
@@ -17,6 +20,7 @@ export default function Lesson() {
       <div className="row" style={{ marginBottom: 12 }}>
         <button className="btn sm" onClick={() => step(-1)}>‹</button><b>{d?.weekday ? d.weekday + ' · ' : ''}{fmtDate(date)}</b>
         <button className="btn sm" onClick={() => step(1)}>›</button><button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>{t('Bu gün')}</button>
+        <button className="btn sm right" disabled={!d} onClick={() => d && printDay(d, me, date, examLabel)}>Çap</button>
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : d?.lessons.length === 0 ? <div className="empty">Bu gün dərs yoxdur.</div> : d?.lessons.map((l: any, i: number) => (

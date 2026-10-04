@@ -3,6 +3,8 @@ import { get } from '../../api'
 import { useT } from '../../i18n'
 import { ErrorBox, fmt, fmtDate, gradeTone, Loading, Pill, Stat, Top, useLoad } from '../../ui'
 import { MathText } from '../../MathText'
+import { useAuth } from '../../auth'
+import { printMistakes, printResults } from './studentPrint'
 
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 
@@ -11,10 +13,13 @@ export default function Results() {
   const [d, err] = useLoad<any>(() => get('/api/portal/results'), [])
   const [ex] = useLoad<any>(() => get('/api/portal/exams'), [])
   const [allMistakes, setAllMistakes] = useState(false)
+  const { me } = useAuth()
   if (!d) return err ? <ErrorBox error={err} /> : <Loading />
   return (
     <>
-      <Top title={t('Nəticələrim')} />
+      <Top title={t('Nəticələrim')} actions={<span className="row no-print" style={{ gap: 6 }}>
+        <button className="btn sm" onClick={() => printResults(d, ex, me, false)}>Çap / PDF</button>
+        {d.mistakes.length > 0 && <button className="btn sm" onClick={() => printResults(d, ex, me, true)}>Səhvlərlə birlikdə</button>}</span>} />
       {d.badges.length > 0 && (
         <section className="panel" style={{ marginBottom: 16 }}><h2>{t('Nailiyyətlər')}</h2>
           <div className="row">{d.badges.map((b: any) => <Pill key={b.key} tone="acc">★ {b.title} – {b.text}</Pill>)}</div></section>)}
@@ -62,7 +67,7 @@ export default function Results() {
             <Pill tone={gradeTone(x.grade)}>{x.correct}/{x.total} · {fmt(x.pct, 0)}% → {x.grade}</Pill></div>))}
       </section>
       <section className="panel">
-        <h2>{t('Səhvlərim')} <small>{d.mistakes.length}</small></h2>
+        <h2>{t('Səhvlərim')} <small>{d.mistakes.length}</small>{d.mistakes.length > 0 && <button className="btn sm right no-print" onClick={() => printMistakes(d, me, true)}>Səhv dəftəri – çap</button>}</h2>
         {d.mistakes.length === 0 ? <p className="muted">Səhv yoxdur və ya cavablar hələ açılmayıb.</p> : d.mistakes.slice(0, allMistakes ? undefined : 10).map((m: any, k: number) => (
           <details key={k} style={{ borderBottom: '1px solid var(--line)', padding: '8px 0' }}>
             <summary style={{ cursor: 'pointer' }}><MathText text={ml(m.text)} /> <span className="small muted">· {m.task}</span></summary>

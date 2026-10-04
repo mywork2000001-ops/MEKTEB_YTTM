@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { get } from '../../api'
 import { useT } from '../../i18n'
 import { ErrorBox, fmtDate, isoDate, Loading, Pill, Seg, Top, useLoad } from '../../ui'
+import { useAuth } from '../../auth'
+import { printPlan } from './studentPrint'
 
 /** «KSQ-2», «BSQ-1», «Diaqnostik» – formativ dərsdə boş. */
 export const examLabel = (l: any) => (!l.assessment_type || l.assessment_type === 'formativ' ? '' : l.exam_no ? `${l.assessment_type}-${l.exam_no}` : l.assessment_type)
@@ -23,6 +25,7 @@ export function PlanNotes({ l, compact }: { l: any; compact?: boolean }) {
 
 export default function Plan() {
   const t = useT()
+  const { me } = useAuth()
   const [mode, setMode] = useState<'plan' | 'progress'>('plan')
   const [view, setView] = useState<'day' | 'week' | 'month' | 'semester'>('week')
   const [date, setDate] = useState(isoDate(new Date()))
@@ -42,7 +45,8 @@ export default function Plan() {
         <Seg value={view} onChange={setView} options={[['day', t('Gün')], ['week', t('Həftə')], ['month', t('Ay')], ['semester', t('Yarımil')]]} />
         <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
           <button className="btn sm" onClick={() => step(-1)} aria-label="Əvvəlki">‹</button><button className="btn sm" onClick={() => step(1)} aria-label="Növbəti">›</button>
-          <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>{t('Bu gün')}</button></span>
+          <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>{t('Bu gün')}</button>
+          <button className="btn sm" disabled={!d} onClick={() => d && printPlan(d, me, ({ day: 'Gün', week: 'Həftə', month: 'Ay', semester: 'Yarımil' } as const)[view], examLabel)}>Çap</button></span>
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : (

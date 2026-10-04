@@ -230,3 +230,5 @@ body.exam-guard main{max-width:860px;margin:0 auto}
 .prog-details{margin-bottom:14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px}
 .prog-details > summary{cursor:pointer;font-size:14px}
 .prog-details[open] > summary{margin-bottom:12px}
+/* test zamanı çap olunmur (brauzer menyusundan da): suallar kağıza / PDF-ə çıxmasın */
+@media print{body.exam-guard #root{display:none!important}body.exam-guard::before{content:"Test zamanı çap etmək olmaz";display:block;font:16px Arial,sans-serif;padding:20mm}}

@@ -5,6 +5,8 @@ import { ApiError, get, post, put } from '../../api'
 import { useT } from '../../i18n'
 import { AsyncBtn, Drawer, ErrorBox, gradeTone, Loading, Pill, Seg, toast, Top, useLoad } from '../../ui'
 import { MathText } from '../../MathText'
+import { printReview } from './studentPrint'
+import { useAuth } from '../../auth'
 import { PeriodBar, usePeriod } from '../../periods'
 
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
@@ -196,9 +198,11 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
 }
 
 function Review({ id, onClose }: { id: number; onClose: () => void }) {
+  const { me } = useAuth()
   const [d, err] = useLoad<any>(() => get(`/api/portal/tasks/${id}/review`), [id])
   return (
-    <Drawer title={d ? `${d.title} · ${d.correct}/${d.total}` : 'Cavablar'} onClose={onClose}>
+    <Drawer title={d ? `${d.title} · ${d.correct}/${d.total}` : 'Cavablar'} onClose={onClose}
+      footer={d ? <button className="btn" onClick={() => printReview(d, me)}>Çap / PDF</button> : undefined}>
       <ErrorBox error={err} />
       {d?.questions.map((q: any, k: number) => (
         <section key={k} className="panel" style={{ marginBottom: 10, borderColor: q.ok ? 'var(--ok)' : 'var(--bad)' }}>
