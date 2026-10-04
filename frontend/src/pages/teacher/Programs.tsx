@@ -42,7 +42,8 @@ export default function Programs() {
         dərs siyahısı (jurnala qarışmır). Proqramlar bir-biri ilə qarışdırılmır.</p>
       <ErrorBox error={err0 || err1 || err2} />
       <div className="toolbar"><LessonSelect lessons={lessons} value={ta} onChange={setTa} /></div>
-      {!ta ? <PickFirst text="Proqram seçmək üçün sinif və ya qrup seçin" /> : <div style={{ marginBottom: 16 }}><ProgramBox key={`${ta}-${ver}`} ta={ta} onChanged={() => { reloadFor(); reloadLib() }} /></div>}
+      {!ta ? (lessons && lessons.length === 0 ? <div className="empty"><p>Bu məkanda heç bir sinif və ya qrupa qoşulmamısınız. Perspektiv plan qoşulduğunuz sinfə təyin olunur:
+          <b> Tənzimləmələr → Siniflər</b> → sinfin kartında <b>«Qoşul»</b> – orada əsas proqramı da seçə bilərsiniz.</p></div> : <PickFirst text="Proqram seçmək üçün sinif və ya qrup seçin" />) : <div style={{ marginBottom: 16 }}><ProgramBox key={`${ta}-${ver}`} ta={ta} onChanged={() => { reloadFor(); reloadLib() }} /></div>}
       <h2 className="sec">Proqramlar kitabxanası <small>{ta && f ? `${f.grade_roman || ''} sinfə uyğun olanlar öndə` : 'bütün siniflər'}</small></h2>
       <div className="toolbar"><select className="sel keep" value={lvl} onChange={e => setLvl(e.target.value)} aria-label="Səviyyə">
         <option value="">Bütün səviyyələr</option>{LEVELS.map(l => <option key={l}>{l}</option>)}</select>
@@ -111,10 +112,10 @@ function ViewProgram({ p, onClose }: { p: Prog; onClose: () => void }) {
 }
 
 /** Proqramın bölmələrindən seçim (eyni proqramın daxilində süzgəc – proqramlar qarışmır). null – hamısı. */
-function useSections(pid: number) {
+function useSections(pid: number, init: string[] | null = null) {
   const [d] = useLoad<any>(() => get(`/api/programs/${pid}`), [pid])
   const all: Sec[] = d?.sections || []
-  const [sel, setSel] = useState<string[] | null>(null)
+  const [sel, setSel] = useState<string[] | null>(init)
   const chosen = sel === null || sel.length === all.length ? null : all.map(s => s.name).filter(n => sel.includes(n))
   return { all, sel, setSel, chosen, ready: !!d }
 }
@@ -141,8 +142,8 @@ function SectionPicker({ all, sel, setSel, unit }: { all: Sec[]; sel: string[] |
   )
 }
 
-function ApplyProgram({ p, ta, onClose, onDone }: { p: Prog; ta: number; onClose: () => void; onDone: () => void }) {
-  const sx = useSections(p.id)
+function ApplyProgram({ p, ta, init, onClose, onDone }: { p: Prog; ta: number; init?: string[] | null; onClose: () => void; onDone: () => void }) {
+  const sx = useSections(p.id, init ?? null)
   const key = JSON.stringify(sx.chosen)
   const [pv, err] = useLoad<any>(() => (sx.chosen?.length === 0 ? Promise.resolve(null)
     : get(`/api/programs/${p.id}/preview/${ta}`, sx.chosen ? { sections: key } : {})), [p.id, ta, key])
@@ -329,6 +330,7 @@ function CourseEditor({ p, onClose, onDone }: { p: Prog | null; onClose: () => v
 export function ProgramBox({ ta, onChanged }: { ta: number; onChanged?: () => void }) {
   const [f, err, , reload] = useLoad<For>(() => get(`/api/programs/for/${ta}`), [ta])
   const [pick, setPick] = useState<null | 'main' | 'extra'>(null)
+  const [resec, setResec] = useState(false)          // əsas proqramın bölmələrini yenidən seçmək
   const [apply, setApply] = useState<Prog | null>(null)
   const [attach, setAttach] = useState<Prog | null>(null)
   const [extra, setExtra] = useState<number | null>(null)
@@ -342,6 +344,7 @@ export function ProgramBox({ ta, onChanged }: { ta: number; onChanged?: () => vo
         {f.main && f.main_sections && <p className="small muted" style={{ margin: '4px 0 0' }}>Yalnız seçilmiş bölmələr ({f.main_sections.length}): {f.main_sections.join('; ')}</p>}
         <div className="row" style={{ marginTop: 10 }}>
           <button className="btn sm primary" onClick={() => setPick('main')}>{f.main ? 'Əsas proqramı dəyiş' : 'Əsas proqramı seç'}</button>
+          {f.main && f.main.kind === 'adaptive' && <button className="btn sm" onClick={() => setResec(true)}>Bölmələri seç</button>}
           {f.main && <AsyncBtn className="btn sm ghost" ok="Proqram kimi saxlanıldı" onClick={async () => { await post(`/api/programs/save/${ta}`, {}); done() }}>Cari planı ayrıca saxla</AsyncBtn>}
         </div></section>
       <section className="panel"><h2>Əlavə proqramlar <small>{f.extra.length}</small></h2>
@@ -357,6 +360,7 @@ export function ProgramBox({ ta, onChanged }: { ta: number; onChanged?: () => vo
       {pick && <PickProgram ta={ta} mode={pick} mainId={f.main?.id} onClose={() => setPick(null)}
         onPick={p => { const m = pick; setPick(null); if (m === 'main') setApply(p); else setAttach(p) }} />}
       {apply && <ApplyProgram p={apply} ta={ta} onClose={() => setApply(null)} onDone={() => { setApply(null); done() }} />}
+      {resec && f.main && <ApplyProgram p={f.main} ta={ta} init={f.main_sections} onClose={() => setResec(false)} onDone={() => { setResec(false); done() }} />}
       {attach && <AttachProgram p={attach} ta={ta} onClose={() => setAttach(null)} onDone={() => { setAttach(null); done() }} />}
       {extra && <ExtraLessons aid={extra} onClose={() => setExtra(null)} />}
     </div>

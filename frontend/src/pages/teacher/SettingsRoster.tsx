@@ -215,8 +215,12 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   const [subject, setSubject] = useState(cls.mine?.subject || 'Riyaziyyat')
   const [slots, setSlots] = useState<Record<string, number[]>>(cls.mine?.slots || {})
   const { me } = useAuth()
-  const priv = me?.workspace === 'private'
-  const days = priv ? [...DAYS, 'Ş.', 'B.'] : DAYS   // fərdi qrupda şənbə və bazar da dərs günüdür
+  const privWs = me?.workspace === 'private'
+  // köhnə qaydada (dərs saatı şəbəkəsi ilə) qoşulmuş fərdi qrup – şəbəkə saxlanılır, istəsə real vaxtlara keçir
+  const legacy = privWs && !!cls.mine && !cls.mine.times && Object.keys(cls.mine.slots || {}).length > 0
+  const [toTimes, setToTimes] = useState(false)
+  const priv = privWs && (!legacy || toTimes)
+  const days = privWs ? [...DAYS, 'Ş.', 'B.'] : DAYS   // fərdi qrupda şənbə və bazar da dərs günüdür
   // fərdi hazırlıq məktəb deyil: dərs – həftə günü + real başlama/bitmə vaxtı (məktəb zəngi və «saat» yoxdur)
   const [times, setTimes] = useState<{ weekday: number; start: string; end: string }[]>(cls.mine?.times || [])
   const [summ, setSumm] = useState(cls.mine?.has_summative ?? (cls.kind !== 'qrup' && me?.workspace !== 'private'))   // fərdi sinifdə defolt – yox
@@ -272,6 +276,8 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
         {!cls.mine && cls.purpose && <p className="small muted" style={{ margin: 0 }}>Qrupun məqsədi: <b>{PURPOSES[cls.purpose] || cls.purpose}</b> – ★ uyğun proqramlar öndədir.</p>}
         {me?.workspace === 'private' || course.from || course.to ? <CourseDates v={course} onChange={setCourse} />
           : <details><summary className="small muted">Kurs müddəti (istəyə görə)</summary><CourseDates v={course} onChange={setCourse} /></details>}
+        {legacy && !toTimes && <p className="small" style={{ margin: 0 }}>Bu qrupun cədvəli köhnə qaydada (dərs saatı ilə) yazılıb.{' '}
+          <button className="btn sm" onClick={() => setToTimes(true)}>Real dərs vaxtlarına keç</button></p>}
         {priv ? <LessonTimes v={times} onChange={setTimes} /> : <>
         <p className="small muted">Dərs saatlarını işarələyin (0 – birinci dərsdən əvvəlki saat, məs. XI peşə 08:00):</p>
         <div className="tbl-wrap"><table style={{ minWidth: 0 }}><thead><tr><th>Saat</th>{days.map(d => <th key={d}>{d}</th>)}</tr></thead>

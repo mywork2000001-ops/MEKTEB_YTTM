@@ -47,9 +47,11 @@ export default function Plan() {
         <LessonSelect lessons={lessons} value={ta} onChange={setTa} />
         {ta && <Seg value={view} onChange={setView} options={[['day', 'Gün'], ['week', 'Həftə'], ['month', 'Ay'], ['semester', 'Yarımil']]} />}
       </div>
-      {ta && <details className="prog-details no-print"><summary>Proqramlar: <b>{cur?.program || 'əsas proqram seçilməyib'}</b>{cur?.extra_programs ? ` · əlavə: ${cur.extra_programs}` : ''} <span className="small muted">– seç / dəyiş</span></summary>
+      {lessons && lessons.length === 0 && <div className="empty"><p>Bu məkanda heç bir sinif və ya qrupa qoşulmamısınız. Perspektiv plan qoşulduğunuz sinfə təyin olunur:
+          <b> Tənzimləmələr → Siniflər</b> → sinfin kartında <b>«Qoşul»</b> – orada əsas proqramı da seçə bilərsiniz.</p></div>}
+      {ta && <details className="prog-details no-print" open={cur ? !cur.program : undefined}><summary>Proqramlar: <b>{cur?.program || 'əsas proqram seçilməyib'}</b>{cur?.extra_programs ? ` · əlavə: ${cur.extra_programs}` : ''} <span className="small muted">– seç / dəyiş</span></summary>
         <ProgramBox ta={ta} onChanged={() => { reload(); reloadLessons() }} /></details>}
-      {!ta ? <PickFirst /> : loading && !d ? <Loading /> : d && (
+      {!ta ? (lessons?.length === 0 ? null : <PickFirst text="Yuxarıda sinif və ya qrupu seçin" />) : loading && !d ? <Loading /> : d && (
         <>
           <div className="row" style={{ marginBottom: 12 }}>
             <button className="btn sm" onClick={() => setDate(step(date, view, -1))}>‹</button>
@@ -59,7 +61,7 @@ export default function Plan() {
             <button className="btn sm right" onClick={() => printDoc({ title: `${cur?.class_name} – perspektiv plan ${fmtDate(d.from)}–${fmtDate(d.to)}`, body: head(`${cur?.class_name} – ${cur?.subject}: perspektiv plan (işçi)`, `${fmtDate(d.from)} – ${fmtDate(d.to)}`) + table(['Tarix', 'Saat', '№', 'Mövzu', 'Qiymətləndirmə'], d.items.map(i => [`${i.weekday} ${fmtDate(i.date)}`, i.period, i.lesson?.seq ?? '', i.lesson?.topic ?? '—', i.lesson && i.lesson.assessment_type !== 'formativ' ? i.lesson.assessment_type + (i.lesson.exam_no ? '-' + i.lesson.exam_no : '') : ''])) })}>Çap / PDF</button>
             {cur && cur.lag > 0 && <Pill tone="warn">Geriləmə: {cur.lag} dərs</Pill>}
           </div>
-          {!d.has_plan && <div className="banner">Bu sinif üçün rəsmi plan yüklənməyib (Tənzimləmələr → Siniflər).</div>}
+          {!d.has_plan && <div className="banner">Bu sinif üçün plan yoxdur – yuxarıdakı <b>«Proqramlar: seç / dəyiş»</b> bölməsində «Əsas proqramı seç» düyməsi ilə kitabxanadan proqram seçin (Word planınızı Tənzimləmələr → Proqramlar → «Word planını yüklə» ilə əlavə edə bilərsiniz).</div>}
           {d.unfit.length > 0 && <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>İlin sonuna {d.unfit.length} dərs sığmır – geriləməni aradan qaldırmaq lazımdır.</div>}
           <div className="jlist">
             {d.items.length === 0 && <div className="empty">Bu dövrdə dərs yoxdur.</div>}
