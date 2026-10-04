@@ -207,6 +207,7 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   const [subject, setSubject] = useState(cls.mine?.subject || 'Riyaziyyat')
   const [slots, setSlots] = useState<Record<string, number[]>>(cls.mine?.slots || {})
   const { me } = useAuth()
+  const days = me?.workspace === 'private' ? [...DAYS, 'Ş.', 'B.'] : DAYS   // fərdi qrupda şənbə və bazar da dərs günüdür
   const [summ, setSumm] = useState(cls.mine?.has_summative ?? (cls.kind !== 'qrup' && me?.workspace !== 'private'))   // fərdi sinifdə defolt – yox
   const [err, setErr] = useState<unknown>()
   const [leave, setLeave] = useState(false)
@@ -229,10 +230,10 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
           <select value={prog} onChange={e => setProg(e.target.value)}><option value="">— sonra seçəcəm (və ya Word planı yükləyəcəm) —</option>
             {(lib || []).map(p => <option key={p.id} value={p.id}>{p.fits && p.grade ? '✓ ' : ''}{p.title}{p.level ? ` · ${p.level}` : ''}</option>)}</select></Field>}
         <p className="small muted">Dərs saatlarını işarələyin (0 – birinci dərsdən əvvəlki saat, məs. XI peşə 08:00):</p>
-        <div className="tbl-wrap"><table style={{ minWidth: 0 }}><thead><tr><th>Saat</th>{DAYS.map(d => <th key={d}>{d}</th>)}</tr></thead>
+        <div className="tbl-wrap"><table style={{ minWidth: 0 }}><thead><tr><th>Saat</th>{days.map(d => <th key={d}>{d}</th>)}</tr></thead>
           <tbody>{Array.from({ length: 9 }, (_, p) => (
-            <tr key={p}><th className="small">{p}</th>{DAYS.map((_, d) => (
-              <td key={d} style={{ textAlign: 'center' }}><input type="checkbox" aria-label={`${DAYS[d]} ${ord(p)} saat`} checked={(slots[d] || []).includes(p)} onChange={() => toggle(d, p)} /></td>))}</tr>))}</tbody></table></div>
+            <tr key={p}><th className="small">{p}</th>{days.map((_, d) => (
+              <td key={d} style={{ textAlign: 'center' }}><input type="checkbox" aria-label={`${days[d]} ${ord(p)} saat`} checked={(slots[d] || []).includes(p)} onChange={() => toggle(d, p)} /></td>))}</tr>))}</tbody></table></div>
         {cls.mine && <fieldset style={{ margin: 0 }}><legend>Perspektiv plan proqramları</legend><ProgramBox ta={cls.mine.ta_id} /></fieldset>}
         <ErrorBox error={err} />
         {cls.mine && (leave

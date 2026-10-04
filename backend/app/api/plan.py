@@ -21,7 +21,7 @@ from ..services import lesson_out, own_assignment, plan_ctx, today
 from .common import audit, settings_unlocked
 
 router = APIRouter(prefix='/api', tags=['plan'])
-WEEKDAYS = ['B.e.', 'Ç.a.', 'Ç.', 'C.a.', 'C.']
+WEEKDAYS = ['B.e.', 'Ç.a.', 'Ç.', 'C.a.', 'C.', 'Ş.', 'B.']     # Ş./B. – yalnız fərdi məkanda
 
 
 def bell(db: Session, cls: SchoolClass, period: int) -> str | None:
@@ -247,7 +247,7 @@ def timetable(date: dt.date | None = None, user: User = Depends(staff), db: Sess
     """Müəllimin həftəlik cədvəli mövzularla: {gün: {saat: [{sinif, mövzu, vaxt}]}}."""
     d = date or today()
     a = d - dt.timedelta(days=d.weekday())
-    days = [a + dt.timedelta(days=i) for i in range(5)]
+    days = [a + dt.timedelta(days=i) for i in range(7)]
     grid: dict[str, dict[str, list]] = {str(x): {} for x in days}
     tas = db.scalars(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id, ws_cond(user),
                                                       TeachingAssignment.archived_at.is_(None)))
@@ -262,8 +262,9 @@ def timetable(date: dt.date | None = None, user: User = Depends(staff), db: Sess
                     'ta_id': ta.id, 'class_name': ctx.cls.name, 'subject': ta.subject,
                     'time': bell(db, ctx.cls, s.period), 'topic': pl.topic if pl else None,
                     'assessment_type': pl.assessment_type if pl else None, 'held': s.held})
+    # şənbə/bazar – yalnız həmin gün dərs varsa (fərdi qrup); məktəb həftəsi 5 gün qalır
     return {'week_start': a, 'days': [{'date': x, 'weekday': WEEKDAYS[i], 'periods': grid[str(x)]}
-                                      for i, x in enumerate(days)]}
+                                      for i, x in enumerate(days) if i < 5 or grid[str(x)]]}
 
 
 def _plan_key(s: str) -> str:

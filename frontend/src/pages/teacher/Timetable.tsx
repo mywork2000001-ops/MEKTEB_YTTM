@@ -10,7 +10,7 @@ type Day = { date: string; weekday: string; periods: Record<string, Cell[]> }
 type TT = { week_start: string; days: Day[] }
 type Row = { kind: 'lesson'; time: string; start: number } | { kind: 'break'; time: string; start: number }
 
-const DAY_FULL: Record<string, string> = { 'B.e.': 'Bazar ertəsi', 'Ç.a.': 'Çərşənbə axşamı', 'Ç.': 'Çərşənbə', 'C.a.': 'Cümə axşamı', 'C.': 'Cümə' }
+const DAY_FULL: Record<string, string> = { 'B.e.': 'Bazar ertəsi', 'Ç.a.': 'Çərşənbə axşamı', 'Ç.': 'Çərşənbə', 'C.a.': 'Cümə axşamı', 'C.': 'Cümə', 'Ş.': 'Şənbə', 'B.': 'Bazar' }
 const PALETTE = ['#3558C9', '#2F7A5F', '#9B3552', '#B7791F', '#6A4FC0', '#1F7F86', '#C05621', '#4A5165']
 const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
 const startOf = (t: string) => toMin(t.replace('–', '-').split('-')[0].trim())
@@ -75,12 +75,12 @@ export default function Timetable() {
 
   return (
     <>
-      <Top title="Həftəlik dərs cədvəli" sub={d ? `${fmtDate(d.days[0].date)} – ${fmtDate(d.days[4].date)} · həftədə ${weekTotal} dərs` : 'Mövzular perspektiv plandan'} />
+      <Top title="Həftəlik dərs cədvəli" sub={d ? `${fmtDate(d.days[0].date)} – ${fmtDate(d.days[d.days.length - 1].date)} · həftədə ${weekTotal} dərs` : 'Mövzular perspektiv plandan'} />
       <div className="row no-print" style={{ marginBottom: 12 }}>
         <button className="btn sm" onClick={() => shift(-1)}>‹ Əvvəlki</button>
         <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>Bu həftə</button>
         <button className="btn sm" onClick={() => shift(1)}>Növbəti ›</button>
-        <button className="btn sm right" disabled={!d} onClick={() => d && printDoc({ landscape: true, title: `Həftəlik dərs cədvəli ${fmtDate(d.days[0].date)}–${fmtDate(d.days[4].date)}`, body: head('Həftəlik dərs cədvəli', `${fmtDate(d.days[0].date)} – ${fmtDate(d.days[4].date)}`) + `<table><thead><tr><th>Vaxt</th>${d.days.map(x => `<th>${esc(DAY_FULL[x.weekday] || x.weekday)}<br>${fmtDate(x.date).slice(0, 5)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => r.kind === 'break' ? `<tr><td class="c">${esc(r.time)}</td><td colspan="5" class="c b">Nahar fasiləsi</td></tr>` : `<tr><td class="c b">${esc(r.time)}</td>${d.days.map(x => { const cs = byTime.get(r.time)?.get(x.date) || []; return `<td>${cs.map(c => `<b>${esc(c.class_name)}</b> (${ord(c.p)})${c.assessment_type === 'KSQ' || c.assessment_type === 'BSQ' ? ' <b>' + c.assessment_type + '</b>' : ''}<br>${esc(c.topic || '')}`).join('<hr>') || '<span class="muted">—</span>'}</td>` }).join('')}</tr>`).join('')}</tbody></table>` })}>Çap / PDF</button>
+        <button className="btn sm right" disabled={!d} onClick={() => d && printDoc({ landscape: true, title: `Həftəlik dərs cədvəli ${fmtDate(d.days[0].date)}–${fmtDate(d.days[d.days.length - 1].date)}`, body: head('Həftəlik dərs cədvəli', `${fmtDate(d.days[0].date)} – ${fmtDate(d.days[d.days.length - 1].date)}`) + `<table><thead><tr><th>Vaxt</th>${d.days.map(x => `<th>${esc(DAY_FULL[x.weekday] || x.weekday)}<br>${fmtDate(x.date).slice(0, 5)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => r.kind === 'break' ? `<tr><td class="c">${esc(r.time)}</td><td colspan="${d.days.length}" class="c b">Nahar fasiləsi</td></tr>` : `<tr><td class="c b">${esc(r.time)}</td>${d.days.map(x => { const cs = byTime.get(r.time)?.get(x.date) || []; return `<td>${cs.map(c => `<b>${esc(c.class_name)}</b> (${ord(c.p)})${c.assessment_type === 'KSQ' || c.assessment_type === 'BSQ' ? ' <b>' + c.assessment_type + '</b>' : ''}<br>${esc(c.topic || '')}`).join('<hr>') || '<span class="muted">—</span>'}</td>` }).join('')}</tr>`).join('')}</tbody></table>` })}>Çap / PDF</button>
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : d && (
@@ -96,7 +96,7 @@ export default function Timetable() {
                 <th key={x.date} className={x.date === todayIso ? 'today' : ''}>{DAY_FULL[x.weekday] || x.weekday}<span>{fmtDate(x.date).slice(0, 5)}</span></th>))}</tr></thead>
               <tbody>
                 {rows.map(r => r.kind === 'break' ? (
-                  <tr key={'b' + r.time} className="tt-break"><td className="tt-time">{r.time}</td><td colSpan={5}>Nahar fasiləsi</td></tr>
+                  <tr key={'b' + r.time} className="tt-break"><td className="tt-time">{r.time}</td><td colSpan={d.days.length}>Nahar fasiləsi</td></tr>
                 ) : (
                   <tr key={r.time}>
                     <td className="tt-time">{r.time.replace('–', '\n')}</td>

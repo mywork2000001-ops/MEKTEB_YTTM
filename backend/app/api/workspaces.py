@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import staff
 from ..models import AcademicYear, Holiday, School, User
-from ..workspaces import ensure_private, main_school_id, private_of, workspaces
+from ..workspaces import copy_holidays, ensure_private, main_school_id, private_of, workspaces
 from .common import audit, settings_unlocked
 
 router = APIRouter(prefix='/api/workspaces', tags=['workspaces'])
@@ -141,12 +141,12 @@ def add_private_holiday(body: HolidayIn, user: User = Depends(settings_unlocked)
     have = {h.date for h in db.scalars(select(Holiday).where(Holiday.year_id == y.id))}
     d, last, n = body.date, body.to or body.date, 0
     while d <= last:
-        if d not in have and d.weekday() < 5:
+        if d not in have:                      # fərdi məkanda şənbə/bazar da dərs günü ola bilər
             db.add(Holiday(year_id=y.id, date=d, name=body.name.strip()))
             n += 1
         d += dt.timedelta(days=1)
     if not n:
-        raise HTTPException(400, 'Əlavə olunacaq iş günü yoxdur (həftəsonu və ya artıq qeyd olunub)')
+        raise HTTPException(400, 'Bu günlər artıq qeyd olunub')
     audit(db, user, 'create', 'private_holiday', y.id, date=str(body.date), to=str(body.to) if body.to else None, days=n)
     db.commit()
     return _calendar(db, y)
@@ -176,7 +176,7 @@ def reset_private_calendar(user: User = Depends(settings_unlocked), db: Session 
     for h in db.scalars(select(Holiday).where(Holiday.year_id == y.id)):
         db.delete(h)
     db.flush()
-    db.add_all(Holiday(year_id=y.id, date=h.date, name=h.name) for h in db.scalars(select(Holiday).where(Holiday.year_id == src.id)))
+    copy_holidays(db, src.id, y.id)
     audit(db, user, 'update', 'private_year', y.id, reset=True)
     db.commit()
     return _calendar(db, y)

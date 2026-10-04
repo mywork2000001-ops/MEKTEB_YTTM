@@ -80,7 +80,7 @@ def test_private_calendar_edit(world):
     before = lc['year']['timetable_total']
     # tətil aralığı (həftəsonları sayılmır) – dərs yuvaları azalır
     r = ilqar.post('/api/workspaces/private/holidays', json={'date': '2027-07-05', 'to': '2027-07-11', 'name': 'Qısa tətil'}).json()
-    assert len([h for h in r['holidays'] if h['name'] == 'Qısa tətil']) == 5
+    assert len([h for h in r['holidays'] if h['name'] == 'Qısa tətil']) == 7          # fərdi məkanda həftəsonu da
     assert ilqar.get(f'/api/analytics/{ta}/lessons').json()['year']['timetable_total'] == before - 2
     assert ilqar.post('/api/workspaces/private/holidays', json={'date': '2027-07-10', 'name': 'Şənbə'}).status_code == 400
     hid = r['holidays'][0]['id']
@@ -138,3 +138,26 @@ def test_extra_courses_separated_by_workspace(world):
     r1 = admin.post('/api/extra', json={**body, 'title': 'Fərdi kurs', 'ta_ids': [pta]}); assert r1.status_code == 200, r1.text
     pc = r1.json()['id']
     assert [c['id'] for c in admin.get('/api/extra').json()] == [pc]
+
+
+def test_weekend_lessons_in_private_only(world):
+    as_, S = world
+    ilqar, admin = as_('ilqar'), as_('admin')
+    sc = admin.post('/api/classes', json={'name': 'X w'}).json()['id']
+    weekend = {'subject': 'Riyaziyyat', 'weekly_hours': 2, 'slots': {'5': [1], '6': [1]}}
+    assert admin.post(f'/api/classes/{sc}/join', json=weekend).status_code == 400      # məktəbdə şənbə/bazar yoxdur
+    pid = ilqar.post('/api/classes', json={'name': 'Həftəsonu qrupu', 'kind': 'adi', 'private': True}).json()['id']
+    r = ilqar.post(f'/api/classes/{pid}/join', json={**weekend, 'has_summative': False})
+    assert r.status_code == 200, r.text
+    ta = r.json()['mine']['ta_id']
+    lc = ilqar.get(f'/api/analytics/{ta}/lessons').json()
+    assert lc['year']['timetable_total'] > 60                                         # ~2 dərs × həftə
+    sat = '2026-10-10'                                                                 # şənbə
+    day = ilqar.get(f'/api/journal/{ta}/day', params={'date': sat}).json()
+    assert day['weekday'] == 'Ş.' and len(day['lessons']) == 1
+    tt = ilqar.get('/api/timetable', params={'date': sat}).json()
+    assert [d['weekday'] for d in tt['days']][-2:] == ['Ş.', 'B.']
+    # fərdi tətil həftəsonunu da tutur
+    r = ilqar.post('/api/workspaces/private/holidays', json={'date': '2026-10-10', 'to': '2026-10-11', 'name': 'Səfər'})
+    assert r.status_code == 200 and len([h for h in r.json()['holidays'] if h['name'] == 'Səfər']) == 2
+    assert ilqar.get(f'/api/journal/{ta}/day', params={'date': sat}).json()['lessons'] == []

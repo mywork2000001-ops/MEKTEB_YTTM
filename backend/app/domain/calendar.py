@@ -39,7 +39,7 @@ OFF_DAYS: dict[dt.date, str] = {dt.date.fromisoformat(k): v for k, v in {
     '2027-05-28': 'Müstəqillik Günü',
 }.items()}
 
-WEEKDAYS = ['B.e.', 'Ç.a.', 'Ç.', 'C.a.', 'C.']
+WEEKDAYS = ['B.e.', 'Ç.a.', 'Ç.', 'C.a.', 'C.', 'Ş.', 'B.']     # Ş./B. – yalnız fərdi (repetitor) məkanda
 BELLS = ['08:50–09:35', '09:40–10:25', '10:35–11:20', '11:25–12:10', '12:15–13:00', '13:35–14:20', '14:25–15:10']
 
 
@@ -95,7 +95,7 @@ def lesson_slots(slots: dict[int, list[int]], off: dict[dt.date, str] | None = N
     off = OFF_DAYS if off is None else off
     out, d = [], start
     while d <= end:
-        if d.weekday() < 5 and d not in off:            # il sərhədi – start/end (hər tədris ili üçün)
+        if d not in off:            # il sərhədi – start/end; həftəsonu yalnız cədvəldə varsa (fərdi məkan)
             for p in sorted(slots.get(d.weekday(), [])):
                 out.append((d, p))
         d += dt.timedelta(days=1)

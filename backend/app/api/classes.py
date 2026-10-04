@@ -196,8 +196,8 @@ class JoinIn(BaseModel):
     @classmethod
     def _slots(cls, v):
         for k, ps in v.items():
-            if k not in {'0', '1', '2', '3', '4'} or any(not 0 <= p <= 9 for p in ps):
-                raise ValueError('cədvəl: gün 0–4, dərs saatı 0–9')
+            if k not in {'0', '1', '2', '3', '4', '5', '6'} or any(not 0 <= p <= 9 for p in ps):
+                raise ValueError('cədvəl: gün 0–6, dərs saatı 0–9')
         return {k: sorted(set(ps)) for k, ps in v.items() if ps}
 
 
@@ -206,6 +206,10 @@ def join_class(cid: int, body: JoinIn, user: User = Depends(settings_unlocked), 
     c = get_or_404(db, SchoolClass, cid, 'Sinif')
     if c.school_id != need_school(user) or c.archived_at:
         raise HTTPException(404, 'Sinif tapılmadı')
+    if any(k in ('5', '6') for k in body.slots):
+        from ..models import School
+        if db.get(School, c.school_id).kind != 'private':
+            raise HTTPException(400, 'Şənbə və bazar dərsləri yalnız fərdi (repetitor) məkanın siniflərində olur')
     if sum(len(v) for v in body.slots.values()) not in (0, body.weekly_hours):
         raise HTTPException(400, f'Cədvəldə {body.weekly_hours} saat olmalıdır')
     ta = db.scalar(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id,

@@ -5,6 +5,8 @@ Aktiv məkan – `users.active_school_id`; sorğu boyu istifadəçinin `school_i
 `set_committed_value`), beləliklə məktəbə bağlı bütün mövcud kod fərdi məkanda da eyni işləyir, məlumatlar isə qarışmır."""
 from __future__ import annotations
 
+import datetime as dt
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
@@ -47,8 +49,7 @@ def ensure_private(db: Session, user: User) -> School:
                          end=src.end, is_current=True)
         db.add(y)
         db.flush()
-        db.add_all(Holiday(year_id=y.id, date=h.date, name=h.name)
-                   for h in db.scalars(select(Holiday).where(Holiday.year_id == src.id)))
+        copy_holidays(db, src.id, y.id)
     else:
         from .domain.calendar import YEAR_END, YEAR_START
         db.add(AcademicYear(school_id=s.id, name=f'{YEAR_START.year}–{YEAR_END.year}', start=YEAR_START,
@@ -68,3 +69,17 @@ def workspaces(db: Session, user: User) -> list[dict]:
     if p:
         out.append({'id': p.id, 'name': p.name, 'kind': 'private', 'active': user.school_id == p.id})
     return out
+
+
+def copy_holidays(db: Session, src_year: int, dst_year: int) -> None:
+    """Məktəbin bayramlarını fərdi məkana köçürür. Məktəbdə həftəsonu qeyd olunmur, fərdi qrupda isə şənbə/bazar dərsi ola bilər –
+    ona görə eyni adlı tətilin içindəki həftəsonu günləri də tətilə əlavə olunur (məs. qış tətili 30.12–06.01)."""
+    hs = list(db.scalars(select(Holiday).where(Holiday.year_id == src_year).order_by(Holiday.date)))
+    days = {h.date: h.name for h in hs}
+    for a, b in zip(hs, hs[1:]):
+        if a.name == b.name and 1 < (b.date - a.date).days <= 3:
+            d = a.date + dt.timedelta(days=1)
+            while d < b.date:
+                days.setdefault(d, a.name)
+                d += dt.timedelta(days=1)
+    db.add_all(Holiday(year_id=dst_year, date=d, name=n) for d, n in sorted(days.items()))

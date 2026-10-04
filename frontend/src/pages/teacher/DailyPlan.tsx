@@ -1,3 +1,4 @@
+import { docCtx } from '../../doccontext'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError, del as apiDel, get, post, put } from '../../api'
@@ -26,7 +27,8 @@ type Full = { id: number | null; blank: boolean; topic: string; date: string; pe
   edited: boolean; class_name: string; subject: string; weekday: string; warnings: string[]; meta: Meta }
 
 type View = 'day' | 'week'
-const weekend = (x: Date) => x.getDay() === 0 || x.getDay() === 6
+// fərdi (repetitor) məkanda şənbə və bazar da dərs günüdür – atlanmır
+const weekend = (x: Date) => !docCtx.private && (x.getDay() === 0 || x.getDay() === 6)
 const step = (d: string, view: View, dir: number) => {
   const x = new Date(d + 'T00:00')
   if (view === 'week') x.setDate(x.getDate() + 7 * dir)

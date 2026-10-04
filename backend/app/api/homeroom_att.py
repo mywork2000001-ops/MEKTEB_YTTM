@@ -67,7 +67,7 @@ def timetable(cid: int, user: User = Depends(staff), db: Session = Depends(get_d
             m = man.get((wd, p))
             if m:
                 cells.append({'weekday': wd, 'period': p, 'subject': m.subject, 'teacher': m.teacher, 'locked': False})
-    return {'class': c.name, 'weekdays': WEEKDAYS, 'periods': [{'period': p, 'time': bell(db, c, p)} for p in periods],
+    return {'class': c.name, 'weekdays': WEEKDAYS[:5], 'periods': [{'period': p, 'time': bell(db, c, p)} for p in periods],
             'cells': cells}
 
 

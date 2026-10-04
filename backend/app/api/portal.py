@@ -121,7 +121,7 @@ def day(date: dt.date | None = None, user: User = Depends(student_only), db: Ses
                 item['homework_check'] = h.status if h else None
             lessons.append(item)
     lessons.sort(key=lambda x: (x['time'] or '', x['period']))
-    return {'date': d, 'weekday': WEEKDAYS[d.weekday()] if d.weekday() < 5 else None, 'lessons': lessons}
+    return {'date': d, 'weekday': WEEKDAYS[d.weekday()], 'lessons': lessons}
 
 
 @router.get('/plan')
