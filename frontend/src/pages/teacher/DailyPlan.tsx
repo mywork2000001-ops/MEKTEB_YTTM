@@ -2,7 +2,7 @@ import { docCtx } from '../../doccontext'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError, del as apiDel, get, post, put } from '../../api'
-import { AsyncBtn, Drawer, ErrorBox, Field, fmtDate, isoDate, Loading, Pill, Seg, toast, Top, useLoad } from '../../ui'
+import { AsyncBtn, Drawer, ErrorBox, Field, fmtDate, isoDate, Loading, Pill, Seg, toast, Top, useLoad, lessonWhen } from '../../ui'
 import { useMyLessons } from './common'
 import { esc, printLater } from '../../print'
 
@@ -188,7 +188,7 @@ export default function DailyPlan() {
                 <div key={slotKey(i)}>
                   {showDate && <div className="small" style={{ padding: '10px 14px 4px', fontWeight: 700, background: 'var(--sunk)' }}>{i.weekday} {fmtDate(i.date)}</div>}
                   <div className="jrow cols" style={{ ['--cols' as any]: '120px minmax(0,1fr) auto', ['--mcols' as any]: 'minmax(0,1fr)' }}>
-                    <span className="small"><b>{i.period}-ci saat</b>{i.time ? <span className="muted"> · {i.time}</span> : ''}<br />
+                    <span className="small"><b>{lessonWhen(i.period, i.time)}</b>{i.time && !docCtx.private ? <span className="muted"> · {i.time}</span> : ''}<br />
                       <b>{i.class_name}</b>{i.subject !== 'Riyaziyyat' ? <span className="muted"> · {i.subject}</span> : ''}</span>
                     <span>{i.lesson ? <><b>{i.lesson.topic}</b>
                       <span className="sub small muted"> №{i.lesson.seq}{i.lesson.standards?.length ? ' · altst. ' + i.lesson.standards.join(', ') : ''}{i.lesson.tasks ? ' · ' + i.lesson.tasks : ''}</span></>

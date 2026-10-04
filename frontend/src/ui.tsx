@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { ICONS } from './icons-data'
 import { ApiError } from './api'
 import { useT } from './i18n'
+import { docCtx } from './doccontext'
 
 export function Icon({ name, className = 'ico' }: { name: string; className?: string }) {
   return <svg className={className} viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: ICONS[name] || '' }} />
@@ -24,6 +25,9 @@ export const ord = (v: number | string) => {
   const tens: Record<number, string> = { 0: 'cı', 10: 'cu', 20: 'ci', 30: 'cu', 40: 'cı', 50: 'ci', 60: 'cı', 70: 'ci', 80: 'ci', 90: 'cı' }
   return `${n}-${n % 10 ? last[n % 10] : n % 100 === 0 && n ? 'cü' : tens[n % 100]}`
 }
+/** Dərsin «nə vaxt» yazısı: məktəbdə «3-cü saat», fərdi hazırlıqda (məktəb zəngi yoxdur) – real vaxt «17:00–18:30». */
+export const lessonWhen = (period: number | string, time?: string | null) =>
+  docCtx.private && time ? time : `${ord(period)} saat`
 export const fmt = (v: number | null | undefined, d = 1) => (v == null ? '—' : v.toFixed(d).replace('.', ','))
 export const fmtDate = (s?: string | null) => (s ? s.slice(0, 10).split('-').reverse().join('.') : '—')
 export const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

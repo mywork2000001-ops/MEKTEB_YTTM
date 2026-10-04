@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { get } from '../../api'
 import { useAuth } from '../../auth'
 import { useT } from '../../i18n'
-import { ErrorBox, fmt, Icon, isoDate, longDate, Pill, Stat, useLoad, WD, ord } from '../../ui'
+import { ErrorBox, fmt, Icon, isoDate, longDate, Pill, Stat, useLoad, WD, ord, lessonWhen } from '../../ui'
 
 type Cell = { ta_id: number; class_name: string; subject: string; time: string | null; topic: string | null; assessment_type: string | null }
 type TT = { days: { date: string; weekday: string; periods: Record<string, Cell[]> }[] }
@@ -75,7 +75,7 @@ export default function Home() {
               {lessons.map(l => (
                 <li key={l.ta_id + '-' + l.period} className={span(l.time) && mins >= span(l.time)![1] ? 'done' : ''}>
                   <time>{l.time}</time>
-                  <span><b>{ord(l.period)} saat · {l.class_name}</b> {l.assessment_type && ['KSQ', 'BSQ'].includes(l.assessment_type) && <Pill tone="warn">{l.assessment_type}</Pill>}<br />
+                  <span><b>{lessonWhen(l.period, l.time)} · {l.class_name}</b> {l.assessment_type && ['KSQ', 'BSQ'].includes(l.assessment_type) && <Pill tone="warn">{l.assessment_type}</Pill>}<br />
                     <span className="muted small">{l.topic || 'Plan yüklənməyib'}</span></span>
                 </li>))}
             </ol>

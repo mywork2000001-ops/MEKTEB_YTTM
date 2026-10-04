@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { get } from '../../api'
-import { ErrorBox, fmtDate, isoDate, Loading, PickFirst, Pill, Seg, Top, useLoad } from '../../ui'
+import { ErrorBox, fmtDate, isoDate, lessonWhen, Loading, PickFirst, Pill, Seg, Top, useLoad } from '../../ui'
+import { docCtx } from '../../doccontext'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { ProgramBox } from './Programs'
 import { head, printDoc, table } from '../../print'
@@ -76,7 +77,7 @@ export default function Plan() {
                 <div key={i.date + i.period}>
                   {showDate && <div className={'plan-day' + (today ? ' today' : '')}>{DAYS[new Date(i.date + 'T00:00').getDay()]}, {fmtDate(i.date)}{today ? ' · bu gün' : ''}</div>}
                   <div className="plan-row">
-                    <span className="plan-when"><b>{i.period}-ci saat</b>{i.time && <span className="muted">{i.time}</span>}</span>
+                    <span className="plan-when"><b>{lessonWhen(i.period, i.time)}</b>{i.time && !docCtx.private && <span className="muted">{i.time}</span>}</span>
                     <span className="plan-what">
                       {l ? <><span className="plan-topic">{l.topic}</span><span className="plan-meta">{meta.join(' · ')}</span></> : <span className="muted">Perspektiv planda mövzu yoxdur</span>}
                     </span>

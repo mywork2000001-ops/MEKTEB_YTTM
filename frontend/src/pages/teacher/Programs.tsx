@@ -266,7 +266,11 @@ function WordImport({ onClose, onDone }: { onClose: () => void; onDone: () => vo
       {warn ? <><p className="small" style={{ color: 'var(--ok)' }}>Yükləndi. Faylda qeydlər:</p>
         {warn.map(w => <p key={w} className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {w}</p>)}</> :
         <div className="fg">
-          <Field label="Fayl (.docx)" full><input type="file" accept=".docx" onChange={e => setFile(e.target.files?.[0] || null)} /></Field>
+          <Field label="Fayl (.docx)" full>
+            <label className="row" style={{ gap: 10, cursor: 'pointer' }}>
+              <span className="btn sm">Fayl seçin</span><span className="small muted">{file ? file.name : 'fayl seçilməyib'}</span>
+              <input type="file" accept=".docx" style={{ display: 'none' }} onChange={e => setFile(e.target.files?.[0] || null)} />
+            </label></Field>
           <Field label="Ad" full hint="boş – fayl adı"><input value={title} onChange={e => setTitle(e.target.value)} maxLength={200} /></Field>
           <Field label="Sinif" hint="boş – fayl adından"><select value={grade} onChange={e => setGrade(e.target.value)}>
             <option value="">—</option>{Array.from({ length: 11 }, (_, i) => i + 1).map(g => <option key={g} value={g}>{g}</option>)}</select></Field>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { del, get, post, put } from '../../api'
-import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, Loading, PickFirst, Pill, Seg, toast, Top, useLoad, ord } from '../../ui'
+import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, Loading, PickFirst, Pill, Seg, toast, Top, useLoad, ord, lessonWhen } from '../../ui'
 import { ATT, HW, LessonSelect, type MyLesson, useMyLessons, usePick } from './common'
 import Exams from './Exams'
 import { fmtN, head, printDoc, SIGN, table } from '../../print'
@@ -119,7 +119,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
 
   return (
     <section className="panel" style={{ marginBottom: 16 }}>
-      <h2 style={{ flexWrap: 'wrap' }}>{ord(lesson.period)} saat <small>{lesson.time}</small>
+      <h2 style={{ flexWrap: 'wrap' }}>{lessonWhen(lesson.period, lesson.time)} {lessonWhen(lesson.period, lesson.time) !== lesson.time && <small>{lesson.time}</small>}
         {isExam && <Pill tone="warn">{lesson.plan!.assessment_type}</Pill>}
         {lesson.shift > 0 && <Pill tone="warn">geriləmə: {lesson.shift} dərs</Pill>}
         {e.exists && !e.auto && <Pill tone="ok">yazılıb</Pill>}
