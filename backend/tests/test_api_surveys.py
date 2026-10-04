@@ -40,11 +40,12 @@ def test_public_link_anonymous_results(world, monkeypatch):
     as_, S = world
     _clock(monkeypatch)
     admin, ta, cid, st, _ = setup(world)
-    sv = admin.post('/api/surveys', json={'title': 'Həsənov Fərid – şagird rəyi'}).json()
+    sv = admin.post('/api/surveys', json={'title': 'Həsənov Fərid – şagird rəyi', 'open': False}).json()
     assert len(sv['questions']) == 33 and sv['links'][0]['label'] == 'Ümumi link'
     tok = sv['links'][0]['token']
     g = _guest()
-    assert g.get(f'/api/public/surveys/{tok}').status_code == 410          # qaralama – bağlıdır
+    r = g.get(f'/api/public/surveys/{tok}')                               # qaralama – hələ başlamayıb
+    assert r.status_code == 410 and 'başlamayıb' in r.json()['detail']
     assert admin.post(f'/api/surveys/{sv["id"]}/status', json={'status': 'open'}).json()['state'] == 'open'
     pub = g.get(f'/api/public/surveys/{tok}').json()
     assert pub['teacher'] == 'Həsənov Fərid' and all('reverse' not in q for q in pub['questions'])
@@ -121,7 +122,8 @@ def test_public_link_anonymous_results(world, monkeypatch):
     admin.post(f'/api/surveys/{sv["id"]}/links/{cl["id"]}', json={'active': False})
     assert _guest().get(f'/api/public/surveys/{cl["token"]}').status_code == 404
     admin.post(f'/api/surveys/{sv["id"]}/status', json={'status': 'closed'})
-    assert _guest().post(f'/api/public/surveys/{tok}/responses', json={'answers': _answers(sv)}).status_code == 410
+    r = _guest().post(f'/api/public/surveys/{tok}/responses', json={'answers': _answers(sv)})
+    assert r.status_code == 410 and 'bağlanıb' in r.json()['detail']
 
     # təkrar sorğu (2-ci dalğa) – suallar köçürülür
     w2 = admin.post('/api/surveys', json={'title': 'Yarımil sonu', 'from_id': sv['id']}).json()
@@ -140,7 +142,7 @@ def test_weekly_in_app(world, monkeypatch):
     as_, S = world
     clock = _clock(monkeypatch)
     admin, ta, cid, st, _ = setup(world)
-    sv = admin.post('/api/surveys', json={'title': 'Həftəlik rəy', 'repeat': 'weekly', 'include_demo': True}).json()
+    sv = admin.post('/api/surveys', json={'title': 'Həftəlik rəy', 'repeat': 'weekly', 'include_demo': True, 'open': False}).json()
     assert len(sv['questions']) == 35
     s0 = student_client(st[0]['portal_code'], st[0]['initial_pin'])
     assert s0.get('/api/portal/surveys').json() == []                    # hələ açılmayıb
@@ -240,3 +242,18 @@ def test_link_modes_whatsapp(world, monkeypatch):
     # rejimi sonradan dəyişmək
     sv = admin.post(f'/api/surveys/{sv["id"]}/links/{full["id"]}', json={'mode': 'short'}).json()
     assert sv['links'][0]['effective'] == 'short'
+
+
+def test_new_survey_open_by_default(world, monkeypatch):
+    """Yaradılan sorğu dərhal açıqdır – müəllim linki göndərəndə «bağlıdır» çıxmasın; planlaşdırılmış sorğuda tarix yazılır."""
+    as_, S = world
+    clock = _clock(monkeypatch)
+    admin, *_ = setup(world)
+    sv = admin.post('/api/surveys', json={'title': 'Rəy'}).json()
+    assert sv['state'] == 'open'
+    assert _guest().get(f'/api/public/surveys/{sv["links"][0]["token"]}').status_code == 200
+    admin.put(f'/api/surveys/{sv["id"]}', json={'title': 'Rəy', 'opens_at': '2026-10-06T06:00:00Z'})
+    r = _guest().get(f'/api/public/surveys/{sv["links"][0]["token"]}')
+    assert r.status_code == 410 and '06.10.2026 10:00' in r.json()['detail']
+    clock.t = dt.datetime(2026, 10, 6, 7, 0, tzinfo=UTC)
+    assert _guest().get(f'/api/public/surveys/{sv["links"][0]["token"]}').status_code == 200

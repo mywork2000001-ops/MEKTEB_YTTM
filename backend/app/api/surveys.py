@@ -171,6 +171,7 @@ class CreateIn(BaseModel):
     repeat: Literal['once', 'weekly'] = 'once'
     in_app: bool = True
     pulse: bool = True                       # həftəlik sorğuda qısa növbəli dəst (1–2 dəq.)
+    open: bool = True                        # dərhal açıq (link işləsin); suallar ilk cavaba qədər dəyişdirilə bilər
     from_id: int | None = None              # təkrar sorğu (yeni dalğa) – sualları köçürür
 
 
@@ -193,7 +194,7 @@ def create_survey(body: CreateIn, user: User = Depends(staff), db: Session = Dep
         sections = SV.SECTIONS + ([SV.DEMO_SECTION] if body.include_demo else [])
         tkey, root, wave = SV.TEMPLATE_KEY, None, 1
     s = Survey(owner_id=user.id, school_id=user.school_id, title=body.title.strip(), description=body.description,
-               template_key=tkey, sections=sections, status='draft', min_group=5, repeat=body.repeat, in_app=body.in_app,
+               template_key=tkey, sections=sections, status='open' if body.open else 'draft', min_group=5, repeat=body.repeat, in_app=body.in_app,
                pulse=body.pulse,
                root_id=root, wave=wave, created_at=now())
     db.add(s)
@@ -201,6 +202,8 @@ def create_survey(body: CreateIn, user: User = Depends(staff), db: Session = Dep
     _add_questions(db, s.id, qs)
     db.add(SurveyLink(survey_id=s.id, token=secrets.token_urlsafe(18), label='Ümumi link', created_at=now()))
     audit(db, user, 'create', 'survey', s.id, wave=wave)
+    if body.open:
+        audit(db, user, 'open', 'survey', s.id)
     db.commit()
     return survey_out(db, s, full=True)
 
@@ -657,7 +660,14 @@ def _link(db: Session, token: str) -> tuple[SurveyLink, Survey]:
     if not l or not s or not l.active or s.archived_at:
         raise HTTPException(404, 'Sorğu linki tapılmadı və ya deaktivdir')
     if not is_open(s):
-        raise HTTPException(410, 'Sorğu hazırda bağlıdır – müəlliminizə müraciət edin')
+        st = state(s)
+        if st == 'scheduled':
+            msg = f'Sorğu {aware(s.opens_at).astimezone(BAKU):%d.%m.%Y %H:%M}-da açılacaq – o vaxt yenidən daxil olun'
+        elif st == 'draft':
+            msg = 'Sorğu hələ başlamayıb – müəlliminiz onu açandan sonra bu link işləyəcək'
+        else:
+            msg = 'Sorğu bağlanıb – təşəkkür edirik! Sualınız varsa, müəlliminizə müraciət edin'
+        raise HTTPException(410, msg)
     return l, s
 
 

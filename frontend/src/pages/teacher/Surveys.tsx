@@ -138,11 +138,20 @@ function Share({ s, reload }: { s: Sv; reload: () => void }) {
       <p class="muted" style="word-break:break-all">${esc(fullUrl(l))}</p></div>` })
   }
   const open = s.state === 'open'
+  // link göndərilməzdən əvvəl sorğu açıq olmalıdır – qaralama / bağlı sorğu avtomatik açılır
+  const ensureOpen = async () => {
+    if (s.state === 'open' || s.state === 'scheduled') return
+    try { await post(`/api/surveys/${s.id}/status`, { status: 'open' }); toast('Sorğu açıldı – link işləyir'); reload() }
+    catch { toast('Sorğu açılmadı – yuxarıda «Sorğunu aç» basın') }
+  }
   return (
     <div className="grid g2">
       <section className="panel" style={{ gridColumn: '1 / -1' }}>
         <h2>Linklər <small>WhatsApp-da göndərin və ya QR-ı sinifdə göstərin</small></h2>
-        {!open && <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)', borderRadius: 10 }}>Sorğu hələ açıq deyil – şagirdlər link açanda «sorğu bağlıdır» görəcək. Yuxarıda «Sorğunu aç» basın.</div>}
+        {s.state === 'scheduled' && <div className="banner" style={{ background: 'var(--info-soft)', color: 'var(--info)', borderRadius: 10 }}>Sorğu {fmtDate(s.opens_at)} tarixində açılacaq – o vaxta qədər link «açılacaq» yazacaq.</div>}
+        {!open && s.state !== 'scheduled' && <div className="banner row" style={{ background: 'var(--warn-soft)', color: 'var(--warn)', borderRadius: 10, gap: 8, flexWrap: 'wrap' }}>
+          <span className="grow">Sorğu {s.state === 'closed' ? 'bağlıdır' : 'hələ açılmayıb'} – şagirdlər linkdə cavab verə bilməz. Linki göndərəndə sorğu avtomatik açılacaq.</span>
+          <AsyncBtn className="btn sm primary" ok="Sorğu açıldı" onClick={() => post(`/api/surveys/${s.id}/status`, { status: 'open' }).then(reload)}>İndi aç</AsyncBtn></div>}
         {s.links.map(l => (
           <div key={l.id} style={{ padding: '10px 0', borderTop: '1px solid var(--line)' }}>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
@@ -156,11 +165,11 @@ function Share({ s, reload }: { s: Sv; reload: () => void }) {
               <span className="muted">{l.effective === 'full' ? `tam anket · ${l.served} sual` : `qısa · ${l.served} sual · ${s.repeat === 'weekly' ? 'hər həftə yeni suallar' : 'hər şagirdə başqa suallar'}`}</span>
             </div>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-              <button className="btn sm primary" disabled={!l.active} onClick={() => wa(l)} style={{ background: '#1FA855', borderColor: '#1FA855', color: '#fff' }}>WhatsApp-da göndər</button>
-              <button className="btn sm" disabled={!l.active} onClick={() => share(l)}>Paylaş…</button>
-              <button className="btn sm" onClick={() => copy(fullUrl(l))}>Linki kopyala</button>
-              <button className="btn sm" onClick={() => copy(msg(l))}>Mətni kopyala</button>
-              <button className="btn sm" disabled={!l.active} onClick={() => qr(l)}>QR çap et</button>
+              <button className="btn sm primary" disabled={!l.active} onClick={() => { wa(l); ensureOpen() }} style={{ background: '#1FA855', borderColor: '#1FA855', color: '#fff' }}>WhatsApp-da göndər</button>
+              <button className="btn sm" disabled={!l.active} onClick={() => { ensureOpen(); share(l) }}>Paylaş…</button>
+              <button className="btn sm" onClick={() => { ensureOpen(); copy(fullUrl(l)) }}>Linki kopyala</button>
+              <button className="btn sm" onClick={() => { ensureOpen(); copy(msg(l)) }}>Mətni kopyala</button>
+              <button className="btn sm" disabled={!l.active} onClick={() => { ensureOpen(); qr(l) }}>QR çap et</button>
               <AsyncBtn className="btn sm ghost" onClick={() => post(`/api/surveys/${s.id}/links/${l.id}`, { active: !l.active }).then(reload)}>{l.active ? 'Deaktiv et' : 'Aktiv et'}</AsyncBtn>
             </div>
           </div>))}
