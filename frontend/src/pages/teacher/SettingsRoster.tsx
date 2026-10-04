@@ -46,7 +46,7 @@ function ClassesTab() {
             <span><span className="badge" title="Sinif ID-si">{c.code}</span> <b>{c.name}</b> <span className="small muted">{kindLabel(c)}{c.parent_id ? ' · ' + ((classes || []).find(p => p.id === c.parent_id)?.name || '') : ''}{c.split_with ? ' · paralel: ' + c.split_with : ''} · {c.students} şagird</span>{c.purpose && <> <Pill tone="acc">{PURPOSES[c.purpose] || c.purpose}</Pill></>}
               <span className="sub small muted"><br />{c.teachers.map(t => `${t.name} (${t.subject})`).join(', ') || 'müəllim yoxdur'}</span>
               {c.kind !== 'qrup' && <span className="sub small muted"><br />Sinif rəhbəri: {c.homeroom?.name || '—'}</span>}</span>
-            <span className="row">{c.mine ? <Pill tone="ok">{c.mine.subject} · {c.mine.weekly_hours} saat</Pill> : <Pill>qoşulmamısınız</Pill>}</span>
+            <span className="row">{c.mine ? <Pill tone="ok">{c.mine.subject} · {c.mine.weekly_hours} {c.mine.times ? "dərs" : "saat"}</Pill> : <Pill>qoşulmamısınız</Pill>}</span>
             <span className="row">
               <button className="btn sm" onClick={() => setJoin(c)}>{c.mine ? 'Cədvəl' : 'Qoşul'}</button>
               {c.can_open && <button className="btn sm" onClick={() => setEdit(c)}>Redaktə</button>}

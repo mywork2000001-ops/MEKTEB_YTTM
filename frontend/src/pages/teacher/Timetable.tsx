@@ -88,7 +88,7 @@ export default function Timetable() {
       {loading && !d ? <Loading /> : d && (
         <>
           <div className="legend" style={{ marginBottom: 10 }}>
-            {Object.entries(colors).map(([c, col]) => <span key={c}><i style={{ width: 12, height: 12, borderRadius: 3, background: col, display: 'inline-block' }} /> {c} – {totals.get(c)} saat</span>)}
+            {Object.entries(colors).map(([c, col]) => <span key={c}><i style={{ width: 12, height: 12, borderRadius: 3, background: col, display: 'inline-block' }} /> {c} – {totals.get(c)} {priv ? "dərs" : "saat"}</span>)}
           </div>
 
           {/* noutbuk / planşet: cədvəl */}

@@ -305,9 +305,10 @@ function CourseEditor({ p, onClose, onDone }: { p: Prog | null; onClose: () => v
           <Field label="Səviyyə"><select value={f.level} onChange={e => setF({ ...f, level: e.target.value })}>
             <option value="">Ümumi</option>{LEVELS.map(l => <option key={l}>{l}</option>)}</select></Field>
         </div>
-        <Field label="Təyinat" hint="hansı hazırlıq qrupları üçün – qrup yaradanda uyğun proqram öndə çıxır">
-          <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>{Object.entries(PURPOSES).map(([k, v]) => (
-            <label key={k} className="check"><input type="checkbox" checked={f.purposes.includes(k)} onChange={() => toggle(k)} /> {v}</label>))}</div></Field>
+        <fieldset style={{ margin: '8px 0' }}><legend>Təyinat</legend>
+          <div className="row" style={{ gap: '4px 14px', flexWrap: 'wrap' }}>{Object.entries(PURPOSES).map(([k, v]) => (
+            <label key={k} className="check"><input type="checkbox" checked={f.purposes.includes(k)} onChange={() => toggle(k)} /> {v}</label>))}</div>
+          <p className="small muted" style={{ margin: '4px 0 0' }}>hansı hazırlıq qrupları üçün – qrup yaradanda uyğun proqram öndə çıxır</p></fieldset>
         <Field label="Bölmələr və mövzular" full hint="«# » ilə başlayan sətir – bölmə; qalan hər sətir – bir mövzu (nömrə və «-» atılır)">
           <textarea value={f.outline} onChange={e => setF({ ...f, outline: e.target.value })} rows={14} style={{ fontFamily: 'inherit' }}
             placeholder={'# Ədədlər nəzəriyyəsi\n1. Bölünmə əlamətləri\n2. Qalıqlar\n\n# Kombinatorika\nDirixle prinsipi'} /></Field>
