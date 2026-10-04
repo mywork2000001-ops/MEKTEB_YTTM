@@ -5,6 +5,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from './auth'
 import { useT } from './i18n'
 import { Drawer, Icon } from './ui'
+import { SurveyNudge } from './pages/student/Surveys'
 
 export type NavItem = { to: string; icon: string; label: string; short?: string }
 
@@ -18,6 +19,7 @@ export const TEACHER_NAV: NavItem[] = [
   { to: '/tasks', icon: 'online', label: 'Onlayn tapşırıqlar', short: 'Tapşırıq' },
   { to: '/exams-online', icon: 'rating', label: 'Sınaq imtahanları', short: 'Sınaq' },
   { to: '/results-center', icon: 'overview', label: 'Test nəticələri', short: 'Nəticələr' },
+  { to: '/surveys', icon: 'star', label: 'Şagird sorğusu', short: 'Sorğu' },
   { to: '/extra', icon: 'groups', label: 'Əlavə məşğələ', short: 'Məşğələ' },
   { to: '/materials', icon: 'clip', label: 'Materiallar' },
   { to: '/reports', icon: 'reports', label: 'Analitika və hesabat', short: 'Hesabat' },
@@ -36,6 +38,7 @@ export const STUDENT_NAV: NavItem[] = [
   { to: '/plan', icon: 'plan', label: 'Plan' },
   { to: '/results', icon: 'rating', label: 'Nəticələrim', short: 'Nəticə' },
   { to: '/analytics', icon: 'reports', label: 'Analitika' },
+  { to: '/surveys', icon: 'star', label: 'Sorğular' },
   { to: '/chat', icon: 'feedback', label: 'Çat' },
   { to: '/settings', icon: 'settings', label: 'Tənzimləmələr', short: 'Tənzimləmə' },
 ]
@@ -106,6 +109,7 @@ export function Layout({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+      {student && <SurveyNudge />}
       <nav className="tabbar" aria-label="Əsas bölmələr">
         {tabs.map(to => { const i = items.find(x => x.to === to)!; return (
           <button key={to} aria-current={active(to) ? 'page' : undefined} onClick={() => nav(to)}><Icon name={i.icon} />{t(i.short || i.label)}</button>) })}

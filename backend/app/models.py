@@ -736,3 +736,76 @@ class AiReview(Base):
     payload: Mapped[dict] = mapped_column(JSON)                        # {xulase, guclu, zeif, sebebler, tovsiyeler, valideyne, diqqet}
     model: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+# ---------------------------------------------------------------- şagird sorğusu (müəllim haqqında, anonim)
+class Survey(Base, Archivable):
+    """Müəllimin öz işi haqqında anonim şagird sorğusu (docs/muellim-sorgusu-promtu.md). Məkana (school_id) bağlıdır.
+    repeat=weekly – şagird hər tədris həftəsində bir dəfə cavab verə bilər (nəticələr həftələr üzrə);
+    in_app – sorğu şagirdin tətbiqində (portal) də görünür (müəllimin dərs dediyi siniflərin şagirdlərinə)."""
+    __tablename__ = 'surveys'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
+    school_id: Mapped[int | None] = mapped_column(ForeignKey('schools.id', ondelete='CASCADE'))
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    template_key: Mapped[str | None] = mapped_column(String(40))
+    sections: Mapped[list] = mapped_column(JSON)                       # [{key, title}]
+    status: Mapped[str] = mapped_column(String(10), default='draft')   # draft | open | closed
+    opens_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    closes_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    min_group: Mapped[int] = mapped_column(Integer, default=5)         # k-anonimlik həddi
+    repeat: Mapped[str] = mapped_column(String(10), default='once')    # once | weekly
+    in_app: Mapped[bool] = mapped_column(Boolean, default=True)
+    # qısa həftəlik sorğu: hər həftə hər meyardan 1 sual (növbə ilə) + ümumi bal – şagird üçün 1–2 dəqiqə
+    pulse: Mapped[bool] = mapped_column(Boolean, default=True)
+    root_id: Mapped[int | None] = mapped_column(Integer)               # təkrar sorğu (dalğa) – ilk sorğunun id-si
+    wave: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SurveyQuestion(Base):
+    __tablename__ = 'survey_questions'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    survey_id: Mapped[int] = mapped_column(ForeignKey('surveys.id', ondelete='CASCADE'), index=True)
+    key: Mapped[str | None] = mapped_column(String(20))                # şablon açarı (A1, overall, nps) – dalğaları tutuşdurmaq üçün
+    section: Mapped[str] = mapped_column(String(4))
+    order: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(10))                      # likert5 | scale10 | single | multi | text
+    text: Mapped[str] = mapped_column(String(500))
+    options: Mapped[dict | None] = mapped_column(JSON)                 # scale10: {min, max}; single/multi: {choices: []}
+    required: Mapped[bool] = mapped_column(Boolean, default=True)
+    reverse: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class SurveyLink(Base):
+    """Açıq link (/s/{token}): ümumi və ya sinif/qrup üçün ayrıca (WhatsApp-da göndərilir, QR çap olunur)."""
+    __tablename__ = 'survey_links'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    survey_id: Mapped[int] = mapped_column(ForeignKey('surveys.id', ondelete='CASCADE'), index=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True)
+    class_id: Mapped[int | None] = mapped_column(ForeignKey('classes.id', ondelete='SET NULL'))
+    label: Mapped[str] = mapped_column(String(120))
+    # auto – sorğunun qaydası; full – tam anket; short – qısa (~8 sual), hər dəfə dəyişir (həftəlikdə hər həftə, birdəfəlikdə hər şagirdə başqa dəst)
+    mode: Mapped[str] = mapped_column(String(10), default='auto')
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SurveyResponse(Base):
+    """Anonim cavab: şagird, IP, cihaz – heç biri saxlanmır; tarix yalnız gün dəqiqliyi ilə."""
+    __tablename__ = 'survey_responses'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    survey_id: Mapped[int] = mapped_column(ForeignKey('surveys.id', ondelete='CASCADE'), index=True)
+    link_id: Mapped[int | None] = mapped_column(ForeignKey('survey_links.id', ondelete='SET NULL'))
+    period: Mapped[str] = mapped_column(String(10))                    # «2026-W40» (həftəlik) və ya «once»
+    submitted_on: Mapped[dt.date] = mapped_column(Date)
+    answers: Mapped[dict] = mapped_column(JSON)                        # {"<question_id>": dəyər}
+    hidden: Mapped[list | None] = mapped_column(JSON)                  # hesabatdan gizlədilən açıq cavablar: [question_id]
+
+
+class SurveyDedup(Base):
+    """Təkrar göndərməyə qarşı: yalnız heş (cavabla əlaqəsi yoxdur)."""
+    __tablename__ = 'survey_dedup'
+    survey_id: Mapped[int] = mapped_column(ForeignKey('surveys.id', ondelete='CASCADE'), primary_key=True)
+    hash: Mapped[str] = mapped_column(String(64), primary_key=True)

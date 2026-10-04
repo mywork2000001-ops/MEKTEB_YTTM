@@ -241,3 +241,48 @@ body.exam-guard main{max-width:860px;margin:0 auto}
 .app.ws-private main{border-top:4px solid var(--strong)}
 .app.ws-private .tabbar{border-top:3px solid var(--strong)}
 @media (max-width:700px){.ws-switch button{padding:0 9px;min-height:34px;font-size:12px}}
+
+/* ---- Şagird sorğusu (müəllim haqqında) ---- */
+.sv-wrap{max-width:640px;margin:0 auto;padding:16px}
+.sv-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px;box-shadow:var(--shadow)}
+.sv-card h1{font:600 22px/1.25 var(--f-disp);margin:0 0 6px}
+.sv-prog{height:6px;border-radius:3px;background:var(--sunk);overflow:hidden;margin:10px 0 18px}
+.sv-prog i{display:block;height:100%;background:var(--accent);transition:width .25s}
+.sv-q{padding:14px 0;border-top:1px solid var(--line)}
+.sv-q:first-of-type{border-top:0}
+.sv-q > p{margin:0 0 10px;font-weight:500;line-height:1.4}
+.sv-q.miss > p{color:var(--bad)}
+.sv-likert{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.sv-likert button,.sv-scale button,.sv-opt{all:unset;box-sizing:border-box;cursor:pointer;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);text-align:center;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 4px;font-size:12px;line-height:1.2;color:var(--ink-2)}
+.sv-likert button b{font-size:17px;color:var(--ink)}
+.sv-likert button[aria-pressed="true"],.sv-scale button[aria-pressed="true"],.sv-opt[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.sv-likert button[aria-pressed="true"] b{color:var(--accent-ink)}
+.sv-likert button:focus-visible,.sv-scale button:focus-visible,.sv-opt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sv-scale{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:4px}
+.sv-scale button{font-size:15px;font-weight:600;min-height:42px;padding:0}
+.sv-scale-ends{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:4px}
+.sv-opts{display:grid;gap:6px}
+.sv-opt{justify-content:flex-start;flex-direction:row;padding:10px 12px;font-size:14px;text-align:left}
+.sv-q textarea{width:100%;min-height:96px;border:1px solid var(--line);border-radius:var(--r-sm);padding:10px;font:inherit;background:var(--surface);color:var(--ink);resize:vertical}
+.sv-nav{display:flex;gap:8px;justify-content:space-between;margin-top:16px}
+@media (max-width:480px){
+  .sv-wrap{padding:12px}.sv-card{padding:16px}
+  .sv-likert span{display:none}
+  .sv-scale{grid-template-columns:repeat(6,minmax(0,1fr))}
+}
+/* nəticələr */
+.sv-hbar{display:grid;grid-template-columns:minmax(0,1fr) 120px 44px;gap:10px;align-items:center;padding:6px 0;border-top:1px dashed var(--line);font-size:13.5px}
+.sv-hbar:first-of-type{border-top:0}
+.sv-meter{height:10px;border-radius:5px;background:var(--sunk);overflow:hidden}
+.sv-meter i{display:block;height:100%;border-radius:5px}
+.sv-stack{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--sunk);gap:1px}
+.sv-stack i{display:block;height:100%}
+.sv-text{padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:6px;font-size:14px;white-space:pre-wrap;word-break:break-word}
+.sv-text.off{opacity:.45;text-decoration:line-through}
+@media (max-width:560px){.sv-hbar{grid-template-columns:minmax(0,1fr) 70px 40px}}
+.sv-nudge{position:fixed;right:16px;bottom:16px;z-index:40;width:min(380px,calc(100% - 32px));display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  background:var(--surface);border:1px solid var(--accent-line);border-radius:var(--r);box-shadow:var(--shadow);padding:12px 14px;animation:sv-in .3s ease-out}
+.sv-nudge b{display:block;font-size:14px}
+@keyframes sv-in{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
+@media (max-width:700px){.sv-nudge{bottom:calc(72px + env(safe-area-inset-bottom))}}
+@media (prefers-reduced-motion:reduce){.sv-nudge{animation:none}}

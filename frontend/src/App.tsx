@@ -6,6 +6,7 @@ import { Layout } from './Layout'
 import Login from './pages/Login'
 import Join from './pages/Join'
 import QrLogin from './pages/QrLogin'
+const SurveyPublic = lazy(() => import('./pages/SurveyPublic'))
 import { Loading, ToastHost } from './ui'
 
 // Yeni yayımdan sonra açıq səhifə köhnə hissəni (chunk) tapmırsa – bir dəfə avtomatik yenilənir (ağ ekran olmasın)
@@ -39,6 +40,7 @@ const T = {
   Tasks: lazy(() => import('./pages/teacher/Tasks')),
   OnlineExams: lazy(() => import('./pages/teacher/OnlineExams')),
   ResultsCenter: lazy(() => import('./pages/teacher/ResultsCenter')),
+  Surveys: lazy(() => import('./pages/teacher/Surveys')),
   ExtraCourses: lazy(() => import('./pages/teacher/ExtraCourses')),
   Materials: lazy(() => import('./pages/teacher/Materials')),
   Reports: lazy(() => import('./pages/teacher/Reports')),
@@ -53,6 +55,7 @@ const S = {
   Materials: lazy(() => import('./pages/student/Materials')),
   Plan: lazy(() => import('./pages/student/Plan')),
   Results: lazy(() => import('./pages/student/Results')),
+  Surveys: lazy(() => import('./pages/student/Surveys')),
   Analytics: lazy(() => import('./pages/student/Analytics')),
   Settings: lazy(() => import('./pages/student/Settings')),
 }
@@ -66,6 +69,8 @@ export default function App() {
   if (join) return <I18nCtx.Provider value={lang}><Join token={join[1]} /><ToastHost /></I18nCtx.Provider>
   const qr = location.pathname.match(/^\/q\/([\w.-]+)$/)          // giriş vərəqəsindəki QR – avtomatik giriş
   if (qr) return <I18nCtx.Provider value={lang}><QrLogin token={qr[1]} /></I18nCtx.Provider>
+  const sv = location.pathname.match(/^\/s\/([\w-]+)$/)          // anonim şagird sorğusu (WhatsApp / QR linki) – girişsiz
+  if (sv) return <I18nCtx.Provider value={lang}><Suspense fallback={<Loading />}><SurveyPublic token={sv[1]} /></Suspense></I18nCtx.Provider>
   if (!ready) return <Loading />
   return (
     <I18nCtx.Provider value={lang}>
@@ -84,6 +89,7 @@ export default function App() {
                 <Route path="/extra" element={<S.Extra />} />
                 <Route path="/plan" element={<S.Plan />} />
                 <Route path="/results" element={<S.Results />} />
+                <Route path="/surveys" element={<S.Surveys />} />
                 <Route path="/analytics" element={<S.Analytics />} />
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/settings" element={<S.Settings />} />
@@ -100,6 +106,7 @@ export default function App() {
                 <Route path="/tasks" element={<T.Tasks />} />
                 <Route path="/exams-online" element={<T.OnlineExams />} />
                 <Route path="/results-center" element={<T.ResultsCenter />} />
+                <Route path="/surveys" element={<T.Surveys />} />
                 <Route path="/extra" element={<T.ExtraCourses />} />
                 <Route path="/t/:id" element={<Navigate to="/tasks" replace />} />
                 <Route path="/materials" element={<T.Materials />} />
