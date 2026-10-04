@@ -158,7 +158,8 @@ function Resend({ ta, task, lessons, preset, onClose, onDone }: { ta: number; ta
           <Field label="Həll müddəti (dəq)"><input type="number" min={1} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
         </div>
         {(f.target !== ta || res) && <StudentPicker key={`${f.target}-${!!res}`} ta={f.target} presets={f.target === ta ? presets : []}
-          value={f.target === ta && preset === 'absent' && res ? presets[0].ids : null} onChange={setIds} />}
+          value={f.target === ta && preset === 'absent' && res ? presets[0].ids : null}
+          initialPreset={f.target === ta && preset === 'absent' ? 'absent' : undefined} onChange={setIds} />}
         <ErrorBox error={err} />
       </div>
     </Drawer>

@@ -41,10 +41,10 @@ const LVS = ['Zəif', 'Orta', 'Güclü'] as const
 
 /** «Kimə» (docs/sagird-secimi-promtu.md): hamı / səviyyə qrupları (Jurnal → Səviyyə qrupları) / seçilmiş şagirdlər /
  * hazır siyahılar (məs. «Yazmayanlar»). onChange(null) – bütün sinif; massiv – yalnız onlar. value – ilkin seçim (redaktə). */
-export function StudentPicker({ ta, value, onChange, presets = [], legend = 'Kimə' }:
-  { ta: number; value?: number[] | null; onChange: (ids: number[] | null) => void; presets?: Preset[]; legend?: string }) {
+export function StudentPicker({ ta, value, onChange, presets = [], legend = 'Kimə', initialPreset }:
+  { ta: number; value?: number[] | null; onChange: (ids: number[] | null) => void; presets?: Preset[]; legend?: string; initialPreset?: string }) {
   const [list] = useLoad<Stu[]>(() => get(`/api/exams-online/targets/${ta}/students`), [ta])
-  const [mode, setMode] = useState<string>(value ? 'pick' : 'all')
+  const [mode, setMode] = useState<string>(initialPreset && value ? initialPreset : value ? 'pick' : 'all')
   const [lv, setLv] = useState<Set<string>>(new Set())
   const [picked, setPicked] = useState<Set<number>>(new Set(value || []))
   const [open, setOpen] = useState(false)
