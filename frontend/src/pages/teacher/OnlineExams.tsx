@@ -151,8 +151,8 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
               {!shown.length && <div className="empty">Dərsiniz yoxdur.</div>}
             </div>
           </fieldset>
-          <BankPicker has={has} add={add} remove={remove} disabled={false} first={false} kinds={['sinaq', 'yekun']}
-            legend="Test bazasından – sınaqlar və yekun testlər" onTitle={t => !f.title && setF(x => ({ ...x, title: t }))} />
+          <BankPicker has={has} add={add} remove={remove} disabled={false} first={false}
+            legend="Test bazasından – sınaqlar, yekun testlər və mövzu bölmələri" onTitle={t => !f.title && setF(x => ({ ...x, title: t }))} />
           <fieldset><legend>Seçilmiş suallar ({qs.length})</legend>
             {qs.length === 0 ? <p className="small muted">Yuxarıdan sınağı seçib «Hamısını əlavə et» basın (orijinal sınaq formatı).</p> : (
               <div className="jlist" style={{ maxHeight: 260, overflow: 'auto' }}>
