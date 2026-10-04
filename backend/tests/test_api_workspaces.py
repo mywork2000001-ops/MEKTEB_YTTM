@@ -58,3 +58,36 @@ def test_my_lists_follow_workspace(world):
     c.put('/api/workspaces/active', json={'school_id': ws['school']})
     assert 'Olimpiada' not in names() and 'X q' in names()
     assert all(x['class_name'] != 'Olimpiada' for x in c.get('/api/overview').json())
+
+
+def test_private_calendar_edit(world):
+    as_, S = world
+    ilqar, admin = as_('ilqar'), as_('admin')
+    cid = ilqar.post('/api/classes', json={'name': 'Yay hazırlığı', 'kind': 'adi', 'private': True}).json()['id']
+    ta = ilqar.post(f'/api/classes/{cid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 2, 'has_summative': False,
+                                                      'slots': {'0': [1], '2': [1]}}).json()['mine']['ta_id']
+    cal = ilqar.get('/api/workspaces/private/calendar').json()
+    school_start = cal['year']['start']
+    # yay hazırlığı: öz tarixləri
+    bad = ilqar.put('/api/workspaces/private/year', json={'name': 'Yay 2027', 'start': '2027-06-21', 'sem1_end': '2027-06-20',
+                                                          'sem2_start': '2027-07-21', 'end': '2027-08-27'})
+    assert bad.status_code == 422
+    r = ilqar.put('/api/workspaces/private/year', json={'name': 'Yay 2027', 'start': '2027-06-21', 'sem1_end': '2027-07-20',
+                                                        'sem2_start': '2027-07-21', 'end': '2027-08-27'}).json()
+    assert r['year']['start'] == '2027-06-21' and r['year']['name'] == 'Yay 2027'
+    lc = ilqar.get(f'/api/analytics/{ta}/lessons').json()
+    assert lc['semesters'][0]['from'] == '2027-06-21' and lc['semesters'][1]['to'] == '2027-08-27'
+    before = lc['year']['timetable_total']
+    # tətil aralığı (həftəsonları sayılmır) – dərs yuvaları azalır
+    r = ilqar.post('/api/workspaces/private/holidays', json={'date': '2027-07-05', 'to': '2027-07-11', 'name': 'Qısa tətil'}).json()
+    assert len([h for h in r['holidays'] if h['name'] == 'Qısa tətil']) == 5
+    assert ilqar.get(f'/api/analytics/{ta}/lessons').json()['year']['timetable_total'] == before - 2
+    assert ilqar.post('/api/workspaces/private/holidays', json={'date': '2027-07-10', 'name': 'Şənbə'}).status_code == 400
+    hid = r['holidays'][0]['id']
+    r = ilqar.delete(f'/api/workspaces/private/holidays/{hid}').json()
+    assert all(h['id'] != hid for h in r['holidays'])
+    # məktəbin təqviminə qayıt
+    assert ilqar.post('/api/workspaces/private/calendar/reset').json()['year']['start'] == school_start
+    # başqası: fərdi məkanı yoxdur – 404
+    assert admin.get('/api/workspaces/private/calendar').status_code == 404
+    assert admin.post('/api/workspaces/private/holidays', json={'date': '2027-07-05', 'name': 'x x'}).status_code == 404

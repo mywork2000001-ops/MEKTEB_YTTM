@@ -185,6 +185,7 @@ function PrivatePanel() {
   useEffect(() => { if (school) setF({ name: school.name, bells: school.bells || {} }) }, [school])
   if (!f) return err ? <ErrorBox error={err} /> : <Loading />
   return (
+    <>
     <section className="panel" style={{ maxWidth: 720 }}>
       <h2>Fərdi məkan <small>hazırlıq / repetitor</small></h2>
       <p className="small muted">Bu məkandakı siniflər, şagirdlər, jurnal və nəticələr məktəbin hesabatlarına, siyahılarına və adminə düşmür.
@@ -198,6 +199,62 @@ function PrivatePanel() {
       <AsyncBtn className="btn primary" ok="Yadda saxlanıldı" disabled={f.name.trim().length < 3} onClick={async () => {
         await patch('/api/workspaces/private', { name: f.name.trim(), bells: f.bells }); reload(); await refresh()
       }}>Yadda saxla</AsyncBtn>
+    </section>
+    <PrivateCalendar />
+    </>
+  )
+}
+
+/** Fərdi məkanın təqvimi: tədris ili (məs. yay hazırlığı), bayramlar və tətillər; məktəbin təqviminə qaytarmaq. */
+function PrivateCalendar() {
+  const [cal, err, , reload] = useLoad<any>(() => get('/api/workspaces/private/calendar'), [])
+  const [y, setY] = useState<any>(null)
+  const [h, setH] = useState({ date: '', to: '', name: '' })
+  const [reset, setReset] = useState(false)
+  useEffect(() => { if (cal) setY({ ...cal.year }) }, [cal])
+  if (!cal || !y) return err ? <ErrorBox error={err} /> : <Loading />
+  const fmtD = (d: string) => d.split('-').reverse().join('.')
+  // eyni adlı, arasında 3 gündən az fasilə olan günlər – bir tətil (həftəsonu daxil deyil)
+  const groups: { from: string; to: string; name: string; ids: number[] }[] = []
+  for (const x of cal.holidays) {
+    const g = groups[groups.length - 1]
+    if (g && g.name === x.name && (new Date(x.date).getTime() - new Date(g.to).getTime()) / 864e5 <= 3) { g.to = x.date; g.ids.push(x.id) }
+    else groups.push({ from: x.date, to: x.date, name: x.name, ids: [x.id] })
+  }
+  return (
+    <section className="panel" style={{ maxWidth: 720, marginTop: 16 }}>
+      <h2>Təqvim <small>tədris ili, bayramlar və tətillər</small></h2>
+      <p className="small muted" style={{ marginTop: 0 }}>Perspektiv plan, jurnal günləri və yarımil hesabları bu tarixlərlə işləyir. Bayram və tətil günlərində dərs olmur –
+        plan növbəti dərs gününə sürüşür. Məktəbin təqviminə təsir etmir.</p>
+      <div className="fg">
+        <Field label="Ad" hint="məs. 2026–2027 və ya Yay 2027"><input value={y.name} onChange={e => setY({ ...y, name: e.target.value })} maxLength={20} /></Field>
+        <Field label="Başlanğıc"><input type="date" value={y.start} onChange={e => setY({ ...y, start: e.target.value })} /></Field>
+        <Field label="I yarımilin sonu"><input type="date" value={y.sem1_end} onChange={e => setY({ ...y, sem1_end: e.target.value })} /></Field>
+        <Field label="II yarımilin başlanğıcı"><input type="date" value={y.sem2_start} onChange={e => setY({ ...y, sem2_start: e.target.value })} /></Field>
+        <Field label="İlin sonu"><input type="date" value={y.end} onChange={e => setY({ ...y, end: e.target.value })} /></Field>
+      </div>
+      <div className="row" style={{ marginTop: 10 }}>
+        <AsyncBtn className="btn primary" ok="Tədris ili yadda saxlanıldı" onClick={async () => {
+          await put('/api/workspaces/private/year', { name: y.name, start: y.start, sem1_end: y.sem1_end, sem2_start: y.sem2_start, end: y.end }); reload()
+        }}>Tədris ilini saxla</AsyncBtn>
+        {!reset ? <button className="btn ghost" onClick={() => setReset(true)}>Məktəbin təqvimini yenidən köçür</button> : (
+          <span className="row" style={{ gap: 6 }}><span className="small">Tarixlər və bayramlar məktəbinki ilə əvəzlənsin?</span>
+            <AsyncBtn className="btn sm danger" ok="Məktəbin təqvimi köçürüldü" onClick={async () => { await post('/api/workspaces/private/calendar/reset'); setReset(false); reload() }}>Bəli</AsyncBtn>
+            <button className="btn sm" onClick={() => setReset(false)}>Xeyr</button></span>)}
+      </div>
+      <h3 className="small muted" style={{ margin: '18px 0 6px' }}>Bayramlar və tətillər <span className="muted">({cal.holidays.length} gün)</span></h3>
+      <div className="fg">
+        <Field label="Tarix (və ya tətilin başlanğıcı)"><input type="date" value={h.date} onChange={e => setH({ ...h, date: e.target.value })} /></Field>
+        <Field label="Son tarix" hint="tətil üçün; tək gün – boş"><input type="date" value={h.to} onChange={e => setH({ ...h, to: e.target.value })} /></Field>
+        <Field label="Ad" full><input value={h.name} onChange={e => setH({ ...h, name: e.target.value })} placeholder="məs. Novruz bayramı, qış tətili" maxLength={120} /></Field>
+      </div>
+      <AsyncBtn className="btn" disabled={!h.date || h.name.trim().length < 2} ok="Əlavə olundu" onClick={async () => {
+        await post('/api/workspaces/private/holidays', { date: h.date, to: h.to || null, name: h.name.trim() }); setH({ date: '', to: '', name: '' }); reload()
+      }}>+ Əlavə et</AsyncBtn>
+      <div className="mlist" style={{ marginTop: 10 }}>{cal.holidays.length === 0 ? <div className="mrow"><span className="muted small">Bayram yoxdur.</span></div> :
+        groups.map(g => (
+          <div key={g.ids[0]} className="mrow"><span><b>{g.from === g.to ? fmtD(g.from) : `${fmtD(g.from).slice(0, 5)}–${fmtD(g.to)}`}</b> <span className="small muted">{g.name}{g.ids.length > 1 ? ` · ${g.ids.length} gün` : ''}</span></span>
+            <span className="mact"><AsyncBtn className="btn sm ghost" ok="Silindi" onClick={async () => { for (const id of g.ids) await del(`/api/workspaces/private/holidays/${id}`); reload() }}>Sil</AsyncBtn></span></div>))}</div>
     </section>
   )
 }
