@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..services import ws_cond
 from ..db import get_db
 from ..deps import staff
 from ..domain.plan import slot_at, view_range
@@ -36,7 +37,7 @@ def my_lessons(user: User = Depends(staff), db: Session = Depends(get_db)):
     ensure_current(db, user)                 # hər sinif/qrupun mövcud planı əsas proqram kimi görünsün (əvvəldən)
     db.commit()
     rows = db.execute(select(TeachingAssignment, SchoolClass).join(SchoolClass)
-                      .where(TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None),
+                      .where(TeachingAssignment.teacher_id == user.id, ws_cond(user), TeachingAssignment.archived_at.is_(None),
                              SchoolClass.archived_at.is_(None)).order_by(SchoolClass.name))
     out = []
     for ta, c in rows:
@@ -109,7 +110,7 @@ def progress_overview(user: User = Depends(staff), db: Session = Depends(get_db)
     t = today()
     out = []
     for ta, c in db.execute(select(TeachingAssignment, SchoolClass).join(SchoolClass).where(
-            TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None),
+            TeachingAssignment.teacher_id == user.id, ws_cond(user), TeachingAssignment.archived_at.is_(None),
             SchoolClass.archived_at.is_(None)).order_by(SchoolClass.name)):
         p = topic_progress(db, plan_ctx(db, ta), t)
         out.append({'ta_id': ta.id, 'class_name': c.name, 'subject': ta.subject, **p['summary'],
@@ -248,7 +249,7 @@ def timetable(date: dt.date | None = None, user: User = Depends(staff), db: Sess
     a = d - dt.timedelta(days=d.weekday())
     days = [a + dt.timedelta(days=i) for i in range(5)]
     grid: dict[str, dict[str, list]] = {str(x): {} for x in days}
-    tas = db.scalars(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id,
+    tas = db.scalars(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id, ws_cond(user),
                                                       TeachingAssignment.archived_at.is_(None)))
     for ta in tas:
         ctx = plan_ctx(db, ta)
@@ -282,7 +283,7 @@ def import_many(files: list[UploadFile] = File(...), user: User = Depends(settin
     from ..services import import_plan
     tas = {}
     for ta, c in db.execute(select(TeachingAssignment, SchoolClass).join(SchoolClass).where(
-            TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None))):
+            TeachingAssignment.teacher_id == user.id, ws_cond(user), TeachingAssignment.archived_at.is_(None))):
         tas[_plan_key(c.name)] = (ta, c)
     out = []
     for f in files:

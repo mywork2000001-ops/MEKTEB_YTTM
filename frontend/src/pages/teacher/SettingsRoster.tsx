@@ -98,6 +98,8 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
   const [f, setF] = useState({ name: cls?.name || '', code: cls?.code || '', type: type0, parent_id: cls?.parent_id || '', split_with: cls?.split_with || '',
     utis_class: cls?.utis_class || '', grade: cls?.grade_set ? String(cls.grade_set) : '', exam_date: cls?.exam_date || '', bells: (cls?.bells || {}) as Record<string, string> })
   const [ownBells, setOwnBells] = useState(!!cls?.bells && Object.keys(cls.bells).length > 0)
+  const { me } = useAuth()
+  const [where, setWhere] = useState<'school' | 'private'>(me?.workspace === 'private' ? 'private' : 'school')
   const [err, setErr] = useState<unknown>()
   const [confirm, setConfirm] = useState(false)
   const [plan, setPlan] = useState<File | null>(null)
@@ -109,7 +111,8 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
       const body: any = { name: f.name, split_with: f.type === 'split' ? f.split_with || null : null, utis_class: group ? null : f.utis_class || null, grade: f.grade ? Number(f.grade) : null,
         exam_date: f.exam_date || null, bells: ownBells ? Object.fromEntries(Object.entries(f.bells).filter(([, v]) => v.trim())) : {} }
       if (cls) await patch(`/api/classes/${cls.id}`, { ...body, ...(group ? {} : { kind: f.type }), ...(f.code && f.code !== cls.code ? { code: f.code } : {}) })
-      else await post('/api/classes', { ...body, kind: group ? 'qrup' : f.type, parent_id: f.type === 'split' && f.parent_id ? Number(f.parent_id) : null })
+      else await post('/api/classes', { ...body, kind: group ? 'qrup' : f.type, parent_id: f.type === 'split' && f.parent_id ? Number(f.parent_id) : null, private: where === 'private' })
+      if (!cls && where === 'private' && me?.workspace !== 'private') { toast('Fərdi sinif yaradıldı – fərdi məkana keçilir'); setTimeout(() => location.reload(), 600); return }
       toast('Yadda saxlanıldı'); onDone()
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && (e.data as any)?.detail?.class_id) setErr(new Error((e.data as any).detail.message))
@@ -120,6 +123,11 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
     <Drawer title={cls ? `${cls.name} – redaktə` : 'Yeni sinif / qrup'} onClose={onClose}
       footer={<><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" onClick={save} disabled={!f.name || (f.type === 'split' && !f.parent_id)}>Yadda saxla</button></>}>
       <div className="stack">
+        {!cls && <fieldset style={{ margin: 0 }}><legend>Harada</legend>
+          <label className="check"><input type="radio" name="where" checked={where === 'school'} onChange={() => setWhere('school')} /> Məktəb{me?.workspace !== 'private' && me?.school_name ? ` – ${me.school_name}` : ''}</label>
+          <label className="check"><input type="radio" name="where" checked={where === 'private'} onChange={() => setWhere('private')} /> Fərdi (hazırlıq / repetitor) – məktəbə aid deyil</label>
+          {where === 'private' && <p className="small muted" style={{ margin: '4px 0 0' }}>Fərdi sinif məktəbin hesabatlarına, siyahılarına və adminə düşmür; yalnız siz görürsünüz. Yuxarıdakı «Məktəb · Fərdi» düyməsi ilə məkanlar arasında keçirsiniz.</p>}
+        </fieldset>}
         <div className="fg">
           <Field label="Ad" full hint={group ? 'məs. X b (riyaziyyat qrupu), Olimpiada qrupu' : 'məs. X e, XI peşə sinfi'}><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
           {cls && <Field label="Sinif ID-si" hint="hərf və rəqəm; şagird ID-ləri bununla başlayır (XB-001). Köhnə şagird ID-ləri dəyişmir">
@@ -198,7 +206,8 @@ function HomeroomField({ cls, onDone }: { cls: Cls; onDone: () => void }) {
 function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onDone: () => void }) {
   const [subject, setSubject] = useState(cls.mine?.subject || 'Riyaziyyat')
   const [slots, setSlots] = useState<Record<string, number[]>>(cls.mine?.slots || {})
-  const [summ, setSumm] = useState(cls.mine?.has_summative ?? cls.kind !== 'qrup')
+  const { me } = useAuth()
+  const [summ, setSumm] = useState(cls.mine?.has_summative ?? (cls.kind !== 'qrup' && me?.workspace !== 'private'))   // fərdi sinifdə defolt – yox
   const [err, setErr] = useState<unknown>()
   const [leave, setLeave] = useState(false)
   const [prog, setProg] = useState('')

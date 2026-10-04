@@ -8,6 +8,7 @@ export type Me = {
   id: number; role: 'admin' | 'teacher' | 'student'; login: string; full_name: string
   school_id: number | null; language: Lang; theme: string | null; weak_password?: boolean
   school_name?: string | null; school_doc?: { deputy?: string | null; director?: string | null } | null
+  workspace?: 'school' | 'private'; has_private?: boolean
 }
 
 type Ctx = {
@@ -28,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const adopt = (m: Me | null) => {
     setMe(m)
-    setDocContext(m?.school_name, m?.school_doc)
+    setDocContext(m?.school_name, m?.school_doc, m?.workspace === 'private')
     applyLook(m?.theme ? parseLook(m.theme) : storedLook())
     document.documentElement.lang = m?.language || 'az'
   }

@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import ai
+from ..services import ws_cond
 from ..db import get_db
 from ..deps import staff
 from ..domain import daily_plan as dp
@@ -208,7 +209,7 @@ META_KEYS = ('school', 'teacher', 'subject', 'class_name', 'date_text', 'weekday
 def _my_assignments(db: Session, user: User):
     from ..models import SchoolClass, TeachingAssignment
     return list(db.scalars(select(TeachingAssignment).join(SchoolClass).where(
-        TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None),
+        TeachingAssignment.teacher_id == user.id, ws_cond(user), TeachingAssignment.archived_at.is_(None),
         SchoolClass.archived_at.is_(None)).order_by(SchoolClass.name)))
 
 

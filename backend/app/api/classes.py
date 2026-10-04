@@ -94,6 +94,7 @@ class ClassIn(BaseModel):
     grade: int | None = Field(None, ge=1, le=12)               # boş – addan (IX a -> 9)
     exam_date: dt.date | None = None
     bells: dict[str, str] | None = None
+    private: bool = False          # fərdi (repetitor) sinif – məktəbə aid deyil, müəllimin fərdi məkanında yaranır
 
     @field_validator('kind')
     @classmethod
@@ -105,6 +106,12 @@ class ClassIn(BaseModel):
 
 @router.post('')
 def create_class(body: ClassIn, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    if body.private:
+        from sqlalchemy.orm.attributes import set_committed_value
+        from ..workspaces import ensure_private
+        ws = ensure_private(db, user)
+        user.active_school_id = ws.id                   # yaradandan sonra fərdi məkana keçilir
+        set_committed_value(user, 'school_id', ws.id)
     sid = need_school(user)
     year = current_year(db, sid)
     name = norm_name(body.name)

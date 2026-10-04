@@ -41,6 +41,9 @@ class School(Base, Archivable):
     bells: Mapped[dict | None] = mapped_column(JSON)                      # {"1": "08:50–09:35", ...}
     # rəsmi sənədlər: {'deputy': 'Direktor müavini (tədris işləri üzrə) adı', 'director': '...'}
     doc_settings: Mapped[dict | None] = mapped_column(JSON)
+    # school – adi məktəb; private – müəllimin fərdi (repetitor) məkanı: məktəbə aid deyil, yalnız sahibi görür
+    kind: Mapped[str] = mapped_column(String(10), default='school', server_default='school')
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey('users.id', use_alter=True, name='fk_school_owner'))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -52,6 +55,7 @@ class User(Base, Archivable):
     password_hash: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(200))
     school_id: Mapped[int | None] = mapped_column(ForeignKey('schools.id'))
+    active_school_id: Mapped[int | None] = mapped_column(ForeignKey('schools.id'))   # aktiv məkan (fərdi məkan və ya None – əsas məktəb)
     subjects: Mapped[list | None] = mapped_column(JSON)                  # müəllim: ["Riyaziyyat"]
     language: Mapped[str] = mapped_column(String(2), default='az')
     theme: Mapped[str | None] = mapped_column(String(20))
@@ -63,7 +67,7 @@ class User(Base, Archivable):
     failed_logins: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
-    school: Mapped[School | None] = relationship()
+    school: Mapped[School | None] = relationship(foreign_keys=[school_id])
 
 
 # ---------------------------------------------------------------- tədris ili
@@ -264,6 +268,7 @@ class AuditLog(Base):
     entity: Mapped[str] = mapped_column(String(40))
     entity_id: Mapped[str | None] = mapped_column(String(40))
     details: Mapped[dict | None] = mapped_column(JSON)
+    school_id: Mapped[int | None] = mapped_column(Integer)                  # yazının məkanı (fərdi məkan adminə görünmür)
 
 
 class AppState(Base):

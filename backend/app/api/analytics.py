@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..services import ws_cond
 from ..analytics import Period, analyze, attendance_map
 from ..db import get_db
 from ..deps import admin_only, staff
@@ -64,7 +65,7 @@ def attendance(ta_id: int, date_from: dt.date | None = None, date_to: dt.date | 
 def overview(user: User = Depends(staff), db: Session = Depends(get_db)):
     """Bütün siniflərim üzrə qısa icmal (Əsas səhifə / Analitika)."""
     out = []
-    for ta in db.scalars(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id,
+    for ta in db.scalars(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id, ws_cond(user),
                                                           TeachingAssignment.archived_at.is_(None))):
         ctx = plan_ctx(db, ta)
         if ctx.cls.archived_at:
@@ -83,7 +84,7 @@ def weekly(user: User = Depends(staff), db: Session = Depends(get_db)):
     from ..services import today
     t = today()
     out = []
-    for ta in db.scalars(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id,
+    for ta in db.scalars(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id, ws_cond(user),
                                                           TeachingAssignment.archived_at.is_(None))):
         ctx = plan_ctx(db, ta)
         if ctx.cls.archived_at:
@@ -348,7 +349,7 @@ def audit_log(user_id: int | None = None, entity: str | None = None, limit: int 
               user: User = Depends(admin_only), db: Session = Depends(get_db)):
     """Kim, nə vaxt, nəyi dəyişib. Mesajların məzmunu burada YOXDUR (məxfilik)."""
     st = select(AuditLog, User.full_name).join(User, User.id == AuditLog.user_id, isouter=True) \
-        .where((User.school_id == user.school_id) | (AuditLog.user_id.is_(None)))
+        .where((User.school_id == user.school_id) | (AuditLog.user_id.is_(None)))         .where(AuditLog.school_id.is_(None) | (AuditLog.school_id == user.school_id))   # fərdi məkanın yazıları məktəb adminində yox
     if user_id:
         st = st.where(AuditLog.user_id == user_id)
     if entity:

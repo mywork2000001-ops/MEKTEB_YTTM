@@ -31,7 +31,14 @@ class MeOut(BaseModel):
     language: str
     theme: str | None
     school_name: str | None = None       # rəsmi sənədlərin başlığı (çap)
+    workspace: str = 'school'            # aktiv məkan: school | private (fərdi hazırlıq)
+    has_private: bool = False
     school_doc: dict | None = None        # imza verənlər: deputy, director
+
+
+def _has_private(db, u: User) -> bool:
+    from ..workspaces import private_of
+    return private_of(db, u) is not None
 
 
 def _me(u: User) -> MeOut:
@@ -41,7 +48,8 @@ def _me(u: User) -> MeOut:
     sc = db.get(School, u.school_id) if db is not None and u.school_id else None
     return MeOut(id=u.id, role=u.role, login=u.login, full_name=u.full_name, school_id=u.school_id,
                  language=u.language, theme=u.theme, school_name=sc.name if sc else None,
-                 school_doc=(sc.doc_settings or {}) if sc else None)
+                 school_doc=(sc.doc_settings or {}) if sc else None, workspace=(sc.kind if sc else 'school') or 'school',
+                 has_private=bool(db is not None and u.role != Role.student and _has_private(db, u)))
 
 
 def _set_cookie(response: Response, u: User):
@@ -66,6 +74,8 @@ def login(body: LoginIn, response: Response, db: Session = Depends(get_db)):
     db.add(AuditLog(user_id=u.id, action='login', entity='user', entity_id=str(u.id)))
     db.commit()
     _set_cookie(response, u)
+    from ..workspaces import apply_active
+    apply_active(db, u)
     out = _me(u)
     out.weak_password = u.role != Role.student and len(body.password) < 8   # müəllim/admin üçün xəbərdarlıq
     return out

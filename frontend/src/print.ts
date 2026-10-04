@@ -17,8 +17,8 @@ export type Signer = { role: string; name?: string | null }
 export const SIGN = {
   teacher: (name?: string | null): Signer => ({ role: 'Fənn müəllimi', name }),
   homeroom: (name?: string | null): Signer => ({ role: 'Sinif rəhbəri', name }),
-  deputy: (): Signer => ({ role: 'Direktor müavini (tədris işləri üzrə)', name: ctx.deputy }),
-  director: (): Signer => ({ role: 'Direktor', name: ctx.director }),
+  deputy: (): Signer | null => (ctx.private ? null : { role: 'Direktor müavini (tədris işləri üzrə)', name: ctx.deputy }),
+  director: (): Signer | null => (ctx.private ? null : { role: 'Direktor', name: ctx.director }),
 }
 
 const today = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}` }
@@ -61,11 +61,11 @@ th{background:#D9D9D9;font-weight:700}
 @media screen{body{padding:12mm;max-width:${landscape ? '297mm' : '210mm'};margin:0 auto;box-shadow:0 0 0 1px #ddd}}
 `
 
-export type Doc = { title: string; body: string; landscape?: boolean; signers?: Signer[]; internal?: boolean }
+export type Doc = { title: string; body: string; landscape?: boolean; signers?: (Signer | null)[]; internal?: boolean }
 
 /** İmza bloku: vəzifə – xətt (imza) – ad. */
-export const signs = (list: Signer[]) => list.length ? `<section class="signs">${list.map(s =>
-  `<div><span>${esc(s.role)}:</span><span><i></i><small>imza</small></span><span>${s.name ? esc(s.name) : '<i></i><small>ad, soyad</small>'}</span></div>`).join('')}</section>` : ''
+export const signs = (all: (Signer | null)[]) => { const list = all.filter((s): s is Signer => !!s); return list.length ? `<section class="signs">${list.map(s =>
+  `<div><span>${esc(s.role)}:</span><span><i></i><small>imza</small></span><span>${s.name ? esc(s.name) : '<i></i><small>ad, soyad</small>'}</span></div>`).join('')}</section>` : '' }
 
 /** Köhnə imza sətri «<p class="sign">Müəllim: ____</p>» → vahid imza bloku (vəzifə + direktor müavini). */
 const LEGACY_SIGN = /<p class="sign">\s*([^<:]+):\s*([^<_]*?)\s*_{4,}\s*<\/p>/g

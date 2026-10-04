@@ -20,7 +20,7 @@ router = APIRouter(prefix='/api', tags=['school'])
 
 
 def school_out(s: School, full: bool = True):
-    d = {'id': s.id, 'name': s.name, 'short_name': s.short_name, 'region': s.region}
+    d = {'id': s.id, 'name': s.name, 'short_name': s.short_name, 'region': s.region, 'kind': s.kind}
     if full:
         d.update(utis=s.utis, bells=s.bells, doc_settings=s.doc_settings or {})
     return d
@@ -36,7 +36,7 @@ def my_school(user: User = Depends(staff), db: Session = Depends(get_db)):
 @router.get('/schools')
 def search_schools(q: str = '', user: User = Depends(staff), db: Session = Depends(get_db)):
     """Müəllim məktəbini adına görə tapır (ən azı 2 hərf)."""
-    st = select(School).where(School.archived_at.is_(None))
+    st = select(School).where(School.archived_at.is_(None), School.kind == 'school')     # fərdi məkanlar axtarışda yoxdur
     if user.role != Role.admin:
         if len(q.strip()) < 2:
             return []
@@ -80,6 +80,8 @@ def create_school(body: SchoolIn, user: User = Depends(admin_only), db: Session 
 def update_school(school_id: int, body: SchoolIn, user: User = Depends(admin_only), db: Session = Depends(get_db),
                   _: User = Depends(settings_unlocked)):
     s = get_or_404(db, School, school_id, 'Məktəb')
+    if s.kind != 'school':
+        raise HTTPException(404, 'Məktəb tapılmadı')          # başqasının fərdi məkanı – admin də dəyişmir
     _check_utis(db, body.utis, s.id)
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(s, k, v)
@@ -96,9 +98,10 @@ class JoinSchoolIn(BaseModel):
 def join_school(body: JoinSchoolIn, user: User = Depends(staff), db: Session = Depends(get_db),
                 _: User = Depends(settings_unlocked)):
     s = get_or_404(db, School, body.school_id, 'Məktəb')
-    if s.archived_at:
+    if s.archived_at or s.kind != 'school':
         raise HTTPException(409, 'Məktəb arxivdədir')
     user.school_id = s.id
+    user.active_school_id = None
     audit(db, user, 'update', 'user_school', user.id, school_id=s.id)
     db.commit()
     return school_out(s, full=user.role == Role.admin)

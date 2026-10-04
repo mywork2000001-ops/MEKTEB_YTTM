@@ -232,3 +232,12 @@ body.exam-guard main{max-width:860px;margin:0 auto}
 .prog-details[open] > summary{margin-bottom:12px}
 /* test zamanı çap olunmur (brauzer menyusundan da): suallar kağıza / PDF-ə çıxmasın */
 @media print{body.exam-guard #root{display:none!important}body.exam-guard::before{content:"Test zamanı çap etmək olmaz";display:block;font:16px Arial,sans-serif;padding:20mm}}
+
+/* ---- Məkan: məktəb / fərdi hazırlıq ---- */
+.ws-switch{display:inline-flex;background:var(--surface);border-radius:12px;box-shadow:var(--shadow);padding:3px;gap:2px}
+.ws-switch button{all:unset;cursor:pointer;padding:0 12px;min-height:36px;display:inline-flex;align-items:center;border-radius:9px;font-size:13px;font-weight:600;color:var(--muted)}
+.ws-switch button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.app.ws-private .ws-switch button[aria-pressed="true"]{background:var(--strong);color:#fff}
+.app.ws-private main{border-top:4px solid var(--strong)}
+.app.ws-private .tabbar{border-top:3px solid var(--strong)}
+@media (max-width:700px){.ws-switch button{padding:0 9px;min-height:34px;font-size:12px}}

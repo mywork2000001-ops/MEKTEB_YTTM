@@ -22,6 +22,11 @@ def own_assignment(db: Session, user: User, ta_id: int) -> TeachingAssignment:
     return ta
 
 
+def ws_cond(user):
+    """Müəllimin dərs bağlılıqları – yalnız aktiv məkanın (məktəb və ya fərdi hazırlıq) sinifləri; məkanlar qarışmasın."""
+    return TeachingAssignment.class_id.in_(select(SchoolClass.id).where(SchoolClass.school_id == user.school_id))
+
+
 def roster(db: Session, ta: TeachingAssignment) -> list[Student]:
     c = db.get(SchoolClass, ta.class_id)
     st = select(Student).where(Student.archived_at.is_(None))

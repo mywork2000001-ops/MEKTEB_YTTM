@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..services import ws_cond
 from ..config import settings
 from ..db import get_db
 from ..deps import staff
@@ -16,7 +17,7 @@ SETTINGS_TTL = 15 * 60          # Tənzimləmələr 15 dəqiqə açıq qalır
 
 
 def audit(db: Session, user: User | None, action: str, entity: str, entity_id=None, **details):
-    db.add(AuditLog(user_id=user.id if user else None, action=action, entity=entity,
+    db.add(AuditLog(user_id=user.id if user else None, action=action, entity=entity, school_id=user.school_id if user else None,
                     entity_id=str(entity_id) if entity_id is not None else None, details=details or None))
 
 
@@ -46,7 +47,7 @@ def my_class_ids(db: Session, user: User) -> set[int] | None:
     """Müəllimin dərs dediyi siniflər (qrupların ana sinfi daxil). Admin üçün None = məktəbin hamısı."""
     if user.role == Role.admin:
         return None
-    ids = set(db.scalars(select(TeachingAssignment.class_id).where(TeachingAssignment.teacher_id == user.id,
+    ids = set(db.scalars(select(TeachingAssignment.class_id).where(TeachingAssignment.teacher_id == user.id, ws_cond(user),
                                                                    TeachingAssignment.archived_at.is_(None))))
     parents = set(db.scalars(select(SchoolClass.parent_id).where(SchoolClass.id.in_(ids),
                                                                  SchoolClass.parent_id.is_not(None))))

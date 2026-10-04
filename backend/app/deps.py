@@ -12,6 +12,8 @@ def current_user(db: Session = Depends(get_db), token: str | None = Cookie(None,
     user = db.get(User, data['u']) if data else None
     if not user or user.archived_at or user.password_hash[-12:] != data.get('p'):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, 'Daxil olun')
+    from .workspaces import apply_active
+    apply_active(db, user)                       # aktiv məkan (fərdi hazırlıq) – sorğu boyu school_id
     return user
 
 

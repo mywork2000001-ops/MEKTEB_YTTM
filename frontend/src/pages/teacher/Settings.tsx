@@ -33,7 +33,7 @@ export default function Settings() {
   if (!lock) return <Loading />
   if (lock.has_password && !unlocked) return <Unlock onDone={() => setUnlocked(true)} />
 
-  const tabs: [string, string][] = [['look', 'Görünüş'], ['account', 'Hesab'], ['school', 'Məktəb'], ['classes', 'Siniflər'], ['programs', 'Proqramlar'],
+  const tabs: [string, string][] = [['look', 'Görünüş'], ['account', 'Hesab'], ['school', me?.workspace === 'private' ? 'Fərdi məkan' : 'Məktəb'], ['classes', 'Siniflər'], ['programs', 'Proqramlar'],
     ['students', 'Şagirdlər'], ['archive', 'Arxiv'], ['ai', 'Süni intellekt'], ['lock', 'Kilid'],
     ...(admin ? [['teachers', 'Müəllimlər'], ['bank', 'Test bazası'], ['audit', 'Audit jurnalı']] as [string, string][] : [])]
   return (
@@ -44,7 +44,7 @@ export default function Settings() {
       <Suspense fallback={<Loading />}>
         {tab === 'look' && <LookPanel />}
         {tab === 'account' && <PasswordPanel student={false} />}
-        {tab === 'school' && <SchoolPanel admin={admin} />}
+        {tab === 'school' && (me?.workspace === 'private' ? <PrivatePanel /> : <SchoolPanel admin={admin} />)}
         {(tab === 'classes' || tab === 'students' || tab === 'archive') && <Roster tab={tab} />}
         {tab === 'programs' && <Programs />}
         {tab === 'ai' && <AiPanel />}
@@ -172,6 +172,32 @@ function AiPanel() {
         {s.has_key && <AsyncBtn className="btn ghost" ok="Açar silindi" onClick={async () => { await del('/api/ai/settings'); setF(null); setTest(null); reload() }}>Açarı sil</AsyncBtn>}
       </div>
       {test && <p className="small" style={{ marginBottom: 0 }}>{test}</p>}
+    </section>
+  )
+}
+
+
+/** Fərdi (repetitor) məkan: ad və dərs vaxtları; məktəbə aid deyil, yalnız sizə görünür. */
+function PrivatePanel() {
+  const { refresh } = useAuth()
+  const [school, err, , reload] = useLoad<any>(() => get('/api/school'), [])
+  const [f, setF] = useState<{ name: string; bells: Record<string, string> } | null>(null)
+  useEffect(() => { if (school) setF({ name: school.name, bells: school.bells || {} }) }, [school])
+  if (!f) return err ? <ErrorBox error={err} /> : <Loading />
+  return (
+    <section className="panel" style={{ maxWidth: 720 }}>
+      <h2>Fərdi məkan <small>hazırlıq / repetitor</small></h2>
+      <p className="small muted">Bu məkandakı siniflər, şagirdlər, jurnal və nəticələr məktəbin hesabatlarına, siyahılarına və adminə düşmür.
+        Tədris ili və bayramlar məktəbin təqvimindən köçürülüb. Məkanlar arasında keçid – yuxarıdakı «Məktəb · Fərdi» düyməsi.</p>
+      <div className="fg">
+        <Field label="Ad (çap sənədlərinin başlığında)" full><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} maxLength={300} /></Field>
+      </div>
+      <h3 className="small muted" style={{ margin: '14px 0 6px' }}>Dərs vaxtları</h3>
+      <div className="fg">{Array.from({ length: 9 }, (_, i) => String(i)).map(k => (
+        <Field key={k} label={`${ord(k)} saat`}><input value={f.bells[k] || ''} placeholder="15:00–15:45" onChange={e => setF({ ...f, bells: { ...f.bells, [k]: e.target.value } })} /></Field>))}</div>
+      <AsyncBtn className="btn primary" ok="Yadda saxlanıldı" disabled={f.name.trim().length < 3} onClick={async () => {
+        await patch('/api/workspaces/private', { name: f.name.trim(), bells: f.bells }); reload(); await refresh()
+      }}>Yadda saxla</AsyncBtn>
     </section>
   )
 }

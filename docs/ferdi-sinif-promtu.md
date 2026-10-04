@@ -72,3 +72,15 @@ bir hesabatında, siyahısında və adminin görünüşündə yoxdur; məkanlar 
 2. Fərdi şagirdlərin portala girişi lazımdırmı (onlayn test, nəticələr), yoxsa yalnız müəllim jurnalı?
 3. Fərdi sinifdə KSQ/BSQ (summativ) lazımdırmı, yoxsa yalnız formativ və sınaqlar?
 4. Fərdi məkan bir dənə olsun, yoxsa bir neçə (məs. «Hazırlıq kursu», «Olimpiada»)?
+
+## 9. İcra vəziyyəti (04.10.2026)
+Götürülən qərarlar (istifadəçi «başlayaq» dedi, suallara cavab vermədi): tədris ili məktəbdən köçürülür; fərdi şagirdlərin portalı açıqdır;
+fərdi sinifdə KSQ/BSQ defolt söndürülüdür (qoşulma formasında yandırılır); bir fərdi məkan.
+- miqrasiya `e1f5b8c3a9d2`: `schools.kind/owner_id`, `users.active_school_id`, `audit_log.school_id`;
+- `workspaces.py`: aktiv məkan sorğu boyu `school_id`-yə tətbiq olunur (`set_committed_value` – bazaya yazılmır); `ensure_private`;
+- `/api/workspaces` (siyahı, yaratma, aktiv, ad/zənglər); sinif yaratmada `private: true`;
+- məktəb axtarışı, məktəbə qoşulma, admin redaktəsi – fərdi məkan yoxdur; admin audit jurnalında fərdi yazılar yoxdur;
+- müəllimin bütün «mənim siniflərim» siyahıları (`ws_cond`) aktiv məkanla məhdud; çatda fərdi məkanda «Müəllim otağı» yoxdur,
+  fərdi şagird öz müəllimi ilə yazışır; çapda fərdi məkanın adı, rəhbərlik imzası yoxdur;
+- interfeys: «Harada: Məktəb / Fərdi», yuxarıda «Məktəb · Fərdi» keçidi (fərdi – bənövşəyi zolaq), Tənzimləmələr → «Fərdi məkan».
+Qalan: fərdi məkanın tədris ili və bayramlarını interfeysdən dəyişmək (hazırda məktəbdən köçürülmüş təqvim).

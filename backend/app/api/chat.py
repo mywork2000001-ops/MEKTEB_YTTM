@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from ..services import ws_cond
 from ..config import settings
 from ..db import get_db
 from ..deps import current_user, staff
@@ -72,7 +73,7 @@ def _teacher_class_ids(db: Session, u: User) -> set[int]:
     Tədris qrupu (ana sinifsiz) üçün sinif otağı yoxdur – üzvlər müxtəlif siniflərdəndir."""
     rows = db.execute(select(SchoolClass.id, SchoolClass.parent_id, SchoolClass.kind).join(
         TeachingAssignment, TeachingAssignment.class_id == SchoolClass.id).where(
-        TeachingAssignment.teacher_id == u.id, TeachingAssignment.archived_at.is_(None),
+        TeachingAssignment.teacher_id == u.id, ws_cond(u), TeachingAssignment.archived_at.is_(None),
         SchoolClass.archived_at.is_(None))).all()
     return {p or c for c, p, k in rows if p or k != 'qrup'} | _homeroom_ids(db, u)
 
@@ -90,9 +91,20 @@ def _student_teacher_ids(db: Session, s: Student) -> set[int]:
     return ids | ({hr} if hr else set())
 
 
+def _owner(db: Session, school_id: int | None) -> int | None:
+    """Fərdi məkanın sahibi (məktəb üçün None)."""
+    from ..models import School
+    s = db.get(School, school_id) if school_id else None
+    return s.owner_id if s and s.kind == 'private' else None
+
+
 def can_dm(db: Session, a: User, b: User) -> bool:
-    if a.id == b.id or b.archived_at or a.school_id != b.school_id or not a.school_id:
+    if a.id == b.id or b.archived_at or not a.school_id:
         return False
+    if a.school_id != b.school_id:
+        # fərdi məkan: sahibi (bazada əsas məktəbi fərqlidir) öz fərdi şagirdləri ilə yazışır
+        if not (_owner(db, a.school_id) == b.id or _owner(db, b.school_id) == a.id):
+            return False
     if Role.admin in (a.role, b.role):
         return True                                               # admin məktəbdə hər kəslə yazışa bilər
     sa, sb = _student(db, a), _student(db, b)
@@ -168,7 +180,9 @@ def rooms(u: User = Depends(current_user), db: Session = Depends(get_db)):
         if s:
             _ensure(db, school_id=u.school_id, kind='class', class_id=s.class_id)
     else:
-        _ensure(db, school_id=u.school_id, kind='staff', class_id=None)
+        from ..models import School
+        if (db.get(School, u.school_id).kind or 'school') == 'school':     # fərdi məkanda «Müəllim otağı» yoxdur
+            _ensure(db, school_id=u.school_id, kind='staff', class_id=None)
         for cid in _teacher_class_ids(db, u):
             _ensure(db, school_id=u.school_id, kind='class', class_id=cid)
     db.commit()
@@ -196,7 +210,8 @@ def rooms(u: User = Depends(current_user), db: Session = Depends(get_db)):
 @router.get('/contacts')
 def contacts(u: User = Depends(current_user), db: Session = Depends(get_db)):
     """Kimə yazmaq olar – qrup (Müəllimlər / sinif adı), alt yazı (fənn, «sinif rəhbəri»), mövcud yazışma."""
-    cand = list(db.scalars(select(User).where(User.school_id == u.school_id, User.archived_at.is_(None), User.id != u.id)))
+    own = _owner(db, u.school_id)                    # fərdi məkanda müəllim – məkanın sahibi
+    cand = list(db.scalars(select(User).where((User.school_id == u.school_id) | (User.id == own), User.archived_at.is_(None), User.id != u.id)))
     studs = {s.user_id: s for s in db.scalars(select(Student).where(Student.school_id == u.school_id,
                                                                     Student.archived_at.is_(None), Student.user_id.is_not(None)))}
     cls = {c.id: c for c in db.scalars(select(SchoolClass).where(SchoolClass.school_id == u.school_id))}

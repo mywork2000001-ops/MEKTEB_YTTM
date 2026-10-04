@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { flushOutbox, get, outbox } from './api'
+import { flushOutbox, get, outbox, put } from './api'
 import { toast } from './ui'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from './auth'
@@ -72,7 +72,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <div className="app">
+      <div className={'app' + (me?.workspace === 'private' ? ' ws-private' : '')}>
         <aside className="side">
           <div className="brand"><span className="logo">M</span><div><b>Müəllim köməkçisi</b><span>{shortName} · 2026–2027</span></div></div>
           <nav className="nav" aria-label="Bölmələr">
@@ -90,7 +90,8 @@ export function Layout({ children }: { children: ReactNode }) {
         <main>
           <div className="topbar">
             <span className="tb-brand"><span className="logo" style={{ width: 30, height: 30, fontSize: 14 }}>M</span><b>Müəllim köməkçisi</b></span>
-            <button className="tb-user" style={{ marginLeft: 'auto' }} onClick={() => nav('/settings')} aria-label={t('Tənzimləmələr')}>
+            {!student && me?.has_private && <WorkspaceSwitch />}
+            <button className="tb-user" style={{ marginLeft: me?.has_private ? 0 : 'auto' }} onClick={() => nav('/settings')} aria-label={t('Tənzimləmələr')}>
               <span className="uav">{initials}</span>
               <span className="tb-uname"><b>{shortName}</b><small>{student ? t('Şagird') : me?.role === 'admin' ? 'Admin' : 'Müəllim'}</small></span>
             </button>
@@ -120,5 +121,27 @@ export function Layout({ children }: { children: ReactNode }) {
         </Drawer>
       )}
     </>
+  )
+}
+
+
+/** Məkan: məktəb və ya fərdi hazırlıq (repetitor) – fərdi məkan məktəbin hesabatlarına və siyahılarına düşmür. */
+function WorkspaceSwitch() {
+  const { me } = useAuth()
+  const [busy, setBusy] = useState(false)
+  const go = async (kind: 'school' | 'private') => {
+    if (busy || me?.workspace === kind) return
+    setBusy(true)
+    try {
+      const ws = await get<{ id: number; kind: string }[]>('/api/workspaces')
+      const w = ws.find(x => x.kind === kind)
+      if (w) { await put('/api/workspaces/active', { school_id: w.id }); location.reload() }
+    } catch { toast('Məkan dəyişdirilmədi'); setBusy(false) }
+  }
+  return (
+    <div className="ws-switch" role="group" aria-label="Məkan" style={{ marginLeft: 'auto' }}>
+      <button aria-pressed={me?.workspace !== 'private'} onClick={() => go('school')} title="Məktəb">Məktəb</button>
+      <button aria-pressed={me?.workspace === 'private'} onClick={() => go('private')} title="Fərdi hazırlıq – məktəbə aid deyil">Fərdi</button>
+    </div>
   )
 }

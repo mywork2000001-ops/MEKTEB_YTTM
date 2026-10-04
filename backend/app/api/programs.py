@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from ..services import ws_cond
 from ..db import get_db
 from ..deps import staff
 from typing import Literal
@@ -66,12 +67,12 @@ def list_programs(grade: int | None = None, subject: str | None = None, level: s
             tgrade = class_grade(db, c)
     used: dict[int, list[str]] = {}
     for ta, c in db.execute(select(TeachingAssignment, SchoolClass).join(SchoolClass).where(
-            TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None),
+            TeachingAssignment.teacher_id == user.id, ws_cond(user), TeachingAssignment.archived_at.is_(None),
             TeachingAssignment.program_id.is_not(None))):
         used.setdefault(ta.program_id, []).append(c.name)
     rows = list(db.scalars(st))
     for ap, c in db.execute(select(AssignmentProgram, SchoolClass).join(TeachingAssignment, TeachingAssignment.id == AssignmentProgram.assignment_id)
-                            .join(SchoolClass, SchoolClass.id == TeachingAssignment.class_id).where(TeachingAssignment.teacher_id == user.id)):
+                            .join(SchoolClass, SchoolClass.id == TeachingAssignment.class_id).where(TeachingAssignment.teacher_id == user.id, ws_cond(user))):
         used.setdefault(ap.program_id, []).append(f'{c.name} (əlavə{" – " + ap.level if ap.level else ""})')
     rows.sort(key=lambda p: (tgrade is not None and p.grade not in (None, tgrade), p.key is None, p.grade or 0, p.title))
     return [_out(p, used, tgrade) for p in rows]

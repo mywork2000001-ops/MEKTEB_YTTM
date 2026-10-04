@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..services import ws_cond
 from ..db import get_db
 from ..deps import staff
 from ..models import (LevelOverride, OnlineTask, PlanLesson, SchoolClass, TaskAttempt, TeachingAssignment, TestBatch, User,
@@ -81,7 +82,7 @@ def peers(ta_id: int, pl_id: int, user: User = Depends(staff), db: Session = Dep
     src = _pl(db, ta, pl_id)
     grade = class_grade(db, db.get(SchoolClass, ta.class_id))
     rows = db.execute(select(TeachingAssignment, SchoolClass).join(SchoolClass).where(
-        TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None),
+        TeachingAssignment.teacher_id == user.id, ws_cond(user), TeachingAssignment.archived_at.is_(None),
         TeachingAssignment.subject == ta.subject, SchoolClass.archived_at.is_(None)).order_by(SchoolClass.name)).all()
     out = []
     for t, c in rows:
@@ -265,7 +266,7 @@ def previous_tests(ta_id: int, pl_id: int, user: User = Depends(staff), db: Sess
     rows = db.execute(select(OnlineTask, PlanLesson, TeachingAssignment)
                       .join(PlanLesson, PlanLesson.id == OnlineTask.plan_lesson_id)
                       .join(TeachingAssignment, TeachingAssignment.id == OnlineTask.assignment_id)
-                      .where(TeachingAssignment.teacher_id == user.id, TeachingAssignment.subject == ta.subject,
+                      .where(TeachingAssignment.teacher_id == user.id, ws_cond(user), TeachingAssignment.subject == ta.subject,
                              OnlineTask.kind == 'movzu').order_by(OnlineTask.id.desc())).all()
     out, seen = [], set()
     for t, pl, tta in rows:

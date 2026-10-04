@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..services import ws_cond
 from ..db import get_db
 from ..deps import staff
 from ..domain.rules import rank, summative_grade
@@ -60,7 +61,7 @@ def _access(db: Session, user: User, b: TestBatch) -> str:
     if b.created_by == user.id or (user.role == Role.admin and _school_of(db, b) == user.school_id):
         return 'full'
     mine = db.scalar(select(OnlineTask.id).join(TeachingAssignment, TeachingAssignment.id == OnlineTask.assignment_id)
-                     .where(OnlineTask.batch_id == b.id, TeachingAssignment.teacher_id == user.id))
+                     .where(OnlineTask.batch_id == b.id, TeachingAssignment.teacher_id == user.id, ws_cond(user)))
     if mine is None:
         raise HTTPException(404, 'Sınaq tapılmadı')
     return 'own'
@@ -170,7 +171,7 @@ def targets(user: User = Depends(staff), db: Session = Depends(get_db)):
           .join(SchoolClass, SchoolClass.id == TeachingAssignment.class_id).join(User, User.id == TeachingAssignment.teacher_id)
           .where(TeachingAssignment.archived_at.is_(None), SchoolClass.archived_at.is_(None)))
     st = st.where(SchoolClass.school_id == need_school(user)) if user.role == Role.admin else \
-        st.where(TeachingAssignment.teacher_id == user.id)
+        st.where(TeachingAssignment.teacher_id == user.id, ws_cond(user))
     return [{'ta_id': ta.id, 'class_name': c.name, 'subject': ta.subject, 'grade': class_grade(db, c),
              'teacher': u.full_name, 'mine': ta.teacher_id == user.id, 'students': len(roster(db, ta))}
             for ta, c, u in db.execute(st.order_by(TeachingAssignment.subject, SchoolClass.name))]
