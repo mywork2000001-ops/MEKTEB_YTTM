@@ -180,6 +180,17 @@ def targets(user: User = Depends(staff), db: Session = Depends(get_db)):
             for ta, c, u in db.execute(st.order_by(TeachingAssignment.subject, SchoolClass.name))]
 
 
+@router.get('/targets/{ta_id}/students')
+def target_students(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«Kimə» seçicisi üçün: sinfin/qrupun şagirdləri və səviyyə qrupu (Jurnal → Səviyyə qrupları).
+    Mövzu testi, sınaq, adi tapşırıq və yenidən göndərmə eyni siyahıdan istifadə edir."""
+    from ..models import LevelOverride
+    ta, _ = _can_target(db, user, ta_id)
+    lv = {o.student_id: o.level for o in db.scalars(select(LevelOverride).where(LevelOverride.assignment_id == ta.id))}
+    return [{'id': s.id, 'full_name': s.full_name, 'portal_code': s.portal_code, 'level': lv.get(s.id)}
+            for s in sorted(roster(db, ta), key=lambda s: s.full_name)]
+
+
 class ExamTarget(BaseModel):
     ta_id: int
     opens_at: dt.datetime

@@ -35,38 +35,74 @@ export function LessonSelect({ lessons, value, onChange, label = 'Sinif / qrup' 
 export const ATT: [string, string, string][] = [['var', 'V', 'var'], ['yox', 'Q', 'yox'], ['üzrlü', 'Ü', 'uzrlu'], ['gecikdi', 'G', 'gecikdi']]
 export const HW: string[] = ['etdi', 'qismən', 'etmədi', 'köçürüb']
 
-type LevelRow = { student_id: number; full_name: string }
-/** Kimə göndərilir: hamı / güclülər / ortalar / zəiflər / seçilmiş şagirdlər (differensial yanaşma). null = hamı. */
-export function TargetPicker({ ta, onChange }: { ta: number; onChange: (ids: number[] | null) => void }) {
-  const [levels] = useLoad<Record<string, LevelRow[]>>(() => get(`/api/analytics/${ta}/levels`), [ta])
-  const [mode, setMode] = useState<'all' | 'Güclü' | 'Orta' | 'Zəif' | 'pick'>('all')
-  const [picked, setPicked] = useState<Set<number>>(new Set())
-  const all = levels ? Object.values(levels).flat().sort((a, b) => a.full_name.localeCompare(b.full_name, 'az')) : []
-  const apply = (m: typeof mode, p = picked) => {
-    setMode(m)
+type Stu = { id: number; full_name: string; portal_code: string; level: 'Zəif' | 'Orta' | 'Güclü' | null }
+export type Preset = { key: string; label: string; ids: number[] }
+const LVS = ['Zəif', 'Orta', 'Güclü'] as const
+
+/** «Kimə» (docs/sagird-secimi-promtu.md): hamı / səviyyə qrupları (Jurnal → Səviyyə qrupları) / seçilmiş şagirdlər /
+ * hazır siyahılar (məs. «Yazmayanlar»). onChange(null) – bütün sinif; massiv – yalnız onlar. value – ilkin seçim (redaktə). */
+export function StudentPicker({ ta, value, onChange, presets = [], legend = 'Kimə' }:
+  { ta: number; value?: number[] | null; onChange: (ids: number[] | null) => void; presets?: Preset[]; legend?: string }) {
+  const [list] = useLoad<Stu[]>(() => get(`/api/exams-online/targets/${ta}/students`), [ta])
+  const [mode, setMode] = useState<string>(value ? 'pick' : 'all')
+  const [lv, setLv] = useState<Set<string>>(new Set())
+  const [picked, setPicked] = useState<Set<number>>(new Set(value || []))
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const all = list || []
+  const emit = (m: string, p: Set<number>, l: Set<string>) => {
     if (m === 'all') onChange(null)
-    else if (m === 'pick') onChange(p.size ? [...p] : [])
-    else onChange((levels?.[m] || []).map(r => r.student_id))
+    else if (m === 'levels') onChange(all.filter(s => s.level && l.has(s.level)).map(s => s.id))
+    else onChange([...p])
   }
+  const choose = (m: string, ids?: number[]) => {
+    setMode(m)
+    if (ids) { const p = new Set(ids); setPicked(p); emit('pick', p, lv) } else emit(m, picked, lv)
+  }
+  const toggleLv = (l: string) => {
+    const n = new Set(lv); n.has(l) ? n.delete(l) : n.add(l)
+    setLv(n); setMode(n.size ? 'levels' : 'all'); emit(n.size ? 'levels' : 'all', picked, n)
+  }
+  // siyahıda tək-tək dəyişmək: cari seçimdən başlayır və «Seçilmiş» rejiminə keçir
+  const current = mode === 'all' ? new Set(all.map(s => s.id)) : mode === 'levels' ? new Set(all.filter(s => s.level && lv.has(s.level)).map(s => s.id)) : picked
+  const flip = (id: number) => { const n = new Set(current); n.has(id) ? n.delete(id) : n.add(id); setPicked(n); setMode('pick'); emit('pick', n, lv) }
+  const setAll = (on: boolean) => { const n = new Set(on ? all.map(s => s.id) : []); setPicked(n); setMode('pick'); emit('pick', n, lv) }
+  const lc = (x: string) => x.toLocaleLowerCase('az')
+  const shown = all.filter(s => !q || lc(s.full_name).includes(lc(q)) || lc(s.portal_code).includes(lc(q)))
+  const noLevel = all.filter(s => !s.level).length
   return (
-    <fieldset style={{ marginBottom: 0 }}><legend>Kimə</legend>
-      <div className="row" style={{ gap: 6 }}>
-        {([['all', 'Hamı'], ['Güclü', 'Güclülər'], ['Orta', 'Ortalar'], ['Zəif', 'Zəiflər'], ['pick', 'Seçilmiş']] as const).map(([k, l]) => (
-          <button key={k} type="button" className="chip" aria-pressed={mode === k} onClick={() => apply(k)}>
-            {l}{k !== 'all' && k !== 'pick' && levels ? ` (${levels[k].length})` : ''}</button>))}
+    <fieldset style={{ marginBottom: 0 }}><legend>{legend}</legend>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <button type="button" className="chip" aria-pressed={mode === 'all'} onClick={() => { setLv(new Set()); choose('all') }}>Hamı{list ? ` (${all.length})` : ''}</button>
+        {LVS.map(l => { const n = all.filter(s => s.level === l).length
+          return <button key={l} type="button" className="chip" aria-pressed={mode === 'levels' && lv.has(l)} disabled={!n} onClick={() => toggleLv(l)}>{l} ({n})</button> })}
+        {presets.map(p => <button key={p.key} type="button" className="chip" aria-pressed={mode === p.key} disabled={!p.ids.length}
+          onClick={() => { setMode(p.key); const n = new Set(p.ids); setPicked(n); emit('pick', n, lv) }}>{p.label} ({p.ids.length})</button>)}
+        <button type="button" className="chip" aria-pressed={mode === 'pick'} onClick={() => { setOpen(true); choose('pick', [...current]) }}>Seçilmiş…</button>
+        <button type="button" className="btn sm ghost right" onClick={() => setOpen(!open)}>{open ? 'Siyahını gizlət' : 'Siyahı'}</button>
       </div>
-      {mode === 'pick' && (
-        <div className="jlist" style={{ maxHeight: 220, overflow: 'auto', marginTop: 8 }}>
-          {all.map(s => (
-            <label key={s.student_id} className="check" style={{ padding: '0 12px' }}>
-              <input type="checkbox" checked={picked.has(s.student_id)} onChange={() => {
-                const n = new Set(picked); n.has(s.student_id) ? n.delete(s.student_id) : n.add(s.student_id); setPicked(n); apply('pick', n)
-              }} />{s.full_name}</label>))}
-        </div>)}
-      {mode !== 'all' && <p className="small muted" style={{ margin: '6px 0 0' }}>Səviyyə nəticələrə görə avtomatik müəyyən olunur (nəticə yoxdursa – IX sinif balı).</p>}
+      <p className="small muted" style={{ margin: '6px 0 0' }}>{list ? `${all.length} şagirddən ${current.size}-i` : '…'}
+        {mode === 'levels' && noLevel > 0 ? ` · səviyyəsi təyin olunmayan ${noLevel} şagird daxil deyil (Jurnal → Səviyyə qrupları)` : ''}
+        {mode !== 'all' && current.size === 0 ? ' · ən azı bir şagird seçin' : ''}</p>
+      {open && <div style={{ marginTop: 8 }}>
+        <div className="row" style={{ gap: 6, marginBottom: 6 }}>
+          <input className="sel grow" placeholder="Ad və ya ID ilə axtar" value={q} onChange={e => setQ(e.target.value)} />
+          <button type="button" className="btn sm" onClick={() => setAll(true)}>Hamısını seç</button>
+          <button type="button" className="btn sm" onClick={() => setAll(false)}>Təmizlə</button>
+        </div>
+        <div className="jlist" style={{ maxHeight: 240, overflow: 'auto' }}>
+          {shown.map(s => (
+            <label key={s.id} className="check" style={{ padding: '0 12px' }}>
+              <input type="checkbox" checked={current.has(s.id)} onChange={() => flip(s.id)} />
+              <span className="grow">{s.full_name} <span className="small muted">{s.portal_code}</span></span>
+              {s.level && <span className="small muted">{s.level}</span>}</label>))}
+          {list && !shown.length && <div className="empty">Şagird tapılmadı.</div>}
+        </div></div>}
     </fieldset>
   )
 }
+/** Köhnə ad – eyni seçici (Materiallar, Onlayn tapşırıqlar). */
+export const TargetPicker = StudentPicker
 
 /** Növ adı: TOM / adi sinif, bölünmə qrupu (sinif daxilində), tədris qrupu (müxtəlif siniflərdən). */
 export const kindLabel = (c: { kind: string; parent_id: number | null }) =>

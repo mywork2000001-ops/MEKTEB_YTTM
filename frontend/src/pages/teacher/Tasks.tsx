@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { del as apiDel, get, post } from '../../api'
 import { MathText } from '../../MathText'
 import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, PickFirst, Pill, Seg, toast, Top, useLoad, ord } from '../../ui'
-import { LessonSelect, type MyLesson, useMyLessons, usePick } from './common'
+import { LessonSelect, type MyLesson, type Preset, StudentPicker, useMyLessons, usePick } from './common'
 import { PeriodBar, usePeriod } from '../../periods'
 import { Link } from 'react-router-dom'
 import TaskEditor from './TaskEditor'
@@ -99,8 +99,9 @@ export function TaskActions({ ta, id, cls, onChange }: { ta: number; id: number;
   const [lessons] = useMyLessons()
   const [mode, setMode] = useState<null | 'watch' | 'share' | 'resend' | 'edit'>(null)
   const [task, setTask] = useState<Task | null>(null)
-  const open = async (m: 'share' | 'resend') => {
-    try { setTask(await get<Task>(`/api/tasks/${ta}/${id}/full`)); setMode(m) } catch (e) { toast('Xəta: ' + (e as Error).message) }
+  const [preset, setPreset] = useState<'absent' | undefined>()
+  const open = async (m: 'share' | 'resend', p?: 'absent') => {
+    try { setTask(await get<Task>(`/api/tasks/${ta}/${id}/full`)); setPreset(p); setMode(m) } catch (e) { toast('Xəta: ' + (e as Error).message) }
   }
   return (
     <>
@@ -111,9 +112,9 @@ export function TaskActions({ ta, id, cls, onChange }: { ta: number; id: number;
         <button className="btn sm" onClick={() => paper(ta, id, cls)}>Kağız variant</button>
         <button className="btn sm" onClick={() => setMode('edit')}>Redaktə</button>
       </div>
-      {mode === 'watch' && <Watch ta={ta} id={id} onClose={() => { setMode(null); onChange() }} />}
+      {mode === 'watch' && <Watch ta={ta} id={id} onClose={() => { setMode(null); onChange() }} onResendAbsent={() => open('resend', 'absent')} />}
       {mode === 'share' && task && <Share task={task} cls={cls} onClose={() => setMode(null)} />}
-      {mode === 'resend' && task && <Resend ta={ta} task={task} lessons={lessons || []} onClose={() => setMode(null)}
+      {mode === 'resend' && task && <Resend ta={ta} task={task} lessons={lessons || []} preset={preset} onClose={() => setMode(null)}
         onDone={t => { setTask(t); setMode('share'); onChange() }} />}
       {mode === 'edit' && <TaskEditor ta={ta} taskId={id} fromBank={false} onClose={() => setMode(null)} onDone={() => { setMode(null); onChange() }} />}
     </>
@@ -123,7 +124,15 @@ export function TaskActions({ ta, id, cls, onChange }: { ta: number; id: number;
 const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 
 /** Yenidən göndər: eyni suallarla surət – yeni vaxt, həmin və ya başqa sinif/qrup. Köhnə nəticələr yerində qalır. */
-function Resend({ ta, task, lessons, onClose, onDone }: { ta: number; task: Task; lessons: MyLesson[]; onClose: () => void; onDone: (t: Task, sameClass: boolean) => void }) {
+function Resend({ ta, task, lessons, preset, onClose, onDone }: { ta: number; task: Task; lessons: MyLesson[]; preset?: 'absent'; onClose: () => void; onDone: (t: Task, sameClass: boolean) => void }) {
+  // həmin sinfə: «Yazmayanlar» və «50%-dən aşağı» – bu testin nəticələrindən (docs/sagird-secimi-promtu.md §6)
+  const [res] = useLoad<any>(() => get(`/api/tasks/${ta}/${task.id}`), [ta, task.id])
+  const presets: Preset[] = res ? [
+    { key: 'absent', label: 'Yazmayanlar', ids: res.rows.filter((r: any) => r.status !== 'təhvil verib').map((r: any) => r.student_id) },
+    { key: 'low', label: '50%-dən aşağı', ids: res.rows.filter((r: any) => r.pct != null && r.pct < 50).map((r: any) => r.student_id) },
+  ] : []
+  const [ids, setIds] = useState<number[] | null>(null)
+  useEffect(() => { if (res && preset === 'absent') setIds(presets[0].ids) }, [res])
   const start = new Date(); start.setMinutes(Math.ceil(start.getMinutes() / 5) * 5 + 5, 0, 0)
   const end = new Date(start.getTime() + Math.max(task.duration_min + 10, 60) * 60000)
   const [f, setF] = useState({ target: ta, opens: localInput(start), closes: localInput(end), duration: task.duration_min, title: task.title })
@@ -131,13 +140,13 @@ function Resend({ ta, task, lessons, onClose, onDone }: { ta: number; task: Task
   const save = async () => {
     try {
       const t = await post<Task>(`/api/tasks/${ta}/${task.id}/copy`, { target_ta_id: f.target, opens_at: new Date(f.opens).toISOString(),
-        closes_at: new Date(f.closes).toISOString(), duration_min: f.duration, title: f.title })
+        closes_at: new Date(f.closes).toISOString(), duration_min: f.duration, title: f.title, student_ids: ids })
       toast('Test yenidən göndərildi'); onDone(t, f.target === ta)
     } catch (e) { setErr(e) }
   }
   return (
     <Drawer title="Testi yenidən göndər" onClose={onClose}
-      footer={<><button className="btn" onClick={onClose}>Ləğv et</button><AsyncBtn className="btn primary" onClick={save}>Göndər</AsyncBtn></>}>
+      footer={<><button className="btn" onClick={onClose}>Ləğv et</button><AsyncBtn className="btn primary" disabled={ids?.length === 0} onClick={save}>Göndər</AsyncBtn></>}>
       <div className="stack">
         <p className="small muted">Eyni {task.questions} sualla yeni test yaradılır. Köhnə testin nəticələri yerində qalır; şagirdlər yenisini təzədən həll edir.</p>
         <div className="fg">
@@ -148,6 +157,8 @@ function Resend({ ta, task, lessons, onClose, onDone }: { ta: number; task: Task
           <Field label="Bağlanır"><input type="datetime-local" value={f.closes} onChange={e => setF({ ...f, closes: e.target.value })} /></Field>
           <Field label="Həll müddəti (dəq)"><input type="number" min={1} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
         </div>
+        {(f.target !== ta || res) && <StudentPicker key={`${f.target}-${!!res}`} ta={f.target} presets={f.target === ta ? presets : []}
+          value={f.target === ta && preset === 'absent' && res ? presets[0].ids : null} onChange={setIds} />}
         <ErrorBox error={err} />
       </div>
     </Drawer>
@@ -211,7 +222,7 @@ function ToJournal({ ta, id, opens }: { ta: number; id: number; opens: string })
 }
 
 // ---------------------------------------------------------------- canlı izləmə və nəticələr
-function Watch({ ta, id, onClose }: { ta: number; id: number; onClose: () => void }) {
+function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; onClose: () => void; onResendAbsent?: () => void }) {
   const [d, err, , reload] = useLoad<any>(() => get(`/api/tasks/${ta}/${id}`), [ta, id])
   const [q, setQ] = useState('')
   const [st, setSt] = useState<'all' | 'başlamayıb' | 'həll edir' | 'təhvil verib'>('all')
@@ -236,6 +247,8 @@ function Watch({ ta, id, onClose }: { ta: number; id: number; onClose: () => voi
             {live ? <label className="check small"><input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} /> Canlı (hər 5 san.)</label> : <Pill tone="info">bağlanıb</Pill>}
             <button className="btn sm" onClick={reload}>Yenilə</button>
             <input className="sel grow" placeholder="Şagird axtar" value={q} onChange={e => setQ(e.target.value)} />
+            {!live && onResendAbsent && d.summary['başlamayıb'] + d.summary['həll edir'] > 0 &&
+              <button className="btn sm" onClick={onResendAbsent}>Yazmayanlara yenidən göndər ({d.summary['başlamayıb'] + d.summary['həll edir']})</button>}
           </div>
           <div className="row" style={{ gap: 6 }}>
             {(['all', 'həll edir', 'başlamayıb', 'təhvil verib'] as const).map(k => <button key={k} className="chip" aria-pressed={st === k} onClick={() => setSt(k)}>{k === 'all' ? 'Hamısı' : k}</button>)}

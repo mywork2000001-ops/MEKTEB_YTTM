@@ -37,6 +37,7 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
   const [qs, setQs] = useState<Q[]>([])
   const [targets, setTargets] = useState<number[] | null | undefined>(taskId ? undefined : null)
   const [started, setStarted] = useState(0)
+  const [aud, setAud] = useState<number[] | null | undefined>(taskId ? undefined : null)   // yüklənmiş auditoriya (redaktə)
   const [editing, setEditing] = useState<string | null>(null)
   const [err, setErr] = useState<unknown>()
   const locked = started > 0
@@ -48,6 +49,7 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
       setF({ title: t.title, date: d1, from: t1, to: t2, duration: t.duration_min, show: t.show_answers, shuffle: t.shuffle })
       setQs(t.questions_full.map((s: any, i: number) => fromSnapshot(s, 'e' + i)))
       setStarted(t.started)
+      setAud(t.student_ids ?? null)
     }, setErr)
   }, [ta, taskId])
 
@@ -94,7 +96,8 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
             <option value="after_close">tapşırıq bağlandıqdan sonra</option><option value="after_submit">təhvil verdikdən dərhal sonra</option><option value="never">heç vaxt</option></select></Field>
           <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> Sualların sırası hər şagirdə fərqli</label>
         </div>
-        <TargetPicker ta={ta} onChange={setTargets} />
+        {aud !== undefined && <TargetPicker ta={ta} value={aud} onChange={setTargets} />}
+        {taskId && aud !== undefined && started > 0 && <p className="small muted" style={{ margin: 0 }}>Testə başlamış şagirdi auditoriyadan çıxarmaq olmaz – əlavə etmək olar.</p>}
         {!(bankFirst && !taskId) && bank}
         <fieldset><legend>Seçilmiş suallar ({qs.length})</legend>
           {qs.length === 0 ? <p className="small muted">Hələ sual yoxdur – yuxarıdan seçin və ya öz sualınızı yazın.</p> : (

@@ -14,7 +14,7 @@ from ..db import get_db
 from ..deps import staff
 from ..domain.answers import check
 from ..domain.rules import summative_grade
-from ..models import (BankFile, BankQuestion, BankSource, Mark, OnlineTask, PlanLesson, TaskAttempt, TeachingAssignment,
+from ..models import (BankFile, BankQuestion, BankSource, Mark, OnlineTask, PlanLesson, Student, TaskAttempt, TeachingAssignment,
                       TestBatch, User, now)
 from ..services import class_grade, own_assignment, roster
 from .common import audit, get_or_404
@@ -488,6 +488,13 @@ def update_task(ta_id: int, task_id: int, body: TaskPatch, user: User = Depends(
     elif 'student_ids' in data and body.student_ids is not None:
         if not body.student_ids or set(body.student_ids) - {s.id for s in roster(db, ta)}:
             raise HTTPException(400, 'Şagirdlər bu sinifdən/qrupdan seçilməlidir')
+        # testə başlamış şagirdi auditoriyadan çıxarmaq olmaz – nəticəsi siyahıdan itər
+        before = set(t.student_ids) if t.student_ids is not None else {s.id for s in roster(db, ta)}
+        gone = before - set(body.student_ids)
+        started = [db.get(Student, a.student_id) for a in db.scalars(select(TaskAttempt).where(
+            TaskAttempt.task_id == t.id, TaskAttempt.student_id.in_(gone)))] if gone else []
+        if started:
+            raise HTTPException(409, f'{", ".join(s.full_name for s in started if s)} artıq başlayıb – çıxarmaq olmaz (nəticəsi itər)')
         t.student_ids = body.student_ids
     for k in ('title', 'description', 'duration_min', 'shuffle', 'show_answers'):
         if k in data and data[k] is not None:

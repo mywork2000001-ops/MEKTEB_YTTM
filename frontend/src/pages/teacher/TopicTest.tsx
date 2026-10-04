@@ -7,6 +7,7 @@ import { MathText } from '../../MathText'
 import { Drawer, ErrorBox, Field, fmtDate, Loading, Pill, toast } from '../../ui'
 import { sectionText } from './Plan'
 import { BankPicker, fromSnapshot, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
+import { StudentPicker } from './common'
 
 type Peer = {
   ta_id: number; class_name: string; kind: string; current: boolean; students: number
@@ -15,7 +16,7 @@ type Peer = {
   lessons?: { id: number; seq: number; topic: string }[]
 }
 type Peers = { topic: { id: number; seq: number; topic: string; section: string | null; assessment_type: string }; subject: string; grade: number | null; classes: Peer[] }
-type Row = { on: boolean; pl: number | null; d1: string; t1: string; d2: string; t2: string; levels: string[] }
+type Row = { on: boolean; pl: number | null; d1: string; t1: string; d2: string; t2: string; ids: number[] | null }   // ids: null – bütün sinif
 type Lv = 'Zəif' | 'Orta' | 'Güclü'
 const LV: Lv[] = ['Zəif', 'Orta', 'Güclü']
 type Prev = { task_id: number; title: string; class_name: string; opens_at: string; questions: any[]; count: number; avg_pct: number | null }
@@ -26,7 +27,7 @@ function defaults(p: Peer): Row {
   const today = localParts(new Date().toISOString())[0]
   const [d1, t1] = p.opens_at ? localParts(p.opens_at) : [today, '15:00']
   const [d2, t2] = p.closes_at ? localParts(p.closes_at) : [nextDay(d1), '22:00']
-  return { on: p.current || (!!p.plan_lesson && !p.already_has_test), pl: p.plan_lesson?.id ?? null, d1, t1, d2, t2, levels: [] }
+  return { on: p.current || (!!p.plan_lesson && !p.already_has_test), pl: p.plan_lesson?.id ?? null, d1, t1, d2, t2, ids: null }
 }
 
 export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl: number; onClose: () => void; onDone: () => void }) {
@@ -52,7 +53,6 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
     get<Prev[]>(`/api/plan/${ta}/topics/${pl}/previous`).then(setPrev, () => setPrev([]))
   }, [ta, pl])
   const takePrev = (p: Prev) => { setQs(cur => [...cur, ...p.questions.map((q, i) => fromSnapshot(q, `p${p.task_id}-${i}`)).filter(q => !cur.some(c => c.key === q.key))]); toast(`${p.count} sual götürüldü`) }
-  const toggleLevel = (id: number, l: string) => setRows(r => ({ ...r, [id]: { ...r[id], levels: r[id].levels.includes(l) ? r[id].levels.filter(x => x !== l) : [...r[id].levels, l] } }))
 
   const has = (k: string) => qs.some(q => q.key === k)
   const add = (list: Q[]) => setQs(cur => [...cur, ...list.filter(q => !cur.some(c => c.key === q.key))])
@@ -69,6 +69,7 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
   const noQs = variants ? !vqs['Orta'].length || LV.some(k => vqs[k].length > 100) : !plain.length
   const problem = !f.title.trim() ? 'Testin adını yazın' : noQs ? (variants ? '«Orta» variantına ən azı 1 sual seçin (səviyyəsi olmayanlar onu alır)' : 'Ən azı 1 sual seçin') : !chosen.length ? 'Ən azı bir sinif seçin'
     : chosen.some(c => !rows[c.ta_id].pl) ? 'Mövzusu tapılmayan sinifdə mövzunu seçin'
+    : chosen.some(c => rows[c.ta_id].ids?.length === 0) ? '«Kimə» bölməsində ən azı bir şagird seçin'
     : chosen.some(c => { const r = rows[c.ta_id]; return iso(r.d2, r.t2) <= iso(r.d1, r.t1) }) ? 'Bitmə vaxtı başlamadan sonra olmalıdır'
     : !variants && plain.length > 100 ? 'Bir testdə ən çoxu 100 sual' : ''
 
@@ -80,7 +81,7 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
         title: f.title.trim(), duration_min: f.duration, shuffle: f.shuffle, show_answers: f.show, journal_auto: f.journal,
         bank_ids: [], custom: variants ? [] : plain.map(toCustom),
         variants: variants ? Object.fromEntries(LV.filter(k => vqs[k].length).map(k => [k, { bank_ids: [], custom: vqs[k].map(toCustom) }])) : null,
-        targets: chosen.map(c => { const x = rows[c.ta_id]; return { ta_id: c.ta_id, plan_lesson_id: x.pl, opens_at: iso(x.d1, x.t1), closes_at: iso(x.d2, x.t2), levels: !variants && x.levels.length ? x.levels : null } }),
+        targets: chosen.map(c => { const x = rows[c.ta_id]; return { ta_id: c.ta_id, plan_lesson_id: x.pl, opens_at: iso(x.d1, x.t1), closes_at: iso(x.d2, x.t2), student_ids: x.ids } }),
       })
       toast(r.tasks.length > 1 ? `Test ${r.tasks.length} sinfə göndərildi` : 'Test göndərildi')
       onDone()
@@ -138,12 +139,8 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
                         <input type="date" className="sel" value={r.d2} onChange={e => set(c.ta_id, { d2: e.target.value })} />
                         <input type="time" className="sel" value={r.t2} onChange={e => set(c.ta_id, { t2: e.target.value })} />
                       </div>)}
-                    {r.on && !variants && (
-                      <div className="row" style={{ gap: 6 }}>
-                        <span className="small">Kimə:</span>
-                        <button type="button" className="chip" aria-pressed={!r.levels.length} onClick={() => set(c.ta_id, { levels: [] })}>bütün sinif</button>
-                        {LV.map(l => <button key={l} type="button" className="chip" aria-pressed={r.levels.includes(l)} onClick={() => toggleLevel(c.ta_id, l)}>{l} qrup</button>)}
-                      </div>)}
+                    {r.on && <StudentPicker ta={c.ta_id} legend={`Kimə – ${c.class_name}`} onChange={ids => set(c.ta_id, { ids })} />}
+                    {r.on && variants && r.ids && <span className="small muted">Seçilmiş şagirdlər öz səviyyəsinin variantını alır.</span>}
                   </div>)
               })}
             </div>

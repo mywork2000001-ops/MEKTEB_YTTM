@@ -1,5 +1,6 @@
 // Sınaq imtahanları (onlayn): planla əlaqəsiz, bir neçə sinfə eyni anda. Nəticə – «Sınaq jurnalı» (bal, faiz, sinifdə və
 // ümumi yer), siniflərin reytinqi, sual analizi, açıq sualın əl ilə yoxlanması, kumulyativ reytinq. Formativ jurnala düşmür.
+import { StudentPicker } from './common'
 import { useEffect, useMemo, useState } from 'react'
 import { del as apiDel, get, post, put } from '../../api'
 import { MathText } from '../../MathText'
@@ -59,7 +60,7 @@ export default function OnlineExams() {
 }
 
 // ---------------------------------------------------------------- yeni sınaq
-type TRow = { on: boolean; d1: string; t1: string; d2: string; t2: string }
+type TRow = { on: boolean; d1: string; t1: string; d2: string; t2: string; ids?: number[] | null }   // ids: null – bütün sinif
 
 function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [targets, setTargets] = useState<Target[] | null>(null)
@@ -86,7 +87,8 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
 
   const problem = !f.title.trim() ? 'Sınağın adını yazın' : !qs.length ? 'Ən azı 1 sual seçin' : !chosen.length ? 'Ən azı bir sinif seçin'
     : chosen.some(t => minutes(row(t.ta_id)) <= 0) ? 'Bitmə vaxtı başlamadan sonra olmalıdır'
-    : chosen.some(t => minutes(row(t.ta_id)) < f.duration) ? 'Həll müddəti açıq qalma aralığından uzundur' : ''
+    : chosen.some(t => minutes(row(t.ta_id)) < f.duration) ? 'Həll müddəti açıq qalma aralığından uzundur'
+    : chosen.some(t => row(t.ta_id).ids?.length === 0) ? '«Kimə» bölməsində ən azı bir şagird seçin' : ''
   const submit = async () => {
     if (problem) { setErr(new Error(problem)); return }
     setBusy(true)
@@ -94,7 +96,7 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
       const r = await post<{ tasks: number }>('/api/exams-online', {
         title: f.title.trim(), duration_min: f.duration, penalty: Number(f.penalty), shuffle: f.shuffle, show_answers: f.show,
         bank_ids: [], custom: qs.map(toCustom),
-        targets: chosen.map(t => { const x = row(t.ta_id); return { ta_id: t.ta_id, opens_at: iso(x.d1, x.t1), closes_at: iso(x.d2, x.t2) } }),
+        targets: chosen.map(t => { const x = row(t.ta_id); return { ta_id: t.ta_id, opens_at: iso(x.d1, x.t1), closes_at: iso(x.d2, x.t2), student_ids: x.ids ?? null } }),
       })
       toast(`Sınaq ${r.tasks} sinfə göndərildi`)
       onDone()
@@ -143,6 +145,7 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
                       <input type="date" className="sel" value={r.d2} onChange={e => set(t.ta_id, { d2: e.target.value })} />
                       <input type="time" className="sel" value={r.t2} onChange={e => set(t.ta_id, { t2: e.target.value })} />
                     </div>}
+                    {r.on && <StudentPicker ta={t.ta_id} legend={`Kimə – ${t.class_name}`} onChange={ids => set(t.ta_id, { ids })} />}
                   </div>)
               })}
               {!shown.length && <div className="empty">Dərsiniz yoxdur.</div>}
