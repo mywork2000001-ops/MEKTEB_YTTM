@@ -31,7 +31,7 @@ def test_library_apply_and_restore(world, monkeypatch):
     as_, S = world
     c, ta, good, weak, new = setup(world)
     lib = c.get('/api/programs').json()
-    builtin = [p for p in lib if p['builtin']]
+    builtin = [p for p in lib if p['builtin'] and not p['course']]
     assert [p['grade'] for p in builtin] == [5, 6, 7, 8, 9, 10, 11]
     cur = next(p for p in lib if p['mine'] and 'X c' in p['used_by'])          # cari plan avtomatik proqram oldu
     assert cur['kind'] == 'fixed' and cur['lessons'] == 40

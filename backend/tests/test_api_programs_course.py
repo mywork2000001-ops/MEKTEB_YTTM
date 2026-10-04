@@ -49,3 +49,48 @@ def test_course_dates_limit_slots(world):
     assert 15 <= total <= 26                                             # ~13 həftə × 2 dərs, bayramlar çıxılır
     assert t.get(f'/api/journal/{ta}/day', params={'date': '2026-10-06'}).json()['lessons'] == []       # kursdan əvvəl
     assert len(t.get(f'/api/journal/{ta}/day', params={'date': '2026-11-03'}).json()['lessons']) == 1
+
+
+def test_expand_course_rules():
+    import datetime as dt
+    from app.programs import expand_course
+    tpl = {'format': 'course', 'sections': [{'section': 'Cəbr', 'topics': ['A', 'B']}, {'section': 'Həndəsə', 'topics': ['C']}],
+           'mock_after_section': True, 'mock_every': 0, 'final_mock': True}
+    days = [dt.date(2026, 11, 2) + dt.timedelta(days=i) for i in range(12)]
+    les, warn = expand_course(tpl, days, dt.date(2026, 12, 27))
+    assert len(les) == 12 and not warn
+    assert not any(l['assessment_type'] in ('KSQ', 'BSQ', 'diaqnostik') for l in les)
+    assert [l['topic'] for l in les if 'Sınaq' in l['topic'] or 'sınaq' in l['topic']] == ['Sınaq: Cəbr', 'Sınaq: Həndəsə', 'Yekun sınaq imtahanı']
+    assert {l['semester'] for l in les} == {1}
+    les2, warn2 = expand_course(tpl, days[:3], dt.date(2026, 12, 27))       # yuva az – sınaqlar çıxır
+    assert len(les2) == 3 and warn2 and not any('ınaq' in l['topic'] for l in les2)
+    les3, _ = expand_course({**tpl, 'mock_after_section': False, 'mock_every': 2, 'final_mock': False}, days[:9], dt.date(2026, 12, 27))
+    assert len(les3) == 9 and sum('Aralıq sınaq' in l['topic'] for l in les3) == 2
+
+
+def test_prep_builtins_and_custom_course(world):
+    as_, _ = world
+    t = as_('ilqar')
+    lib = t.get('/api/programs').json()
+    prep = {p['grade']: p for p in lib if p['builtin'] and p['course']}
+    assert set(prep) == {9, 11} and 'buraxilis9' in prep[9]['purposes'] and 'qebul' in prep[11]['purposes']
+    d = t.get(f"/api/programs/{prep[9]['id']}").json()
+    secs = d['outline'][0]['sections']
+    assert secs[0]['section'].startswith('V sinif') and secs[-1]['section'].startswith('IX sinif')
+    r = t.post('/api/programs/course', json={'title': 'Olimpiada hazırlığı', 'grade': 8, 'purposes': ['olimpiada'],
+                                             'outline': '# Ədədlər nəzəriyyəsi\n1. Bölünmə\n- Qalıqlar\n\n# Kombinatorika\nDirixle prinsipi',
+                                             'mock_after_section': True})
+    assert r.status_code == 200, r.text
+    c = r.json()
+    assert c['course'] and c['topics'] == 3 and c['mine'] and c['purposes'] == ['olimpiada']
+    assert t.post('/api/programs/course', json={'title': 'Boş', 'outline': '# Yalnız bölmə'}).status_code == 400
+    pid = t.post('/api/classes', json={'name': 'Olimpiada', 'kind': 'adi', 'private': True}).json()['id']
+    ta = t.post(f'/api/classes/{pid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'slots': {'5': [1]},
+                                                  'starts_on': '2026-11-07', 'ends_on': '2026-12-26'}).json()['mine']['ta_id']
+    pv = t.get(f"/api/programs/{c['id']}/preview/{ta}").json()
+    assert pv['ksq'] == pv['bsq'] == 0 and pv['lessons'] == pv['sem1_slots'] + pv['sem2_slots']
+    ap = t.post(f"/api/programs/{c['id']}/apply/{ta}").json()
+    assert ap['lessons'] == pv['lessons']
+    u = t.put(f"/api/programs/{c['id']}/course", json={'title': 'Olimpiada hazırlığı', 'outline': '# A\nx\ny', 'grade': 8})
+    assert u.status_code == 200 and u.json()['topics'] == 2
+    assert t.put(f"/api/programs/{prep[9]['id']}/course", json={'title': 'Xxx', 'outline': 'a'}).status_code == 403

@@ -13,7 +13,7 @@ from ..deps import staff
 from typing import Literal
 
 from ..models import AssignmentProgram, PlanProgram, SchoolClass, TeachingAssignment, User, now
-from ..programs import ROMAN, apply, dated, ensure_builtin, ensure_current, lessons_for, snapshot
+from ..programs import ROMAN, apply, dated, ensure_builtin, ensure_current, is_course, lessons_for, purposes, snapshot, tpl_sections
 from ..services import class_grade, own_assignment
 from .common import audit, settings_unlocked
 
@@ -25,6 +25,12 @@ def _visible(db: Session, user: User, pid: int) -> PlanProgram:
     if not p or p.archived_at or not (p.owner_id is None or p.owner_id == user.id):
         raise HTTPException(404, 'Proqram tapılmadı')
     return p
+
+
+def _is_private(db: Session, user: User) -> bool:
+    from ..models import School
+    sc = db.get(School, user.school_id) if user.school_id else None
+    return bool(sc and sc.kind == 'private')
 
 
 def _count(p: PlanProgram) -> int | None:
@@ -46,7 +52,8 @@ def _out(p: PlanProgram, used: dict[int, list[str]], grade: int | None = None) -
     tpl = p.data.get('template') if p.kind == 'adaptive' else None
     return {'id': p.id, 'title': p.title, 'subject': p.subject, 'grade': p.grade, 'grade_roman': ROMAN.get(p.grade),
             'kind': p.kind, 'source': p.source, 'description': p.description, 'weekly_hours': p.weekly_hours,
-            'lessons': _count(p), 'topics': sum(len(s['topics']) for sem in tpl['semesters'] for s in sem) if tpl else None,
+            'lessons': _count(p), 'topics': sum(len(s['topics']) for s in tpl_sections(tpl)) if tpl else None,
+            'course': is_course(p), 'purposes': purposes(p),
             'level': p.level, 'mine': p.owner_id is not None, 'builtin': p.key is not None, 'used_by': used.get(p.id, []),
             'fits': grade is None or p.grade is None or p.grade == grade, 'created_at': p.created_at,
             'workspace': _workspace(p)}
@@ -88,7 +95,10 @@ def list_programs(grade: int | None = None, subject: str | None = None, level: s
     for ap, c in db.execute(select(AssignmentProgram, SchoolClass).join(TeachingAssignment, TeachingAssignment.id == AssignmentProgram.assignment_id)
                             .join(SchoolClass, SchoolClass.id == TeachingAssignment.class_id).where(TeachingAssignment.teacher_id == user.id, ws_cond(user))):
         used.setdefault(ap.program_id, []).append(f'{c.name} (əlavə{" – " + ap.level if ap.level else ""})')
-    rows.sort(key=lambda p: (tgrade is not None and p.grade not in (None, tgrade), p.key is None, p.grade or 0, p.title))
+    private = _is_private(db, user)
+    # uyğun sinif öndə; məktəbdə sinif proqramları kursdan əvvəl, fərdi məkanda – əksinə
+    rows.sort(key=lambda p: (tgrade is not None and p.grade not in (None, tgrade), is_course(p) != private, p.key is None,
+                             p.grade or 0, p.title))
     return [_out(p, used, tgrade) for p in rows]
 
 
@@ -96,7 +106,12 @@ def list_programs(grade: int | None = None, subject: str | None = None, level: s
 def program_detail(pid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     p = _visible(db, user, pid)
     out = _out(p, {})
-    if p.kind == 'adaptive':
+    if is_course(p):
+        tpl = p.data['template']
+        out['outline'] = [{'semester': None, 'sections': [{'section': s['section'], 'part': s.get('part'), 'topics': s['topics']}
+                                                          for s in tpl['sections']]}]
+        out['options'] = {k: tpl.get(k) for k in ('mock_after_section', 'mock_every', 'final_mock')}
+    elif p.kind == 'adaptive':
         tpl = p.data['template']
         rom = ROMAN.get(p.grade, '')
         out['outline'] = [{'semester': i + 1, 'sections': [{'section': s['section'], 'part': s.get('part'),
@@ -180,6 +195,78 @@ def archive(pid: int, user: User = Depends(settings_unlocked), db: Session = Dep
     audit(db, user, 'archive', 'plan_program', p.id)
     db.commit()
     return {'ok': True}
+
+
+# ---------------------------------------------------------------- müəllimin kurs (repetitor) proqramı
+PURPOSES = Literal['sinif', 'buraxilis9', 'buraxilis11', 'qebul', 'olimpiada', 'diger']
+
+
+class CourseIn(BaseModel):
+    title: str = Field(min_length=3, max_length=200)
+    subject: str = Field('Riyaziyyat', min_length=2, max_length=60)
+    grade: int | None = Field(None, ge=1, le=11)
+    level: LEVELS | None = None
+    purposes: list[PURPOSES] = Field(default_factory=list)
+    description: str | None = Field(None, max_length=2000)
+    outline: str = Field(min_length=1, max_length=50000)    # «# Bölmə» sətri – bölmə; digər sətirlər – mövzu
+    mock_after_section: bool = False
+    mock_every: int = Field(0, ge=0, le=40)                  # hər N mövzu dərsindən sonra aralıq sınaq; 0 – yox
+    final_mock: bool = True
+
+
+def parse_outline(text: str) -> list[dict]:
+    import re
+    sections: list[dict] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith('#'):
+            sections.append({'section': line.lstrip('#').strip() or 'Bölmə', 'topics': []})
+            continue
+        topic = re.sub(r'^(?:[-–•*]|\d+[.)])\s*', '', line).strip()
+        if not topic:
+            continue
+        if not sections:
+            sections.append({'section': 'Ümumi', 'topics': []})
+        sections[-1]['topics'].append(topic[:300])
+    sections = [s for s in sections if s['topics']]
+    if not sections:
+        raise HTTPException(400, 'Ən azı bir mövzu yazın (bölmə başlığı «# » ilə başlayır)')
+    return sections
+
+
+def _course_data(body: CourseIn) -> dict:
+    return {'template': {'format': 'course', 'sections': parse_outline(body.outline), 'mock_after_section': body.mock_after_section,
+                         'mock_every': body.mock_every, 'final_mock': body.final_mock}, 'purposes': body.purposes}
+
+
+@router.post('/course')
+def create_course(body: CourseIn, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    data = _course_data(body)
+    n = sum(len(s['topics']) for s in data['template']['sections'])
+    p = PlanProgram(school_id=user.school_id, owner_id=user.id, subject=body.subject.strip(), grade=body.grade, kind='adaptive',
+                    title=body.title.strip(), source='Müəllimin kurs proqramı', level=body.level,
+                    description=body.description or f'{len(data["template"]["sections"])} bölmə, {n} mövzu', data=data)
+    db.add(p)
+    db.flush()
+    audit(db, user, 'create', 'plan_program', p.id, course=True, topics=n)
+    db.commit()
+    return _out(p, {})
+
+
+@router.put('/{pid}/course')
+def update_course(pid: int, body: CourseIn, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    p = _visible(db, user, pid)
+    if p.owner_id != user.id or not is_course(p):
+        raise HTTPException(403, 'Yalnız öz kurs proqramınızı redaktə edə bilərsiniz')
+    p.data = _course_data(body)
+    p.title, p.subject, p.grade, p.level = body.title.strip(), body.subject.strip(), body.grade, body.level
+    if body.description is not None:
+        p.description = body.description
+    audit(db, user, 'update', 'plan_program', p.id, course=True)
+    db.commit()
+    return _out(p, {})
 
 
 # ---------------------------------------------------------------- sinif/qrupun proqramları: əsas + əlavə

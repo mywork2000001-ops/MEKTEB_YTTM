@@ -1,7 +1,7 @@
 // Perspektiv plan proqramları (docs/perspektiv-proqramlar-promtu.md): sinif/qrup üçün əsas proqram (jurnal ona görə)
 // və əlavə proqramlar (bütün sinif və ya səviyyə qrupu üçün; jurnala qarışmır). Proqramlar qarışdırılmır – hər biri ayrıca.
 import { useState } from 'react'
-import { del, get, patch, post } from '../../api'
+import { api, del, get, patch, post } from '../../api'
 import { useAuth } from '../../auth'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmtDate, Loading, PickFirst, Pill, toast, useLoad, ord } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
@@ -9,10 +9,14 @@ import { head, printDoc, SIGN, table } from '../../print'
 
 type Prog = { id: number; title: string; subject: string; grade: number | null; grade_roman: string | null; kind: 'fixed' | 'adaptive'
   source: string | null; description: string | null; weekly_hours: number | null; lessons: number | null; topics: number | null
-  level: string | null; mine: boolean; builtin: boolean; used_by: string[]; fits: boolean; workspace: 'school' | 'private' | null }
+  level: string | null; mine: boolean; builtin: boolean; used_by: string[]; fits: boolean; workspace: 'school' | 'private' | null
+  course: boolean; purposes: string[] }
 type For = { ta_id: number; class_name: string; subject: string; grade: number | null; grade_roman: string | null; main: Prog | null
   extra: { id: number; level: string | null; note: string | null; program: Prog }[] }
 const LEVELS = ['Zəif', 'Orta', 'Güclü']
+/** Hazırlıq məqsədi (fərdi qrup və proqram təyinatı) – docs/repetitor-proqramlar-promtu.md §7. */
+export const PURPOSES: Record<string, string> = { sinif: 'Sinif dərsinə dəstək', buraxilis9: 'IX buraxılış', buraxilis11: 'XI buraxılış',
+  qebul: 'Qəbul (blok)', olimpiada: 'Olimpiada', diger: 'Digər' }
 const levelTone = (l?: string | null) => (l === 'Güclü' ? 'ok' : l === 'Zəif' ? 'bad' : l === 'Orta' ? 'warn' : undefined)
 
 export default function Programs() {
@@ -26,6 +30,7 @@ export default function Programs() {
   const [attach, setAttach] = useState<Prog | null>(null)
   const [extra, setExtra] = useState<number | null>(null)
   const [edit, setEdit] = useState<Prog | null>(null)
+  const [course, setCourse] = useState<Prog | 'new' | null>(null)
   const [ver, setVer] = useState(0)
   const reload = () => { reloadFor(); reloadLib(); setVer(v => v + 1) }
   return (
@@ -38,7 +43,8 @@ export default function Programs() {
       {!ta ? <PickFirst text="Proqram seçmək üçün sinif və ya qrup seçin" /> : <div style={{ marginBottom: 16 }}><ProgramBox key={`${ta}-${ver}`} ta={ta} onChanged={() => { reloadFor(); reloadLib() }} /></div>}
       <h2 className="sec">Proqramlar kitabxanası <small>{ta && f ? `${f.grade_roman || ''} sinfə uyğun olanlar öndə` : 'bütün siniflər'}</small></h2>
       <div className="toolbar"><select className="sel keep" value={lvl} onChange={e => setLvl(e.target.value)} aria-label="Səviyyə">
-        <option value="">Bütün səviyyələr</option>{LEVELS.map(l => <option key={l}>{l}</option>)}</select></div>
+        <option value="">Bütün səviyyələr</option>{LEVELS.map(l => <option key={l}>{l}</option>)}</select>
+        <button className="btn sm right" onClick={() => setCourse('new')}>+ Kurs proqramı</button></div>
       {!lib ? <Loading /> : (
         <div className="jlist">{lib.map(p => (
           <div key={p.id} className="prog-row">
@@ -47,6 +53,7 @@ export default function Programs() {
               <button className="btn sm" onClick={() => setView(p)}>Bax</button>
               {ta && <button className="btn sm primary" disabled={f?.main?.id === p.id} onClick={() => setApply(p)}>{f?.main?.id === p.id ? 'Əsas proqramdır' : 'Əsas proqram et'}</button>}
               {ta && <button className="btn sm" onClick={() => setAttach(p)}>Əlavə proqram kimi qoş</button>}
+              {p.mine && p.course && <button className="btn sm ghost" onClick={() => setCourse(p)}>Məzmun</button>}
               {p.mine && <button className="btn sm ghost" onClick={() => setEdit(p)}>Redaktə</button>}
             </div>
           </div>))}</div>)}
@@ -55,6 +62,7 @@ export default function Programs() {
       {attach && ta && <AttachProgram p={attach} ta={ta} onClose={() => setAttach(null)} onDone={() => { setAttach(null); reload() }} />}
       {extra && <ExtraLessons aid={extra} onClose={() => setExtra(null)} />}
       {edit && <EditProgram p={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
+      {course && <CourseEditor p={course === 'new' ? null : course} onClose={() => setCourse(null)} onDone={() => { setCourse(null); reload() }} />}
     </>
   )
 }
@@ -65,10 +73,12 @@ function ProgLine({ p }: { p: Prog }) {
   return (
     <span className="grow prog-line" style={{ minWidth: 0 }}>
       <b>{p.title}</b>
-      <span className="sub">{[p.grade_roman && `${p.grade_roman} sinif`, p.kind === 'adaptive' ? `${p.topics} mövzu · sinfin cədvəlinə uyğunlaşır` : `${p.lessons} dərs`,
+      <span className="sub">{[p.grade_roman && `${p.grade_roman} sinif`, p.course ? `${p.topics} mövzu · kurs: qrupun müddətinə və cədvəlinə uyğunlaşır, sınaqlarla`
+        : p.kind === 'adaptive' ? `${p.topics} mövzu · sinfin cədvəlinə uyğunlaşır` : `${p.lessons} dərs`,
         p.weekly_hours && `${p.weekly_hours} saat`, p.source].filter(Boolean).join(' · ')}</span>
       <span className="row" style={{ gap: 4, marginTop: 4 }}>
         {p.fits && p.grade ? <Pill tone="ok">uyğun</Pill> : null}{!p.fits ? <Pill tone="warn">başqa sinif</Pill> : null}
+        {p.course && <Pill tone="info">kurs</Pill>}{p.purposes.filter(x => x !== 'sinif').map(x => <Pill key={x} tone="acc">{PURPOSES[x] || x}</Pill>)}
         {p.level ? <Pill tone={levelTone(p.level)}>{p.level}</Pill> : <Pill>ümumi</Pill>}
         {p.builtin ? <Pill tone="info">kitab</Pill> : p.mine ? <Pill>mənim</Pill> : null}
         {p.mine && p.workspace && <Pill tone={p.workspace !== here ? 'warn' : undefined}>{p.workspace === 'private' ? 'fərdi məkan' : 'məktəb'}</Pill>}
@@ -86,7 +96,7 @@ function ViewProgram({ p, onClose }: { p: Prog; onClose: () => void }) {
       {!d ? <Loading /> : <>
         {d.description && <p className="small muted">{d.description}</p>}
         {d.outline ? d.outline.map((s: any) => (
-          <section key={s.semester} style={{ marginBottom: 12 }}><h3 className="small muted" style={{ margin: '8px 0' }}>{s.semester === 1 ? 'I' : 'II'} yarımil</h3>
+          <section key={s.semester} style={{ marginBottom: 12 }}><h3 className="small muted" style={{ margin: '8px 0' }}>{s.semester == null ? 'Kursun bölmələri' : s.semester === 1 ? 'I yarımil' : 'II yarımil'}</h3>
             {s.sections.map((x: any) => <div key={x.section} style={{ marginBottom: 8 }}><b>{x.section}</b>{x.part && <span className="small muted"> · {x.part}</span>}
               <ol className="small" style={{ margin: '4px 0 0', paddingLeft: 20 }}>{x.topics.map((t: string) => <li key={t}>{t}</li>)}</ol></div>)}
           </section>)) : (
@@ -107,13 +117,17 @@ function ApplyProgram({ p, ta, onClose, onDone }: { p: Prog; ta: number; onClose
         }}>Tətbiq et</AsyncBtn></>}>
       <ErrorBox error={err} />
       {!pv ? <Loading /> : <>
-        <div className="kpis" style={{ marginBottom: 12 }}>
+        {p.course ? <div className="kpis" style={{ marginBottom: 12 }}>
+          <div className="kpi"><b>{pv.lessons} / {pv.sem1_slots + pv.sem2_slots}</b><span>dərs / kursun yuvaları</span></div>
+          <div className="kpi"><b>{pv.list.filter((l: any) => /sınaq/i.test(l.topic)).length}</b><span>sınaq</span></div>
+          <div className="kpi"><b>{pv.written_lessons}</b><span>jurnalda yazılıb</span></div>
+        </div> : <div className="kpis" style={{ marginBottom: 12 }}>
           <div className="kpi"><b>{pv.lessons}</b><span>dərs</span></div>
           <div className="kpi"><b>{pv.sem1_lessons} / {pv.sem1_slots}</b><span>I yarımil (dərs / yuva)</span></div>
           <div className="kpi"><b>{pv.sem2_lessons} / {pv.sem2_slots}</b><span>II yarımil</span></div>
           <div className="kpi"><b>{pv.ksq} · {pv.bsq}</b><span>KSQ · BSQ</span></div>
           <div className="kpi"><b>{pv.written_lessons}</b><span>jurnalda yazılıb</span></div>
-        </div>
+        </div>}
         {pv.warnings.map((w: string) => <p key={w} className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {w}</p>)}
         <p className="small muted">Tətbiq olunanda: hazırkı plan kitabxanada «əvvəlki plan» kimi qalır (geri qaytarmaq olar); jurnalda yazılmış dərslərin
           mövzusu dəyişmir; yeni dərslər sinfin cədvəlinə görə tarixlənir. Proqram başqa proqramla qarışdırılmır.</p>
@@ -183,6 +197,65 @@ function EditProgram({ p, onClose, onDone }: { p: Prog; onClose: () => void; onD
           <option value="">Ümumi (bütün sinif)</option>{LEVELS.map(l => <option key={l}>{l}</option>)}</select></Field>
         <Field label="Təsvir" full><textarea value={f.description} onChange={e => setF({ ...f, description: e.target.value })} rows={3} /></Field>
       </div>
+    </Drawer>
+  )
+}
+
+
+/** Müəllimin kurs (repetitor) proqramı: bölmə/mövzu mətni + sınaq qaydaları; KSQ/BSQ və yarımil yoxdur. */
+function CourseEditor({ p, onClose, onDone }: { p: Prog | null; onClose: () => void; onDone: () => void }) {
+  const [d] = useLoad<any>(() => (p ? get(`/api/programs/${p.id}`) : Promise.resolve(null)), [p?.id])
+  const [f, setF] = useState<any>(p ? null : { title: '', subject: 'Riyaziyyat', grade: '', level: '', purposes: [] as string[], description: '',
+    outline: '', mock_after_section: true, mock_every: '0', final_mock: true })
+  if (p && d && !f) {
+    const outline = d.outline[0].sections.map((s: any) => `# ${s.section}
+${s.topics.join('
+')}`).join('
+
+')
+    setF({ title: p.title, subject: p.subject, grade: p.grade ? String(p.grade) : '', level: p.level || '', purposes: p.purposes, description: p.description || '',
+      outline, mock_after_section: !!d.options?.mock_after_section, mock_every: String(d.options?.mock_every || 0), final_mock: d.options?.final_mock !== false })
+  }
+  const topics = f ? f.outline.split('
+').filter((l: string) => l.trim() && !l.trim().startsWith('#')).length : 0
+  const toggle = (x: string) => setF({ ...f, purposes: f.purposes.includes(x) ? f.purposes.filter((y: string) => y !== x) : [...f.purposes, x] })
+  return (
+    <Drawer title={p ? `Kurs proqramı: ${p.title}` : 'Yeni kurs proqramı'} onClose={onClose}
+      footer={<><span className="small muted grow">{topics} mövzu</span><button className="btn" onClick={onClose}>Ləğv et</button>
+        <AsyncBtn className="btn primary" ok="Saxlanıldı" disabled={!f || f.title.trim().length < 3 || !topics} onClick={async () => {
+          const body = { ...f, title: f.title.trim(), grade: f.grade ? Number(f.grade) : null, level: f.level || null, description: f.description || null, mock_every: Number(f.mock_every) || 0 }
+          if (p) await api(`/api/programs/${p.id}/course`, { method: 'PUT', body }); else await post('/api/programs/course', body)
+          onDone()
+        }}>Saxla</AsyncBtn></>}>
+      {!f ? <Loading /> : <>
+        <p className="small muted" style={{ marginTop: 0 }}>Repetitor/hazırlıq kursu: KSQ, BSQ və yarımil yoxdur. Mövzular qrupun kurs müddətinə və dərs vaxtlarına bərabər paylanır,
+          hər mövzunun son dərsi – test; istəsəniz bölmə sonunda və müəyyən aralıqla sınaq, sonda yekun sınaq.</p>
+        <div className="fg">
+          <Field label="Ad" full><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} maxLength={200} placeholder="məs. Olimpiada hazırlığı – VIII" /></Field>
+          <Field label="Fənn"><input value={f.subject} onChange={e => setF({ ...f, subject: e.target.value })} /></Field>
+          <Field label="Sinif"><select value={f.grade} onChange={e => setF({ ...f, grade: e.target.value })}>
+            <option value="">— qarışıq —</option>{Array.from({ length: 11 }, (_, i) => i + 1).map(g => <option key={g} value={g}>{g}</option>)}</select></Field>
+          <Field label="Səviyyə"><select value={f.level} onChange={e => setF({ ...f, level: e.target.value })}>
+            <option value="">Ümumi</option>{LEVELS.map(l => <option key={l}>{l}</option>)}</select></Field>
+        </div>
+        <Field label="Təyinat" hint="hansı hazırlıq qrupları üçün – qrup yaradanda uyğun proqram öndə çıxır">
+          <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>{Object.entries(PURPOSES).map(([k, v]) => (
+            <label key={k} className="check"><input type="checkbox" checked={f.purposes.includes(k)} onChange={() => toggle(k)} /> {v}</label>))}</div></Field>
+        <Field label="Bölmələr və mövzular" full hint="«# » ilə başlayan sətir – bölmə; qalan hər sətir – bir mövzu (nömrə və «-» atılır)">
+          <textarea value={f.outline} onChange={e => setF({ ...f, outline: e.target.value })} rows={14} style={{ fontFamily: 'inherit' }}
+            placeholder={'# Ədədlər nəzəriyyəsi
+1. Bölünmə əlamətləri
+2. Qalıqlar
+
+# Kombinatorika
+Dirixle prinsipi'} /></Field>
+        <div className="stack" style={{ gap: 6 }}>
+          <label className="check"><input type="checkbox" checked={f.mock_after_section} onChange={e => setF({ ...f, mock_after_section: e.target.checked })} /> Hər bölmənin sonunda sınaq</label>
+          <label className="check"><input type="checkbox" checked={f.final_mock} onChange={e => setF({ ...f, final_mock: e.target.checked })} /> Kursun sonunda yekun sınaq</label>
+          <Field label="Aralıq sınaq" hint="neçə mövzu dərsindən bir; 0 – yox"><input type="number" min={0} max={40} value={f.mock_every} onChange={e => setF({ ...f, mock_every: e.target.value })} /></Field>
+        </div>
+        <Field label="Təsvir" full><textarea value={f.description} onChange={e => setF({ ...f, description: e.target.value })} rows={2} /></Field>
+      </>}
     </Drawer>
   )
 }
