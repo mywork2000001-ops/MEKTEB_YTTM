@@ -306,7 +306,10 @@ type Res = { n: number; min_group: number; hidden: boolean; sections: Section[];
   questions?: QS[]; section_index?: (Section & { index: number | null; agree_pct: number | null; n: number })[]; overall?: QS | null; nps?: Nps | null
   strengths?: Pick[]; growth?: Pick[]
   texts?: { qid: number; text: string; items: { rid: number; text: string; hidden: boolean }[] }[]
-  compare?: (Sum & { link_id: number; label: string })[]; weeks?: (Sum & { period: string; label: string })[]; waves?: (Sum & { survey_id: number; title: string; wave: number; date: string })[] }
+  classes: { id: number; name: string; n: number }[]
+  class_strategy?: { class_id: number; label: string; n: number; overall: number | null; nps: number | null; strong: { key: string; title: string; index: number }
+    weak: { key: string; title: string; index: number; tips: string[] }[] }[]
+  compare?: (Sum & { class_id: number; label: string })[]; weeks?: (Sum & { period: string; label: string })[]; waves?: (Sum & { survey_id: number; title: string; wave: number; date: string })[] }
 type Pick = { id: number; text: string; section: string; adj_mean: number; agree_pct: number; reverse: boolean; n: number }
 const PickRow = ({ x, tn }: { x: Pick; tn?: 'ok' | 'info' | 'warn' | 'bad' }) => (
   <div className="row small" style={{ padding: '4px 0', alignItems: 'baseline', gap: 8 }}>
@@ -320,16 +323,18 @@ const npsTone = (v: number | null | undefined) => (v == null ? undefined : v >= 
 function Results({ s }: { s: Sv }) {
   const { me } = useAuth()
   const [link, setLink] = useState<number | ''>('')
+  const [cls, setCls] = useState<number | ''>('')
   const [period, setPeriod] = useState('')
-  const params = { link_id: link || undefined, period: period || undefined }
-  const [d, err, loading, reload] = useLoad<Res>(() => get(`/api/surveys/${s.id}/results`, params), [link, period])
+  const params = { link_id: link || undefined, period: period || undefined, class_id: cls === '' ? undefined : cls }
+  const [d, err, loading, reload] = useLoad<Res>(() => get(`/api/surveys/${s.id}/results`, params), [link, period, cls])
   const [review, setReview] = useState<Review | null>(null)
   const [q, setQ] = useState('')
-  const scope = [d?.links.find(l => l.id === link)?.label || 'Bütün linklər', period ? `həftə ${d?.periods.find(p => p.period === period)?.label}` : ''].filter(Boolean).join(' · ')
+  const scope = [cls !== '' ? `sinif: ${d?.classes.find(c => c.id === cls)?.name || ''}` : link ? d?.links.find(l => l.id === link)?.label : 'Bütün siniflər', period ? `həftə ${d?.periods.find(p => p.period === period)?.label}` : ''].filter(Boolean).join(' · ')
 
   const csv = async () => {
     const u = new URL(`/api/surveys/${s.id}/export.csv`, location.origin)
     if (link) u.searchParams.set('link_id', String(link))
+    if (cls !== '') u.searchParams.set('class_id', String(cls))
     if (period) u.searchParams.set('period', period)
     const r = await fetch(u.pathname + u.search, { credentials: 'same-origin' })
     if (!r.ok) { let m = 'Yüklənmədi'; try { m = (await r.json()).detail || m } catch { /* noop */ } throw new Error(m) }
@@ -350,6 +355,9 @@ function Results({ s }: { s: Sv }) {
       ((d.weeks || []).length > 1 ? '<h2>Həftələr üzrə</h2>' + sumTable(d, (d.weeks || []).map(w => [w.label, w])) : '') +
       ((d.waves || []).length > 1 ? '<h2>Dalğalar üzrə</h2>' + sumTable(d, (d.waves || []).map(w => [`${w.wave}-ci dalğa (${fmtD(w.date)})`, w])) : '') +
       (d.texts || []).map(t => { const it = t.items.filter(x => !x.hidden); return it.length ? `<h2>${esc(t.text)}</h2><ol>${it.map(x => `<li>${esc(x.text)}</li>`).join('')}</ol>` : '' }).join('') +
+      ((d.class_strategy || []).length ? '<h2>Siniflər üzrə təlim strategiyası</h2>' + (d.class_strategy || []).map(c =>
+        `<h3>${esc(c.label)} (${c.n} cavab)</h3><p>Güclü: ${esc(c.strong.title)} – ${fmtN(c.strong.index, 2)}</p>` + c.weak.map(w =>
+          `<p><b>İnkişaf: ${esc(w.title)} – ${fmtN(w.index, 2)}</b></p><ul>${w.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>`).join('')).join('') : '') +
       aiHtml(review) +
       `<p class="note">Sorğu anonimdir: cavablarda şagirdin adı, hesabı və cihazı saxlanmır. Şkala: 1 – tamamilə razı deyiləm … 5 – tamamilə razıyam; əks suallar 6 − bal kimi hesablanıb.</p>`,
   })
@@ -357,8 +365,10 @@ function Results({ s }: { s: Sv }) {
   return (
     <>
       <div className="toolbar">
-        <select className="sel" style={{ width: 'auto' }} value={link} onChange={e => setLink(e.target.value ? Number(e.target.value) : '')} aria-label="Link / sinif">
-          <option value="">Hamısı (bütün linklər)</option>{d?.links.map(l => <option key={l.id} value={l.id}>{l.label} ({l.n})</option>)}</select>
+        <select className="sel" style={{ width: 'auto' }} value={cls} onChange={e => setCls(e.target.value === '' ? '' : Number(e.target.value))} aria-label="Sinif">
+          <option value="">Bütün siniflər</option>{d?.classes.map(c => <option key={c.id} value={c.id}>{c.name} ({c.n})</option>)}</select>
+        {(d?.links.length || 0) > 1 && <select className="sel" style={{ width: 'auto' }} value={link} onChange={e => setLink(e.target.value ? Number(e.target.value) : '')} aria-label="Link">
+          <option value="">Bütün linklər</option>{d?.links.map(l => <option key={l.id} value={l.id}>{l.label} ({l.n})</option>)}</select>}
         {(d?.periods.length || 0) > 0 && <select className="sel" style={{ width: 'auto' }} value={period} onChange={e => setPeriod(e.target.value)} aria-label="Həftə">
           <option value="">Bütün həftələr</option>{d?.periods.map(p => <option key={p.period} value={p.period}>{p.label} ({p.n})</option>)}</select>}
         <span className="right row" style={{ gap: 6 }}>
@@ -399,6 +409,7 @@ function Results({ s }: { s: Sv }) {
           {(() => { const np = (d.questions || []).find(x => x.key === 'nps'); return np && <section className="panel"><h2>Tövsiyə (0–10)</h2><Dist dist={np.dist || {}} /></section> })()}
 
           <Trends d={d} />
+          <Strategy d={d} onPick={id => setCls(id)} />
 
           <section className="panel" style={{ gridColumn: '1 / -1' }}>
             <h2>Suallar üzrə paylanma</h2>
@@ -435,7 +446,7 @@ function Results({ s }: { s: Sv }) {
             <p className="small muted" style={{ marginBottom: 0 }}>Cavablar qarışıq sıra ilə və tarixsiz göstərilir. «Gizlət» – təhqiramiz cavabı hesabatdan çıxarır (silinmir).</p>
           </section>
 
-          <section className="panel" style={{ gridColumn: '1 / -1' }}><AiPanel sid={s.id} link={link || null} period={period || null} onReview={setReview} /></section>
+          <section className="panel" style={{ gridColumn: '1 / -1' }}><AiPanel sid={s.id} link={link || null} period={period || null} cls={cls === '' ? null : cls} clsName={d.classes.find(c => c.id === cls)?.name} onReview={setReview} /></section>
         </div>))}
     </>
   )
@@ -498,12 +509,37 @@ function Trends({ d }: { d: Res }) {
       <p className="small muted" style={{ marginBottom: 0 }}>{keys.map(k => `${k} – ${titles[k]}`).join(' · ')}</p>
     </section>))}</>
 }
+/** Sinif üzrə təlim strategiyası: hər sinifdə ən güclü və ən zəif meyarlar + konkret metodik addımlar. */
+function Strategy({ d, onPick }: { d: Res; onPick: (id: number) => void }) {
+  const list = d.class_strategy || []
+  const untagged = d.classes.find(c => c.id === 0)?.n || 0
+  if (!list.length && !d.classes.length) return null
+  return (
+    <section className="panel" style={{ gridColumn: '1 / -1' }}>
+      <h2>Siniflər üzrə təlim strategiyası <small>hər sinifdə ≥ {d.min_group} cavab olduqda</small></h2>
+      {!list.length ? <p className="small muted">Hələ heç bir sinifdə {d.min_group} cavab yoxdur. Sinif linki göndərin və ya ümumi linkdə şagirdlər sinfini seçsin.</p> : (
+        <div className="grid g2">{list.map(c => (
+          <div key={c.class_id} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 12 }}>
+            <div className="row" style={{ gap: 8 }}><b className="grow">{c.label}</b><span className="small muted">{c.n} cavab · bal {fmt(c.overall)}</span>
+              <button className="btn sm ghost" onClick={() => onPick(c.class_id)}>Ətraflı</button></div>
+            <div className="small" style={{ margin: '6px 0' }}>Güclü: <Pill tone="ok">{c.strong.title} · {fmt(c.strong.index, 2)}</Pill></div>
+            {c.weak.map(w => (
+              <div key={w.key} style={{ marginTop: 8 }}>
+                <div className="small">İnkişaf: <Pill tone={tone(w.index)}>{w.title} · {fmt(w.index, 2)}</Pill></div>
+                <ul className="small" style={{ margin: '4px 0 0', paddingLeft: 18 }}>{w.tips.map((t, i) => <li key={i}>{t}</li>)}</ul>
+              </div>))}
+          </div>))}</div>)}
+      {untagged > 0 && <p className="small muted" style={{ marginBottom: 0 }}>{untagged} cavabda sinif göstərilməyib (sinif seçimindən əvvəl gələn cavablar) – ümumi nəticəyə daxildir.</p>}
+    </section>
+  )
+}
+
 const Delta = ({ v }: { v: number }) => Math.abs(v) < 0.05 ? null : <span className="small" style={{ color: v > 0 ? 'var(--ok)' : 'var(--bad)', marginLeft: 4 }}>{v > 0 ? '▲' : '▼'}{fmt(Math.abs(v), 2)}</span>
 
 // ---------------------------------------------------------------- süni intellektin rəyi
-function AiPanel({ sid, link, period, onReview }: { sid: number; link: number | null; period: string | null; onReview: (r: Review | null) => void }) {
-  const q = { link_id: link || undefined, period: period || undefined }
-  const [last, err] = useLoad<{ review: Review | null }>(() => get(`/api/surveys/${sid}/ai-review`, q), [sid, link, period])
+function AiPanel({ sid, link, period, cls, clsName, onReview }: { sid: number; link: number | null; period: string | null; cls: number | null; clsName?: string; onReview: (r: Review | null) => void }) {
+  const q = { link_id: link || undefined, period: period || undefined, class_id: cls ?? undefined }
+  const [last, err] = useLoad<{ review: Review | null }>(() => get(`/api/surveys/${sid}/ai-review`, q), [sid, link, period, cls])
   const [r, setR] = useState<Review | null>(null)
   useEffect(() => { setR(last?.review ?? null) }, [last])
   useEffect(() => { onReview(r) }, [r])   // eslint-disable-line react-hooks/exhaustive-deps
@@ -513,9 +549,9 @@ function AiPanel({ sid, link, period, onReview }: { sid: number; link: number | 
   return (
     <>
       <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-        <h2 className="grow" style={{ margin: 0 }}>Süni intellektin rəyi <small>peşəkar inkişaf üçün</small></h2>
+        <h2 className="grow" style={{ margin: 0 }}>Süni intellektin rəyi <small>{cls != null && clsName ? `${clsName} sinfi üçün təlim strategiyası` : 'peşəkar inkişaf üçün'}</small></h2>
         <AsyncBtn className={r ? 'btn sm' : 'btn sm primary'} ok="Rəy hazırdır" onClick={async () => {
-          const x = await post<{ review: Review }>(`/api/surveys/${sid}/ai-review`, { link_id: link, period }); setR(x.review) }}>{r ? 'Yenilə' : 'Rəy hazırla'}</AsyncBtn>
+          const x = await post<{ review: Review }>(`/api/surveys/${sid}/ai-review`, { link_id: link, period, class_id: cls }); setR(x.review) }}>{r ? 'Yenilə' : 'Rəy hazırla'}</AsyncBtn>
       </div>
       <ErrorBox error={err} />
       {!p ? <p className="small muted">Meyarların rəqəmləri və açıq cavablar əsasında xülasə, güclü tərəflər, inkişaf zonaları, açıq cavabların mövzuları və ölçülə bilən tövsiyələr.

@@ -76,8 +76,12 @@ def test_public_link_anonymous_results(world, monkeypatch):
     assert res['n'] == 4 and res['hidden'] and 'questions' not in res               # < 5 – gizli
     assert admin.get(f'/api/surveys/{sv["id"]}/export.csv').status_code == 409
     lk, rv, ov, np_ = vals[4]
+    # ümumi link: sinif seçilməlidir (müəllim sinif üzrə strategiya qursun)
+    assert _guest().post(f'/api/public/surveys/{tok}/responses', json={'answers': _answers(sv)}).status_code == 400
+    assert _guest().get(f'/api/public/surveys/{tok}').json()['classes'] == [{'id': cid, 'name': 'X e'}]
+    assert _guest().get(f'/api/public/surveys/{cl["token"]}').json()['classes'] is None
     assert _guest().post(f'/api/public/surveys/{tok}/responses',
-                         json={'answers': _answers(sv, lk, rv, ov, np_)}).status_code == 200
+                         json={'answers': _answers(sv, lk, rv, ov, np_), 'class_id': cid}).status_code == 200
 
     res = admin.get(f'/api/surveys/{sv["id"]}/results').json()
     assert res['n'] == 5 and not res['hidden']
@@ -89,12 +93,17 @@ def test_public_link_anonymous_results(world, monkeypatch):
     assert res['nps'] == {'n': 5, 'score': 40, 'promoters': 3, 'passives': 1, 'detractors': 1}
     assert [x['text'] for x in res['texts'][0]['items']] and all('<' not in x['text'] for x in res['texts'][0]['items'])
     assert {l['label']: l['n'] for l in res['links']} == {'Ümumi link': 1, 'X e': 4}
-    assert res['compare'] == []                                         # hər linkdə < 5 – müqayisə gizli
+    assert res['classes'] == [{'id': cid, 'name': 'X e', 'n': 5}]        # sinif linki + ümumi linkdə seçilən sinif
+    assert [c['label'] for c in res['compare']] == ['X e']
+    st_ = res['class_strategy'][0]
+    assert st_['label'] == 'X e' and len(st_['weak']) == 2 and all(len(w['tips']) == 3 for w in st_['weak'])
+    assert admin.get(f'/api/surveys/{sv["id"]}/results', params={'class_id': cid}).json()['n'] == 5
+    assert admin.get(f'/api/surveys/{sv["id"]}/results', params={'class_id': 0}).json()['n'] == 0
     assert admin.get(f'/api/surveys/{sv["id"]}/results', params={'link_id': cl['id']}).json()['hidden']
 
     # anonimlik: cavab cədvəlində şagirdi/cihazı göstərən sahə yoxdur
     cols = set(SurveyResponse.__table__.columns.keys())
-    assert cols == {'id', 'survey_id', 'link_id', 'period', 'submitted_on', 'answers', 'hidden'}
+    assert cols == {'id', 'survey_id', 'link_id', 'class_id', 'period', 'submitted_on', 'answers', 'hidden'}   # sinif – şagird yox
 
     # açıq cavabı hesabatdan gizlətmək
     item = res['texts'][0]['items'][0]
@@ -176,7 +185,7 @@ def test_weekly_in_app(world, monkeypatch):
 
     # həftələr üzrə: hər həftədə ≥ 5 cavab olduqda dinamika
     for i in range(4):
-        _guest().post(f'/api/public/surveys/{tok}/responses', json={'answers': _answers(sv, likert=3)})
+        _guest().post(f'/api/public/surveys/{tok}/responses', json={'answers': _answers(sv, likert=3), 'class_id': cid})
     res = admin.get(f'/api/surveys/{sv["id"]}/results').json()
     assert [p['period'] for p in res['periods']] == ['2026-W41', '2026-W42']
     assert [w['period'] for w in res['weeks']] == ['2026-W42'] and res['weeks'][0]['n'] == 5
@@ -196,7 +205,7 @@ def test_weekly_in_app(world, monkeypatch):
 def test_ai_review(world, monkeypatch):
     as_, S = world
     _clock(monkeypatch)
-    admin, *_ = setup(world)
+    admin, ta, cid, *_ = setup(world)
     sv = admin.post('/api/surveys', json={'title': 'Rəy'}).json()
     admin.post(f'/api/surveys/{sv["id"]}/status', json={'status': 'open'})
     tok = sv['links'][0]['token']
@@ -211,10 +220,14 @@ def test_ai_review(world, monkeypatch):
     monkeypatch.setattr('app.ai.complete_json', fake)
     assert admin.post(f'/api/surveys/{sv["id"]}/ai-review', json={}).status_code == 409    # cavab az
     for _ in range(5):
-        _guest().post(f'/api/public/surveys/{tok}/responses', json={'answers': _answers(sv)})
+        _guest().post(f'/api/public/surveys/{tok}/responses', json={'answers': _answers(sv), 'class_id': cid})
     r = admin.post(f'/api/surveys/{sv["id"]}/ai-review', json={}).json()['review']
     assert r['payload']['tovsiyeler'][0]['olcu'] == 'C1 ≥ 4' and r['payload']['n'] == 5
     assert 'Dərslər maraqlıdır' in seen['ctx']
+    assert admin.get(f'/api/surveys/{sv["id"]}/ai-review').json()['review']['id'] == r['id']
+    # sinif üçün ayrıca rəy (təlim strategiyası)
+    rc = admin.post(f'/api/surveys/{sv["id"]}/ai-review', json={'class_id': cid}).json()['review']
+    assert rc['id'] != r['id'] and 'X e' in rc['payload']['title'] and 'strategiya' in seen['ctx']
     assert admin.get(f'/api/surveys/{sv["id"]}/ai-review').json()['review']['id'] == r['id']
 
 
@@ -222,7 +235,7 @@ def test_link_modes_whatsapp(world, monkeypatch):
     """WhatsApp qrupu üçün: eyni sorğuya tam və qısa link; qısa birdəfəlik linkdə hər şagird başqa dəst alır."""
     as_, S = world
     _clock(monkeypatch)
-    admin, *_ = setup(world)
+    admin, ta, cid, *_ = setup(world)
     sv = admin.post('/api/surveys', json={'title': 'Rəy'}).json()
     admin.post(f'/api/surveys/{sv["id"]}/status', json={'status': 'open'})
     sv = admin.post(f'/api/surveys/{sv["id"]}/links', json={'mode': 'short'}).json()
@@ -236,9 +249,9 @@ def test_link_modes_whatsapp(world, monkeypatch):
     assert {q['id'] for q in a['questions']} != {q['id'] for q in b['questions']}
     # qısa cavab: yalnız verilən suallar məcburidir
     ans = {str(q['id']): (4 if q['kind'] == 'likert5' else 8) for q in b['questions'] if q['kind'] != 'text'}
-    assert g.post(f'/api/public/surveys/{short["token"]}/responses', json={'answers': ans, 'variant': 1}).status_code == 200
+    assert g.post(f'/api/public/surveys/{short["token"]}/responses', json={'answers': ans, 'variant': 1, 'class_id': cid}).status_code == 200
     # tam link qısa cavabı qəbul etmir (məcburi suallar)
-    assert _guest().post(f'/api/public/surveys/{full["token"]}/responses', json={'answers': ans}).status_code == 400
+    assert _guest().post(f'/api/public/surveys/{full["token"]}/responses', json={'answers': ans, 'class_id': cid}).status_code == 400
     # rejimi sonradan dəyişmək
     sv = admin.post(f'/api/surveys/{sv["id"]}/links/{full["id"]}', json={'mode': 'short'}).json()
     assert sv['links'][0]['effective'] == 'short'

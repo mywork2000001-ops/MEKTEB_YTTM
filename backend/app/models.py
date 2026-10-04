@@ -798,6 +798,8 @@ class SurveyResponse(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     survey_id: Mapped[int] = mapped_column(ForeignKey('surveys.id', ondelete='CASCADE'), index=True)
     link_id: Mapped[int | None] = mapped_column(ForeignKey('survey_links.id', ondelete='SET NULL'))
+    # sinif/qrup: sinif linki və tətbiqdə avtomatik, ümumi linkdə şagird özü seçir – sinif üzrə strategiya üçün (≥ min_group)
+    class_id: Mapped[int | None] = mapped_column(ForeignKey('classes.id', ondelete='SET NULL'), index=True)
     period: Mapped[str] = mapped_column(String(10))                    # «2026-W40» (həftəlik) və ya «once»
     submitted_on: Mapped[dt.date] = mapped_column(Date)
     answers: Mapped[dict] = mapped_column(JSON)                        # {"<question_id>": dəyər}

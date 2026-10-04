@@ -76,6 +76,28 @@ DEMO = [
 ]
 KINDS = ('likert5', 'scale10', 'single', 'multi', 'text')
 
+# Meyar zəif çıxanda sinifdə tətbiq olunan təlim strategiyaları (müəllim sinif üzrə strategiyanı dəyişsin)
+STRATEGIES = {
+    'A': ['Yeni mövzunu «model → birgə → müstəqil» ardıcıllığı ilə izah edin (I do – We do – You do)',
+          'Hər izahdan sonra 1–2 dəqiqəlik yoxlama: çıxış bileti, «barmaqla 1–5» və ya mini-test',
+          'Çətin anlayışı 2–3 həyati misal və vizual sxemlə verin; ən çox səhv edilən yeri ayrıca göstərin'],
+    'B': ['Dərsin əvvəlində məqsədi və planı lövhədə yazın, sonda 3 dəqiqəlik yekun edin',
+          'Metodları növbələyin: cüt iş, qrup işi, stansiyalar, rəqəmsal test – 15 dəqiqədən uzun monoloq olmasın',
+          'Tapşırıqları 3 səviyyədə verin (əsas / orta / çətin) – şagird öz səviyyəsini seçsin'],
+    'C': ['Qiymətləndirmə meyarlarını (rubrika) tapşırıqdan ƏVVƏL paylaşın, nümunə işi göstərin',
+          'Hər yoxlama işindən sonra 2 güclü cəhət + 1 konkret addım şəklində qısa yazılı rəy verin',
+          'Səhvlər üzərində iş dərsi: tipik səhvləri anonim təhlil edin, düzəliş tapşırığı verin'],
+    'D': ['Sual verməyi təşviq edin: «səhv cavab yoxdur» qaydası, anonim sual qutusu / çatda sual',
+          'Hər dərsdə fərqli şagirdlərə söz verin (təsadüfi seçim) – hamıya bərabər diqqət',
+          'Tənqidi təkbətək, tərifi sinif qarşısında edin; səbirli, sakit ton saxlayın'],
+    'E': ['Mövzunu real həyat və imtahan (buraxılış / qəbul) tapşırıqları ilə əlaqələndirin',
+          'Şagirdin irəliləyişini görünən edin: fərdi hədəf, həftəlik nəticə qrafiki, kiçik uğurları qeyd edin',
+          'Seçim imkanı verin: layihə, təqdimat və ya əlavə tapşırıq; güclülərə olimpiada tipli məsələ'],
+    'F': ['Dərsi vaxtında başlayıb bitirin; sinif qaydalarını şagirdlərlə birlikdə razılaşdırın',
+          'Verilən sözə (yoxlama, nəticə, məşğələ) əməl edin – müddəti əvvəlcədən elan edin',
+          'Onlayn material və testləri həftəlik cədvəllə verin, keçidi və nəticəni dərsdə müzakirə edin'],
+}
+
 
 def pulse_pick(qs: list[dict], period: str | int) -> list[dict]:
     """Qısa həftəlik sorğu: hər bölmədən bir likert sualı (həftə nömrəsinə görə növbə ilə), «overall» hər həftə,

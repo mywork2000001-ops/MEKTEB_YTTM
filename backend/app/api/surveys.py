@@ -378,26 +378,48 @@ def delete_survey(sid: int, body: ConfirmIn, user: User = Depends(staff), db: Se
 
 
 # ---------------------------------------------------------------- nəticələr
-def _responses(db: Session, s: Survey, link_id: int | None, period: str | None) -> list[SurveyResponse]:
+NO_CLASS = 0                                 # filtrdə: «sinif göstərilməyib»
+
+
+def _responses(db: Session, s: Survey, link_id: int | None, period: str | None,
+               class_id: int | None = None) -> list[SurveyResponse]:
     st = select(SurveyResponse).where(SurveyResponse.survey_id == s.id)
     if link_id:
         st = st.where(SurveyResponse.link_id == link_id)
+    if class_id is not None:
+        st = st.where(SurveyResponse.class_id.is_(None) if class_id == NO_CLASS else SurveyResponse.class_id == class_id)
     if period:
         st = st.where(SurveyResponse.period == period)
     return list(db.scalars(st.order_by(SurveyResponse.id)))
 
 
-def compute(db: Session, s: Survey, link_id: int | None = None, period: str | None = None) -> dict:
+def _cls_ok(r: SurveyResponse, class_id: int | None) -> bool:
+    return class_id is None or (r.class_id is None if class_id == NO_CLASS else r.class_id == class_id)
+
+
+def class_names(db: Session, ids) -> dict[int, str]:
+    ids = {i for i in ids if i}
+    return dict(db.execute(select(SchoolClass.id, SchoolClass.name).where(SchoolClass.id.in_(ids))).all()) if ids else {}
+
+
+def compute(db: Session, s: Survey, link_id: int | None = None, period: str | None = None,
+            class_id: int | None = None) -> dict:
     qs = [q_dict(q) for q in questions(db, s.id)]
     all_rs = _responses(db, s, None, None)
-    rs = [r for r in all_rs if (not link_id or r.link_id == link_id) and (not period or r.period == period)]
+    rs = [r for r in all_rs if (not link_id or r.link_id == link_id) and (not period or r.period == period)
+          and _cls_ok(r, class_id)]
+    names = class_names(db, {r.class_id for r in all_rs})
+    cls_ids = sorted({r.class_id for r in all_rs if r.class_id}, key=lambda i: names.get(i, ''))
     links = list(db.scalars(select(SurveyLink).where(SurveyLink.survey_id == s.id).order_by(SurveyLink.id)))
     periods = sorted({r.period for r in all_rs if r.period != 'once'})
     out = {'survey': {'id': s.id, 'title': s.title, 'repeat': s.repeat, 'wave': s.wave, 'min_group': s.min_group},
            'n': len(rs), 'min_group': s.min_group, 'hidden': len(rs) < s.min_group, 'sections': s.sections,
            'links': [{'id': l.id, 'label': l.label, 'n': sum(r.link_id == l.id for r in all_rs)} for l in links],
            'periods': [{'period': p, 'label': week_label(p), 'n': sum(r.period == p for r in all_rs)} for p in periods],
-           'link_id': link_id, 'period': period}
+           'classes': [{'id': i, 'name': names.get(i, '?'), 'n': sum(r.class_id == i for r in all_rs)} for i in cls_ids]
+                      + ([{'id': NO_CLASS, 'name': 'Sinif göstərilməyib', 'n': sum(r.class_id is None for r in all_rs)}]
+                         if any(r.class_id is None for r in all_rs) else []),
+           'link_id': link_id, 'period': period, 'class_id': class_id}
     if out['hidden']:
         return out
     answers = [r.answers for r in rs]
@@ -429,17 +451,27 @@ def compute(db: Session, s: Survey, link_id: int | None = None, period: str | No
         rnd.shuffle(items)
         texts.append({'qid': q['id'], 'text': q['text'], 'items': items})
     out['texts'] = texts
-    # siniflərin müqayisəsi (hər biri ≥ min_group)
-    cmp = []
-    for l in links:
-        lr = [r.answers for r in all_rs if r.link_id == l.id and (not period or r.period == period)]
-        if len(lr) >= s.min_group:
-            cmp.append({'link_id': l.id, 'label': l.label, **SV.summary(qs, lr)})
+    # siniflərin müqayisəsi və sinif üzrə təlim strategiyası (hər sinifdə ≥ min_group)
+    titles = {x['key']: x['title'] for x in s.sections}
+    cmp, strat = [], []
+    for cid in cls_ids:
+        cr = [r.answers for r in all_rs if r.class_id == cid and (not period or r.period == period)]
+        if len(cr) < s.min_group:
+            continue
+        sm = SV.summary(qs, cr)
+        cmp.append({'class_id': cid, 'label': names.get(cid, '?'), **sm})
+        idx = sorted([(k, v) for k, v in sm['sections'].items() if v is not None and k in SV.STRATEGIES], key=lambda x: x[1])
+        if idx:
+            strat.append({'class_id': cid, 'label': names.get(cid, '?'), 'n': sm['n'], 'overall': sm['overall'], 'nps': sm['nps'],
+                          'strong': {'key': idx[-1][0], 'title': titles.get(idx[-1][0], idx[-1][0]), 'index': idx[-1][1]},
+                          'weak': [{'key': k, 'title': titles.get(k, k), 'index': v, 'tips': SV.STRATEGIES[k]}
+                                   for k, v in idx[:2] if k != idx[-1][0]]})
     out['compare'] = cmp
+    out['class_strategy'] = strat
     # həftələr üzrə dinamika (həftəlik sorğu)
     out['weeks'] = []
     for p in periods:
-        pr = [r.answers for r in all_rs if r.period == p and (not link_id or r.link_id == link_id)]
+        pr = [r.answers for r in all_rs if r.period == p and (not link_id or r.link_id == link_id) and _cls_ok(r, class_id)]
         if len(pr) >= s.min_group:
             out['weeks'].append({'period': p, 'label': week_label(p), **SV.summary(qs, pr)})
     # dalğalar (təkrar sorğular) – eyni şablon açarları ilə
@@ -457,9 +489,9 @@ def compute(db: Session, s: Survey, link_id: int | None = None, period: str | No
 
 
 @router.get('/surveys/{sid}/results')
-def results(sid: int, link_id: int | None = None, period: str | None = None, user: User = Depends(staff),
-            db: Session = Depends(get_db)):
-    return compute(db, own(db, user, sid), link_id, period)
+def results(sid: int, link_id: int | None = None, period: str | None = None, class_id: int | None = None,
+            user: User = Depends(staff), db: Session = Depends(get_db)):
+    return compute(db, own(db, user, sid), link_id, period, class_id)
 
 
 class HideIn(BaseModel):
@@ -481,10 +513,11 @@ def hide_text(sid: int, rid: int, body: HideIn, user: User = Depends(staff), db:
 
 
 @router.get('/surveys/{sid}/export.csv')
-def export_csv(sid: int, link_id: int | None = None, period: str | None = None, user: User = Depends(staff),
-               db: Session = Depends(get_db)):
+def export_csv(sid: int, link_id: int | None = None, period: str | None = None, class_id: int | None = None,
+               user: User = Depends(staff), db: Session = Depends(get_db)):
     s = own(db, user, sid)
-    rs = _responses(db, s, link_id, period)
+    rs = _responses(db, s, link_id, period, class_id)
+    names = class_names(db, {r.class_id for r in rs})
     if len(rs) < s.min_group:
         raise HTTPException(409, f'Cavab azdır ({len(rs)} < {s.min_group}) – anonimlik üçün nəticə gizlidir')
     qs = questions(db, s.id)
@@ -502,13 +535,13 @@ def export_csv(sid: int, link_id: int | None = None, period: str | None = None, 
         return v
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=';')
-    w.writerow(['№', 'Link / sinif', 'Həftə' if s.repeat == 'weekly' else 'Dövr', 'Tarix'] +
+    w.writerow(['№', 'Sinif', 'Link', 'Həftə' if s.repeat == 'weekly' else 'Dövr', 'Tarix'] +
                [f'{q.key or q.section} {q.text}' + (' (əks)' if q.reverse else '') for q in qs])
     rnd = random.Random(s.id)
     rs = rs[:]
     rnd.shuffle(rs)
     for i, r in enumerate(rs, 1):
-        w.writerow([i, labels.get(r.link_id, 'Tətbiq'), week_label(r.period) if r.period != 'once' else '',
+        w.writerow([i, names.get(r.class_id, ''), labels.get(r.link_id, 'Tətbiq'), week_label(r.period) if r.period != 'once' else '',
                     f'{r.submitted_on:%d.%m.%Y}'] + [cell(q, r) for q in qs])
     name = f'sorgu-{s.id}.csv'
     return Response('﻿' + buf.getvalue(), media_type='text/csv; charset=utf-8',
@@ -536,8 +569,9 @@ Cavab YALNIZ JSON obyekti:
  "diqqet": ["ehtiyatla şərh edilməli məqamlar"]}"""
 
 
-def _ai_key(sid: int, link_id: int | None, period: str | None) -> str:
-    return f'survey:{sid}:{link_id or "all"}:{period or "all"}'
+def _ai_key(sid: int, link_id: int | None, period: str | None, class_id: int | None = None) -> str:
+    k = f'survey:{sid}:{link_id or "all"}:{period or "all"}'
+    return k if class_id is None else f'{k}:c{class_id}'
 
 
 def _review_out(r: AiReview | None) -> dict | None:
@@ -545,10 +579,10 @@ def _review_out(r: AiReview | None) -> dict | None:
 
 
 @router.get('/surveys/{sid}/ai-review')
-def last_review(sid: int, link_id: int | None = None, period: str | None = None, user: User = Depends(staff),
-                db: Session = Depends(get_db)):
+def last_review(sid: int, link_id: int | None = None, period: str | None = None, class_id: int | None = None,
+                user: User = Depends(staff), db: Session = Depends(get_db)):
     own(db, user, sid)
-    r = db.scalar(select(AiReview).where(AiReview.user_id == user.id, AiReview.key == _ai_key(sid, link_id, period))
+    r = db.scalar(select(AiReview).where(AiReview.user_id == user.id, AiReview.key == _ai_key(sid, link_id, period, class_id))
                   .order_by(AiReview.id.desc()).limit(1))
     return {'review': _review_out(r)}
 
@@ -556,19 +590,22 @@ def last_review(sid: int, link_id: int | None = None, period: str | None = None,
 class AiIn(BaseModel):
     link_id: int | None = None
     period: str | None = None
+    class_id: int | None = None
 
 
 @router.post('/surveys/{sid}/ai-review')
 def make_review(sid: int, body: AiIn, user: User = Depends(staff), db: Session = Depends(get_db)):
     from .lessonplans import ai_config
     s = own(db, user, sid)
-    d = compute(db, s, body.link_id, body.period)
+    d = compute(db, s, body.link_id, body.period, body.class_id)
     if d['hidden']:
         raise HTTPException(409, f'Cavab azdır ({d["n"]} < {s.min_group}) – rəy üçün kifayət deyil')
     cfg = ai_config(user)
     titles = {x['key']: x['title'] for x in s.sections}
     ctx = {'cavab sayı': d['n'], 'sorğu': s.title,
-           'əhatə': next((l['label'] for l in d['links'] if l['id'] == body.link_id), 'bütün linklər') +
+           'əhatə': (f"sinif {next((c['name'] for c in d['classes'] if c['id'] == body.class_id), '?')} – bu sinif üçün təlim strategiyasını dəyiş"
+                     if body.class_id is not None else
+                     next((l['label'] for l in d['links'] if l['id'] == body.link_id), 'bütün siniflər')) +
                     (f' · həftə {week_label(body.period)}' if body.period else ''),
            'meyarlar': [{'meyar': f"{x['key']} {x['title']}", 'indeks': x['index'], 'razılıq %': x['agree_pct']}
                         for x in d['section_index']],
@@ -577,6 +614,7 @@ def make_review(sid: int, body: AiIn, user: User = Depends(staff), db: Session =
                         'orta (çevrilmiş)': q.get('adj_mean'), 'razılıq %': q.get('agree_pct')}
                        for q in d['questions'] if q['kind'] == 'likert5'],
            'siniflər': [{'sinif': c['label'], 'n': c['n'], 'meyarlar': c['sections'], 'ümumi': c['overall']} for c in d['compare']],
+           'sinif üzrə zəif meyarlar': [{'sinif': c['label'], 'zəif': [w['title'] for w in c['weak']]} for c in d['class_strategy']],
            'həftələr': [{'həftə': w['label'], 'n': w['n'], 'meyarlar': w['sections'], 'ümumi': w['overall']} for w in d['weeks']],
            'dalğalar': [{'dalğa': w['wave'], 'n': w['n'], 'meyarlar': w['sections'], 'ümumi': w['overall']} for w in d['waves']],
            'açıq cavablar': [{'sual': t['text'], 'cavablar': [i['text'][:400] for i in t['items'] if not i['hidden']][:120]}
@@ -596,7 +634,7 @@ def make_review(sid: int, body: AiIn, user: User = Depends(staff), db: Session =
                'inkisaf': lst(raw.get('inkisaf')), 'movzular': themes, 'tovsiyeler': recs[:10], 'diqqet': lst(raw.get('diqqet'))}
     if not payload['xulase'] and not payload['tovsiyeler']:
         raise HTTPException(502, 'Model boş rəy qaytardı – yenidən cəhd edin və ya başqa model seçin')
-    r = AiReview(user_id=user.id, school_id=user.school_id, scope='survey', key=_ai_key(sid, body.link_id, body.period),
+    r = AiReview(user_id=user.id, school_id=user.school_id, scope='survey', key=_ai_key(sid, body.link_id, body.period, body.class_id),
                  payload=payload, model=cfg['model'], created_at=now())
     db.add(r)
     audit(db, user, 'create', 'ai_review', None, scope='survey', key=r.key, model=cfg['model'])
@@ -610,12 +648,13 @@ def _teacher_name(db: Session, s: Survey) -> str:
     return owner.full_name if owner else ''
 
 
-def public_out(db: Session, s: Survey, label: str | None, link: SurveyLink | None = None, variant: int | None = None) -> dict:
+def public_out(db: Session, s: Survey, label: str | None, link: SurveyLink | None = None, variant: int | None = None,
+               classes: list[dict] | None = None) -> dict:
     return {'id': s.id, 'title': s.title, 'description': s.description, 'teacher': _teacher_name(db, s),
             'label': label, 'repeat': s.repeat, 'period': period_of(s),
             'period_label': week_label(period_of(s)) if s.repeat == 'weekly' else None,
             'sections': s.sections, 'likert': SV.LIKERT,
-            'mode': link_mode(s, link), 'variant': variant,
+            'mode': link_mode(s, link), 'variant': variant, 'classes': classes,
             'questions': [{k: v for k, v in q.items() if k != 'reverse'} for q in served(db, s, link, variant)]}
 
 
@@ -624,6 +663,7 @@ class SubmitIn(BaseModel):
     answers: dict[str, int | str | list[int] | None]
     device: str | None = Field(None, min_length=8, max_length=64)
     variant: int | None = Field(None, ge=0, le=999)
+    class_id: int | None = None              # ümumi linkdə şagirdin seçdiyi sinif
 
 
 def _clean(db: Session, s: Survey, raw: dict, link: SurveyLink | None = None, variant: int | None = None) -> dict:
@@ -642,15 +682,16 @@ def _clean(db: Session, s: Survey, raw: dict, link: SurveyLink | None = None, va
     return out
 
 
-def _save(db: Session, s: Survey, link_id: int | None, answers: dict, hashes: list[str], period: str):
+def _save(db: Session, s: Survey, link_id: int | None, answers: dict, hashes: list[str], period: str,
+          class_id: int | None = None):
     for h in hashes:
         if db.get(SurveyDedup, (s.id, h)):
             raise HTTPException(409, 'Siz bu sorğuya artıq cavab vermisiniz' + (' (bu həftə)' if s.repeat == 'weekly' else '')
                                 + ' – təşəkkür edirik!')
     for h in set(hashes):
         db.add(SurveyDedup(survey_id=s.id, hash=h))
-    db.add(SurveyResponse(survey_id=s.id, link_id=link_id, period=period, submitted_on=now().astimezone(BAKU).date(),
-                          answers=answers))
+    db.add(SurveyResponse(survey_id=s.id, link_id=link_id, class_id=class_id, period=period,
+                          submitted_on=now().astimezone(BAKU).date(), answers=answers))
     db.commit()
 
 
@@ -671,6 +712,21 @@ def _link(db: Session, token: str) -> tuple[SurveyLink, Survey]:
     return l, s
 
 
+def link_classes(db: Session, s: Survey) -> list[dict]:
+    """Ümumi link: şagird öz sinfini seçir – müəllimin bu məkandakı sinif və qrupları."""
+    names = class_names(db, teacher_classes(db, s.owner_id, s.school_id))
+    return [{'id': i, 'name': n} for i, n in sorted(names.items(), key=lambda x: x[1])]
+
+
+def student_class(db: Session, s: Survey, u: User | None) -> int | None:
+    """Daxil olmuş şagirdin bu müəllimin dərs dediyi sinfi/qrupu (ümumi linkdə sinif soruşulmasın)."""
+    if not u:
+        return None
+    st = db.scalar(select(Student).where(Student.user_id == u.id, Student.archived_at.is_(None)))
+    cls = st and (teacher_classes(db, s.owner_id, s.school_id) & student_classes(db, st))
+    return min(cls) if cls else None
+
+
 def _session_student(db: Session, token: str | None) -> User | None:
     data = read_session(token)
     u = data and db.get(User, data.get('u'))
@@ -684,8 +740,9 @@ def public_get(token: str, v: int | None = None, db: Session = Depends(get_db),
     variant = None
     if link_mode(s, l) == 'short' and s.repeat != 'weekly':
         variant = v if v is not None and 0 <= v <= 999 else secrets.randbelow(1000)   # brauzer variantı yadda saxlayır
-    out = public_out(db, s, l.label if l.class_id else None, l, variant)
     u = _session_student(db, session)
+    known = l.class_id or student_class(db, s, u)
+    out = public_out(db, s, l.label if l.class_id else None, l, variant, None if known else link_classes(db, s))
     out['done'] = bool(u and db.get(SurveyDedup, (s.id, student_hash(s, u.id, period_of(s)))))
     return out
 
@@ -701,15 +758,21 @@ def public_submit(token: str, body: SubmitIn, response: Response, db: Session = 
         raise HTTPException(429, 'Çox sayda göndərmə – bir neçə dəqiqədən sonra yenidən yoxlayın')
     _hits[token] = hits + [t]
     answers = _clean(db, s, body.answers, l, body.variant)
+    u = _session_student(db, session)
+    cid = l.class_id or student_class(db, s, u)
+    if not cid:
+        allowed = {c['id'] for c in link_classes(db, s)}
+        if allowed and body.class_id not in allowed:
+            raise HTTPException(400, 'Sinifinizi seçin')
+        cid = body.class_id if body.class_id in allowed else None
     period = period_of(s)
     dev = device_cookie or secrets.token_urlsafe(18)
     hashes = [_h('survey', s.id, 'c', dev, period)]
     if body.device:
         hashes.append(_h('survey', s.id, 'd', body.device, period))
-    u = _session_student(db, session)
     if u:
         hashes.append(student_hash(s, u.id, period))
-    _save(db, s, l.id, answers, hashes, period)
+    _save(db, s, l.id, answers, hashes, period, cid)
     response.set_cookie(DEVICE_COOKIE, dev, max_age=60 * 60 * 24 * 400, httponly=True, samesite='lax',
                         secure=settings().cookie_secure)
     return {'ok': True}
@@ -774,5 +837,5 @@ def portal_submit(sid: int, body: SubmitIn, user: User = Depends(student_only), 
     hashes = [student_hash(s, user.id, period)]
     if body.device:
         hashes.append(_h('survey', s.id, 'd', body.device, period))
-    _save(db, s, link_id, answers, hashes, period)
+    _save(db, s, link_id, answers, hashes, period, cid)
     return {'ok': True}

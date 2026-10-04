@@ -22,7 +22,7 @@ export default function SurveyPublic({ token }: { token: string }) {
       <div className="row" style={{ gap: 8, margin: '4px 0 12px' }}>
         <span className="logo" style={{ width: 32, height: 32, fontSize: 15 }}>M</span><b>Müəllim köməkçisi</b><span className="muted small">· şagird sorğusu</span>
       </div>
-      {sv ? <SurveyForm sv={sv} onSubmit={(answers, device) => post(`/api/public/surveys/${token}/responses`, { answers, device, variant: sv.variant ?? null })} />
+      {sv ? <SurveyForm sv={sv} onSubmit={(answers, device, class_id) => post(`/api/public/surveys/${token}/responses`, { answers, device, variant: sv.variant ?? null, class_id })} />
         : <div className="sv-card"><p className={err ? 'err' : 'muted'} role={err ? 'alert' : undefined}>{err || 'Yüklənir…'}</p></div>}
     </div>
   )

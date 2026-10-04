@@ -7,7 +7,8 @@ export type SvQuestion = { id: number; key: string | null; section: string; kind
   text: string; options: { min?: number; max?: number; choices?: string[] } | null; required: boolean }
 export type SvPublic = { id: number; title: string; description: string | null; teacher: string; label: string | null
   repeat: 'once' | 'weekly'; period: string; period_label: string | null; sections: { key: string; title: string }[]
-  likert: string[]; questions: SvQuestion[]; done?: boolean; mode?: 'full' | 'short'; variant?: number | null }
+  likert: string[]; questions: SvQuestion[]; done?: boolean; mode?: 'full' | 'short'; variant?: number | null
+  classes?: { id: number; name: string }[] | null }
 type Val = number | string | number[] | undefined
 
 const store = {
@@ -26,7 +27,7 @@ export function deviceToken(): string {
   return t
 }
 
-export function SurveyForm({ sv, onSubmit, onDone }: { sv: SvPublic; onSubmit: (answers: Record<string, Val>, device: string) => Promise<unknown>; onDone?: () => void }) {
+export function SurveyForm({ sv, onSubmit, onDone }: { sv: SvPublic; onSubmit: (answers: Record<string, Val>, device: string, classId: number | null) => Promise<unknown>; onDone?: () => void }) {
   const draftKey = `mk-sv-draft-${sv.id}-${sv.period}`
   const [ans, setAns] = useState<Record<string, Val>>(() => { try { return JSON.parse(store.get(draftKey) || '{}') } catch { return {} } })
   // qısa sorğu (≤ 10 sual) – bir ekranda, ayrıca giriş ekranı olmadan: şagird üçün yorucu olmasın
@@ -38,6 +39,13 @@ export function SurveyForm({ sv, onSubmit, onDone }: { sv: SvPublic; onSubmit: (
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(!!sv.done)
+  // ümumi link (WhatsApp qrupu): şagird sinfini seçir – müəllim nəticəni sinif üzrə görsün; seçim yadda qalır
+  const needClass = !!sv.classes?.length
+  const clsKey = `mk-sv-class-${sv.id}`
+  const [cls, setCls] = useState<number | null>(() => { const v = Number(store.get(clsKey)); return sv.classes?.some(c => c.id === v) ? v : null })
+  const [clsMiss, setClsMiss] = useState(false)
+  const pickClass = (v: number) => { setCls(v); setClsMiss(false); store.set(clsKey, String(v)) }
+  const classOk = () => { if (needClass && !cls) { setClsMiss(true); setErr('Sinifinizi seçin'); return false } return true }
   useEffect(() => { store.set(draftKey, Object.keys(ans).length ? JSON.stringify(ans) : null) }, [ans, draftKey])
   useEffect(() => { window.scrollTo({ top: 0 }) }, [step])
 
@@ -52,10 +60,11 @@ export function SurveyForm({ sv, onSubmit, onDone }: { sv: SvPublic; onSubmit: (
   const cur = sections[step]
   const qs = cur ? sv.questions.filter(q => compact || q.section === cur.key) : []
   const send = async () => {
+    if (!classOk()) return
     if (!check(sv.questions)) { if (!compact) setStep(sections.findIndex(s => sv.questions.some(q => q.section === s.key && q.required && empty(ans[q.id])))); return }
     setBusy(true); setErr('')
     try {
-      await onSubmit(Object.fromEntries(Object.entries(ans).filter(([, v]) => !empty(v))), deviceToken())
+      await onSubmit(Object.fromEntries(Object.entries(ans).filter(([, v]) => !empty(v))), deviceToken(), needClass ? cls : null)
       store.set(draftKey, null); setDone(true); onDone?.()
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) { store.set(draftKey, null); setDone(true) }
@@ -84,13 +93,16 @@ export function SurveyForm({ sv, onSubmit, onDone }: { sv: SvPublic; onSubmit: (
           <div className="banner" style={{ background: 'var(--accent-soft)', color: 'var(--ink)', borderRadius: 10 }}>
             <span>🔒 <b>Sorğu anonimdir.</b> Adınız soruşulmur və müəllim kimin nə yazdığını görə bilməz.
               Səmimi cavablarınız dərslərin daha yaxşı olmasına kömək edəcək.</span></div>
+          {needClass && <ClassPick classes={sv.classes!} value={cls} miss={clsMiss} onChange={pickClass} />}
+          {err && <p className="err" role="alert">{err}</p>}
           <p className="small muted">{sv.questions.length} sual · təxminən {minutes} dəqiqə · {sections.length} bölmə{sv.repeat === 'weekly' ? ' · hər həftə bir dəfə' : ''}</p>
-          <button className="btn primary" style={{ width: '100%' }} onClick={() => setStep(0)}>Başla</button>
+          <button className="btn primary" style={{ width: '100%' }} onClick={() => { if (classOk()) { setErr(''); setStep(0) } }}>Başla</button>
         </>
       ) : (
         <>
           {compact ? <p className="small muted" style={{ margin: '0 0 4px' }}>🔒 Anonim · {sv.questions.length} sual · ~{minutes} dəq. Müəllim kimin nə yazdığını görmür.</p>
             : <h2 style={{ margin: '0 0 4px', fontSize: 17 }}>{step + 1}. {cur.title} <small className="muted" style={{ fontWeight: 400 }}>{step + 1} / {sections.length}</small></h2>}
+          {compact && needClass && <ClassPick classes={sv.classes!} value={cls} miss={clsMiss} onChange={pickClass} />}
           {qs.map(q => <Question key={q.id} q={q} likert={sv.likert} v={ans[q.id]} miss={miss.has(q.id)} onChange={v => set(q, v)} />)}
           {err && <p className="err" role="alert">{err}</p>}
           <div className="sv-nav">
@@ -101,6 +113,19 @@ export function SurveyForm({ sv, onSubmit, onDone }: { sv: SvPublic; onSubmit: (
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+/** Ümumi linkdə sinif seçimi (anonimlik pozulmur: sinif üzrə nəticə yalnız ≥ 5 cavabda görünür). */
+function ClassPick({ classes, value, miss, onChange }: { classes: { id: number; name: string }[]; value: number | null; miss: boolean; onChange: (v: number) => void }) {
+  return (
+    <div className={'sv-q' + (miss ? ' miss' : '')} role="group" aria-label="Sinifiniz">
+      <p>Sinifiniz / qrupunuz</p>
+      <div className="sv-opts" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(110px,1fr))' }}>
+        {classes.map(c => <button key={c.id} type="button" className="sv-opt" style={{ justifyContent: 'center' }} aria-pressed={value === c.id} onClick={() => onChange(c.id)}>{c.name}</button>)}
+      </div>
+      <div className="small muted" style={{ marginTop: 4 }}>Müəllim nəticəni yalnız sinif üzrə ümumi şəkildə görür (ən azı 5 cavab olduqda) – adınız yoxdur.</div>
     </div>
   )
 }
