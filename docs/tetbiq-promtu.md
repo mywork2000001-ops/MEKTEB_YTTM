@@ -74,7 +74,7 @@ Hamısı `C:\Users\Administrator\Desktop\Tom planlama` qovluğundadır.
    - Səviyyə həddləri: **Yüksək ≥ 70**, **Orta 40–69,9**, **Zəif < 40**.
    - Ehtiyat mənbə: `TOM-şagirdlər buraxılış balları (1).xlsx`, vərəq `Sheet1 (2)`.
 3. **XI peşə sinfi və X b riyaziyyat qrupunun siyahısı:** əl ilə daxil edilir və ya Excel/CSV-dən import olunur. Qrup üzvləri X b siyahısından seçilir.
-4. **Köhnə köməkçi:** `Şagirdlər\Riyaziyyat köməkçisi.html` (localStorage açarı `riyaziyyat_komekcisi_v1`). Onun JSON ehtiyat nüsxəsini import edən miqrasiya əmri yaz, jurnal məlumatı itməsin.
+4. **Köhnə köməkçi:** `Şagirdlər\Mənbələr\Riyaziyyat köməkçisi.html` (localStorage açarı `riyaziyyat_komekcisi_v1`). Onun JSON ehtiyat nüsxəsini import edən miqrasiya əmri yaz, jurnal məlumatı itməsin.
 
 ### Məxfilik (MƏCBURİ)
 - **Pinkod, Uşaq İD və müəssisə İD import edilməsin, bazada saxlanmasın, heç yerdə göstərilməsin.** Import zamanı həmin sütunları at.
