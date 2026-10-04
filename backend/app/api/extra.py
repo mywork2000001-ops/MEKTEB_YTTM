@@ -82,7 +82,7 @@ class CourseIn(BaseModel):
 # ---------------------------------------------------------------- köməkçilər
 def _course(db: Session, user: User, cid: int) -> ExtraCourse:
     c = db.get(ExtraCourse, cid)
-    if not c or c.owner_id != user.id:
+    if not c or c.owner_id != user.id or c.school_id != user.school_id:
         raise HTTPException(404, 'Kurs tapılmadı')
     return c
 
@@ -211,13 +211,16 @@ def course_out(db: Session, c: ExtraCourse, full: bool = False) -> dict:
 # ---------------------------------------------------------------- kurslar
 @router.get('')
 def list_courses(archived: bool = False, user: User = Depends(staff), db: Session = Depends(get_db)):
-    st = select(ExtraCourse).where(ExtraCourse.owner_id == user.id,
+    st = select(ExtraCourse).where(ExtraCourse.owner_id == user.id, ExtraCourse.school_id == user.school_id,   # aktiv məkan
                                    ExtraCourse.archived_at.is_not(None) if archived else ExtraCourse.archived_at.is_(None))
     return [course_out(db, c) for c in db.scalars(st.order_by(ExtraCourse.starts_on.desc()))]
 
 
 def _check_audience(db: Session, user: User, body) -> list[TeachingAssignment]:
     tas = [own_assignment(db, user, i) for i in dict.fromkeys(body.ta_ids)]
+    from ..models import SchoolClass
+    if any(db.get(SchoolClass, t.class_id).school_id != user.school_id for t in tas):
+        raise HTTPException(404, 'Dərs tapılmadı')          # məktəb və fərdi sinif bir kursda qarışmır
     if len({t.subject for t in tas}) > 1:
         raise HTTPException(400, 'Kursun dərsləri eyni fənn üzrə olmalıdır')
     if body.student_ids is not None:

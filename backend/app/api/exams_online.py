@@ -35,8 +35,9 @@ router = APIRouter(prefix='/api/exams-online', tags=['exams-online'])
 def _can_target(db: Session, user: User, ta_id: int) -> tuple[TeachingAssignment, SchoolClass]:
     ta = db.get(TeachingAssignment, ta_id)
     cls = ta and db.get(SchoolClass, ta.class_id)
-    ok = ta and not ta.archived_at and cls and not cls.archived_at and (
-        ta.teacher_id == user.id or (user.role == Role.admin and cls.school_id == user.school_id))
+    # yalnız aktiv məkanın sinfi: məktəb və fərdi (repetitor) sinif bir sınaqda qarışmır
+    ok = ta and not ta.archived_at and cls and not cls.archived_at and cls.school_id == user.school_id and (
+        ta.teacher_id == user.id or user.role == Role.admin)
     if not ok:
         raise HTTPException(404, 'Dərs tapılmadı')
     return ta, cls
@@ -57,6 +58,8 @@ def _school_of(db: Session, b: TestBatch) -> int | None:
 def _access(db: Session, user: User, b: TestBatch) -> str:
     """full – bütün adlar; own – yalnız öz siniflərinin adları. Görə bilmirsə 404."""
     if b.kind != 'sinaq':
+        raise HTTPException(404, 'Sınaq tapılmadı')
+    if _school_of(db, b) not in (None, user.school_id):          # başqa məkanın (məktəb / fərdi) sınağı
         raise HTTPException(404, 'Sınaq tapılmadı')
     if b.created_by == user.id or (user.role == Role.admin and _school_of(db, b) == user.school_id):
         return 'full'

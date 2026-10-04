@@ -91,3 +91,50 @@ def test_private_calendar_edit(world):
     # başqası: fərdi məkanı yoxdur – 404
     assert admin.get('/api/workspaces/private/calendar').status_code == 404
     assert admin.post('/api/workspaces/private/holidays', json={'date': '2027-07-05', 'name': 'x x'}).status_code == 404
+
+
+def test_sinaq_separated_by_workspace(world, monkeypatch):
+    import datetime as dt
+    from .test_api_portal import UTC, setup
+    as_, S = world
+    clock = lambda: dt.datetime(2026, 9, 29, 10, 0, tzinfo=UTC)
+    monkeypatch.setattr('app.api.exams_online.now', clock)
+    admin, ta, cid, st, ids = setup(world)                                    # məktəb: X e
+    win = {'opens_at': '2026-09-29T11:00:00Z', 'closes_at': '2026-09-29T14:00:00Z'}
+    school = admin.post('/api/exams-online', json={'title': 'Məktəb sınağı', 'bank_ids': ids, 'targets': [{'ta_id': ta, **win}]}).json()['id']
+    # fərdi məkan: sinif, dərs, şagird
+    pid = admin.post('/api/classes', json={'name': 'Hazırlıq qrupu', 'kind': 'adi', 'private': True}).json()['id']
+    pta = admin.post(f'/api/classes/{pid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'slots': {}, 'has_summative': False}).json()['mine']['ta_id']
+    ps = admin.post('/api/students', json={'full_name': 'Hazırlıq Şagird oğlu', 'class_id': pid}).json()
+    assert [t['class_name'] for t in admin.get('/api/exams-online/targets').json()] == ['Hazırlıq qrupu']
+    assert admin.get('/api/exams-online').json() == []                        # məktəb sınağı fərdi məkanda görünmür
+    assert admin.get(f'/api/exams-online/{school}').status_code == 404
+    mixed = {'title': 'Qarışıq', 'bank_ids': ids, 'targets': [{'ta_id': ta, **win}, {'ta_id': pta, **win}]}
+    assert admin.post('/api/exams-online', json=mixed).status_code == 404     # məktəb və fərdi sinif bir sınaqda olmaz
+    priv = admin.post('/api/exams-online', json={'title': 'Hazırlıq sınağı', 'bank_ids': ids, 'targets': [{'ta_id': pta, **win}]}).json()['id']
+    assert [b['id'] for b in admin.get('/api/exams-online').json()] == [priv]
+    assert {r['full_name'] for r in admin.get('/api/exams-online/rating').json()['rows']} <= {'Hazırlıq Şagird oğlu'}
+    # məktəbə qayıt
+    ws = {w['kind']: w['id'] for w in admin.get('/api/workspaces').json()}
+    admin.put('/api/workspaces/active', json={'school_id': ws['school']})
+    assert [b['id'] for b in admin.get('/api/exams-online').json()] == [school]
+    assert admin.get(f'/api/exams-online/{priv}').status_code == 404
+    assert all(r['full_name'] != 'Hazırlıq Şagird oğlu' for r in admin.get('/api/exams-online/rating').json()['rows'])
+    assert 'Hazırlıq qrupu' not in [t['class_name'] for t in admin.get('/api/exams-online/targets').json()]
+
+
+def test_extra_courses_separated_by_workspace(world):
+    from .test_api_portal import setup
+    admin, ta, cid, st, ids = setup(world)
+    body = {'title': 'Məktəb təkrarı', 'format': 'onlayn', 'ta_ids': [ta], 'starts_on': '2026-10-03', 'ends_on': '2026-10-10',
+            'schedule': [{'weekday': 5, 'start': '10:00', 'end': '11:00', 'link': 'https://meet.example/x'}]}
+    r0 = admin.post('/api/extra', json=body); assert r0.status_code == 200, r0.text
+    sc = r0.json()['id']
+    pid = admin.post('/api/classes', json={'name': 'Fərdi qrup', 'kind': 'adi', 'private': True}).json()['id']
+    pta = admin.post(f'/api/classes/{pid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'slots': {}, 'has_summative': False}).json()['mine']['ta_id']
+    admin.post('/api/students', json={'full_name': 'Fərdi Kursçu oğlu', 'class_id': pid})
+    assert admin.get('/api/extra').json() == [] and admin.get(f'/api/extra/{sc}').status_code == 404
+    assert admin.post('/api/extra', json={**body, 'ta_ids': [ta, pta]}).status_code == 404      # qarışıq kurs olmaz
+    r1 = admin.post('/api/extra', json={**body, 'title': 'Fərdi kurs', 'ta_ids': [pta]}); assert r1.status_code == 200, r1.text
+    pc = r1.json()['id']
+    assert [c['id'] for c in admin.get('/api/extra').json()] == [pc]
