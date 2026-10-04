@@ -176,3 +176,25 @@ def test_section_selection(world):
     assert f2['extra'][0]['sections'] == one
     d = t.get(f'/api/programs/attached/{aid}').json()
     assert {l['section'] for l in d['lessons_list']} <= set(one) | {'Yekun'}
+
+
+def test_word_plan_to_library(world):
+    import glob
+    import os
+
+    import pytest
+    from .test_importers import PLANS
+    as_, _ = world
+    t = as_('ilqar')
+    assert t.post('/api/programs/import', files={'file': ('a.txt', b'x', 'text/plain')}).status_code == 400
+    assert t.post('/api/programs/import', files={'file': ('a.docx', b'not a docx', 'application/octet-stream')}).status_code == 400
+    files = sorted(glob.glob(os.path.join(PLANS, '*.docx')))
+    if not files:
+        pytest.skip('mənbə planlar yoxdur')
+    f = files[0]
+    r = t.post('/api/programs/import', files={'file': (os.path.basename(f), open(f, 'rb').read())}, data={'title': 'Köhnə plan', 'grade': '10'})
+    assert r.status_code == 200, r.text
+    p = r.json()
+    assert p['kind'] == 'fixed' and p['lessons'] > 20 and p['mine'] and p['title'] == 'Köhnə plan' and p['grade'] == 10
+    assert p['source'].startswith('Word: ') and p['used_by'] == []
+    assert any(x['id'] == p['id'] for x in t.get('/api/programs').json())

@@ -32,6 +32,7 @@ export default function Programs() {
   const [extra, setExtra] = useState<number | null>(null)
   const [edit, setEdit] = useState<Prog | null>(null)
   const [course, setCourse] = useState<Prog | 'new' | null>(null)
+  const [word, setWord] = useState(false)
   const [ver, setVer] = useState(0)
   const reload = () => { reloadFor(); reloadLib(); setVer(v => v + 1) }
   return (
@@ -45,7 +46,8 @@ export default function Programs() {
       <h2 className="sec">Proqramlar kitabxanası <small>{ta && f ? `${f.grade_roman || ''} sinfə uyğun olanlar öndə` : 'bütün siniflər'}</small></h2>
       <div className="toolbar"><select className="sel keep" value={lvl} onChange={e => setLvl(e.target.value)} aria-label="Səviyyə">
         <option value="">Bütün səviyyələr</option>{LEVELS.map(l => <option key={l}>{l}</option>)}</select>
-        <button className="btn sm right" onClick={() => setCourse('new')}>+ Kurs proqramı</button></div>
+        <button className="btn sm right" onClick={() => setCourse('new')}>+ Kurs proqramı</button>
+        <button className="btn sm" onClick={() => setWord(true)}>Word planını yüklə</button></div>
       {!lib ? <Loading /> : (
         <div className="jlist">{lib.map(p => (
           <div key={p.id} className="prog-row">
@@ -63,6 +65,7 @@ export default function Programs() {
       {attach && ta && <AttachProgram p={attach} ta={ta} onClose={() => setAttach(null)} onDone={() => { setAttach(null); reload() }} />}
       {extra && <ExtraLessons aid={extra} onClose={() => setExtra(null)} />}
       {edit && <EditProgram p={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
+      {word && <WordImport onClose={() => setWord(false)} onDone={() => { setWord(false); reload() }} />}
       {course && <CourseEditor p={course === 'new' ? null : course} onClose={() => setCourse(null)} onDone={() => { setCourse(null); reload() }} />}
     </>
   )
@@ -240,22 +243,48 @@ function EditProgram({ p, onClose, onDone }: { p: Prog; onClose: () => void; onD
 }
 
 
+/** Rəsmi perspektiv plan (.docx) birbaşa kitabxanaya – heç bir sinfə tətbiq olunmur; sonra istənilən sinif/qrupa seçilir. */
+function WordImport({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [file, setFile] = useState<File | null>(null)
+  const [title, setTitle] = useState('')
+  const [grade, setGrade] = useState('')
+  const [warn, setWarn] = useState<string[] | null>(null)
+  return (
+    <Drawer title="Word planını kitabxanaya yüklə" onClose={onClose}
+      footer={<><button className="btn" onClick={onClose}>{warn ? 'Bağla' : 'Ləğv et'}</button>
+        {!warn && <AsyncBtn className="btn primary" disabled={!file} ok="Kitabxanaya əlavə olundu" onClick={async () => {
+          const fd = new FormData()
+          fd.append('file', file!)
+          if (title.trim()) fd.append('title', title.trim())
+          if (grade) fd.append('grade', grade)
+          const r = await api<any>('/api/programs/import', { method: 'POST', form: fd })
+          if (r.warnings?.length) setWarn(r.warnings); else onDone()
+        }}>Yüklə</AsyncBtn>}</>}>
+      <p className="small muted" style={{ marginTop: 0 }}>Plan heç bir sinfə tətbiq olunmur – kitabxanada sabit proqram kimi qalır; sonra istənilən sinif və ya qrup üçün
+        «Əsas proqram» və ya «Əlavə proqram» kimi seçirsiniz.</p>
+      {warn ? <><p className="small" style={{ color: 'var(--ok)' }}>Yükləndi. Faylda qeydlər:</p>
+        {warn.map(w => <p key={w} className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {w}</p>)}</> :
+        <div className="fg">
+          <Field label="Fayl (.docx)" full><input type="file" accept=".docx" onChange={e => setFile(e.target.files?.[0] || null)} /></Field>
+          <Field label="Ad" full hint="boş – fayl adı"><input value={title} onChange={e => setTitle(e.target.value)} maxLength={200} /></Field>
+          <Field label="Sinif" hint="boş – fayl adından"><select value={grade} onChange={e => setGrade(e.target.value)}>
+            <option value="">—</option>{Array.from({ length: 11 }, (_, i) => i + 1).map(g => <option key={g} value={g}>{g}</option>)}</select></Field>
+        </div>}
+    </Drawer>
+  )
+}
+
 /** Müəllimin kurs (repetitor) proqramı: bölmə/mövzu mətni + sınaq qaydaları; KSQ/BSQ və yarımil yoxdur. */
 function CourseEditor({ p, onClose, onDone }: { p: Prog | null; onClose: () => void; onDone: () => void }) {
   const [d] = useLoad<any>(() => (p ? get(`/api/programs/${p.id}`) : Promise.resolve(null)), [p?.id])
   const [f, setF] = useState<any>(p ? null : { title: '', subject: 'Riyaziyyat', grade: '', level: '', purposes: [] as string[], description: '',
     outline: '', mock_after_section: true, mock_every: '0', final_mock: true })
   if (p && d && !f) {
-    const outline = d.outline[0].sections.map((s: any) => `# ${s.section}
-${s.topics.join('
-')}`).join('
-
-')
+    const outline = d.outline[0].sections.map((s: any) => `# ${s.section}\n${s.topics.join('\n')}`).join('\n\n')
     setF({ title: p.title, subject: p.subject, grade: p.grade ? String(p.grade) : '', level: p.level || '', purposes: p.purposes, description: p.description || '',
       outline, mock_after_section: !!d.options?.mock_after_section, mock_every: String(d.options?.mock_every || 0), final_mock: d.options?.final_mock !== false })
   }
-  const topics = f ? f.outline.split('
-').filter((l: string) => l.trim() && !l.trim().startsWith('#')).length : 0
+  const topics = f ? f.outline.split('\n').filter((l: string) => l.trim() && !l.trim().startsWith('#')).length : 0
   const toggle = (x: string) => setF({ ...f, purposes: f.purposes.includes(x) ? f.purposes.filter((y: string) => y !== x) : [...f.purposes, x] })
   return (
     <Drawer title={p ? `Kurs proqramı: ${p.title}` : 'Yeni kurs proqramı'} onClose={onClose}
@@ -281,12 +310,7 @@ ${s.topics.join('
             <label key={k} className="check"><input type="checkbox" checked={f.purposes.includes(k)} onChange={() => toggle(k)} /> {v}</label>))}</div></Field>
         <Field label="Bölmələr və mövzular" full hint="«# » ilə başlayan sətir – bölmə; qalan hər sətir – bir mövzu (nömrə və «-» atılır)">
           <textarea value={f.outline} onChange={e => setF({ ...f, outline: e.target.value })} rows={14} style={{ fontFamily: 'inherit' }}
-            placeholder={'# Ədədlər nəzəriyyəsi
-1. Bölünmə əlamətləri
-2. Qalıqlar
-
-# Kombinatorika
-Dirixle prinsipi'} /></Field>
+            placeholder={'# Ədədlər nəzəriyyəsi\n1. Bölünmə əlamətləri\n2. Qalıqlar\n\n# Kombinatorika\nDirixle prinsipi'} /></Field>
         <div className="stack" style={{ gap: 6 }}>
           <label className="check"><input type="checkbox" checked={f.mock_after_section} onChange={e => setF({ ...f, mock_after_section: e.target.checked })} /> Hər bölmənin sonunda sınaq</label>
           <label className="check"><input type="checkbox" checked={f.final_mock} onChange={e => setF({ ...f, final_mock: e.target.checked })} /> Kursun sonunda yekun sınaq</label>

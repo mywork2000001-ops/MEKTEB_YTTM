@@ -2,7 +2,7 @@
 Ümumi proqramlar (DİM «Sinif testləri» V–XI) hamıya görünür; sinif planlarından saxlananlar – yalnız sahibinə."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, object_session
@@ -225,6 +225,47 @@ def archive(pid: int, user: User = Depends(settings_unlocked), db: Session = Dep
     audit(db, user, 'archive', 'plan_program', p.id)
     db.commit()
     return {'ok': True}
+
+
+# ---------------------------------------------------------------- Word planı birbaşa kitabxanaya
+@router.post('/import')
+def import_word(file: UploadFile = File(...), title: str | None = Form(None), grade: int | None = Form(None),
+                subject: str = Form('Riyaziyyat'), user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    """Rəsmi perspektiv plan (.docx) sabit proqram kimi kitabxanaya düşür; heç bir sinfə tətbiq olunmur."""
+    import tempfile
+    from pathlib import Path
+    from ..importers.plans import parse_plan
+    from ..programs import FIELDS
+    name = file.filename or 'plan.docx'
+    if not name.lower().endswith('.docx'):
+        raise HTTPException(400, 'Word (.docx) faylı seçin')
+    if grade is not None and not 1 <= grade <= 11:
+        raise HTTPException(400, 'Sinif 1–11')
+    with tempfile.TemporaryDirectory() as tmp:
+        f = Path(tmp) / 'plan.docx'
+        f.write_bytes(file.file.read())
+        try:
+            parsed = parse_plan(f)
+        except Exception as e:                          # zədəli / plan cədvəli olmayan fayl
+            raise HTTPException(400, f'Plan oxunmadı: {e}')
+    if not parsed.lessons:
+        raise HTTPException(400, 'Faylda perspektiv plan cədvəli tapılmadı')
+    lessons = []
+    for l in parsed.lessons:
+        d = {k: getattr(l, k, None) for k in FIELDS}
+        d['tasks'] = [t.__dict__ for t in (l.tasks or [])]
+        d['standards'] = d['standards'] or []
+        lessons.append(d)
+    from ..domain.classes import grade_of
+    stem = name.rsplit('.', 1)[0]
+    p = PlanProgram(school_id=user.school_id, owner_id=user.id, subject=subject.strip() or 'Riyaziyyat',
+                    grade=grade or grade_of(stem, None), kind='fixed', title=(title or '').strip() or stem[:200],
+                    source=f'Word: {name}'[:300], description=f'{len(lessons)} dərs', data={'lessons': lessons})
+    db.add(p)
+    db.flush()
+    audit(db, user, 'import', 'plan_program', p.id, file=name, lessons=len(lessons))
+    db.commit()
+    return {**_out(p, {}), 'warnings': parsed.warnings}
 
 
 # ---------------------------------------------------------------- müəllimin kurs (repetitor) proqramı
