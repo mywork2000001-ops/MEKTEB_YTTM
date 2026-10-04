@@ -212,3 +212,13 @@ def test_estimate_before_join(world):
     assert t.get('/api/classes').json()[-1]['mine'] is None                       # heç nə yazılmayıb
     bad = t.post(f"/api/programs/{prep['id']}/estimate", json={**body, 'times': [{'weekday': 1, 'start': '18:00', 'end': '17:00'}]}).json()
     assert bad['slots'] == 0 and bad['warnings']
+
+
+def test_week_view_includes_weekend_for_private(world):
+    as_, _ = world
+    t = as_('ilqar')
+    g = t.post('/api/classes', json={'name': 'Şənbə qrupu', 'kind': 'adi', 'private': True}).json()['id']
+    ta = t.post(f'/api/classes/{g}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1,
+                                                'times': [{'weekday': 5, 'start': '10:00', 'end': '11:30'}]}).json()['mine']['ta_id']
+    w = t.get(f'/api/plan/{ta}', params={'view': 'week', 'date': '2026-10-07'}).json()
+    assert w['to'] == '2026-10-11' and [i['date'] for i in w['items']] == ['2026-10-10']

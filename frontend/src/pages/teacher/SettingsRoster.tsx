@@ -271,7 +271,7 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
         {est && <div className="small" style={{ margin: 0 }}>
           <span className="muted">Proqram: {est.lessons} dərs · kursda {est.slots} dərs yuvası</span>
           {est.warnings.map(w => <p key={w} style={{ color: 'var(--warn)', margin: '4px 0 0' }}>⚠ {w}</p>)}
-          {est.warnings.length > 0 && <p className="muted" style={{ margin: '4px 0 0' }}>Qoşulandan sonra «Əsas proqramı dəyiş» ilə lazım olan bölmələri seçə bilərsiniz.</p>}
+          {est.warnings.length > 0 && <p className="muted" style={{ margin: '4px 0 0' }}>Qoşulandan sonra «Cədvəl» → «Bölmələri seç» ilə lazım olan bölmələri seçə bilərsiniz.</p>}
         </div>}
         {!cls.mine && cls.purpose && <p className="small muted" style={{ margin: 0 }}>Qrupun məqsədi: <b>{PURPOSES[cls.purpose] || cls.purpose}</b> – ★ uyğun proqramlar öndədir.</p>}
         {me?.workspace === 'private' || course.from || course.to ? <CourseDates v={course} onChange={setCourse} />

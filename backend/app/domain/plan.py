@@ -40,13 +40,13 @@ def slot_at(plan: list[Slot], d: dt.date, period: int) -> Slot | None:
 
 
 def view_range(view: str, d: dt.date, sem1_end: dt.date, sem2_start: dt.date, start: dt.date,
-               end: dt.date) -> tuple[dt.date, dt.date]:
-    """Şagird/müəllim görünüşləri: gün, həftə (B.e.–C.), ay, yarımil."""
+               end: dt.date, weekend: bool = False) -> tuple[dt.date, dt.date]:
+    """Şagird/müəllim görünüşləri: gün, həftə (B.e.–C.; fərdi qrupda şənbə/bazar dərsi varsa – B.e.–B.), ay, yarımil."""
     if view == 'day':
         return d, d
     if view == 'week':
         a = d - dt.timedelta(days=d.weekday())
-        return a, a + dt.timedelta(days=4)
+        return a, a + dt.timedelta(days=6 if weekend else 4)
     if view == 'month':
         a = d.replace(day=1)
         b = (a.replace(year=a.year + 1, month=1) if a.month == 12 else a.replace(month=a.month + 1)) - dt.timedelta(days=1)

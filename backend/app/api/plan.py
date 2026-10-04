@@ -71,7 +71,8 @@ def plan_view(ta_id: int, view: str = 'week', date: dt.date | None = None, user:
     ctx = plan_ctx(db, ta)
     d = date or today()
     try:
-        a, b = view_range(view, d, ctx.year.sem1_end, ctx.year.sem2_start, ctx.year.start, ctx.year.end)
+        a, b = view_range(view, d, ctx.year.sem1_end, ctx.year.sem2_start, ctx.year.start, ctx.year.end,
+                          weekend=any(k in ('5', '6') for k in (ta.slots or {})))
     except ValueError:
         raise HTTPException(400, 'görünüş: day, week, month, semester')
     items = [{'date': s.date, 'weekday': WEEKDAYS[s.date.weekday()], 'period': s.period,

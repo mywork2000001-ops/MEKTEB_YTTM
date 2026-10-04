@@ -133,7 +133,8 @@ def plan(view: str = 'week', date: dt.date | None = None, user: User = Depends(s
     for ta, c in my_assignments(db, s):
         ctx = plan_ctx(db, ta)
         try:
-            a, b = view_range(view, d, ctx.year.sem1_end, ctx.year.sem2_start, ctx.year.start, ctx.year.end)
+            a, b = view_range(view, d, ctx.year.sem1_end, ctx.year.sem2_start, ctx.year.start, ctx.year.end,
+                              weekend=any(k in ('5', '6') for k in (ta.slots or {})))
             rng = (a, b)
         except ValueError:
             raise HTTPException(400, 'görünüş: day, week, month, semester')
