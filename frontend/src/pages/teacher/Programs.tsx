@@ -12,7 +12,8 @@ type Prog = { id: number; title: string; subject: string; grade: number | null; 
   level: string | null; mine: boolean; builtin: boolean; used_by: string[]; fits: boolean; workspace: 'school' | 'private' | null
   course: boolean; purposes: string[] }
 type For = { ta_id: number; class_name: string; subject: string; grade: number | null; grade_roman: string | null; main: Prog | null
-  extra: { id: number; level: string | null; note: string | null; program: Prog }[] }
+  main_sections: string[] | null; extra: { id: number; level: string | null; note: string | null; sections: string[] | null; program: Prog }[] }
+type Sec = { name: string; part: string | null; count: number }
 const LEVELS = ['Zəif', 'Orta', 'Güclü']
 /** Hazırlıq məqsədi (fərdi qrup və proqram təyinatı) – docs/repetitor-proqramlar-promtu.md §7. */
 export const PURPOSES: Record<string, string> = { sinif: 'Sinif dərsinə dəstək', buraxilis9: 'IX buraxılış', buraxilis11: 'XI buraxılış',
@@ -106,17 +107,52 @@ function ViewProgram({ p, onClose }: { p: Prog; onClose: () => void }) {
   )
 }
 
+/** Proqramın bölmələrindən seçim (eyni proqramın daxilində süzgəc – proqramlar qarışmır). null – hamısı. */
+function useSections(pid: number) {
+  const [d] = useLoad<any>(() => get(`/api/programs/${pid}`), [pid])
+  const all: Sec[] = d?.sections || []
+  const [sel, setSel] = useState<string[] | null>(null)
+  const chosen = sel === null || sel.length === all.length ? null : all.map(s => s.name).filter(n => sel.includes(n))
+  return { all, sel, setSel, chosen, ready: !!d }
+}
+
+function SectionPicker({ all, sel, setSel, unit }: { all: Sec[]; sel: string[] | null; setSel: (v: string[] | null) => void; unit: string }) {
+  const [open, setOpen] = useState(false)
+  if (all.length < 2) return null
+  const cur = sel ?? all.map(s => s.name)
+  const parts = [...new Set(all.map(s => s.part).filter(Boolean))] as string[]
+  const flip = (n: string) => setSel(cur.includes(n) ? cur.filter(x => x !== n) : [...cur, n])
+  return (
+    <fieldset style={{ margin: '0 0 12px' }}><legend>Bölmələr <small className="muted">{cur.length}/{all.length} seçilib</small></legend>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+        <button className="btn sm" onClick={() => setSel(null)}>Hamısı</button>
+        <button className="btn sm" onClick={() => setSel([])}>Heç biri</button>
+        {parts.map(pt => <button key={pt} className="btn sm" onClick={() => setSel(all.filter(s => s.part === pt).map(s => s.name))}>Yalnız {pt}</button>)}
+        <button className="btn sm ghost right" onClick={() => setOpen(!open)}>{open ? 'Gizlət' : 'Siyahını aç'}</button>
+      </div>
+      {open && <div style={{ maxHeight: 260, overflow: 'auto' }}>{all.map(s => (
+        <label key={s.name} className="check" style={{ display: 'flex' }}><input type="checkbox" checked={cur.includes(s.name)} onChange={() => flip(s.name)} />
+          <span className="grow">{s.name}{s.part ? <span className="small muted"> · {s.part}</span> : null}</span><span className="small muted">{s.count} {unit}</span></label>))}</div>}
+      {cur.length === 0 && <p className="small" style={{ color: 'var(--bad)', margin: '4px 0 0' }}>Ən azı bir bölmə seçin.</p>}
+    </fieldset>
+  )
+}
+
 function ApplyProgram({ p, ta, onClose, onDone }: { p: Prog; ta: number; onClose: () => void; onDone: () => void }) {
-  const [pv, err] = useLoad<any>(() => get(`/api/programs/${p.id}/preview/${ta}`), [p.id, ta])
+  const sx = useSections(p.id)
+  const key = JSON.stringify(sx.chosen)
+  const [pv, err] = useLoad<any>(() => (sx.chosen?.length === 0 ? Promise.resolve(null)
+    : get(`/api/programs/${p.id}/preview/${ta}`, sx.chosen ? { sections: key } : {})), [p.id, ta, key])
   return (
     <Drawer title={`Əsas proqram: ${p.title}`} onClose={onClose}
       footer={<><button className="btn" onClick={onClose}>Ləğv et</button>
-        <AsyncBtn className="btn primary" disabled={!pv} ok="Proqram tətbiq olundu" onClick={async () => {
-          const r = await post<any>(`/api/programs/${p.id}/apply/${ta}`)
+        <AsyncBtn className="btn primary" disabled={!pv || sx.chosen?.length === 0} ok="Proqram tətbiq olundu" onClick={async () => {
+          const r = await post<any>(`/api/programs/${p.id}/apply/${ta}`, { sections: sx.chosen })
           toast(`${r.lessons} dərs · əvvəlki plan kitabxanada saxlanıldı`); onDone()
         }}>Tətbiq et</AsyncBtn></>}>
+      <SectionPicker all={sx.all} sel={sx.sel} setSel={sx.setSel} unit={p.kind === 'adaptive' ? 'mövzu' : 'dərs'} />
       <ErrorBox error={err} />
-      {!pv ? <Loading /> : <>
+      {sx.chosen?.length === 0 ? null : !pv ? <Loading /> : <>
         {p.course ? <div className="kpis" style={{ marginBottom: 12 }}>
           <div className="kpi"><b>{pv.lessons} / {pv.sem1_slots + pv.sem2_slots}</b><span>dərs / kursun yuvaları</span></div>
           <div className="kpi"><b>{pv.list.filter((l: any) => /sınaq/i.test(l.topic)).length}</b><span>sınaq</span></div>
@@ -141,11 +177,12 @@ function ApplyProgram({ p, ta, onClose, onDone }: { p: Prog; ta: number; onClose
 function AttachProgram({ p, ta, onClose, onDone }: { p: Prog; ta: number; onClose: () => void; onDone: () => void }) {
   const [level, setLevel] = useState('')
   const [note, setNote] = useState('')
+  const sx = useSections(p.id)
   return (
     <Drawer title={`Əlavə proqram: ${p.title}`} onClose={onClose}
       footer={<><button className="btn" onClick={onClose}>Ləğv et</button>
-        <AsyncBtn className="btn primary" ok="Əlavə proqram qoşuldu" onClick={async () => {
-          await post(`/api/programs/${p.id}/attach/${ta}`, { level: level || null, note: note.trim() || null }); onDone()
+        <AsyncBtn className="btn primary" ok="Əlavə proqram qoşuldu" disabled={sx.chosen?.length === 0} onClick={async () => {
+          await post(`/api/programs/${p.id}/attach/${ta}`, { level: level || null, note: note.trim() || null, sections: sx.chosen }); onDone()
         }}>Qoş</AsyncBtn></>}>
       <p className="small muted">Əlavə proqram jurnala yazılmır və əsas proqramla qarışmır – öz dərs siyahısı sinfin cədvəlinə görə ayrıca göstərilir və çap olunur.</p>
       <div className="fg">
@@ -153,6 +190,7 @@ function AttachProgram({ p, ta, onClose, onDone }: { p: Prog; ta: number; onClos
           <option value="">Bütün sinif / qrup</option>{LEVELS.map(l => <option key={l} value={l}>{l} səviyyə qrupu</option>)}</select></Field>
         <Field label="Qeyd" hint="istəyə görə: məs. «təkrar», «olimpiada hazırlığı»"><input value={note} onChange={e => setNote(e.target.value)} maxLength={300} /></Field>
       </div>
+      <SectionPicker all={sx.all} sel={sx.sel} setSel={sx.setSel} unit={p.kind === 'adaptive' ? 'mövzu' : 'dərs'} />
       {!p.fits && <p className="small" style={{ color: 'var(--warn)' }}>Bu proqram başqa sinif üçündür ({p.grade_roman}) – məs. zəif qrup üçün təkrar proqramı kimi şüurlu seçim.</p>}
     </Drawer>
   )
@@ -276,6 +314,7 @@ export function ProgramBox({ ta, onChanged }: { ta: number; onChanged?: () => vo
       <section className="panel"><h2>Əsas proqram <small>{f.class_name}{f.grade_roman ? ` · ${f.grade_roman} sinif` : ''}</small></h2>
         {!f.grade && <p className="small" style={{ color: 'var(--warn)', margin: '0 0 8px' }}>Sinif rəqəmi müəyyən deyil – uyğun proqramlar öndə çıxmır. Sinif formasında «Sinif rəqəmi»ni seçin.</p>}
         {f.main ? <ProgLine p={f.main} /> : <p className="muted small">Seçilməyib – jurnal və tarixlər əsas proqrama görə gedir.</p>}
+        {f.main && f.main_sections && <p className="small muted" style={{ margin: '4px 0 0' }}>Yalnız seçilmiş bölmələr ({f.main_sections.length}): {f.main_sections.join('; ')}</p>}
         <div className="row" style={{ marginTop: 10 }}>
           <button className="btn sm primary" onClick={() => setPick('main')}>{f.main ? 'Əsas proqramı dəyiş' : 'Əsas proqramı seç'}</button>
           {f.main && <AsyncBtn className="btn sm ghost" ok="Proqram kimi saxlanıldı" onClick={async () => { await post(`/api/programs/save/${ta}`, {}); done() }}>Cari planı ayrıca saxla</AsyncBtn>}
@@ -284,7 +323,7 @@ export function ProgramBox({ ta, onChanged }: { ta: number; onChanged?: () => vo
         {f.extra.length === 0 ? <p className="muted small">Yoxdur – bütün sinif və ya səviyyə qrupu (Zəif / Orta / Güclü) üçün əlavə edə bilərsiniz; jurnala qarışmır.</p> :
           f.extra.map(x => (
             <div key={x.id} className="prog-x">
-              <span className="grow prog-line"><b>{x.program.title}</b><span className="sub">{x.level ? <Pill tone={levelTone(x.level)}>{x.level} qrup</Pill> : 'bütün sinif'}{x.note ? ` · ${x.note}` : ''}</span></span>
+              <span className="grow prog-line"><b>{x.program.title}</b><span className="sub">{x.level ? <Pill tone={levelTone(x.level)}>{x.level} qrup</Pill> : 'bütün sinif'}{x.note ? ` · ${x.note}` : ''}{x.sections ? ` · ${x.sections.length} bölmə` : ''}</span></span>
               <button className="btn sm" onClick={() => setExtra(x.id)}>Dərslər</button>
               <AsyncBtn className="btn sm ghost" ok="Ayrıldı" onClick={async () => { await del(`/api/programs/attached/${x.id}`); done() }}>Ayır</AsyncBtn>
             </div>))}

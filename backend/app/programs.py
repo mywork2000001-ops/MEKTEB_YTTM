@@ -168,6 +168,8 @@ def expand(tpl: dict, grade: int, cap1: int, cap2: int, summative: bool) -> tupl
 
     for sem, cap in ((1, cap1), (2, cap2)):
         sections = tpl['semesters'][sem - 1]
+        if not sections:                          # bölmə seçimində bu yarımildən heç nə qalmayıb
+            continue
         topics = [(s, t) for s in sections for t in s['topics']]
         ksq_sections = [s for s in sections if not s['section'].startswith('Təkrar')]
         diag = sem == 1
@@ -311,20 +313,62 @@ def expand_course(tpl: dict, dates: list[dt.date], sem1_end: dt.date) -> tuple[l
     return out, warnings
 
 
-def lessons_for(db: Session, program: PlanProgram, ta: TeachingAssignment) -> tuple[list[dict], dict]:
-    """Proqramın bu sinif/qrup üçün dərs siyahısı və hesabatı (önbaxış və tətbiq üçün)."""
+def section_names(program: PlanProgram) -> list[dict]:
+    """Proqramın bölmələri (seçim üçün): ad, hissə (Cəbr/Həndəsə), mövzu və ya dərs sayı – ardıcıl, təkrarsız."""
+    if program.kind == 'adaptive':
+        return [{'name': s['section'], 'part': s.get('part'), 'count': len(s['topics'])} for s in tpl_sections(program.data['template'])]
+    out: dict[str, dict] = {}
+    for l in program.data.get('lessons', []):
+        k = l.get('section') or 'Bölməsiz'
+        out.setdefault(k, {'name': k, 'part': None, 'count': 0})['count'] += 1
+    return list(out.values())
+
+
+def check_sections(program: PlanProgram, sections: list[str] | None) -> list[str] | None:
+    """Seçimi yoxlayır: None və ya hamısı – None; boş və ya naməlum bölmə – ValueError."""
+    if sections is None:
+        return None
+    names = [s['name'] for s in section_names(program)]
+    bad = [s for s in sections if s not in names]
+    if bad:
+        raise ValueError(f'Proqramda belə bölmə yoxdur: {bad[0]}')
+    if not sections:
+        raise ValueError('Ən azı bir bölmə seçin')
+    return None if set(sections) == set(names) else [n for n in names if n in sections]
+
+
+def lessons_for(db: Session, program: PlanProgram, ta: TeachingAssignment,
+                sections: list[str] | None = None) -> tuple[list[dict], dict]:
+    """Proqramın bu sinif/qrup üçün dərs siyahısı və hesabatı (önbaxış və tətbiq üçün).
+    sections – proqramın yalnız seçilmiş bölmələri (eyni proqramın daxilində süzgəc; None – hamısı)."""
+    from .models import AcademicYear
     cap = capacity(db, ta)
     cls = db.get(SchoolClass, ta.class_id)
+    sem1_end = db.get(AcademicYear, cls.year_id).sem1_end
     grade = class_grade(db, cls) or program.grade
+    keep = set(sections) if sections else None
+    relabel = False
     if is_course(program):
-        from .models import AcademicYear
-        lessons, warnings = expand_course(program.data['template'], [d for d, _ in cap['slots']],
-                                          db.get(AcademicYear, cls.year_id).sem1_end)
+        tpl = dict(program.data['template'])
+        if keep:
+            tpl['sections'] = [s for s in tpl['sections'] if s['section'] in keep]
+        lessons, warnings = expand_course(tpl, [d for d, _ in cap['slots']], sem1_end)
     elif program.kind == 'adaptive':
-        lessons, warnings = expand(program.data['template'], program.grade or grade, cap['sem1'], cap['sem2'],
-                                   ta.has_summative)
+        tpl = dict(program.data['template'])
+        cap1, cap2 = cap['sem1'], cap['sem2']
+        warnings = []
+        if keep:
+            tpl['semesters'] = [[s for s in sem if s['section'] in keep] for sem in tpl['semesters']]
+            for i, other in ((0, 1), (1, 0)):
+                if not tpl['semesters'][i] and tpl['semesters'][other]:
+                    warnings.append(f'{"I" if i == 0 else "II"} yarımildən bölmə seçilməyib – onun dərs yuvaları '
+                                    f'{"II" if i == 0 else "I"} yarımilin bölmələrinə verildi')
+                    cap1, cap2 = (0, cap1 + cap2) if i == 0 else (cap1 + cap2, 0)
+                    relabel = True
+        les, w = expand(tpl, program.grade or grade, cap1, cap2, ta.has_summative)
+        lessons, warnings = les, warnings + w
     else:
-        lessons, warnings = [dict(l) for l in program.data.get('lessons', [])], []
+        lessons, warnings = [dict(l) for l in program.data.get('lessons', []) if not keep or (l.get('section') or 'Bölməsiz') in keep], []
         total = cap['sem1'] + cap['sem2']
         if len(lessons) > total:
             warnings.append(f'Proqramda {len(lessons)} dərs var, sinfin cədvəlində ildə {total} dərs yuvası – '
@@ -332,6 +376,9 @@ def lessons_for(db: Session, program: PlanProgram, ta: TeachingAssignment) -> tu
         n1 = sum(1 for l in lessons if l.get('semester') == 1)
         if n1 > cap['sem1']:
             warnings.append(f'I yarımil dərsləri ({n1}) I yarımil yuvalarından ({cap["sem1"]}) çoxdur – bir hissəsi II yarımilə düşəcək')
+    if relabel:                                   # bir yarımil boş qalıb – yarımil dərsin düşdüyü tarixə görə
+        for i, l in enumerate(lessons):
+            l['semester'] = 1 if i < len(cap['slots']) and cap['slots'][i][0] <= sem1_end else 2
     if program.grade and grade and program.grade != grade and not is_course(program):
         warnings.append(f'Proqram {ROMAN.get(program.grade, program.grade)} sinif üçündür, bu sinif – {ROMAN.get(grade, grade)}')
     from sqlalchemy import func
@@ -341,16 +388,16 @@ def lessons_for(db: Session, program: PlanProgram, ta: TeachingAssignment) -> tu
            'sem1_lessons': sum(1 for l in lessons if l['semester'] == 1),
            'sem2_lessons': sum(1 for l in lessons if l['semester'] == 2),
            'ksq': sum(l['assessment_type'] == 'KSQ' for l in lessons), 'bsq': sum(l['assessment_type'] == 'BSQ' for l in lessons),
-           'written_lessons': n_written, 'warnings': warnings}
+           'written_lessons': n_written, 'warnings': warnings, 'sections': sections}
     return lessons, rep
 
 
-def apply(db: Session, program: PlanProgram, ta: TeachingAssignment, user: User) -> dict:
+def apply(db: Session, program: PlanProgram, ta: TeachingAssignment, user: User, sections: list[str] | None = None) -> dict:
     """Proqramı sinif/qrupa tətbiq edir. Əvvəlki plan kitabxanaya saxlanılır; jurnalda yazılmış dərslərin
     mövzusu dondurulur; dərslər sıra № ilə yenilənir (id-lər qorunur), «Tarix» – sinfin cədvəlinə görə."""
     from .services import plan_ctx, taught_lesson
     from .domain.plan import slot_at
-    lessons, rep = lessons_for(db, program, ta)
+    lessons, rep = lessons_for(db, program, ta, sections)
     prev = None
     cur = db.get(PlanProgram, ta.program_id) if ta.program_id else None
     cls = db.get(SchoolClass, ta.class_id)
@@ -389,14 +436,15 @@ def apply(db: Session, program: PlanProgram, ta: TeachingAssignment, user: User)
             db.delete(pl)
             removed += 1
     ta.program_id = program.id
+    ta.program_sections = sections
     db.flush()
     return {**rep, 'previous_program_id': prev.id if prev else None, 'frozen_topics': frozen, 'removed': removed,
             'applied_at': now()}
 
 
-def dated(db: Session, program: PlanProgram, ta: TeachingAssignment) -> dict:
+def dated(db: Session, program: PlanProgram, ta: TeachingAssignment, sections: list[str] | None = None) -> dict:
     """Əlavə proqramın dərs siyahısı bu sinfin cədvəlinə görə tarixlərlə – jurnala yazılmır (əsas proqramla qarışmır)."""
-    lessons, rep = lessons_for(db, program, ta)
+    lessons, rep = lessons_for(db, program, ta, sections)
     cap = capacity(db, ta)
     out = []
     for i, l in enumerate(lessons):

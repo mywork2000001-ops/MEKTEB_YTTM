@@ -145,3 +145,34 @@ def test_private_group_purpose_and_program_choice(world):
     sc = admin.post('/api/classes', json={'name': 'IX q'}).json()['id']
     top = admin.get('/api/programs', params={'class_id': sc}).json()[0]
     assert top['grade'] == 9 and not top['course']
+
+
+def test_section_selection(world):
+    import json
+    as_, _ = world
+    t = as_('ilqar')
+    pid = t.post('/api/classes', json={'name': 'Həndəsə qrupu', 'kind': 'adi', 'private': True, 'grade': 9}).json()['id']
+    ta = t.post(f'/api/classes/{pid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 2,
+                                                  'times': [{'weekday': 1, 'start': '17:00', 'end': '18:00'},
+                                                            {'weekday': 3, 'start': '17:00', 'end': '18:00'}]}).json()['mine']['ta_id']
+    x9 = _builtin(t, 9)
+    secs = t.get(f"/api/programs/{x9['id']}").json()['sections']
+    geo = [s['name'] for s in secs if s['part'] == 'Həndəsə']
+    assert geo and len(geo) < len(secs)
+    pv = t.get(f"/api/programs/{x9['id']}/preview/{ta}", params={'sections': json.dumps(geo)}).json()
+    assert pv['lessons'] == pv['sem1_slots'] + pv['sem2_slots']
+    assert {l['section'] for l in pv['list']} <= set(geo) | {'Təkrar', 'Diaqnostik qiymətləndirmə', 'Böyük summativ qiymətləndirmə'}
+    assert t.get(f"/api/programs/{x9['id']}/preview/{ta}", params={'sections': '[]'}).status_code == 400
+    assert t.get(f"/api/programs/{x9['id']}/preview/{ta}", params={'sections': '["Yox"]'}).status_code == 400
+    r = t.post(f"/api/programs/{x9['id']}/apply/{ta}", json={'sections': geo}).json()
+    assert r['lessons'] == pv['lessons']
+    f = t.get(f'/api/programs/for/{ta}').json()
+    assert f['main_sections'] == geo
+    # əlavə proqram – kursdan yalnız bir bölmə
+    prep = next(p for p in t.get('/api/programs').json() if p['builtin'] and p['course'] and p['grade'] == 9)
+    one = [t.get(f"/api/programs/{prep['id']}").json()['sections'][0]['name']]
+    f2 = t.post(f"/api/programs/{prep['id']}/attach/{ta}", json={'sections': one}).json()
+    aid = f2['extra'][0]['id']
+    assert f2['extra'][0]['sections'] == one
+    d = t.get(f'/api/programs/attached/{aid}').json()
+    assert {l['section'] for l in d['lessons_list']} <= set(one) | {'Yekun'}

@@ -13,7 +13,8 @@ from ..deps import staff
 from typing import Literal
 
 from ..models import AssignmentProgram, PlanProgram, SchoolClass, TeachingAssignment, User, now
-from ..programs import ROMAN, apply, dated, ensure_builtin, ensure_current, is_course, lessons_for, purposes, snapshot, tpl_sections
+from ..programs import (ROMAN, apply, check_sections, dated, ensure_builtin, ensure_current, is_course, lessons_for, purposes,
+                        section_names, snapshot, tpl_sections)
 from ..services import class_grade, own_assignment
 from .common import audit, settings_unlocked
 
@@ -108,6 +109,7 @@ def list_programs(grade: int | None = None, subject: str | None = None, level: s
 def program_detail(pid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     p = _visible(db, user, pid)
     out = _out(p, {})
+    out['sections'] = section_names(p)
     if is_course(p):
         tpl = p.data['template']
         out['outline'] = [{'semester': None, 'sections': [{'section': s['section'], 'part': s.get('part'), 'topics': s['topics']}
@@ -126,21 +128,47 @@ def program_detail(pid: int, user: User = Depends(staff), db: Session = Depends(
     return out
 
 
+def _sections(p: PlanProgram, sections: list[str] | None) -> list[str] | None:
+    try:
+        return check_sections(p, sections)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+def _q_sections(raw: str | None) -> list[str] | None:
+    """Sorğu parametri: JSON massivi (bölmə adlarında vergül ola bilər)."""
+    if raw is None:
+        return None
+    import json
+    try:
+        v = json.loads(raw)
+    except ValueError:
+        raise HTTPException(400, 'sections – JSON massivi')
+    if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+        raise HTTPException(400, 'sections – JSON massivi')
+    return v
+
+
 @router.get('/{pid}/preview/{ta_id}')
-def preview(pid: int, ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+def preview(pid: int, ta_id: int, sections: str | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
     p = _visible(db, user, pid)
     ta = own_assignment(db, user, ta_id)
-    lessons, rep = lessons_for(db, p, ta)
+    lessons, rep = lessons_for(db, p, ta, _sections(p, _q_sections(sections)))
     return {**rep, 'program': p.title,
             'list': [{'seq': i, 'semester': l['semester'], 'section': l.get('section'), 'topic': l['topic'],
                       'assessment_type': l['assessment_type'], 'standards': l.get('standards') or []} for i, l in enumerate(lessons, 1)]}
 
 
+class ApplyIn(BaseModel):
+    sections: list[str] | None = None          # proqramın seçilmiş bölmələri (None – hamısı)
+
+
 @router.post('/{pid}/apply/{ta_id}')
-def apply_program(pid: int, ta_id: int, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+def apply_program(pid: int, ta_id: int, body: ApplyIn | None = None, user: User = Depends(settings_unlocked),
+                  db: Session = Depends(get_db)):
     p = _visible(db, user, pid)
     ta = own_assignment(db, user, ta_id)
-    rep = apply(db, p, ta, user)
+    rep = apply(db, p, ta, user, _sections(p, body.sections if body else None))
     audit(db, user, 'update', 'plan_program', ta.id, program_id=p.id, lessons=rep['lessons'],
           previous_program_id=rep['previous_program_id'])
     db.commit()
@@ -275,11 +303,13 @@ def update_course(pid: int, body: CourseIn, user: User = Depends(settings_unlock
 def _for(db: Session, ta: TeachingAssignment) -> dict:
     cls = db.get(SchoolClass, ta.class_id)
     main = db.get(PlanProgram, ta.program_id) if ta.program_id else None
-    extra = [{'id': ap.id, 'level': ap.level, 'note': ap.note, 'program': _out(db.get(PlanProgram, ap.program_id), {})}
+    extra = [{'id': ap.id, 'level': ap.level, 'note': ap.note, 'sections': ap.sections,
+              'program': _out(db.get(PlanProgram, ap.program_id), {})}
              for ap in db.scalars(select(AssignmentProgram).where(AssignmentProgram.assignment_id == ta.id)
                                   .order_by(AssignmentProgram.id))]
     return {'ta_id': ta.id, 'class_name': cls.name, 'subject': ta.subject, 'grade': class_grade(db, cls),
-            'grade_roman': ROMAN.get(class_grade(db, cls)), 'main': _out(main, {}) if main else None, 'extra': extra}
+            'grade_roman': ROMAN.get(class_grade(db, cls)), 'main': _out(main, {}) if main else None,
+            'main_sections': ta.program_sections if main else None, 'extra': extra}
 
 
 @router.get('/for/{ta_id}')
@@ -294,6 +324,7 @@ def programs_for(ta_id: int, user: User = Depends(staff), db: Session = Depends(
 class AttachIn(BaseModel):
     level: LEVELS | None = None
     note: str | None = Field(None, max_length=300)
+    sections: list[str] | None = None
 
 
 @router.post('/{pid}/attach/{ta_id}')
@@ -306,7 +337,8 @@ def attach(pid: int, ta_id: int, body: AttachIn, user: User = Depends(settings_u
     if db.scalar(select(AssignmentProgram.id).where(AssignmentProgram.assignment_id == ta.id, AssignmentProgram.program_id == p.id,
                                                     (AssignmentProgram.level == body.level) if body.level else AssignmentProgram.level.is_(None))):
         raise HTTPException(409, 'Bu proqram artıq əlavə edilib')
-    ap = AssignmentProgram(assignment_id=ta.id, program_id=p.id, level=body.level, note=body.note)
+    ap = AssignmentProgram(assignment_id=ta.id, program_id=p.id, level=body.level, note=body.note,
+                           sections=_sections(p, body.sections))
     db.add(ap)
     db.flush()
     audit(db, user, 'create', 'assignment_program', ap.id, ta_id=ta.id, program_id=p.id, level=body.level)
@@ -324,7 +356,7 @@ def _ap(db: Session, user: User, aid: int) -> tuple[AssignmentProgram, TeachingA
 @router.get('/attached/{aid}')
 def attached_lessons(aid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     ap, ta = _ap(db, user, aid)
-    return {**dated(db, db.get(PlanProgram, ap.program_id), ta), 'level': ap.level, 'note': ap.note}
+    return {**dated(db, db.get(PlanProgram, ap.program_id), ta, ap.sections), 'level': ap.level, 'note': ap.note}
 
 
 @router.delete('/attached/{aid}')
