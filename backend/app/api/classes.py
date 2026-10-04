@@ -71,7 +71,8 @@ def class_out(db: Session, c: SchoolClass, user: User, mine: set[int] | None):
             'homeroom': (lambda u: u and {'id': u.id, 'name': u.full_name})(db.get(User, c.homeroom_id) if c.homeroom_id else None),
             'teachers': [{'id': i, 'name': nm, 'subject': sb} for i, nm, sb in teachers],
             'mine': my_ta and {'ta_id': my_ta.id, 'subject': my_ta.subject, 'weekly_hours': my_ta.weekly_hours, 'slots': my_ta.slots,
-                               'has_summative': my_ta.has_summative, 'program_id': my_ta.program_id}}
+                               'has_summative': my_ta.has_summative, 'program_id': my_ta.program_id,
+                               'starts_on': my_ta.starts_on, 'ends_on': my_ta.ends_on}}
 
 
 @router.get('')
@@ -192,6 +193,8 @@ class JoinIn(BaseModel):
     has_summative: bool = True
     program_id: int | None = None          # əsas perspektiv plan proqramı (kitabxanadan) – qoşulanda əvvəldən seçilir
     grade: int | None = Field(None, ge=1, le=12)   # sinif rəqəmi müəyyən deyilsə (qarışıq qrup) – proqram uyğunluğu üçün
+    starts_on: dt.date | None = None       # kurs müddəti (fərdi qrup); boş – tədris ilinin əvvəli / sonu
+    ends_on: dt.date | None = None
 
     @field_validator('slots')
     @classmethod
@@ -211,6 +214,13 @@ def join_class(cid: int, body: JoinIn, user: User = Depends(settings_unlocked), 
         from ..models import School
         if db.get(School, c.school_id).kind != 'private':
             raise HTTPException(400, 'Şənbə və bazar dərsləri yalnız fərdi (repetitor) məkanın siniflərində olur')
+    if body.starts_on or body.ends_on:
+        from ..models import AcademicYear
+        y = db.get(AcademicYear, c.year_id)
+        a, b = body.starts_on or y.start, body.ends_on or y.end
+        if not (y.start <= a <= b <= y.end):
+            raise HTTPException(400, f'Kurs müddəti tədris ilinin daxilində olmalıdır ({y.start:%d.%m.%Y} – {y.end:%d.%m.%Y}) '
+                                     'və başlama bitmədən əvvəl olmalıdır')
     if body.program_id and not body.slots:
         raise HTTPException(400, 'Proqramı tətbiq etmək üçün dərs saatlarını işarələyin')
     if sum(len(v) for v in body.slots.values()) not in (0, body.weekly_hours):

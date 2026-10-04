@@ -32,3 +32,20 @@ def test_program_workspace_label(world):
     lib = t.get('/api/programs').json()
     assert {p['workspace'] for p in lib if p['builtin']} == {None}
     assert any(p['workspace'] == 'private' for p in lib if p['mine'])
+
+
+def test_course_dates_limit_slots(world):
+    as_, _ = world
+    t = as_('ilqar')
+    pid = t.post('/api/classes', json={'name': 'Qış kursu', 'kind': 'adi', 'private': True}).json()['id']
+    base = {'subject': 'Riyaziyyat', 'weekly_hours': 2, 'slots': {'1': [1], '3': [1]}}
+    assert t.post(f'/api/classes/{pid}/join', json={**base, 'starts_on': '2027-02-01', 'ends_on': '2026-11-01'}).status_code == 400
+    assert t.post(f'/api/classes/{pid}/join', json={**base, 'starts_on': '2025-01-01'}).status_code == 400
+    r = t.post(f'/api/classes/{pid}/join', json={**base, 'starts_on': '2026-11-02', 'ends_on': '2027-01-31'}).json()
+    ta = r['mine']['ta_id']
+    assert r['mine']['starts_on'] == '2026-11-02'
+    pv = t.get(f"/api/programs/{_builtin(t, 9)['id']}/preview/{ta}").json()
+    total = pv['sem1_slots'] + pv['sem2_slots']
+    assert 15 <= total <= 26                                             # ~13 həftə × 2 dərs, bayramlar çıxılır
+    assert t.get(f'/api/journal/{ta}/day', params={'date': '2026-10-06'}).json()['lessons'] == []       # kursdan əvvəl
+    assert len(t.get(f'/api/journal/{ta}/day', params={'date': '2026-11-03'}).json()['lessons']) == 1

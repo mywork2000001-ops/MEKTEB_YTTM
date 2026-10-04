@@ -9,7 +9,7 @@ import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, isoDate, 
 type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; group_type?: 'bölünmə' | 'tədris' | null; split_with: string | null; utis_class: string | null; grade?: number | null; grade_set?: number | null
   exam_date: string | null; bells: Record<string, string> | null; students: number; can_open: boolean; archived: boolean
   homeroom: { id: number; name: string } | null
-  teachers: { id: number; name: string; subject: string }[]; mine: { ta_id: number; subject: string; weekly_hours: number; slots: Record<string, number[]>; has_summative: boolean; program_id: number | null } | null }
+  teachers: { id: number; name: string; subject: string }[]; mine: { ta_id: number; subject: string; weekly_hours: number; slots: Record<string, number[]>; has_summative: boolean; program_id: number | null; starts_on?: string | null; ends_on?: string | null } | null }
 type Stud = { id: number; full_name: string; birth_date: string | null; gender: string | null; class_id: number; class_name: string; portal_code: string
   score_language: number | null; score_math: number | null; score_foreign: number | null; archived: boolean
   left_reason?: string | null; left_on?: string | null }
@@ -212,6 +212,7 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   const [err, setErr] = useState<unknown>()
   const [leave, setLeave] = useState(false)
   const [prog, setProg] = useState('')
+  const [course, setCourse] = useState({ from: cls.mine?.starts_on || '', to: cls.mine?.ends_on || '' })   // kurs müddəti (boş – tədris ili)
   const [grade, setGrade] = useState('')            // sinif rəqəmi müəyyən deyilsə (qarışıq qrup) – proqram uyğunluğu üçün
   const [lib] = useLoad<any[]>(() => (cls.mine ? Promise.resolve([]) : get('/api/programs', { class_id: String(cls.id), ...(grade ? { grade_hint: grade } : {}) })), [cls.id, grade])
   const hours = Object.values(slots).reduce((a, v) => a + v.length, 0)
@@ -223,7 +224,7 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   return (
     <Drawer title={`${cls.name} – ${cls.mine ? 'dərs cədvəli' : 'sinfə qoşul'}`} onClose={onClose}
       footer={<><span className="small muted grow">Həftədə {hours} saat</span><button className="btn" onClick={onClose}>Ləğv et</button>
-        <button className="btn primary" disabled={!hours || !subject} onClick={async () => { try { await post(`/api/classes/${cls.id}/join`, { subject, weekly_hours: hours, slots, has_summative: summ, program_id: prog ? Number(prog) : null, grade: grade ? Number(grade) : null }); toast('Yadda saxlanıldı'); onDone() } catch (e) { setErr(e) } }}>Yadda saxla</button></>}>
+        <button className="btn primary" disabled={!hours || !subject} onClick={async () => { try { await post(`/api/classes/${cls.id}/join`, { subject, weekly_hours: hours, slots, has_summative: summ, program_id: prog ? Number(prog) : null, grade: grade ? Number(grade) : null, starts_on: course.from || null, ends_on: course.to || null }); toast('Yadda saxlanıldı'); onDone() } catch (e) { setErr(e) } }}>Yadda saxla</button></>}>
       <div className="stack">
         <Field label="Fənn"><input value={subject} onChange={e => setSubject(e.target.value)} /></Field>
         <label className="check"><input type="checkbox" checked={summ} onChange={e => setSumm(e.target.checked)} /> KSQ/BSQ keçirilir (bölünən qrupda adətən yox)</label>
@@ -233,6 +234,8 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
         {!cls.mine && <Field label="Əsas perspektiv plan proqramı" hint="jurnal və tarixlər ona görə; sinfə uyğun olanlar öndə. Əlavə proqramları qoşulandan sonra əlavə edə bilərsiniz">
           <select value={prog} onChange={e => setProg(e.target.value)}><option value="">— sonra seçəcəm (və ya Word planı yükləyəcəm) —</option>
             {(lib || []).map(p => <option key={p.id} value={p.id}>{p.fits && p.grade ? '✓ ' : ''}{p.title}{p.level ? ` · ${p.level}` : ''}</option>)}</select></Field>}
+        {me?.workspace === 'private' || course.from || course.to ? <CourseDates v={course} onChange={setCourse} />
+          : <details><summary className="small muted">Kurs müddəti (istəyə görə)</summary><CourseDates v={course} onChange={setCourse} /></details>}
         <p className="small muted">Dərs saatlarını işarələyin (0 – birinci dərsdən əvvəlki saat, məs. XI peşə 08:00):</p>
         <div className="tbl-wrap"><table style={{ minWidth: 0 }}><thead><tr><th>Saat</th>{days.map(d => <th key={d}>{d}</th>)}</tr></thead>
           <tbody>{Array.from({ length: 9 }, (_, p) => (
@@ -245,6 +248,16 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
           : <button className="btn danger" onClick={() => setLeave(true)}>Bu sinifdəki dərsimdən çıx</button>)}
       </div>
     </Drawer>
+  )
+}
+
+/** Qrupun kurs müddəti: dərslər, jurnal və proqram yalnız bu aralıqda (boş – tədris ilinin əvvəli / sonu). */
+function CourseDates({ v, onChange }: { v: { from: string; to: string }; onChange: (v: { from: string; to: string }) => void }) {
+  return (
+    <div className="fg">
+      <Field label="Kurs başlayır" hint="boş – tədris ilinin əvvəli"><input type="date" value={v.from} onChange={e => onChange({ ...v, from: e.target.value })} /></Field>
+      <Field label="Kurs bitir" hint="boş – tədris ilinin sonu"><input type="date" value={v.to} min={v.from || undefined} onChange={e => onChange({ ...v, to: e.target.value })} /></Field>
+    </div>
   )
 }
 

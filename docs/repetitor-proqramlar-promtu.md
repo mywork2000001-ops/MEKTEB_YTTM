@@ -69,8 +69,40 @@ mock_after_section, final_mock}. Mətn formatı: `# Bölmə` sətri bölmə baş
   (`school_id` = aktiv məkan, `owner_id` = müəllim, `source` = «Word: fayl adı»); sinfə tətbiq olunmur.
 - Xəta/xəbərdarlıqlar cavabda; UI: Proqramlar → «Word planını kitabxanaya yüklə».
 
+## Mərhələ 6 – Fərdi hazırlıqda dərs vaxtı (məktəb zəngi yox, real saat)
+Fərdi hazırlıq məktəb deyil: «1-ci saat, 2-ci saat» və məktəbin zəng cədvəli mənasızdır. Repetitor dərsi – **həftə günü + başlama –
+bitmə saatı** (məs. Ç.a. 17:00–18:30, Ş. 10:00–11:30); günlərə görə vaxt fərqli ola bilər, dərsin müddəti də (45, 60, 90 dəq.).
+- `teaching_assignments.times` (JSON, null): `{"<həftə günü>:<sıra>": "HH:MM–HH:MM"}`. Daxili model dəyişmir: hər gün üçün dərslər
+  başlama saatına görə sıralanır və `slots`-da sıra nömrəsi (0, 1, …) kimi saxlanılır – `working_plan`, jurnal, «Mövzunu saxla»,
+  proqramın açılması olduğu kimi işləyir.
+- `bell(db, cls, period, ta=None, date=None)`: `ta.times`-da `"{date.weekday()}:{period}"` varsa – həmin vaxt; yoxdursa məktəb
+  qaydası (sinfin/məktəbin zəngi). Bütün çağırışlar (jurnal günü, plan, həftəlik cədvəl, portal, gündəlik plan, mövzu testi,
+  əlavə məşğələ toqquşması) `ta` və tarixi ötürür.
+- `JoinIn.times`: `[{weekday 0–6, start "HH:MM", end "HH:MM"}]` (yalnız fərdi məkanda; məktəbdə 400). Yoxlama: başlama < bitmə,
+  müddət 20 dəq. – 4 saat, eyni gündə üst-üstə düşmə yoxdur; müəllimin fərdi məkandakı **başqa qrupu ilə** vaxt toqquşması – 409
+  («Ç.a. 17:00–18:30 – «IX hazırlıq» qrupu ilə üst-üstə düşür»). `slots` və `weekly_hours` vaxtlardan hesablanır.
+- `class_out.mine.times` – `[{weekday, start, end}]`.
+- UI (fərdi məkanda qoşulma forması): saat şəbəkəsi əvəzinə «Dərs vaxtları» siyahısı: gün (B.e.–B.) + başlama + bitmə, «+ Dərs
+  əlavə et», sil; altda «Həftədə N dərs · M saat». Məktəb məkanında köhnə şəbəkə qalır.
+- Həftəlik cədvəldə fərdi dərslər öz real vaxtları ilə; «Nahar fasiləsi» sətri yalnız məktəb zəngi olan cədvəldə.
+
+## Mərhələ 7 – Fərdi hazırlıqda qrupun sinfi və proqram təyinatı
+Fərdi qrup yaradılanda müəllim **qrupun sinfini** (V–XI, «qarışıq» da ola bilər) və **hazırlıq məqsədini** təyin edir; proqram
+təklifi buna görə qurulur.
+- `classes.purpose` (String, null): `sinif` (cari sinif dərsinə dəstək), `buraxilis9` (IX buraxılış), `buraxilis11` (XI buraxılış),
+  `qebul` (qəbul / blok imtahanı), `olimpiada`, `diger`. Məktəb siniflərində – null.
+- `PlanProgram.data.purpose` – proqramın təyinatı (daxili hazırlıq proqramları: `buraxilis9`, `buraxilis11`/`qebul`; müəllimin kurs
+  proqramında seçilir). DİM «Sinif testləri» proqramları – `sinif`.
+- Kitabxana sıralaması (`ta_id`/`class_id` verilibsə): əvvəl məqsədi və sinfi uyğun olanlar, sonra yalnız sinfi uyğun, sonra qalanlar;
+  `_out.purpose_fits`. Qoşulma formasında uyğun proqram əvvəlcədən seçilir (məs. IX + buraxılış → «Buraxılış hazırlığı – IX»).
+- UI: fərdi məkanda «Yeni qrup» formasında «Sinif» və «Hazırlıq məqsədi»; qrup kartında məqsəd nişanı; sinif formasında redaktə.
+  Proqram sətrində «məqsəd: IX buraxılış» nişanı.
+
 ## Qəbul meyarları
 - Bütün mövcud testlər keçir; hər mərhələyə yeni testlər (`tests/test_api_programs_course.py`).
 - Kurs müddəti verilməyən sinif/qrupda heç bir nəticə dəyişmir.
 - Proqramlar qarışmır: bölmə seçimi yalnız bir proqramın daxilində; tətbiqdə əvvəlki plan kitabxanada qalır.
 - Frontend `tsc` təmiz; telefon görünüşündə formalar sıxılmır.
+- Məktəb məkanında dərs saatı/zəng qaydası dəyişmir; fərdi qrupun real vaxtları jurnal, portal və cədvəldə eyni görünür.
+
+**İcra ardıcıllığı:** 1 → 2 → 3 → 6 → 7 → 4 → 5 (məqsəd kurs proqramlarına, vaxtlar qoşulma formasına bağlıdır).

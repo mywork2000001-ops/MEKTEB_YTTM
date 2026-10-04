@@ -87,6 +87,11 @@ class PlanCtx:
         return self.lessons[s.index] if s and s.index is not None else None
 
 
+def ta_range(ta: TeachingAssignment, year: AcademicYear) -> tuple[dt.date, dt.date]:
+    """Dərs yuvalarının aralığı: tədris ili, qrupun kurs müddəti verilibsə – onunla kəsişməsi."""
+    return max(year.start, ta.starts_on or year.start), min(year.end, ta.ends_on or year.end)
+
+
 def plan_ctx(db: Session, ta: TeachingAssignment) -> PlanCtx:
     cls = db.get(SchoolClass, ta.class_id)
     year = db.get(AcademicYear, cls.year_id)
@@ -94,7 +99,7 @@ def plan_ctx(db: Session, ta: TeachingAssignment) -> PlanCtx:
     lessons = list(db.scalars(select(PlanLesson).where(PlanLesson.assignment_id == ta.id).order_by(PlanLesson.seq)))
     holds = {(h.date, h.period) for h in db.scalars(select(PlanHold).where(PlanHold.assignment_id == ta.id))}
     slots = {int(k): v for k, v in (ta.slots or {}).items()}
-    wp, unfit = working_plan(slots, len(lessons), holds, off, year.start, year.end)
+    wp, unfit = working_plan(slots, len(lessons), holds, off, *ta_range(ta, year))
     return PlanCtx(ta, cls, year, lessons, wp, unfit)
 
 

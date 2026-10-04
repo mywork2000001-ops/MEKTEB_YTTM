@@ -85,7 +85,8 @@ def capacity(db: Session, ta: TeachingAssignment) -> dict:
     cls = db.get(SchoolClass, ta.class_id)
     y = db.get(AcademicYear, cls.year_id)
     off = {h.date: h.name for h in db.scalars(select(Holiday).where(Holiday.year_id == y.id))}
-    slots = lesson_slots({int(k): v for k, v in (ta.slots or {}).items()}, off, y.start, y.end)
+    from .services import ta_range
+    slots = lesson_slots({int(k): v for k, v in (ta.slots or {}).items()}, off, *ta_range(ta, y))
     s1 = [s for s in slots if s[0] <= y.sem1_end]
     s2 = [s for s in slots if s[0] >= y.sem2_start]
     return {'slots': s1 + s2, 'sem1': len(s1), 'sem2': len(s2)}

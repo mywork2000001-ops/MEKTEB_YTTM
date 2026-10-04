@@ -156,6 +156,9 @@ class TeachingAssignment(Base, Archivable):
     has_summative: Mapped[bool] = mapped_column(Boolean, default=True)
     # cari perspektiv plan proqramı (kitabxanadan seçilib; None – köhnə qaydada yüklənmiş plan)
     program_id: Mapped[int | None] = mapped_column(ForeignKey('plan_programs.id', ondelete='SET NULL', use_alter=True))
+    # kurs müddəti (fərdi qrup: məs. noyabr–yanvar); None – tədris ilinin əvvəli / sonu
+    starts_on: Mapped[dt.date | None] = mapped_column(Date)
+    ends_on: Mapped[dt.date | None] = mapped_column(Date)
     __table_args__ = (UniqueConstraint('teacher_id', 'class_id', 'subject'),)
     teacher: Mapped[User] = relationship()
     cls: Mapped[SchoolClass] = relationship()
