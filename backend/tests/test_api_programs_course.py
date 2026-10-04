@@ -198,3 +198,17 @@ def test_word_plan_to_library(world):
     assert p['kind'] == 'fixed' and p['lessons'] > 20 and p['mine'] and p['title'] == 'Köhnə plan' and p['grade'] == 10
     assert p['source'].startswith('Word: ') and p['used_by'] == []
     assert any(x['id'] == p['id'] for x in t.get('/api/programs').json())
+
+
+def test_estimate_before_join(world):
+    as_, _ = world
+    t = as_('ilqar')
+    g = t.post('/api/classes', json={'name': 'Qısa kurs', 'kind': 'adi', 'private': True, 'grade': 9, 'purpose': 'buraxilis9'}).json()
+    prep = t.get('/api/programs', params={'class_id': g['id']}).json()[0]
+    body = {'class_id': g['id'], 'times': [{'weekday': 1, 'start': '17:00', 'end': '18:00'}], 'starts_on': '2026-11-02', 'ends_on': '2026-12-20',
+            'has_summative': False}
+    r = t.post(f"/api/programs/{prep['id']}/estimate", json=body).json()
+    assert 0 < r['slots'] < 10 and r['warnings'] and 'sığmır' in r['warnings'][0]
+    assert t.get('/api/classes').json()[-1]['mine'] is None                       # heç nə yazılmayıb
+    bad = t.post(f"/api/programs/{prep['id']}/estimate", json={**body, 'times': [{'weekday': 1, 'start': '18:00', 'end': '17:00'}]}).json()
+    assert bad['slots'] == 0 and bad['warnings']

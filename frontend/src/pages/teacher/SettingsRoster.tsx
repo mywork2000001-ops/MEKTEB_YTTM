@@ -227,6 +227,18 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   const [grade, setGrade] = useState('')            // sinif rəqəmi müəyyən deyilsə (qarışıq qrup) – proqram uyğunluğu üçün
   const [lib] = useLoad<any[]>(() => (cls.mine ? Promise.resolve([]) : get('/api/programs', { class_id: String(cls.id), ...(grade ? { grade_hint: grade } : {}) })), [cls.id, grade])
   const [auto, setAuto] = useState(true)
+  // seçilən proqram bu cədvəl və kurs müddəti ilə neçə dərsə açılır, nə sığmır – qoşulmazdan əvvəl
+  const [est, setEst] = useState<{ lessons: number; slots: number; warnings: string[] } | null>(null)
+  const estKey = JSON.stringify([prog, priv ? times : slots, course, summ])
+  useEffect(() => {
+    setEst(null)
+    if (cls.mine || !prog || !(priv ? times.length : Object.keys(slots).length)) return
+    const t = setTimeout(() => {
+      post<any>(`/api/programs/${prog}/estimate`, { class_id: cls.id, slots: priv ? {} : slots, times: priv ? times : null,
+        starts_on: course.from || null, ends_on: course.to || null, has_summative: summ }).then(setEst).catch(() => setEst(null))
+    }, 400)
+    return () => clearTimeout(t)
+  }, [estKey])
   useEffect(() => {
     if (!auto || !lib || !cls.purpose) return
     const best = lib.find(p => p.purpose_fits && p.fits)
@@ -252,6 +264,11 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
         {!cls.mine && <Field label="Əsas perspektiv plan proqramı" hint="jurnal və tarixlər ona görə; sinfə uyğun olanlar öndə. Əlavə proqramları qoşulandan sonra əlavə edə bilərsiniz">
           <select value={prog} onChange={e => { setAuto(false); setProg(e.target.value) }}><option value="">— sonra seçəcəm (və ya Word planı yükləyəcəm) —</option>
             {(lib || []).map(p => <option key={p.id} value={p.id}>{p.purpose_fits ? '★ ' : p.fits && p.grade ? '✓ ' : ''}{p.title}{p.level ? ` · ${p.level}` : ''}</option>)}</select></Field>}
+        {est && <div className="small" style={{ margin: 0 }}>
+          <span className="muted">Proqram: {est.lessons} dərs · kursda {est.slots} dərs yuvası</span>
+          {est.warnings.map(w => <p key={w} style={{ color: 'var(--warn)', margin: '4px 0 0' }}>⚠ {w}</p>)}
+          {est.warnings.length > 0 && <p className="muted" style={{ margin: '4px 0 0' }}>Qoşulandan sonra «Əsas proqramı dəyiş» ilə lazım olan bölmələri seçə bilərsiniz.</p>}
+        </div>}
         {!cls.mine && cls.purpose && <p className="small muted" style={{ margin: 0 }}>Qrupun məqsədi: <b>{PURPOSES[cls.purpose] || cls.purpose}</b> – ★ uyğun proqramlar öndədir.</p>}
         {me?.workspace === 'private' || course.from || course.to ? <CourseDates v={course} onChange={setCourse} />
           : <details><summary className="small muted">Kurs müddəti (istəyə görə)</summary><CourseDates v={course} onChange={setCourse} /></details>}

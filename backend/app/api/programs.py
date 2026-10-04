@@ -2,6 +2,8 @@
 Ümumi proqramlar (DİM «Sinif testləri» V–XI) hamıya görünür; sinif planlarından saxlananlar – yalnız sahibinə."""
 from __future__ import annotations
 
+import datetime as dt
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
@@ -225,6 +227,36 @@ def archive(pid: int, user: User = Depends(settings_unlocked), db: Session = Dep
     audit(db, user, 'archive', 'plan_program', p.id)
     db.commit()
     return {'ok': True}
+
+
+# ---------------------------------------------------------------- qoşulmadan əvvəl təxmin (qoşulma pəncərəsi)
+class EstimateIn(BaseModel):
+    class_id: int
+    slots: dict[str, list[int]] = Field(default_factory=dict)
+    times: list[dict] | None = None              # fərdi qrup: [{weekday, start, end}]
+    starts_on: dt.date | None = None
+    ends_on: dt.date | None = None
+    has_summative: bool = True
+
+
+@router.post('/{pid}/estimate')
+def estimate(pid: int, body: EstimateIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Proqram bu cədvəllə neçə dərsə açılır və nə sığmır – sinfə qoşulmazdan əvvəl (heç nə yazılmır)."""
+    from .classes import TimeIn, private_times
+    p = _visible(db, user, pid)
+    c = db.get(SchoolClass, body.class_id)
+    if not c or c.school_id != user.school_id:
+        raise HTTPException(404, 'Sinif tapılmadı')
+    slots = body.slots
+    if body.times:
+        try:
+            slots, _ = private_times(db, user, c, None, [TimeIn(**t) for t in body.times])
+        except HTTPException as e:
+            return {'lessons': 0, 'slots': 0, 'warnings': [str(e.detail)]}
+    ta = TeachingAssignment(teacher_id=user.id, class_id=c.id, subject='', weekly_hours=1, slots=slots,
+                            has_summative=body.has_summative, starts_on=body.starts_on, ends_on=body.ends_on)
+    lessons, rep = lessons_for(db, p, ta)
+    return {'lessons': rep['lessons'], 'slots': rep['sem1_slots'] + rep['sem2_slots'], 'warnings': rep['warnings']}
 
 
 # ---------------------------------------------------------------- Word planı birbaşa kitabxanaya
