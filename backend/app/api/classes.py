@@ -191,6 +191,7 @@ class JoinIn(BaseModel):
     slots: dict[str, list[int]] = Field(default_factory=dict)     # {"0": [3, 5]} – həftə günü -> dərs saatları
     has_summative: bool = True
     program_id: int | None = None          # əsas perspektiv plan proqramı (kitabxanadan) – qoşulanda əvvəldən seçilir
+    grade: int | None = Field(None, ge=1, le=12)   # sinif rəqəmi müəyyən deyilsə (qarışıq qrup) – proqram uyğunluğu üçün
 
     @field_validator('slots')
     @classmethod
@@ -210,12 +211,16 @@ def join_class(cid: int, body: JoinIn, user: User = Depends(settings_unlocked), 
         from ..models import School
         if db.get(School, c.school_id).kind != 'private':
             raise HTTPException(400, 'Şənbə və bazar dərsləri yalnız fərdi (repetitor) məkanın siniflərində olur')
+    if body.program_id and not body.slots:
+        raise HTTPException(400, 'Proqramı tətbiq etmək üçün dərs saatlarını işarələyin')
     if sum(len(v) for v in body.slots.values()) not in (0, body.weekly_hours):
         raise HTTPException(400, f'Cədvəldə {body.weekly_hours} saat olmalıdır')
     ta = db.scalar(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id,
                                                     TeachingAssignment.class_id == cid,
                                                     TeachingAssignment.subject == body.subject))
-    vals = body.model_dump(exclude={'program_id'})
+    vals = body.model_dump(exclude={'program_id', 'grade'})
+    if body.grade and not c.grade:
+        c.grade = body.grade
     if ta and not ta.archived_at:
         for k, v in vals.items():
             setattr(ta, k, v)

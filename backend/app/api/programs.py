@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from ..services import ws_cond
 from ..db import get_db
@@ -33,19 +33,31 @@ def _count(p: PlanProgram) -> int | None:
     return None
 
 
+def _workspace(p: PlanProgram) -> str | None:
+    """Proqramın mənbə məkanı: 'school' | 'private'; ümumi (kitab) proqramı – None."""
+    if p.school_id is None:
+        return None
+    from ..models import School
+    s = object_session(p).get(School, p.school_id)
+    return s.kind if s else None
+
+
 def _out(p: PlanProgram, used: dict[int, list[str]], grade: int | None = None) -> dict:
     tpl = p.data.get('template') if p.kind == 'adaptive' else None
     return {'id': p.id, 'title': p.title, 'subject': p.subject, 'grade': p.grade, 'grade_roman': ROMAN.get(p.grade),
             'kind': p.kind, 'source': p.source, 'description': p.description, 'weekly_hours': p.weekly_hours,
             'lessons': _count(p), 'topics': sum(len(s['topics']) for sem in tpl['semesters'] for s in sem) if tpl else None,
             'level': p.level, 'mine': p.owner_id is not None, 'builtin': p.key is not None, 'used_by': used.get(p.id, []),
-            'fits': grade is None or p.grade is None or p.grade == grade, 'created_at': p.created_at}
+            'fits': grade is None or p.grade is None or p.grade == grade, 'created_at': p.created_at,
+            'workspace': _workspace(p)}
 
 
 @router.get('')
 def list_programs(grade: int | None = None, subject: str | None = None, level: str | None = None, ta_id: int | None = None,
-                  class_id: int | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
-    """Kitabxana. ta_id verilsə – həmin sinif/qrupun səviyyəsinə (sinif rəqəmi) uyğun olanlar «fits» ilə işarələnir."""
+                  class_id: int | None = None, grade_hint: int | None = None, user: User = Depends(staff),
+                  db: Session = Depends(get_db)):
+    """Kitabxana. ta_id verilsə – həmin sinif/qrupun səviyyəsinə (sinif rəqəmi) uyğun olanlar «fits» ilə işarələnir;
+    grade_hint – sinif rəqəmi müəyyən olunmayan qrup üçün qoşulma formasında seçilən rəqəm."""
     ensure_builtin(db)
     ensure_current(db, user)
     db.commit()
@@ -65,6 +77,8 @@ def list_programs(grade: int | None = None, subject: str | None = None, level: s
         c = db.get(SchoolClass, class_id)
         if c and c.school_id == user.school_id:
             tgrade = class_grade(db, c)
+    if tgrade is None and grade_hint:
+        tgrade = grade_hint
     used: dict[int, list[str]] = {}
     for ta, c in db.execute(select(TeachingAssignment, SchoolClass).join(SchoolClass).where(
             TeachingAssignment.teacher_id == user.id, ws_cond(user), TeachingAssignment.archived_at.is_(None),

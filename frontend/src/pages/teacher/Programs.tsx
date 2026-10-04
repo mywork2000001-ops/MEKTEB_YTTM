@@ -9,7 +9,7 @@ import { head, printDoc, SIGN, table } from '../../print'
 
 type Prog = { id: number; title: string; subject: string; grade: number | null; grade_roman: string | null; kind: 'fixed' | 'adaptive'
   source: string | null; description: string | null; weekly_hours: number | null; lessons: number | null; topics: number | null
-  level: string | null; mine: boolean; builtin: boolean; used_by: string[]; fits: boolean }
+  level: string | null; mine: boolean; builtin: boolean; used_by: string[]; fits: boolean; workspace: 'school' | 'private' | null }
 type For = { ta_id: number; class_name: string; subject: string; grade: number | null; grade_roman: string | null; main: Prog | null
   extra: { id: number; level: string | null; note: string | null; program: Prog }[] }
 const LEVELS = ['Zəif', 'Orta', 'Güclü']
@@ -60,6 +60,8 @@ export default function Programs() {
 }
 
 function ProgLine({ p }: { p: Prog }) {
+  const { me } = useAuth()
+  const here = me?.workspace === 'private' ? 'private' : 'school'
   return (
     <span className="grow prog-line" style={{ minWidth: 0 }}>
       <b>{p.title}</b>
@@ -69,6 +71,7 @@ function ProgLine({ p }: { p: Prog }) {
         {p.fits && p.grade ? <Pill tone="ok">uyğun</Pill> : null}{!p.fits ? <Pill tone="warn">başqa sinif</Pill> : null}
         {p.level ? <Pill tone={levelTone(p.level)}>{p.level}</Pill> : <Pill>ümumi</Pill>}
         {p.builtin ? <Pill tone="info">kitab</Pill> : p.mine ? <Pill>mənim</Pill> : null}
+        {p.mine && p.workspace && <Pill tone={p.workspace !== here ? 'warn' : undefined}>{p.workspace === 'private' ? 'fərdi məkan' : 'məktəb'}</Pill>}
         {p.used_by.map(u => <Pill key={u} tone="acc">{u}</Pill>)}
       </span>
     </span>
@@ -198,6 +201,7 @@ export function ProgramBox({ ta, onChanged }: { ta: number; onChanged?: () => vo
   return (
     <div className="grid g2">
       <section className="panel"><h2>Əsas proqram <small>{f.class_name}{f.grade_roman ? ` · ${f.grade_roman} sinif` : ''}</small></h2>
+        {!f.grade && <p className="small" style={{ color: 'var(--warn)', margin: '0 0 8px' }}>Sinif rəqəmi müəyyən deyil – uyğun proqramlar öndə çıxmır. Sinif formasında «Sinif rəqəmi»ni seçin.</p>}
         {f.main ? <ProgLine p={f.main} /> : <p className="muted small">Seçilməyib – jurnal və tarixlər əsas proqrama görə gedir.</p>}
         <div className="row" style={{ marginTop: 10 }}>
           <button className="btn sm primary" onClick={() => setPick('main')}>{f.main ? 'Əsas proqramı dəyiş' : 'Əsas proqramı seç'}</button>

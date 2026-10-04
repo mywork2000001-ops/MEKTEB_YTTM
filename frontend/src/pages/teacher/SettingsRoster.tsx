@@ -212,7 +212,8 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   const [err, setErr] = useState<unknown>()
   const [leave, setLeave] = useState(false)
   const [prog, setProg] = useState('')
-  const [lib] = useLoad<any[]>(() => (cls.mine ? Promise.resolve([]) : get('/api/programs', { class_id: String(cls.id) })), [cls.id])
+  const [grade, setGrade] = useState('')            // sinif rəqəmi müəyyən deyilsə (qarışıq qrup) – proqram uyğunluğu üçün
+  const [lib] = useLoad<any[]>(() => (cls.mine ? Promise.resolve([]) : get('/api/programs', { class_id: String(cls.id), ...(grade ? { grade_hint: grade } : {}) })), [cls.id, grade])
   const hours = Object.values(slots).reduce((a, v) => a + v.length, 0)
   const toggle = (d: number, p: number) => {
     const cur = new Set(slots[d] || [])
@@ -222,10 +223,13 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   return (
     <Drawer title={`${cls.name} – ${cls.mine ? 'dərs cədvəli' : 'sinfə qoşul'}`} onClose={onClose}
       footer={<><span className="small muted grow">Həftədə {hours} saat</span><button className="btn" onClick={onClose}>Ləğv et</button>
-        <button className="btn primary" disabled={!hours || !subject} onClick={async () => { try { await post(`/api/classes/${cls.id}/join`, { subject, weekly_hours: hours, slots, has_summative: summ, program_id: prog ? Number(prog) : null }); toast('Yadda saxlanıldı'); onDone() } catch (e) { setErr(e) } }}>Yadda saxla</button></>}>
+        <button className="btn primary" disabled={!hours || !subject} onClick={async () => { try { await post(`/api/classes/${cls.id}/join`, { subject, weekly_hours: hours, slots, has_summative: summ, program_id: prog ? Number(prog) : null, grade: grade ? Number(grade) : null }); toast('Yadda saxlanıldı'); onDone() } catch (e) { setErr(e) } }}>Yadda saxla</button></>}>
       <div className="stack">
         <Field label="Fənn"><input value={subject} onChange={e => setSubject(e.target.value)} /></Field>
         <label className="check"><input type="checkbox" checked={summ} onChange={e => setSumm(e.target.checked)} /> KSQ/BSQ keçirilir (bölünən qrupda adətən yox)</label>
+        {!cls.mine && !cls.grade && <Field label="Sinif rəqəmi" hint="bu qrupun sinfi addan tapılmadı – seçin ki, uyğun proqramlar öndə çıxsın">
+          <select value={grade} onChange={e => setGrade(e.target.value)}><option value="">— müəyyən deyil (qarışıq qrup) —</option>
+            {Array.from({ length: 11 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select></Field>}
         {!cls.mine && <Field label="Əsas perspektiv plan proqramı" hint="jurnal və tarixlər ona görə; sinfə uyğun olanlar öndə. Əlavə proqramları qoşulandan sonra əlavə edə bilərsiniz">
           <select value={prog} onChange={e => setProg(e.target.value)}><option value="">— sonra seçəcəm (və ya Word planı yükləyəcəm) —</option>
             {(lib || []).map(p => <option key={p.id} value={p.id}>{p.fits && p.grade ? '✓ ' : ''}{p.title}{p.level ? ` · ${p.level}` : ''}</option>)}</select></Field>}
