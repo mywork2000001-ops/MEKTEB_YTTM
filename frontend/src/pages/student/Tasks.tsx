@@ -12,7 +12,10 @@ import { PeriodBar, usePeriod } from '../../periods'
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 // Test rejimi: tam ekran (çıxanda xəbərdarlıq) və mətnin seçilməsi / kopyalanması / uzun basma menyusu bağlıdır.
 // Qeyd: telefonun sistem funksiyalarını (ekran şəkli, Circle to Search) veb səhifə söndürə bilmir; iPhone-da tam ekran yoxdur.
-const fsOk = () => !!document.fullscreenEnabled
+// Tətbiqdaxili brauzerlər (WhatsApp, Telegram, Instagram, Facebook – Android WebView): tam ekran sorğusu «uğurlu» görünür,
+// amma WebView onu göstərə bilmir və şagird ağ ekran görür. Orada tam ekran tələb olunmur (kopyalama qadağası qalır).
+const inAppBrowser = () => /; wv\)|WhatsApp|Telegram|Instagram|FBAN|FBAV|FB_IAB|Line\//i.test(navigator.userAgent)
+const fsOk = () => !inAppBrowser() && !!document.fullscreenEnabled
 const enterFs = () => (fsOk() && !document.fullscreenElement
   ? document.documentElement.requestFullscreen({ navigationUI: 'hide' }).then(() => true, () => false) : Promise.resolve(!!document.fullscreenElement))
 const exitFs = () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}) }
