@@ -51,10 +51,15 @@ function usePeriodParams() {
 }
 type PP = ReturnType<typeof usePeriodParams>
 
+/** Görünən adlı seçim (iki «Hamısı» yan-yana qarışmasın). */
+function LSeg<T extends string>({ label, ...p }: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void }) {
+  return <span className="row" style={{ gap: 6, alignItems: 'center' }}><span className="small muted">{label}</span><Seg label={label} {...p} /></span>
+}
+
 function PeriodPick({ f }: { f: PP }) {
   return (
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-      <Seg label="Dövr" value={f.p} onChange={f.set} options={PERIODS} />
+      <LSeg label="Dövr" value={f.p} onChange={f.set} options={PERIODS} />
       {f.has && <button className="btn sm" aria-label="Əvvəlki dövr" onClick={() => f.shift(-1)}>‹</button>}
       <b className="small">{f.label}</b>
       {f.has && <button className="btn sm" aria-label="Növbəti dövr" onClick={() => f.shift(1)}>›</button>}
@@ -90,7 +95,7 @@ export default function ResultsCenter() {
       <Top title="Test nəticələri" sub="Mövzu testləri və sınaqlar ayrıca · yazmayanlar · şagird, sinif, qrup və ümumi analitika · süni intellektin pedaqoji rəyi" />
       <div className="tabs rtabs no-print">{TABS.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{l}
         {k === 'missing' && chronic > 0 && <span className="pill bad" style={{ marginLeft: 6 }} title="xroniki yazmayanlar">{chronic}</span>}</button>)}</div>
-      <div className="toolbar no-print" style={{ flexWrap: 'wrap' }}><Seg label="Növ" value={kf} onChange={setKf} options={KF_OPTS} /><PeriodPick f={f} /></div>
+      <div className="toolbar no-print" style={{ flexWrap: 'wrap' }}><LSeg label="Növ" value={kf} onChange={setKf} options={KF_OPTS} /><PeriodPick f={f} /></div>
       {tab === 'rating' && <RatingTab f={f} lessons={lessons} onStudent={openStudent} kinds={kinds} />}
       {tab === 'missing' && <Missing f={f} lessons={lessons} onStudent={openStudent} kind={kf} />}
       {tab === 'student' && <StudentPanel f={f} id={student} setId={setStudent} kinds={kinds} kf={kf} />}
@@ -116,7 +121,7 @@ function RatingTab({ f, lessons, onStudent, kinds }: { f: PP; lessons?: MyLesson
     <>
       <div className="toolbar no-print" style={{ flexWrap: 'wrap' }}>
         <ClassSelect lessons={lessons} value={ta} onChange={setTa} />
-        <Seg label="Sıralama" value={sort} onChange={setSort} options={SORTS} />
+        <LSeg label="Sıralama" value={sort} onChange={setSort} options={SORTS} />
       </div>
       {kinds.map(k => <div key={k} style={{ marginBottom: 18 }}><RatingPanel f={f} lessons={lessons} onStudent={onStudent} kind={k} ta={ta} sort={sort} /></div>)}
     </>
@@ -156,7 +161,7 @@ export function RatingPanel({ f, lessons, onStudent, initial = 'movzu', kind: fi
   return (
     <>
       <div className="toolbar no-print" style={{ flexWrap: 'wrap' }}>
-        {fixed ? <b>{KIND_LABEL[kind]}</b> : <>
+        {fixed ? <h2 style={{ margin: 0 }}>{KIND_LABEL[kind]}</h2> : <>
           <Seg value={kind} onChange={setKind} options={[['movzu', 'Mövzu testləri'], ['sinaq', 'Sınaqlar']]} />
           {lessons && <ClassSelect lessons={lessons} value={ta} onChange={setTa} />}
           <Seg label="Sıralama" value={sort} onChange={setSort} options={SORTS} /></>}
@@ -166,13 +171,13 @@ export function RatingPanel({ f, lessons, onStudent, initial = 'movzu', kind: fi
       {loading && !d ? <Loading /> : d && (d.rows.length === 0 ? <div className="empty">{kind === 'movzu' ? 'Bu dövrdə mövzu testi nəticəsi yoxdur – Perspektiv plan → mövzu → «Test təyin et».' : 'Bu dövrdə sınaq nəticəsi yoxdur.'}</div> : (
         <div className="grid g2">
           <section className="panel" style={{ gridColumn: '1 / -1' }}>
-            <h2>{KIND_LABEL[kind]} – kumulyativ reytinq <small>{d.tests.length} test · ümumi yer {d.total} şagird arasında</small></h2>
+            <h2>{fixed ? 'Kumulyativ reytinq' : `${KIND_LABEL[kind]} – kumulyativ reytinq`} <small>{d.tests.length} test · {d.total} şagird</small></h2>
             <div className="kpis"><Stat value={d.tests.length} label="test" /><Stat value={pct(avgOf(d.rows.map(r => r.avg_pct)))} label="orta nəticə" />
               <Stat value={pct(partOf(d.rows))} label="iştirak" /><Stat value={d.attention.length} label="diqqət tələb edir" /></div>
             {narrow ? <div className="stack" style={{ gap: 6, marginTop: 10 }}>{d.rows.map(r => (
               <div key={r.student_id} className="jrow click" onClick={() => onStudent?.(r.student_id)}>
                 <div className="row"><b>{r.place_all ?? '—'}.</b><b className="grow">{r.full_name}</b><Pill tone={tone(r.avg_pct)}>{pct(r.avg_pct)}</Pill></div>
-                <span className="small muted">{r.class_name} · sinifdə {r.place_class ?? '—'} · {r.wrote}/{r.given} yazıb · dinamika {sgn(r.delta)}</span>
+                <span className="small muted">{r.class_name} · sinifdə {r.place_class ?? '—'} · {r.wrote}/{r.given} yazıb · dinamika {sgn(r.delta)} bənd</span>
                 <Flags r={r} /></div>))}</div> : (
               <div className="tbl-wrap" style={{ marginTop: 10 }}><table>
                 <thead><tr><th className="r">Yer</th><th className="r">Sinifdə</th><th>Şagird</th><th className="r">Yazıb</th><th className="r">Orta %</th><th className="r">Son %</th><th className="r">Dinamika</th><th>Qeyd</th></tr></thead>
@@ -180,18 +185,18 @@ export function RatingPanel({ f, lessons, onStudent, initial = 'movzu', kind: fi
                   <tr key={r.student_id} className="click" onClick={() => onStudent?.(r.student_id)}><td className="r num"><b>{r.place_all ?? '—'}</b></td><td className="r num">{r.place_class ?? '—'}</td>
                     <td><b>{r.full_name}</b><span className="sub">{r.class_name}</span></td><td className="r num">{r.wrote}/{r.given}</td>
                     <td className="r num"><b>{fmt(r.avg_pct)}</b></td><td className="r num">{fmt(r.last_pct)}</td>
-                    <td className="r num">{r.delta == null ? '—' : <Pill tone={r.delta > 0 ? 'ok' : r.delta < 0 ? 'bad' : undefined}>{sgn(r.delta)}</Pill>}</td><td><Flags r={r} /></td></tr>))}</tbody>
+                    <td className="r num">{r.delta == null ? '—' : <Pill tone={r.delta > 0 ? 'ok' : r.delta < 0 ? 'bad' : undefined}>{sgn(r.delta)} bənd</Pill>}</td><td><Flags r={r} /></td></tr>))}</tbody>
               </table></div>)}
             <p className="small muted" style={{ margin: '8px 0 0' }}>{kind === 'movzu' ? 'Mövzu testləri formativ jurnala düşür.' : 'Sınaqlar formativ qiymətə təsir etmir; faiz cərimə ilə.'} Mövzu testi və sınaq reytinqi heç vaxt qarışmır. Şagirdə toxunun – profil açılır.</p>
           </section>
           {d.classes.length > 1 && <section className="panel"><h2>Siniflər</h2>
             {d.classes.map(c => <div key={c.class_name} className="row small"><b>{c.place ?? '—'}.</b><span className="grow">{c.class_name}</span><span className="muted">iştirak {pct(c.participation)}</span><b>{pct(c.avg_pct)}</b></div>)}</section>}
           {d.improved.length > 0 && <section className="panel"><h2>Ən çox irəliləyənlər</h2>
-            {d.improved.map(r => <div key={r.student_id} className="row small"><b className="grow">{r.full_name}</b><span className="muted">{r.class_name}</span><Pill tone="ok">{sgn(r.delta)}</Pill></div>)}</section>}
-          {d.attention.length > 0 && <section className="panel"><h2>Diqqət tələb edənlər <small>orta &lt; 40% və ya son nəticə 10+ bənd düşüb</small></h2>
+            {d.improved.map(r => <div key={r.student_id} className="row small"><b className="grow">{r.full_name}</b><span className="muted">{r.class_name}</span><Pill tone="ok">{sgn(r.delta)} bənd</Pill></div>)}</section>}
+          {d.attention.length > 0 && <section className="panel"><h2 style={{ marginBottom: 2 }}>Diqqət tələb edənlər</h2><p className="small muted" style={{ margin: '0 0 8px' }}>orta &lt; 40% və ya son nəticə 10+ bənd düşüb</p>
             {d.attention.map(r => <div key={r.student_id} className="row small click" onClick={() => onStudent?.(r.student_id)}><b className="grow">{r.full_name}</b><span className="muted">{r.class_name}</span><Pill tone="bad">{pct(r.avg_pct)}</Pill></div>)}</section>}
           <section className="panel"><h2>Testlər üzrə orta</h2>
-            {d.tests.map(t => <div key={t.unit} className="row small"><span className="muted">{fmtDate(t.date)}</span><span className="grow">{t.title}</span><span className="muted">{t.wrote}/{t.given}</span><b>{pct(t.avg_pct)}</b></div>)}</section>
+            {d.tests.map(t => <div key={t.unit} className="row small"><span className="muted">{fmtDate(t.date)}</span><span className="grow">{t.title}</span>{t.closed ? <><span className="muted">{t.wrote}/{t.given}</span><b>{pct(t.avg_pct)}</b></> : <Pill tone="ok">açıqdır</Pill>}</div>)}</section>
         </div>))}
     </>
   )
