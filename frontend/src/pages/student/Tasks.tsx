@@ -78,7 +78,8 @@ export default function Tasks() {
   )
 }
 
-/** Həllin şəkilləri: telefonla çəkilir / seçilir, brauzerdə bir PDF-ə yığılıb müəllimə göndərilir (test bağlanana qədər). */
+/** Həllin şəkilləri – testdən AYRICA (siyahıda): telefonla çəkilir / seçilir, brauzerdə bir PDF-ə yığılıb müəllimə göndərilir
+ *  (testə başlayandan bağlanana qədər). Testin içində deyil – kamera tam ekrandan çıxarmasın. */
 export function SolutionUpload({ id, at, compact, onDone }: { id: number; at?: string | null; compact?: boolean; onDone?: () => void }) {
   const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
@@ -227,7 +228,6 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
           {i < d.questions.length - 1 ? <button className="btn primary" onClick={() => { flush(); setI(i + 1) }}>Növbəti ›</button> : null}
           <AsyncBtn className="btn primary right" onClick={() => finish(false)}>{t('Təhvil ver')}</AsyncBtn>
         </div>
-        {i === d.questions.length - 1 && <SolutionUpload id={id} />}
       </section>
     </>
   )
