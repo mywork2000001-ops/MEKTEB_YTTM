@@ -15,7 +15,7 @@ from ..deps import staff
 from typing import Literal
 
 from ..models import AssignmentProgram, PlanProgram, SchoolClass, TeachingAssignment, User, now
-from ..programs import (ROMAN, apply, check_sections, dated, ensure_builtin, ensure_current, is_course, lessons_for, purposes,
+from ..programs import (ROMAN, apply, check_sections, dated, ensure_builtin, ensure_current, is_course, is_toplu, lessons_for, purposes,
                         section_names, snapshot, tpl_sections)
 from ..services import class_grade, own_assignment
 from .common import audit, settings_unlocked
@@ -56,7 +56,8 @@ def _out(p: PlanProgram, used: dict[int, list[str]], grade: int | None = None, p
     return {'id': p.id, 'title': p.title, 'subject': p.subject, 'grade': p.grade, 'grade_roman': ROMAN.get(p.grade),
             'kind': p.kind, 'source': p.source, 'description': p.description, 'weekly_hours': p.weekly_hours,
             'lessons': _count(p), 'topics': sum(len(s['topics']) for s in tpl_sections(tpl)) if tpl else None,
-            'course': is_course(p), 'purposes': purposes(p),
+            'course': is_course(p) or is_toplu(p), 'toplu': is_toplu(p), 'purposes': purposes(p),
+            'tasks': sum(s.get('tasks') or 0 for s in tpl_sections(tpl)) if tpl and is_toplu(p) else None,
             'level': p.level, 'mine': p.owner_id is not None, 'builtin': p.key is not None, 'used_by': used.get(p.id, []),
             'fits': grade is None or p.grade is None or p.grade == grade, 'created_at': p.created_at,
             'workspace': _workspace(p), 'purpose_fits': bool(purpose) and purpose in purposes(p)}
@@ -112,7 +113,16 @@ def program_detail(pid: int, user: User = Depends(staff), db: Session = Depends(
     p = _visible(db, user, pid)
     out = _out(p, {})
     out['sections'] = section_names(p)
-    if is_course(p):
+    if is_toplu(p):
+        from ..models import BankFile
+        tpl = p.data['template']
+        have = {f.lesson for f in db.scalars(select(BankFile).where(BankFile.source_key == 'p007', BankFile.active.is_(True),
+                                                                    BankFile.question_count > 0))}
+        out['chapters'] = [{'section': s['section'], 'part': s.get('part'), 'pages': s['pages'], 'tasks': s['tasks'],
+                            'closed': s['closed'], 'p007': s['p007'], 'in_bank': s['p007'] in have} for s in tpl['sections']]
+        ex = tpl.get('exam')
+        out['exam'] = ex and {**ex, 'in_bank': ex['p007'] in have}
+    elif is_course(p):
         tpl = p.data['template']
         out['outline'] = [{'semester': None, 'sections': [{'section': s['section'], 'part': s.get('part'), 'topics': s['topics']}
                                                           for s in tpl['sections']]}]

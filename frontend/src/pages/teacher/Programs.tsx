@@ -10,7 +10,7 @@ import { head, printDoc, SIGN, table } from '../../print'
 type Prog = { id: number; title: string; subject: string; grade: number | null; grade_roman: string | null; kind: 'fixed' | 'adaptive'
   source: string | null; description: string | null; weekly_hours: number | null; lessons: number | null; topics: number | null
   level: string | null; mine: boolean; builtin: boolean; used_by: string[]; fits: boolean; workspace: 'school' | 'private' | null
-  course: boolean; purposes: string[] }
+  course: boolean; toplu?: boolean; tasks?: number | null; purposes: string[] }
 type For = { ta_id: number; class_name: string; subject: string; grade: number | null; grade_roman: string | null; main: Prog | null
   main_sections: string[] | null; extra: { id: number; level: string | null; note: string | null; sections: string[] | null; program: Prog }[] }
 type Sec = { name: string; part: string | null; count: number }
@@ -78,12 +78,12 @@ function ProgLine({ p }: { p: Prog }) {
   return (
     <span className="grow prog-line" style={{ minWidth: 0 }}>
       <b>{p.title}</b>
-      <span className="sub">{[p.grade_roman && `${p.grade_roman} sinif`, p.course ? `${p.topics} mövzu · kurs: qrupun müddətinə və cədvəlinə uyğunlaşır, sınaqlarla`
+      <span className="sub">{[p.grade_roman && `${p.grade_roman} sinif`, p.toplu ? `${p.topics} fəsil · ${p.tasks} tapşırıq · hər dərsə səhifə və S/E/M, testlər P007-dən` : p.course ? `${p.topics} mövzu · kurs: qrupun müddətinə və cədvəlinə uyğunlaşır, sınaqlarla`
         : p.kind === 'adaptive' ? `${p.topics} mövzu · sinfin cədvəlinə uyğunlaşır` : `${p.lessons} dərs`,
         p.weekly_hours && `${p.weekly_hours} saat`, p.source].filter(Boolean).join(' · ')}</span>
       <span className="row" style={{ gap: 4, marginTop: 4 }}>
         {p.fits && p.grade ? <Pill tone="ok">uyğun</Pill> : null}{!p.fits ? <Pill tone="warn">başqa sinif</Pill> : null}
-        {p.course && <Pill tone="info">kurs</Pill>}{p.purposes.filter(x => x !== 'sinif').map(x => <Pill key={x} tone="acc">{PURPOSES[x] || x}</Pill>)}
+        {p.toplu ? <Pill tone="info">P007 testləri</Pill> : p.course && <Pill tone="info">kurs</Pill>}{p.purposes.filter(x => x !== 'sinif').map(x => <Pill key={x} tone="acc">{PURPOSES[x] || x}</Pill>)}
         {p.level ? <Pill tone={levelTone(p.level)}>{p.level}</Pill> : <Pill>ümumi</Pill>}
         {p.builtin ? <Pill tone="info">kitab</Pill> : p.mine ? <Pill>mənim</Pill> : null}
         {p.mine && p.workspace && <Pill tone={p.workspace !== here ? 'warn' : undefined}>{p.workspace === 'private' ? 'fərdi məkan' : 'məktəb'}</Pill>}
@@ -100,7 +100,7 @@ function ViewProgram({ p, onClose }: { p: Prog; onClose: () => void }) {
       <ErrorBox error={err} />
       {!d ? <Loading /> : <>
         {d.description && <p className="small muted">{d.description}</p>}
-        {d.outline ? d.outline.map((s: any) => (
+        {d.chapters ? <TopluChapters d={d} /> : d.outline ? d.outline.map((s: any) => (
           <section key={s.semester} style={{ marginBottom: 12 }}><h3 className="small muted" style={{ margin: '8px 0' }}>{s.semester == null ? 'Kursun bölmələri' : s.semester === 1 ? 'I yarımil' : 'II yarımil'}</h3>
             {s.sections.map((x: any) => <div key={x.section} style={{ marginBottom: 8 }}><b>{x.section}</b>{x.part && <span className="small muted"> · {x.part}</span>}
               <ol className="small" style={{ margin: '4px 0 0', paddingLeft: 20 }}>{x.topics.map((t: string) => <li key={t}>{t}</li>)}</ol></div>)}
@@ -108,6 +108,16 @@ function ViewProgram({ p, onClose }: { p: Prog; onClose: () => void }) {
           <ol className="small" style={{ paddingLeft: 22 }}>{d.lesson_list.map((l: any) => <li key={l.seq}>{l.topic}{l.assessment_type !== 'formativ' && <b> · {l.assessment_type}</b>}</li>)}</ol>)}
       </>}
     </Drawer>
+  )
+}
+
+/** «Test toplusu» proqramı: fəsillər, səhifələr, tapşırıqlar və P007 test bazasında olub-olmaması. */
+function TopluChapters({ d }: { d: any }) {
+  const rows = [...d.chapters, ...(d.exam ? [{ section: d.exam.title, part: null, pages: d.exam.pages, tasks: d.exam.tasks, closed: d.exam.closed, in_bank: d.exam.in_bank }] : [])]
+  return (
+    <div className="tbl-wrap"><table className="small" style={{ minWidth: 0 }}><thead><tr><th>Fəsil</th><th>Səh.</th><th>Tapş.</th><th>Qapalı</th><th>P007 bazada</th></tr></thead>
+      <tbody>{rows.map((c: any) => <tr key={c.section}><td>{c.section}{c.part && <span className="muted"> · {c.part}</span>}</td><td>{c.pages[0]}–{c.pages[1]}</td>
+        <td>{c.tasks}</td><td>1–{c.closed}</td><td>{c.in_bank ? '✓' : <span className="muted">yox</span>}</td></tr>)}</tbody></table></div>
   )
 }
 
@@ -154,7 +164,7 @@ function ApplyProgram({ p, ta, init, onClose, onDone }: { p: Prog; ta: number; i
           const r = await post<any>(`/api/programs/${p.id}/apply/${ta}`, { sections: sx.chosen })
           toast(`${r.lessons} dərs · əvvəlki plan kitabxanada saxlanıldı`); onDone()
         }}>Tətbiq et</AsyncBtn></>}>
-      <SectionPicker all={sx.all} sel={sx.sel} setSel={sx.setSel} unit={p.kind === 'adaptive' ? 'mövzu' : 'dərs'} />
+      <SectionPicker all={sx.all} sel={sx.sel} setSel={sx.setSel} unit={p.toplu ? 'tapşırıq' : p.kind === 'adaptive' ? 'mövzu' : 'dərs'} />
       <ErrorBox error={err} />
       {sx.chosen?.length === 0 ? null : !pv ? <Loading /> : <>
         {p.course ? <div className="kpis" style={{ marginBottom: 12 }}>
@@ -194,7 +204,7 @@ function AttachProgram({ p, ta, onClose, onDone }: { p: Prog; ta: number; onClos
           <option value="">Bütün sinif / qrup</option>{LEVELS.map(l => <option key={l} value={l}>{l} səviyyə qrupu</option>)}</select></Field>
         <Field label="Qeyd" hint="istəyə görə: məs. «təkrar», «olimpiada hazırlığı»"><input value={note} onChange={e => setNote(e.target.value)} maxLength={300} /></Field>
       </div>
-      <SectionPicker all={sx.all} sel={sx.sel} setSel={sx.setSel} unit={p.kind === 'adaptive' ? 'mövzu' : 'dərs'} />
+      <SectionPicker all={sx.all} sel={sx.sel} setSel={sx.setSel} unit={p.toplu ? 'tapşırıq' : p.kind === 'adaptive' ? 'mövzu' : 'dərs'} />
       {!p.fits && <p className="small" style={{ color: 'var(--warn)' }}>Bu proqram başqa sinif üçündür ({p.grade_roman}) – məs. zəif qrup üçün təkrar proqramı kimi şüurlu seçim.</p>}
     </Drawer>
   )

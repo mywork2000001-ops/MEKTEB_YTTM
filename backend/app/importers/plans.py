@@ -94,7 +94,7 @@ def parse_resources(text: str) -> tuple[str, list[TaskRange]]:
             if m:
                 cur = KIND[m.group(1)]
                 part = m.group(2)
-            elif re.match(r'^(QT|D)\b', part):           # qiymətləndirmə tapşırıqları / dərslik – nömrə aralığı deyil
+            elif re.match(r'^(QT\b|D\b|P\d+:)', part):           # qiymətləndirmə tapşırıqları / dərslik / «P007: mövzu» (test bazası faylı) – nömrə aralığı deyil
                 cur = None
                 continue
             elif part.startswith('TT'):

@@ -456,6 +456,6 @@
     "bank_source": "p007",
     "url": "https://hub-educat-on.vercel.app/api/content/P007_9-cu_sinif_dim/9-cu%20sinif%20dim/{lesson}",
     "numbering": "P007 sualının id-si = toplu-dakı tapşırıq nömrəsi (hər fəsildə 1..tasks; max id kitabın cavab cədvəli ilə yoxlanılıb). Bankda BankQuestion.qid = bu nömrə → dərsin tapşırıq aralığı (məs. 17–33) üçün test birbaşa qid ilə seçilir.",
-    "gap": "polygons-quadrilaterals və circle-disk viktorina-nın P007 idxal siyahısında yoxdur (fərqli məlumat formatı: rawData+part2Data / rawQuestions+answersKey, questionsData iş vaxtı qurulur) → bu iki fəsil hələ test bazasında deyil. Həll: viktorina.html-də P007_LESSONS-a əlavə + extractor (ayrıca repo: Documents/Claude/Projects, check-viktorina-import.cjs ilə). Qədər – yalnız link."
+    "gap": "Bağlanıb (06.10.2026): viktorina 539c74bc – polygons-quadrilaterals və circle-disk idxal olunur, bütün P007 mövzularında qid = kitab nömrəsi."
   }
 }
