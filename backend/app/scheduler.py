@@ -16,6 +16,8 @@ _sched: BackgroundScheduler | None = None
 
 
 def _bank_job():
+    if not bank_window_open():                   # gündüz – şagirdlər sınaq yazır; dəyişiklik axşam pəncərəsində götürülür
+        return
     with SessionLocal() as db:
         r = run_sync(db, 'auto')
         log.info('bank sync: %s +%s ~%s -%s', r.status, r.added, r.updated, r.deactivated)
@@ -58,11 +60,18 @@ def _certificates_job():
 
 
 def awake_now(hours: str, now: dt.datetime | None = None) -> bool:
-    """«7-23» – Bakı vaxtı ilə 07:00 ≤ saat < 23:00."""
+    """«7-23» – Bakı vaxtı ilə 07:00 ≤ saat < 23:00; «22-6» – gecədən keçir. Boş – həmişə."""
     from zoneinfo import ZoneInfo
+    if not hours.strip():
+        return True
     a, b = (int(x) for x in hours.split('-'))
     h = (now or dt.datetime.now(ZoneInfo('Asia/Baku'))).hour
-    return a <= h < b
+    return a <= h < b if a <= b else (h >= a or h < b)
+
+
+def bank_window_open(now: dt.datetime | None = None) -> bool:
+    """Test bazasının (Chromium) yenilənməsinə icazə olan saatlar – settings.bank_sync_hours."""
+    return awake_now(settings().bank_sync_hours, now)
 
 
 def _keepalive_job():
@@ -139,6 +148,8 @@ def start():
         _sched.start()
         return
     # ilk yoxlama işə düşəndən 1 dəqiqə sonra, sonra hər N dəqiqədən bir; üst-üstə düşmür
+    if settings().bank_sync_hours.strip():       # pəncərə dar ola bilər – içində ən azı bir-iki yoxlama düşsün
+        minutes = min(minutes, 20)
     _sched.add_job(_bank_job, 'interval', minutes=minutes, id='bank_sync', max_instances=1, coalesce=True,
                    next_run_time=dt.datetime.now() + dt.timedelta(minutes=1))
     _sched.start()

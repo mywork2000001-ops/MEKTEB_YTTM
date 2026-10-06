@@ -81,7 +81,7 @@ function Bank() {
             <dl className="kv">
               <dt>Mənbə</dt><dd className="small" style={{ overflowWrap: 'anywhere' }}>{st.source_url}</dd>
               <dt>Aktiv sual</dt><dd><b>{st.questions}</b></dd>
-              <dt>Avtomatik yoxlama</dt><dd>{st.auto_minutes ? `hər ${st.auto_minutes} dəqiqə` : 'söndürülüb'}</dd>
+              <dt>Avtomatik yoxlama</dt><dd>{st.auto_minutes ? (st.auto_hours ? `hər gün ${st.auto_hours.replace('-', ':00–')}:00 (Bakı) – gündüz şagirdlərə mane olmasın` : `hər ${st.auto_minutes} dəqiqə`) : 'söndürülüb'}</dd>
               <dt>Son yoxlama</dt><dd>{when(st.last?.finished || st.last?.at)} {st.last && <Pill tone={st.last.status === 'error' ? 'bad' : st.last.status === 'updated' ? 'ok' : undefined}>{st.last.status}</Pill>}</dd>
               <dt>Son yenilənmə</dt><dd>{st.last_update ? `${when(st.last_update.finished)} · +${st.last_update.added} ~${st.last_update.updated} −${st.last_update.deactivated}` : '—'}</dd>
             </dl>

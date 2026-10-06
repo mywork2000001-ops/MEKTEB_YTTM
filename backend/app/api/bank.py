@@ -32,6 +32,7 @@ def status(db: Session = Depends(get_db), _: User = Depends(staff)):
     last_upd = db.scalar(select(BankSync).where(BankSync.status == 'updated').order_by(BankSync.id.desc()))
     total = db.scalar(select(func.count()).select_from(BankQuestion).where(BankQuestion.active.is_(True)))
     return {'source_url': settings().viktorina_url, 'auto_minutes': settings().bank_sync_minutes,
+            'auto_hours': settings().bank_sync_hours,
             'questions': total, 'last': _sync_out(last), 'last_success_at': last_ok and last_ok.finished_at,
             'last_update': _sync_out(last_upd)}
 
@@ -54,6 +55,9 @@ def sync_hook(x_hook_token: str | None = Header(None)):
         raise HTTPException(404, 'Not Found')
     if not x_hook_token or not hmac.compare_digest(x_hook_token.encode(), token.encode()):
         raise HTTPException(403, 'Yanlış açar')
+    from ..scheduler import bank_window_open
+    if not bank_window_open():                   # gündüz Chromium açılmır – viktorina dəyişikliyi axşam pəncərəsində götürülür
+        return {'started': False, 'deferred': settings().bank_sync_hours}
 
     def job():
         with SessionLocal() as db:

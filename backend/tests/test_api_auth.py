@@ -71,6 +71,7 @@ def test_bank_hook_token(client, monkeypatch):
     from app.config import settings
     started = []
     monkeypatch.setattr('app.api.bank.run_sync', lambda db, trigger, **k: started.append(trigger))
+    monkeypatch.setattr(settings(), 'bank_sync_hours', '')                       # saatdan asılı olmasın
     monkeypatch.setattr(settings(), 'bank_hook_token', None)
     assert client.post('/api/bank/hook', headers={'X-Hook-Token': 'x'}).status_code == 404   # açar yoxdursa – söndürülüb
     monkeypatch.setattr(settings(), 'bank_hook_token', 'gizli-acar')

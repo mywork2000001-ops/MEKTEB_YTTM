@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # Əlavə test bazası: işləyən viktorina saytı (suallar oradan avtomatik yenilənir)
     viktorina_url: str = 'https://hub-educat-on-6m58.vercel.app/viktorina.html'
     bank_sync_minutes: int = 60                          # 0 = avtomatik yeniləmə söndürülüb
+    # Chromium yalnız bu saatlarda (Bakı): gün ərzində sınaq yazan şagirdlərin yaddaşını/CPU-nu almasın; boş – istənilən vaxt.
+    # Pulsuz planda server gecə yatır (keepalive_hours), ona görə pəncərə oyaq saatların içində olmalıdır
+    bank_sync_hours: str = '22-23'
     bank_exclude_sources: str = 'eduhub'                 # vergüllə; EduHub açar tələb edir
     bank_hook_token: str | None = None                   # viktorina deploy olunanda GitHub Action POST /api/bank/hook çağırır
     chrome_path: str | None = None                       # lokal: C:/Program Files/Google/Chrome/Application/chrome.exe
