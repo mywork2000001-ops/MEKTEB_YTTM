@@ -18,9 +18,12 @@ export function PlanNotes({ l, compact }: { l: any; compact?: boolean }) {
     l.topic && l.plan_topic && l.topic !== l.plan_topic && `Plandakı mövzu: ${l.plan_topic}`,
     l.off_schedule && 'Cədvəldən kənar dərs',
   ].filter(Boolean)
-  if (!notes.length) return null
-  return compact ? <span className="sub small muted"><br />{notes.join(' · ')}</span>
-    : <p className="small muted" style={{ margin: '0 0 8px' }}>{notes.join(' · ')}</p>
+  // X–XI: dərsin P0010 testi – yalnız dərsin tarixi və saatı çatanda açılır
+  const p10 = l.p0010 ? <>{notes.length ? ' · ' : ''}Test: <a href={l.p0010.url} target="_blank" rel="noreferrer">{l.p0010.label}</a></>
+    : l.p0010_opens_at ? <>{notes.length ? ' · ' : ''}🔒 Test dərs başlayanda açılır ({fmtDate(l.p0010_opens_at)}, {new Date(l.p0010_opens_at).toLocaleTimeString('az', { hour: '2-digit', minute: '2-digit' })})</> : null
+  if (!notes.length && !p10) return null
+  return compact ? <span className="sub small muted"><br />{notes.join(' · ')}{p10}</span>
+    : <p className="small muted" style={{ margin: '0 0 8px' }}>{notes.join(' · ')}{p10}</p>
 }
 
 export default function Plan() {

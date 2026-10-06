@@ -97,11 +97,38 @@ def _slots_with_entries(ctx, a: dt.date, b: dt.date, entries: dict) -> list:
     return sorted(items, key=lambda x: (x[0], x[1]))
 
 
+def _lesson_start(d: dt.date, time: str | None) -> dt.datetime:
+    """Dərsin başlama anı (zəng «08:30-09:15» – birinci vaxt); zəng yoxdursa – 08:00, məktəb vaxtı."""
+    import re
+    from zoneinfo import ZoneInfo
+    m = re.search(r'(\d{1,2}):(\d{2})', time or '')
+    h, mi = (int(m.group(1)), int(m.group(2))) if m else (8, 0)
+    return dt.datetime(d.year, d.month, d.day, h, mi, tzinfo=ZoneInfo(SCHOOL_TZ))
+
+
+def _p0010(db: Session, c: SchoolClass, pairs: list[tuple[dict, PlanLesson | None]]) -> None:
+    """X–XI: dərsin P0010 testi şagirdə yalnız dərsin tarixi və saatı çatanda açılır (o vaxta qədər – p0010_opens_at)."""
+    from .plan import attach_p0010
+    ls = {pl.id: {'id': pl.id, 'topic': pl.topic, 'section': pl.section, 'assessment_type': pl.assessment_type}
+          for _, pl in pairs if pl is not None}
+    attach_p0010(db, c, list(ls.values()))
+    at = now()
+    for item, pl in pairs:
+        x = ls.get(pl.id).get('p0010') if pl is not None else None
+        if not x:
+            continue
+        start = _lesson_start(item['date'], item.get('time'))
+        if at >= start:
+            item['p0010'] = {'label': x['label'], 'url': x['url']}
+        else:
+            item['p0010_opens_at'] = start
+
+
 @router.get('/day')
 def day(date: dt.date | None = None, user: User = Depends(student_only), db: Session = Depends(get_db)):
     s = me_student(db, user)
     d = date or today()
-    lessons = []
+    lessons, pairs = [], []
     for ta, c in my_assignments(db, s):
         ctx = plan_ctx(db, ta)
         entries = journal_entries(db, ta.id, d, d)
@@ -120,6 +147,9 @@ def day(date: dt.date | None = None, user: User = Depends(student_only), db: Ses
                 h = db.get(HomeworkCheck, (e.id, s.id))
                 item['homework_check'] = h.status if h else None
             lessons.append(item)
+            pairs.append((item, pl))
+        _p0010(db, c, pairs)
+        pairs = []
     lessons.sort(key=lambda x: (x['time'] or '', x['period']))
     return {'date': d, 'weekday': WEEKDAYS[d.weekday()], 'lessons': lessons}
 
@@ -131,6 +161,7 @@ def plan(view: str = 'week', date: dt.date | None = None, user: User = Depends(s
     d = date or today()
     items, rng = [], (d, d)
     for ta, c in my_assignments(db, s):
+        pairs: list = []
         ctx = plan_ctx(db, ta)
         try:
             a, b = view_range(view, d, ctx.year.sem1_end, ctx.year.sem2_start, ctx.year.start, ctx.year.end,
@@ -146,6 +177,8 @@ def plan(view: str = 'week', date: dt.date | None = None, user: User = Depends(s
                           'time': bell(db, c, period, ta, d_), 'subject': ta.subject, 'class_name': c.name,
                           'group': c.kind == 'qrup',
                           **_plan_fields(pl, sl, e), 'homework': e.homework if e else None})
+            pairs.append((items[-1], pl))
+        _p0010(db, c, pairs)
     items.sort(key=lambda x: (x['date'], x['time'] or '', x['period']))
     return {'view': view, 'from': rng[0], 'to': rng[1], 'items': items}
 
