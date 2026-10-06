@@ -36,6 +36,15 @@ def _auto_tests_job():
             log.info('avtomatik mövzu testi: %s', n)
 
 
+def _exam_series_job():
+    """Sınaq seriyaları: vaxtı çatan yuvaya növbəti sınaq, bankdakı yeni sınaqlar növbəyə."""
+    from .api.exam_series import run_series
+    with SessionLocal() as db:
+        n = run_series(db)
+        if n:
+            log.info('sınaq seriyası: %s sınaq', n)
+
+
 def awake_now(hours: str, now: dt.datetime | None = None) -> bool:
     """«7-23» – Bakı vaxtı ilə 07:00 ≤ saat < 23:00."""
     from zoneinfo import ZoneInfo
@@ -65,6 +74,8 @@ def start():
         return
     _sched = BackgroundScheduler(timezone='Asia/Baku')
     _sched.add_job(_topic_journal_job, 'interval', minutes=15, id='topic_journal', max_instances=1, coalesce=True)
+    _sched.add_job(_exam_series_job, 'interval', minutes=15, id='exam_series', max_instances=1, coalesce=True,
+                   next_run_time=dt.datetime.now() + dt.timedelta(minutes=3))
     _sched.add_job(_auto_tests_job, 'interval', minutes=15, id='auto_tests', max_instances=1, coalesce=True,
                    next_run_time=dt.datetime.now() + dt.timedelta(minutes=2))
     if keep:

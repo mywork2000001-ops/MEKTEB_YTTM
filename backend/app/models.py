@@ -455,6 +455,36 @@ class TestBatch(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class ExamSeries(Base):
+    """Sınaq seriyası: seçilmiş sınaqlar növbə ilə, dövrə görə (gün/həftə/ay) siniflərə özü göndərilir
+    (docs/sinaq-seriyasi-promtu.md); auto_new – bankda yeni sınaq görünəndə növbəyə düşür."""
+    __tablename__ = 'exam_series'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    title: Mapped[str] = mapped_column(String(200))
+    subject: Mapped[str] = mapped_column(String(60))
+    targets: Mapped[list] = mapped_column(JSON)                         # [{ta_id, student_ids}]
+    sources: Mapped[list] = mapped_column(JSON)                         # ['sinaqlar', 'p012']
+    grade: Mapped[int | None] = mapped_column(Integer)
+    period: Mapped[str] = mapped_column(String(8))                      # day | week | month
+    every: Mapped[int] = mapped_column(Integer, default=1)
+    weekday: Mapped[int | None] = mapped_column(Integer)                # 0 = B.e. (həftə)
+    month_day: Mapped[int | None] = mapped_column(Integer)              # 1..31 (ay)
+    open_time: Mapped[str] = mapped_column(String(5))                   # «15:00»
+    window_hours: Mapped[int] = mapped_column(Integer, default=48)
+    duration_min: Mapped[int] = mapped_column(Integer, default=60)
+    penalty: Mapped[int] = mapped_column(Integer, default=0)
+    show_answers: Mapped[str] = mapped_column(String(12), default='after_close')
+    shuffle: Mapped[bool] = mapped_column(Boolean, default=True)
+    auto_new: Mapped[bool] = mapped_column(Boolean, default=True)
+    queue: Mapped[list] = mapped_column(JSON, default=list)             # [bank_file_id, ...]
+    done: Mapped[list] = mapped_column(JSON, default=list)              # [{file_id, batch_id, at}]
+    since_file_id: Mapped[int] = mapped_column(Integer, default=0)      # auto_new: yalnız bundan sonra bankda görünən fayllar
+    next_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class OnlineTask(Base, Archivable):
     """Suallar yaradılanda SURƏT kimi saxlanılır – test bazası sonra dəyişsə də tapşırıq dəyişmir."""
     __tablename__ = 'online_tasks'

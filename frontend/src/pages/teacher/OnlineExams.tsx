@@ -10,6 +10,7 @@ import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Q } from './Ta
 import { TaskActions } from './Tasks'
 import { RatingPanel } from './ResultsCenter'
 import { PeriodBar, usePeriod } from '../../periods'
+import ExamSeriesPanel from './ExamSeries'
 
 type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; teacher: string; mine: boolean; students: number }
 type Exam = { id: number; title: string; subject: string; grade: number | null; classes: string[]; opens_at: string | null; closes_at: string | null
@@ -28,7 +29,7 @@ const stateTone = (s: string) => (s === 'açıqdır' ? 'ok' : s === 'bitib' ? 'i
 const PENALTY: [string, string][] = [['0', 'cərimə yoxdur'], ['4', '4 səhv 1 düzü aparır'], ['3', '3 səhv 1 düzü aparır']]
 
 export default function OnlineExams() {
-  const [view, setView] = useState<'list' | 'rating'>('list')
+  const [view, setView] = useState<'list' | 'series' | 'rating'>('list')
   const [list, err, loading, reload] = useLoad<Exam[]>(() => get('/api/exams-online'), [])
   const [creating, setCreating] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
@@ -41,9 +42,9 @@ export default function OnlineExams() {
     <>
       <Top title="Sınaq imtahanları" sub="Onlayn sınaq bir neçə sinfə eyni anda · sınaq jurnalı · sinif və ümumi reytinq (formativ qiymətə təsir etmir)"
         actions={<button className="btn primary" onClick={() => setCreating(true)}>+ Yeni sınaq</button>} />
-      <div className="toolbar"><Seg value={view} onChange={setView} options={[['list', 'Sınaqlar'], ['rating', 'Reytinq']]} /></div>
+      <div className="toolbar"><Seg value={view} onChange={setView} options={[['list', 'Sınaqlar'], ['series', 'Avtomatik seriyalar'], ['rating', 'Reytinq']]} /></div>
       <ErrorBox error={err} />
-      {view === 'rating' ? <RatingPanel initial="sinaq" /> : loading && !list ? <Loading /> : (
+      {view === 'rating' ? <RatingPanel initial="sinaq" /> : view === 'series' ? <ExamSeriesPanel /> : loading && !list ? <Loading /> : (
         <>{all.length > 0 && <PeriodBar f={f} count={shown.length} total={all.length} topicLabel="Ad üzrə" />}
         <div className="jlist">
           {list?.length === 0 && <div className="empty">Hələ sınaq yoxdur – «+ Yeni sınaq» ilə test bazasından sınaq seçin.</div>}
