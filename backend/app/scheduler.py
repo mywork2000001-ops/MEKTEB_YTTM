@@ -27,6 +27,15 @@ def _topic_journal_job():
             log.info('mövzu testi → jurnal: %s test', n)
 
 
+def _auto_tests_job():
+    """Avtomatik mövzu testləri – bu günün dərslərinə (sinifdə «auto_tests» açıqdırsa)."""
+    from .auto_tests import run
+    with SessionLocal() as db:
+        n = run(db)
+        if n:
+            log.info('avtomatik mövzu testi: %s', n)
+
+
 def awake_now(hours: str, now: dt.datetime | None = None) -> bool:
     """«7-23» – Bakı vaxtı ilə 07:00 ≤ saat < 23:00."""
     from zoneinfo import ZoneInfo
@@ -56,6 +65,8 @@ def start():
         return
     _sched = BackgroundScheduler(timezone='Asia/Baku')
     _sched.add_job(_topic_journal_job, 'interval', minutes=15, id='topic_journal', max_instances=1, coalesce=True)
+    _sched.add_job(_auto_tests_job, 'interval', minutes=15, id='auto_tests', max_instances=1, coalesce=True,
+                   next_run_time=dt.datetime.now() + dt.timedelta(minutes=2))
     if keep:
         _sched.add_job(_keepalive_job, 'interval', minutes=10, id='keepalive', max_instances=1, coalesce=True)
     if minutes <= 0:

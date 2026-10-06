@@ -37,3 +37,9 @@ fayllar bir kliklə; IX və aşağı siniflərdə dəyişiklik yoxdur.
 - Müəllim redaktə edir: plan sətrində «P0010: …» yanında ✎ – «Avtomatik», «P0010 bağlantısı yoxdur» və ya istənilən P0010 faylı
   (uyğunlar öndə, qalanı bölmələr üzrə). Seçim `lesson_bank_links` cədvəlində (miqrasiya a9c3e5f7b1d2), avtomatikdən üstündür;
   mövzu testi forması da həmin faylı götürür. `PUT /api/plan/{ta}/topics/{pl}/p0010 {mode: auto|none|file, file_id}`.
+
+## Əlavə: hər plan dərsinə avtomatik mövzu testi
+- Perspektiv plan → «Hər dərsə avtomatik mövzu testi» (`teaching_assignments.auto_tests`, miqrasiya c2e4a6b8d0f1,
+  `PUT /api/plan/{ta}/auto-tests`). `app/auto_tests.py` hər 15 dəq. (scheduler) bu günün dərslərinə test yaradır:
+  X–XI – P0010 (müəllimin seçdiyi və ya ən uyğun fayl, ≤ 15 sual), «Test toplusu» – P007 (dərsin S/E/M aralığı).
+  Açılır dərsin sonunda, bağlanır ertəsi gün 22:00, 20 dəq., nəticə formativ jurnala; KSQ/BSQ və testi olan dərs atlanır.

@@ -145,8 +145,26 @@ def plan_view(ta_id: int, view: str = 'week', date: dt.date | None = None, user:
         if i['lesson']:
             i['lesson']['tests'] = tests.get(i['lesson']['id'], [])
     attach_p0010(db, ctx.cls, [i['lesson'] for i in items if i['lesson']])
-    return {'class_name': ctx.cls.name, 'subject': ta.subject, 'from': a, 'to': b, 'items': items,
+    return {'class_name': ctx.cls.name, 'subject': ta.subject, 'from': a, 'to': b, 'items': items, 'auto_tests': bool(ta.auto_tests),
             'unfit': [lesson_out(ctx.lessons[i]) for i in ctx.unfit], 'has_plan': bool(ctx.lessons)}
+
+
+class AutoTestsIn(BaseModel):
+    on: bool
+
+
+@router.put('/plan/{ta_id}/auto-tests')
+def set_auto_tests(ta_id: int, body: AutoTestsIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Hər plan dərsinə avtomatik mövzu testi (app/auto_tests.py): açılanda bu günün dərsləri də dərhal yoxlanılır."""
+    ta = own_assignment(db, user, ta_id)
+    ta.auto_tests = body.on
+    audit(db, user, 'update', 'teaching_assignment', ta.id, auto_tests=body.on)
+    db.commit()
+    made = 0
+    if body.on:
+        from ..auto_tests import run
+        made = run(db)
+    return {'auto_tests': ta.auto_tests, 'created_today': made}
 
 
 @router.get('/plan/{ta_id}/official')

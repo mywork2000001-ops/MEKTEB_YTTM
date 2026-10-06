@@ -79,7 +79,7 @@ export default function Plan() {
   const [date, setDate] = useState(isoDate(new Date()))
   const cur = lessons?.find(l => l.id === ta)
   const [testFor, setTestFor] = useState<number | null>(null)
-  const [d, err, loading, reload] = useLoad<{ items: Item[]; unfit: any[]; has_plan: boolean; from: string; to: string } | null>(
+  const [d, err, loading, reload] = useLoad<{ items: Item[]; unfit: any[]; has_plan: boolean; from: string; to: string; auto_tests?: boolean } | null>(
     () => (ta ? get(`/api/plan/${ta}`, { view, date }) : Promise.resolve(null)), [ta, view, date])
   let lastDate = ''
   return (
@@ -103,6 +103,13 @@ export default function Plan() {
             <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>Bu gün</button>
             <button className="btn sm right" onClick={() => printDoc({ title: `${cur?.class_name} – perspektiv plan ${fmtDate(d.from)}–${fmtDate(d.to)}`, body: head(`${cur?.class_name} – ${cur?.subject}: perspektiv plan (işçi)`, `${fmtDate(d.from)} – ${fmtDate(d.to)}`) + table(['Tarix', 'Saat', '№', 'Mövzu', 'Qiymətləndirmə'], d.items.map(i => [`${i.weekday} ${fmtDate(i.date)}`, i.period, i.lesson?.seq ?? '', i.lesson?.topic ?? '—', i.lesson && i.lesson.assessment_type !== 'formativ' ? i.lesson.assessment_type + (i.lesson.exam_no ? '-' + i.lesson.exam_no : '') : ''])) })}>Çap / PDF</button>
             {cur && cur.lag > 0 && <Pill tone="warn">Geriləmə: {cur.lag} dərs</Pill>}
+            <label className="check small" title="X–XI sinifdə P0010, «Test toplusu» dərslərində P007 sualları; test dərs günü yaradılır, dərsin sonunda açılır, ertəsi gün 22:00 bağlanır, nəticə formativ jurnala">
+              <input type="checkbox" checked={!!d.auto_tests} onChange={async e => {
+                try {
+                  const r = await put<{ created_today: number }>(`/api/plan/${ta}/auto-tests`, { on: e.target.checked })
+                  toast(e.target.checked ? `Avtomatik mövzu testi açıldı${r.created_today ? ` · bu gün ${r.created_today} test yaradıldı` : ''}` : 'Avtomatik mövzu testi bağlandı'); reload()
+                } catch (x: any) { toast(x?.message || 'Saxlanmadı') }
+              }} /> Hər dərsə avtomatik mövzu testi</label>
           </div>
           {!d.has_plan && <div className="banner">Bu sinif üçün plan yoxdur – yuxarıdakı <b>«Proqramlar: seç / dəyiş»</b> bölməsində «Əsas proqramı seç» düyməsi ilə kitabxanadan proqram seçin (Word planınızı Tənzimləmələr → Proqramlar → «Word planını yüklə» ilə əlavə edə bilərsiniz).</div>}
           {d.unfit.length > 0 && <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>İlin sonuna {d.unfit.length} dərs sığmır – geriləməni aradan qaldırmaq lazımdır.</div>}

@@ -10,7 +10,7 @@ import datetime as dt
 import enum
 
 from sqlalchemy import (JSON, Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, LargeBinary, String, Text,
-                        UniqueConstraint, func, text)
+                        UniqueConstraint, false, func, text)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -165,6 +165,8 @@ class TeachingAssignment(Base, Archivable):
     times: Mapped[dict | None] = mapped_column(JSON)
     # əsas proqramdan seçilmiş bölmələr (None – hamısı)
     program_sections: Mapped[list | None] = mapped_column(JSON)
+    # hər plan dərsinə avtomatik mövzu testi (X–XI – P0010, «Test toplusu» – P007), dərs günü yaradılır (app/auto_tests.py)
+    auto_tests: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     __table_args__ = (UniqueConstraint('teacher_id', 'class_id', 'subject'),)
     teacher: Mapped[User] = relationship()
     cls: Mapped[SchoolClass] = relationship()
@@ -513,7 +515,7 @@ class ChatMember(Base):
     room_id: Mapped[int] = mapped_column(ForeignKey('chat_rooms.id', ondelete='CASCADE'), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
     last_read_id: Mapped[int] = mapped_column(Integer, default=0)
-    cleared_id: Mapped[int] = mapped_column(Integer, default=0, server_default='0')   # «söhbəti sil» – bu id-yə qədər görünmür (yalnız özündə)
+    cleared_id: Mapped[int] = mapped_column(Integer, default=0, server_default=false())   # «söhbəti sil» – bu id-yə qədər görünmür (yalnız özündə)
 
 
 class ChatMessage(Base):
