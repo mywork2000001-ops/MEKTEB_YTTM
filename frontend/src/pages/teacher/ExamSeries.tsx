@@ -1,8 +1,9 @@
 // Sınaq seriyası: seçilmiş sınaqlar növbə ilə dövrə görə (gün / həftə / ay) siniflərə özü gedir; bankda yeni sınaq
 // görünəndə növbəyə düşür (docs/sinaq-seriyasi-promtu.md).
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { del as apiDel, get, patch, post } from '../../api'
 import { azDT, Drawer, ErrorBox, Field, Loading, Pill, Seg, toast, useLoad } from '../../ui'
+import { bankGroup } from './TaskEditor'
 
 type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; mine: boolean; students: number }
 type BFile = { id: number; label: string; questions: number; kind: string; grades: number[]; source: string }
@@ -13,7 +14,7 @@ type Series = {
   preview: { at: string; weekday: string; file_id: number | null; label: string | null }[]; targets: { ta_id: number }[]; sources: string[]
 }
 const WD = ['Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə', 'Bazar']
-const SOURCES: [string, string][] = [['sinaqlar', 'Sınaqlar (illər üzrə)'], ['p012', 'P012 · Riyaziyyat 11 Buraxılış'], ['p009', 'P009 · Riyaziyyat 11 DİM'], ['p004', 'P004 · TAİM']]
+const SOURCES: [string, string][] = [['sinaqlar', 'Sınaqlar (illər üzrə)'], ['p012', 'P012 · Riyaziyyat 11 Buraxılış'], ['p009', 'P009 · Riyaziyyat 11 DİM']]   // TAİM (P004) – müəllim imtahanı, seriyaya düşmür
 const when = (s: string) => azDT(new Date(s), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 const rule = (s: Series) => s.period === 'day' ? `hər ${s.every > 1 ? s.every + ' ' : ''}gün` : s.period === 'week'
   ? `hər ${s.every > 1 ? s.every + ' ' : ''}həftə, ${WD[s.weekday ?? 0]}` : `hər ${s.every > 1 ? s.every + ' ' : ''}ay, ${s.month_day}-i`
@@ -64,7 +65,7 @@ export default function ExamSeriesPanel() {
 function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const today = new Date().toISOString().slice(0, 10)
   const [targets, , tl] = useLoad<Target[]>(() => get('/api/exams-online/targets'), [])
-  const [f, setF] = useState({ title: 'Həftəlik sınaqlar', sources: ['sinaqlar'], grade: '' as string, period: 'week' as 'day' | 'week' | 'month',
+  const [f, setF] = useState({ title: 'Həftəlik sınaqlar', sources: ['sinaqlar', 'p012'], grade: '' as string, period: 'week' as 'day' | 'week' | 'month',
     every: 1, weekday: 5, month_day: 1, start: today, open_time: '15:00', window_hours: 48, duration_min: 60, penalty: 0,
     show_answers: 'after_close', auto_new: true })
   const [tas, setTas] = useState<number[]>([])
@@ -76,6 +77,18 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
     setFiles(null)
     get<BFile[]>('/api/exam-series/files', { sources: f.sources.join(','), ...(f.grade ? { grade: f.grade } : {}) }).then(setFiles, setErr)
   }, [f.sources.join(','), f.grade])
+  const groups = useMemo(() => {
+    const out: { key: string; title: string; items: BFile[] }[] = []
+    for (const x of files || []) {
+      const g = bankGroup(x.source, x.label)
+      const key = `${x.source}|${g}`
+      const title = [SOURCES.find(([k]) => k === x.source)?.[1] || x.source, g].filter(Boolean).join(' · ')
+      const cur = out.find(o => o.key === key)
+      if (cur) cur.items.push(x)
+      else out.push({ key, title, items: [x] })
+    }
+    return out
+  }, [files])
   const subj = targets?.find(t => tas.includes(t.ta_id))?.subject
   const toggle = (id: number) => setQueue(q => q.includes(id) ? q.filter(x => x !== id) : [...q, id])
   const submit = async () => {
@@ -118,11 +131,23 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
           </div>
           <label className="check"><input type="checkbox" checked={f.auto_new} onChange={e => setF({ ...f, auto_new: e.target.checked })} /> Yeni sınaqları avtomatik əlavə et (viktorina-ya əlavə olunanlar)</label>
           {!files ? <Loading /> : files.length === 0 ? <p className="small muted">Bu mənbələrdə sınaq yoxdur.</p> : <>
-            <button type="button" className="btn sm ghost" onClick={() => setQueue(queue.length === files.length ? [] : files.map(x => x.id))}>{queue.length === files.length ? 'Heç biri' : 'Hamısını seç'}</button>
-            <div style={{ maxHeight: 320, overflowY: 'auto' }}>{files.map(x => {
-              const n = queue.indexOf(x.id)
-              return <label key={x.id} className="check small"><input type="checkbox" checked={n >= 0} onChange={() => toggle(x.id)} />
-                {n >= 0 && <b>{n + 1}.</b>} {x.label} <span className="muted">({x.questions} sual)</span></label>
+            <div className="row" style={{ gap: 6 }}>
+              <button type="button" className="btn sm ghost" onClick={() => setQueue(queue.length === files.length ? [] : files.map(x => x.id))}>{queue.length === files.length ? 'Heç biri' : 'Hamısını seç'}</button>
+              <span className="small muted">seçilib {queue.length} / cəmi {files.length}</span>
+            </div>
+            <div className="jlist" style={{ maxHeight: '60vh', overflowY: 'auto' }}>{groups.map(g => {
+              const all = g.items.every(x => queue.includes(x.id))
+              return <div key={g.key}>
+                <div className="row small" style={{ padding: '6px 12px', background: 'var(--surface-2)' }}>
+                  <b className="grow">{g.title} <span className="muted">({g.items.length})</span></b>
+                  <button type="button" className="btn sm ghost" onClick={() => setQueue(q => all ? q.filter(id => !g.items.some(x => x.id === id))
+                    : [...q, ...g.items.filter(x => !q.includes(x.id)).map(x => x.id)])}>{all ? 'heç biri' : 'hamısı'}</button>
+                </div>
+                {g.items.map(x => {
+                  const n = queue.indexOf(x.id)
+                  return <label key={x.id} className="check small" style={{ padding: '0 12px' }}><input type="checkbox" checked={n >= 0} onChange={() => toggle(x.id)} />
+                    {n >= 0 && <b>{n + 1}.</b>} {x.label} <span className="muted">({x.questions} sual{x.grades.length ? ` · ${x.grades.join(', ')}-cu sinif` : ' · sinif göstərilməyib'})</span></label>
+                })}</div>
             })}</div></>}
         </fieldset>
         <ErrorBox error={err} />

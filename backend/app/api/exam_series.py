@@ -64,9 +64,13 @@ def first_slot(s: ExamSeries, start: dt.date, after: dt.datetime) -> dt.datetime
 
 
 # ---------------------------------------------------------------- fayllar
+# seriyaya yararlı mənbələr; TAİM (P004) – müəllim imtahanıdır, şagird sınağı deyil (köhnə seriyada qalıbsa sükutla atılır)
+SERIES_SOURCES = ('sinaqlar', 'p012', 'p009')
+
+
 def _files_q(sources: list[str]):
     return (select(BankFile).join(BankSource, BankSource.key == BankFile.source_key)
-            .where(BankFile.source_key.in_(sources), BankFile.active.is_(True), BankSource.enabled.is_(True),
+            .where(BankFile.source_key.in_([x for x in sources if x in SERIES_SOURCES]), BankFile.active.is_(True), BankSource.enabled.is_(True),
                    BankFile.question_count > 0).order_by(BankFile.id))
 
 
@@ -200,6 +204,8 @@ class SeriesIn(BaseModel):
             raise ValueError('həll müddəti açıq qalma müddətindən uzundur')
         if not self.queue and not self.auto_new:
             raise ValueError('ən azı bir sınaq seçin və ya «yeni sınaqları avtomatik əlavə et»i açın')
+        if any(x not in SERIES_SOURCES for x in self.sources):
+            raise ValueError('mənbə: yalnız Sınaqlar, P012, P009')
         if len({t.ta_id for t in self.targets}) != len(self.targets):
             raise ValueError('bir sinif iki dəfə seçilib')
         return self

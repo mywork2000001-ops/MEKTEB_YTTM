@@ -13,7 +13,7 @@ def test_classify():
     assert classify('p012', 'ÜSİ-3')['kind'] == 'sinaq' and classify('p009', 'Variant 4')['grades'] == [11]
     assert classify('sinaqlar', '2026 · İTM — Buraxılış sınaq imtahanı BSİ-1 (VIII–IX sinif, 27.09.2026)') == \
         {'kind': 'sinaq', 'grades': [8, 9], 'subject': 'Riyaziyyat'}
-    assert classify('sinaqlar', '2026 · OBM — Natural ədədlər (Variant A) (Natural ədədlər, 2026)')['kind'] == 'movzu'
+    assert classify('sinaqlar', '2026 · OBM — Natural ədədlər (Variant A) (Natural ədədlər, 2026)')['kind'] == 'sinaq'   # Sınaqlar qovluğu – hamısı sınaq
     assert classify('sinaqlar', 'Leibniz Academy — Mövzu sınağı 5 (XI sinif, 08.02.2026)')['kind'] == 'sinaq'
     assert classify('p003', 'Kitab I — Yekun Testi')['kind'] == 'yekun'
     assert classify('p011', 'Fəsil 1 · Dərs 1 — İlkin yoxlama') == {'kind': 'diaqnostik', 'grades': [6], 'subject': 'Riyaziyyat'}

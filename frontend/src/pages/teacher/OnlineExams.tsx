@@ -13,6 +13,9 @@ import { PeriodBar, usePeriod } from '../../periods'
 import ExamSeriesPanel from './ExamSeries'
 import { azDT } from '../../ui'
 
+// sınaq mənbələri (viktorina): Sınaqlar qovluğu, P012, P009; TAİM (P004) – müəllim imtahanı, göstərilmir
+const EXAM_SOURCES = ['sinaqlar', 'p012', 'p009']
+
 type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; teacher: string; mine: boolean; students: number }
 type Exam = { id: number; title: string; subject: string; grade: number | null; classes: string[]; opens_at: string | null; closes_at: string | null
   questions: number; mine: boolean; wrote: number; avg_pct: number | null; state: 'gözlənilir' | 'açıqdır' | 'bitib' }
@@ -154,7 +157,7 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
               {!shown.length && <div className="empty">Dərsiniz yoxdur.</div>}
             </div>
           </fieldset>
-          <BankPicker has={has} add={add} remove={remove} disabled={false} first={false}
+          <BankPicker has={has} add={add} remove={remove} disabled={false} first={false} main={EXAM_SOURCES} exclude={['p004']} tall
             legend="Test bazasından – sınaqlar, yekun testlər və mövzu bölmələri" onTitle={t => !f.title && setF(x => ({ ...x, title: t }))} />
           <fieldset><legend>Seçilmiş suallar ({qs.length})</legend>
             {qs.length === 0 ? <p className="small muted">Yuxarıdan sınağı seçib «Hamısını əlavə et» basın (orijinal sınaq formatı).</p> : (

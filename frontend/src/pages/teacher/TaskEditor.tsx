@@ -125,9 +125,18 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
 
 // ---------------------------------------------------------------- viktorina: bir neçə mənbə və bölmə
 /** kinds – yalnız bu növ fayllar (mövzu testi: movzu, diaqnostik; sınaq: sinaq, yekun); boş – hamısı. */
-export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, legend }: { has: (k: string) => boolean; add: (q: Q[]) => void; remove: (k: string) => void; onTitle: (t: string) => void; disabled: boolean; first: boolean; kinds?: string[]; legend?: string }) {
+// Siyahıda qrup başlığı: «Sınaqlar» – il («2026 · …»), P012 – ÜSİ / MSİ
+export function bankGroup(src: string, label: string) {
+  if (src === 'sinaqlar') return label.split(' · ')[0]
+  if (src === 'p012') return /^ÜSİ/.test(label) ? 'ÜSİ — Buraxılış sınağı' : /^MSİ/.test(label) ? 'MSİ — Məktəbdaxili sınaq' : ''
+  return ''
+}
+
+// main – əsas mənbələr (əvvəlcədən seçilir, qalanları «Digər mənbələr» arxasında); exclude – heç göstərilmir; tall – uzun siyahı
+export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, legend, main, exclude, tall }: { has: (k: string) => boolean; add: (q: Q[]) => void; remove: (k: string) => void; onTitle: (t: string) => void; disabled: boolean; first: boolean; kinds?: string[]; legend?: string; main?: string[]; exclude?: string[]; tall?: boolean }) {
   const [sources, setSources] = useState<any[]>([])
   const [srcSel, setSrcSel] = useState<string[]>([])
+  const [more, setMore] = useState(!main)
   const [lessons, setLessons] = useState<Record<string, any[]>>({})
   const [lesSel, setLesSel] = useState<{ id: number; src: string; label: string }[]>([])
   const [qByFile, setQByFile] = useState<Record<number, any[]>>({})
@@ -136,8 +145,11 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
   const kindKey = kinds?.join(',') || ''
   useEffect(() => {
     get<any[]>('/api/bank/sources').then(x => setSources(x.filter(s => s.enabled && s.active &&
-      (!kindKey || kindKey.split(',').some(k => (s.kinds || {})[k])))))
-  }, [kindKey])
+      !exclude?.includes(s.key) && (!kindKey || kindKey.split(',').some(k => (s.kinds || {})[k])))))
+  }, [kindKey, exclude?.join(',')])
+  const mainKey = main?.join(',') || ''
+  useEffect(() => { if (mainKey) setSrcSel(cur => cur.length ? cur : sources.filter(s => mainKey.split(',').includes(s.key)).map(s => s.key)) }, [mainKey, sources])
+  const visible = sources.filter(s => more || !main || main.includes(s.key))
   useEffect(() => { srcSel.forEach(k => { if (!lessons[k]) get<any[]>('/api/bank/lessons', { source: k }).then(l => setLessons(x => ({ ...x, [k]: l }))) }) }, [srcSel])
   useEffect(() => { lesSel.forEach(l => { if (!qByFile[l.id]) get('/api/bank/questions', { file_id: l.id, limit: 200 }).then(r => setQByFile(x => ({ ...x, [l.id]: r.items }))) }) }, [lesSel])
   const label = (k: string) => (sources.find(s => s.key === k)?.label || k)
@@ -157,19 +169,22 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
     <fieldset disabled={disabled}><legend>{legend || (first ? '1. Viktorinadan: mənbələr və bölmələr' : 'Test bazasından (viktorina – avtomatik yenilənir)')}</legend>
       <div className="stack">
         <div className="row" style={{ gap: 6 }}>
-          {sources.map(s => <button key={s.key} type="button" className="chip" aria-pressed={srcSel.includes(s.key)} onClick={() => toggleSrc(s.key)}>{s.label} <span className="muted">({s.questions})</span></button>)}
+          {visible.map(s => <button key={s.key} type="button" className="chip" aria-pressed={srcSel.includes(s.key)} onClick={() => toggleSrc(s.key)}>{s.label} <span className="muted">({s.questions})</span></button>)}
+          {main && sources.length > visible.length && <button type="button" className="btn sm ghost" onClick={() => setMore(true)}>+ Digər mənbələr</button>}
         </div>
         {srcSel.length > 0 && (
           <>
             <input className="sel" placeholder="Bölmə / alt mövzu axtar" value={filter} onChange={e => setFilter(e.target.value)} />
-            <div className="jlist" style={{ maxHeight: 220, overflow: 'auto' }}>
+            <div className="jlist" style={{ maxHeight: tall ? '60vh' : 220, overflow: 'auto' }}>
               {srcSel.map(k => (
                 <div key={k}>
                   <div className="small" style={{ padding: '6px 12px', background: 'var(--surface-2)', fontWeight: 600 }}>{label(k)}</div>
-                  {list(k).map(l => (
-                    <label key={l.id} className="check" style={{ padding: '0 12px', minHeight: 36 }}>
+                  {list(k).map((l, i, arr) => (<div key={l.id}>
+                    {bankGroup(k, l.label) && bankGroup(k, l.label) !== bankGroup(k, arr[i - 1]?.label || '') &&
+                      <div className="small muted" style={{ padding: '6px 12px 2px', fontWeight: 600 }}>{bankGroup(k, l.label)}</div>}
+                    <label className="check" style={{ padding: '0 12px', minHeight: 36 }}>
                       <input type="checkbox" checked={lesSel.some(x => x.id === l.id)} onChange={() => toggleLes(l, k)} />
-                      <span className="small">{l.label} <span className="muted">({l.questions}{l.grades?.length ? ` · ${l.grades.join(', ')}-cu sinif` : ''})</span></span></label>))}
+                      <span className="small">{l.label} <span className="muted">({l.questions}{l.grades?.length ? ` · ${l.grades.join(', ')}-cu sinif` : ''})</span></span></label></div>))}
                   {!lessons[k] && <p className="small muted" style={{ padding: '0 12px' }}>Yüklənir…</p>}
                 </div>))}
             </div>

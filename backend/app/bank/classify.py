@@ -10,8 +10,11 @@ from ..domain.classes import ROMAN
 
 # mənbə -> sinif(lər); boş – addan
 SOURCE_GRADES = {'p001': [5], 'p011': [6], 'p007': [9], 'p009': [11], 'p012': [11], 'p003': list(range(5, 12))}
-SOURCE_KIND = {'p009': 'sinaq', 'p012': 'sinaq', 'p004': 'sinaq'}
-_SINAQ = re.compile(r'sınaq|sınağ|\bBSİ\b|\bMSİ\b|\bÜSİ\b|^variant\s*\d|imtahan', re.I)
+# «Sınaqlar» qovluğu (viktorina `sinaqlar`) – yalnız 3-cü tərəf sınaqlarıdır, adında «sınaq» olmasa da (OBM mövzu sınaqları, RF MS1…)
+SOURCE_KIND = {'p009': 'sinaq', 'p012': 'sinaq', 'p004': 'sinaq', 'sinaqlar': 'sinaq'}
+_SINAQ = re.compile(r'sınaq|sınağ|\bBSİ\b|\bMSİ\b|\bÜSİ\b|\bMS\d|^variant\s*\d|imtahan', re.I)
+# adda sinif yoxdursa: buraxılış sınağı – XI sinif (yalnız «Sınaqlar» mənbəyi; OBM kimi sinifsizlər boş qalır)
+_BURAXILIS = re.compile(r'buraxılış', re.I)
 _YEKUN = re.compile(r'yekun', re.I)
 _DIAG = re.compile(r'ilkin yoxlama|diaqnostik', re.I)
 _ROMAN_RANGE = re.compile(r'\b([IVX]{1,4})(?:\s*[–-]\s*([IVX]{1,4}))?\s*sinif', re.I)
@@ -41,6 +44,8 @@ def classify(source_key: str, label: str) -> dict:
     else:
         kind = 'movzu'
     grades = grades_from_label(label) or SOURCE_GRADES.get(source_key, [])
+    if not grades and source_key == 'sinaqlar' and _BURAXILIS.search(label):
+        grades = [11]
     return {'kind': kind, 'grades': grades, 'subject': 'Riyaziyyat'}
 
 
