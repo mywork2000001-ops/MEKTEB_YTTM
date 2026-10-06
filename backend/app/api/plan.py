@@ -65,19 +65,64 @@ def my_lessons(user: User = Depends(staff), db: Session = Depends(get_db)):
 
 
 def attach_p0010(db: Session, cls, lessons: list[dict]) -> None:
-    """X–XI sinif: hər plan dərsinə mövzusuna ən uyğun P0010 test faylı (docs/x-xi-p0010-testleri-promtu.md)."""
+    """X–XI sinif: hər plan dərsinə P0010 test faylı (docs/x-xi-p0010-testleri-promtu.md) – müəllimin seçimi
+    (LessonBankLink) varsa o, yoxdursa mövzuya ən uyğun fayl. p0010_manual – müəllim özü seçib/götürüb."""
     from ..services import class_grade
     if class_grade(db, cls) not in (10, 11) or not lessons:
         return
     from ..bank.match import Matcher
-    m = Matcher(db)
-    if not m.files:
-        return
+    from ..models import BankFile, LessonBankLink
+    ids = [l['id'] for l in lessons if l.get('id')]
+    manual = {k.plan_lesson_id: k for k in db.scalars(select(LessonBankLink).where(LessonBankLink.plan_lesson_id.in_(ids or [0])))}
+    m = None
     for l in lessons:
+        k = manual.get(l.get('id'))
+        if k is not None:
+            f = db.get(BankFile, k.file_id) if k.file_id else None
+            l['p0010'] = f and {'file_id': f.id, 'label': f.label, 'url': f.url}
+            l['p0010_manual'] = True
+            continue
         if l.get('assessment_type') in ('KSQ', 'BSQ'):          # summativ dərsə mövzu testi verilmir
             continue
+        m = m or Matcher(db)
         best = m.matches(l['topic'], l.get('section'), 1)
-        l['p0010'] = best and {'file_id': best[0][0].id, 'label': best[0][0].label, 'url': best[0][0].url}
+        l['p0010'] = {'file_id': best[0][0].id, 'label': best[0][0].label, 'url': best[0][0].url} if best else None
+
+
+class P0010In(BaseModel):
+    mode: Literal['auto', 'none', 'file']
+    file_id: int | None = None
+
+
+@router.put('/plan/{ta_id}/topics/{pl_id}/p0010')
+def set_p0010(ta_id: int, pl_id: int, body: P0010In, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Müəllim dərsin P0010 faylını dəyişir: auto – avtomatik uyğunluğa qayıt, none – bağlantı yoxdur, file – bu fayl."""
+    from ..bank.match import SOURCE
+    from ..models import BankFile, LessonBankLink, PlanLesson
+    ta = own_assignment(db, user, ta_id)
+    pl = db.get(PlanLesson, pl_id)
+    if not pl or pl.assignment_id != ta.id:
+        raise HTTPException(404, 'Mövzu bu dərsin planında yoxdur')
+    k = db.scalar(select(LessonBankLink).where(LessonBankLink.plan_lesson_id == pl.id))
+    if body.mode == 'auto':
+        if k:
+            db.delete(k)
+    else:
+        fid = None
+        if body.mode == 'file':
+            f = db.get(BankFile, body.file_id) if body.file_id else None
+            if not f or f.source_key != SOURCE or not f.active:
+                raise HTTPException(400, 'P0010 faylı tapılmadı')
+            fid = f.id
+        if k is None:
+            k = LessonBankLink(plan_lesson_id=pl.id)
+            db.add(k)
+        k.file_id, k.set_by = fid, user.id
+    audit(db, user, 'update', 'lesson_bank_link', pl.id, mode=body.mode, file_id=body.file_id)
+    db.commit()
+    x = {'id': pl.id, 'topic': pl.topic, 'section': pl.section, 'assessment_type': pl.assessment_type}
+    attach_p0010(db, db.get(SchoolClass, ta.class_id), [x])
+    return {'p0010': x.get('p0010'), 'p0010_manual': bool(x.get('p0010_manual'))}
 
 
 @router.get('/plan/{ta_id}')

@@ -336,6 +336,17 @@ class TopicProgress(Base):
     __table_args__ = (UniqueConstraint('assignment_id', 'plan_lesson_id', name='uq_topic_progress'),)
 
 
+class LessonBankLink(Base):
+    """Plan dərsinin P0010 test faylı – müəllimin seçimi (avtomatik uyğunluğun üstündədir).
+    file_id = None – müəllim bağlantını götürüb (bu dərsə P0010 göstərilmir)."""
+    __tablename__ = 'lesson_bank_links'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_lesson_id: Mapped[int] = mapped_column(ForeignKey('plan_lessons.id', ondelete='CASCADE'), unique=True)
+    file_id: Mapped[int | None] = mapped_column(ForeignKey('bank_files.id', ondelete='SET NULL'))
+    set_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
 class DailyPlan(Base):
     """Gündəlik dərs planı (ARTİ): perspektiv planın bir dərs yuvası üçün süni intellektlə hazırlanır, müəllim redaktə edir."""
     __tablename__ = 'daily_plans'

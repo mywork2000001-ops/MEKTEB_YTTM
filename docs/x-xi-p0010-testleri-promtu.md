@@ -34,3 +34,6 @@ fayllar bir kliklə; IX və aşağı siniflərdə dəyişiklik yoxdur.
   bank bir dəfə oxunur). Plan sətrində «P0010: <fayl>» linki, düymə «🧪 Test (P0010)».
 - Gündəlik plan (AI) kontekstinə «P0010 test bankı (mövzuya uyğun fayl)» sətri – yalnız X–XI-də.
 - Uyğunluq mövzu adına görədir, saxlanılmır: P0010 bankı yenilənəndə bağlantı özü yenilənir.
+- Müəllim redaktə edir: plan sətrində «P0010: …» yanında ✎ – «Avtomatik», «P0010 bağlantısı yoxdur» və ya istənilən P0010 faylı
+  (uyğunlar öndə, qalanı bölmələr üzrə). Seçim `lesson_bank_links` cədvəlində (miqrasiya a9c3e5f7b1d2), avtomatikdən üstündür;
+  mövzu testi forması da həmin faylı götürür. `PUT /api/plan/{ta}/topics/{pl}/p0010 {mode: auto|none|file, file_id}`.

@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { get } from '../../api'
-import { ErrorBox, fmtDate, isoDate, lessonWhen, Loading, PickFirst, Pill, Seg, Top, useLoad } from '../../ui'
+import { get, put } from '../../api'
+import { ErrorBox, toast, fmtDate, isoDate, lessonWhen, Loading, PickFirst, Pill, Seg, Top, useLoad } from '../../ui'
 import { docCtx } from '../../doccontext'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { ProgramBox } from './Programs'
@@ -14,7 +14,7 @@ type Item = { date: string; weekday: string; period: number; time: string | null
   lesson: { seq: number; topic: string; section: string | null; assessment_type: string; exam_no: number | null; official_date: string
     id: number; standards?: string[] | null; tt_pages?: string | null; tests?: TopicTestInfo[]
     tasks?: { kind: string; start: number; end: number }[] | null
-    p0010?: { file_id: number; label: string; url: string } | null } | null }
+    p0010?: { file_id: number; label: string; url: string } | null; p0010_manual?: boolean } | null }
 const TASK_LETTER: Record<string, string> = { sinif: 'S', ev: 'E', mustaqil: 'M' }
 /** [{kind:'sinif',start:1,end:14}, …] -> «S 1–14, E 15–24, M 25–27» (Test toplusu tapşırıqları) */
 const tasksText = (ts?: { kind: string; start: number; end: number }[] | null) =>
@@ -34,6 +34,42 @@ const step = (d: string, view: string, dir: number) => {
   else if (view === 'month') x.setMonth(x.getMonth() + dir)
   else x.setMonth(x.getMonth() + 5 * dir)
   return isoDate(x)
+}
+
+type BankFileRow = { id: number; label: string; questions: number }
+let p0010All: Promise<BankFileRow[]> | null = null        // P0010 faylları bir dəfə yüklənir
+
+/** X–XI: dərsin P0010 faylını müəllim dəyişir – avtomatik / bağlantı yoxdur / istənilən fayl. */
+function P0010Edit({ ta, l, onDone }: { ta: number; l: { id: number; p0010?: { file_id: number } | null; p0010_manual?: boolean }; onDone: () => void }) {
+  const [opts, setOpts] = useState<{ match: { file_id: number; label: string }[]; all: BankFileRow[] } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const open = async () => {
+    p0010All = p0010All || get<BankFileRow[]>('/api/bank/lessons', { source: 'p003' }).catch(e => { p0010All = null; throw e })
+    try {
+      const [m, all] = await Promise.all([get<any>(`/api/plan/${ta}/topics/${l.id}/p0010`, { n: 1 }), p0010All])
+      setOpts({ match: m.matches || [], all })
+    } catch (e: any) { toast(e?.message || 'P0010 siyahısı açılmadı') }
+  }
+  const save = async (v: string) => {
+    setBusy(true)
+    try {
+      await put(`/api/plan/${ta}/topics/${l.id}/p0010`, v === 'auto' || v === 'none' ? { mode: v } : { mode: 'file', file_id: Number(v) })
+      toast(v === 'auto' ? 'Avtomatik uyğunluğa qaytarıldı' : v === 'none' ? 'P0010 bağlantısı götürüldü' : 'P0010 faylı dəyişdi')
+      setOpts(null); onDone()
+    } catch (e: any) { toast(e?.message || 'Saxlanmadı') } finally { setBusy(false) }
+  }
+  if (!opts) return <button type="button" className="btn sm ghost" style={{ padding: '0 6px', minHeight: 0 }} title="P0010 faylını dəyiş" onClick={open}>✎</button>
+  const groups: Record<string, BankFileRow[]> = {}
+  for (const f of opts.all) (groups[f.label.split(' — ')[0]] ||= []).push(f)
+  return (
+    <select className="sel" autoFocus disabled={busy} value={l.p0010_manual ? (l.p0010 ? String(l.p0010.file_id) : 'none') : 'auto'}
+      onChange={e => save(e.target.value)} onBlur={() => !busy && setOpts(null)} style={{ maxWidth: '100%' }}>
+      <option value="auto">Avtomatik (mövzuya görə)</option>
+      <option value="none">P0010 bağlantısı yoxdur</option>
+      {opts.match.length > 0 && <optgroup label="Mövzuya uyğun">{opts.match.map(m => <option key={'m' + m.file_id} value={m.file_id}>{m.label}</option>)}</optgroup>}
+      {Object.entries(groups).map(([g, fs]) => <optgroup key={g} label={g}>{fs.map(f => <option key={f.id} value={f.id}>{f.label.split(' — ').slice(1).join(' — ') || f.label} ({f.questions})</option>)}</optgroup>)}
+    </select>
+  )
 }
 
 export default function Plan() {
@@ -86,7 +122,9 @@ export default function Plan() {
                     <span className="plan-when"><b>{lessonWhen(i.period, i.time)}</b>{i.time && !docCtx.private && <span className="muted">{i.time}</span>}</span>
                     <span className="plan-what">
                       {l ? <><span className="plan-topic">{l.topic}</span><span className="plan-meta">{meta.join(' · ')}</span>
-                        {l.p0010 && <span className="plan-meta">P0010: <a href={l.p0010.url} target="_blank" rel="noreferrer" title="P0010 test faylını aç">{l.p0010.label}</a></span>}</> : <span className="muted">Perspektiv planda mövzu yoxdur</span>}
+                        {(l.p0010 !== undefined || l.p0010_manual) && <span className="plan-meta">P0010{l.p0010_manual ? ' (seçilib)' : ''}: {l.p0010
+                          ? <a href={l.p0010.url} target="_blank" rel="noreferrer" title="P0010 test faylını aç">{l.p0010.label}</a> : <span className="muted">yoxdur</span>}
+                          {ta && <P0010Edit ta={ta} l={l} onDone={reload} />}</span>}</> : <span className="muted">Perspektiv planda mövzu yoxdur</span>}
                     </span>
                     {l && <span className="plan-tags">
                       {l.assessment_type !== 'formativ' && <Pill tone="warn">{l.assessment_type}{l.exam_no ? '-' + l.exam_no : ''}</Pill>}

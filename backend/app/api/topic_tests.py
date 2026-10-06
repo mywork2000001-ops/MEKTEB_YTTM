@@ -304,6 +304,16 @@ def p0010_for_topic(ta_id: int, pl_id: int, file_id: int | None = None, n: int =
     found = p0010_matches(db, pl.topic, pl.section)
     out = {'eligible': True, 'matches': [{'file_id': f.id, 'label': f.label, 'count': f.question_count, 'score': s}
                                          for f, s in found], 'questions': []}
+    if file_id is None:                      # müəllimin plan sətrində seçdiyi fayl avtomatikdən üstündür
+        from ..models import LessonBankLink
+        k = db.scalar(select(LessonBankLink).where(LessonBankLink.plan_lesson_id == pl.id))
+        if k is not None:
+            if k.file_id is None:
+                return out
+            file_id = k.file_id
+            if all(x['file_id'] != k.file_id for x in out['matches']):
+                kf = db.get(BankFile, k.file_id)
+                out['matches'].insert(0, {'file_id': kf.id, 'label': kf.label, 'count': kf.question_count, 'score': None})
     f = db.get(BankFile, file_id) if file_id else (found[0][0] if found else None)
     if f is None or f.source_key != SOURCE:
         return out
