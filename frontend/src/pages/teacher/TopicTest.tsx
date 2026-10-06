@@ -21,6 +21,8 @@ type Lv = 'Zəif' | 'Orta' | 'Güclü'
 const LV: Lv[] = ['Zəif', 'Orta', 'Güclü']
 type Toplu = { mode: 'chapter' | 'exam' | 'diag' | 'mock'; in_bank: boolean; url?: string; chapter?: string; has_ev?: boolean
   title?: string; questions: any[]; missing: number[]; absent?: string[] }
+type P0010 = { eligible: boolean; matches: { file_id: number; label: string; count: number }[]; file?: { file_id: number; label: string }
+  title?: string; questions: any[] }
 type Prev = { task_id: number; title: string; class_name: string; opens_at: string; questions: any[]; count: number; avg_pct: number | null }
 
 const nextDay = (d: string) => { const x = new Date(d + 'T00:00'); x.setDate(x.getDate() + 1); return localParts(x.toISOString())[0] }
@@ -43,6 +45,7 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
   const [toplu, setToplu] = useState<Toplu | null>(null)
   const [tn, setTn] = useState(15)
   const [tbusy, setTbusy] = useState(false)
+  const [p10, setP10] = useState<P0010 | null>(null)
   const qs = variants ? vqs[vk] : plain
   const setQs = (fn: (cur: Q[]) => Q[]) => (variants ? setVqs(v => ({ ...v, [vk]: fn(v[vk]) })) : setPlain(fn))
   const [f, setF] = useState({ title: '', duration: 20, show: 'after_close', shuffle: true, journal: true })
@@ -54,6 +57,14 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
       setD(p)
       setRows(Object.fromEntries(p.classes.map(c => [c.ta_id, defaults(c)])))
       setF(x => ({ ...x, title: `№${p.topic.seq} ${p.topic.topic} – mövzu testi`.slice(0, 200) }))
+      // X–XI: mövzuya ən uyğun P0010 faylının sualları özü əlavə olunur (docs/x-xi-p0010-testleri-promtu.md)
+      get<P0010>(`/api/plan/${ta}/topics/${pl}/p0010`).then(r => {
+        setP10(r)
+        if (r.eligible && r.questions.length) {
+          setPlain(cur => cur.length ? cur : r.questions.map(q => fromSnapshot(q, 'b' + q.bank_id)))
+          if (r.title) setF(x => ({ ...x, title: r.title! }))
+        }
+      }, () => setP10(null))
     }, setErr)
     get<Prev[]>(`/api/plan/${ta}/topics/${pl}/previous`).then(setPrev, () => setPrev([]))
     get<Toplu>(`/api/programs/toplu/questions?lesson_id=${pl}`).then(setToplu, () => setToplu(null))   // «Test toplusu» dərsi deyilsə – 400
@@ -69,6 +80,15 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
       add(r.questions.map(q => fromSnapshot(q, 'b' + q.bank_id)))
       if (r.title) setF(x => ({ ...x, title: r.title!.slice(0, 200) }))
       toast(`${r.questions.length} sual götürüldü${r.missing.length ? ` · bazada yoxdur: ${r.missing.length}` : ''}`)
+    } catch (e) { setErr(e) } finally { setTbusy(false) }
+  }
+
+  const takeP10 = async (fileId: number) => {
+    setTbusy(true)
+    try {
+      const r = await get<P0010>(`/api/plan/${ta}/topics/${pl}/p0010?file_id=${fileId}&n=${tn}`)
+      add(r.questions.map(q => fromSnapshot(q, 'b' + q.bank_id)))
+      toast(`${r.questions.length} sual götürüldü`)
     } catch (e) { setErr(e) } finally { setTbusy(false) }
   }
 
@@ -195,6 +215,18 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
                   {toplu.mode !== 'exam' && <span className="small muted">Bu sinfə əvvəl verilmiş suallar təkrarlanmır.</span>}
                   {!!toplu.absent?.length && <span className="small muted">Bazada olmayan fəsillər: {toplu.absent.length}</span>}
                 </div>)}
+            </fieldset>)}
+          {p10?.eligible && (
+            <fieldset><legend>P0010 testləri (mövzuya uyğun)</legend>
+              {!p10.matches.length ? <p className="small muted" style={{ margin: 0 }}>P0010 test bazasında bu mövzuya uyğun fayl tapılmadı – aşağıdan əl ilə seçin.</p> : (<>
+                {p10.file && <p className="small" style={{ margin: '0 0 6px' }}>Avtomatik əlavə olundu: <b>{p10.file.label}</b> ({p10.questions.length} sual). Lazım olmayanları siyahıdan silin.</p>}
+                <div className="row" style={{ gap: 6 }}>
+                  {p10.matches.map(m => <button key={m.file_id} type="button" className="btn sm" disabled={tbusy} onClick={() => takeP10(m.file_id)}>{m.label} <span className="muted">({m.count})</span></button>)}
+                </div>
+                <div className="row" style={{ gap: 6, marginTop: 6 }}><span className="small muted">Bir fayldan ən çoxu</span>
+                  <input type="number" className="sel" style={{ width: 64 }} min={1} max={100} value={tn} onChange={e => setTn(Number(e.target.value) || 15)} />
+                  <span className="small muted">sual (çoxdursa təsadüfi, qapalı : açıq ≈ 2 : 1)</span></div>
+              </>)}
             </fieldset>)}
           {variants && <div className="row"><span className="small">Variant:</span>
             {LV.map(k => <button key={k} type="button" className="chip" aria-pressed={vk === k} onClick={() => setVk(k)}>{k} <span className="muted">({vqs[k].length})</span></button>)}</div>}

@@ -284,3 +284,35 @@ def previous_tests(ta_id: int, pl_id: int, user: User = Depends(staff), db: Sess
         if len(out) >= 20:
             break
     return out
+
+
+@router.get('/plan/{ta_id}/topics/{pl_id}/p0010')
+def p0010_for_topic(ta_id: int, pl_id: int, file_id: int | None = None, n: int = 15, user: User = Depends(staff),
+                    db: Session = Depends(get_db)):
+    """X–XI sinif dərsi: mövzuya uyğun P0010 test faylları və ən uyğununun (və ya file_id-nin) sualları
+    (docs/x-xi-p0010-testleri-promtu.md). Fayldakı suallar n-dən çoxdursa – n təsadüfi (qapalı:açıq ≈ 2:1)."""
+    import random
+
+    from ..bank.match import SOURCE, p0010_matches
+    from ..models import BankFile, BankQuestion
+    from .programs import _pick
+    ta = own_assignment(db, user, ta_id)
+    pl = _pl(db, ta, pl_id)
+    grade = class_grade(db, db.get(SchoolClass, ta.class_id))
+    if grade not in (10, 11):
+        return {'eligible': False, 'matches': [], 'questions': []}
+    found = p0010_matches(db, pl.topic, pl.section)
+    out = {'eligible': True, 'matches': [{'file_id': f.id, 'label': f.label, 'count': f.question_count, 'score': s}
+                                         for f, s in found], 'questions': []}
+    f = db.get(BankFile, file_id) if file_id else (found[0][0] if found else None)
+    if f is None or f.source_key != SOURCE:
+        return out
+    qs = list(db.scalars(select(BankQuestion).where(BankQuestion.file_id == f.id, BankQuestion.active.is_(True))
+                         .order_by(BankQuestion.n)))
+    n = max(1, min(n, 100))
+    if len(qs) > n:
+        keep = {q.id for q in _pick(qs, n, random.Random())}
+        qs = [q for q in qs if q.id in keep]
+    out.update(file={'file_id': f.id, 'label': f.label}, title=f'№{pl.seq} {pl.topic} – P0010 testi'[:200],
+               questions=_snapshot(db, [q.id for q in qs]) if qs else [])
+    return out
