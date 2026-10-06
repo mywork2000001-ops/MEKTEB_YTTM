@@ -254,9 +254,8 @@ body.exam-guard main{max-width:860px;margin:0 auto}
 .sv-q.miss > p{color:var(--bad)}
 .sv-likert{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
 .sv-likert button,.sv-scale button,.sv-opt{all:unset;box-sizing:border-box;cursor:pointer;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface);text-align:center;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 4px;font-size:12px;line-height:1.2;color:var(--ink-2)}
-.sv-likert button b{font-size:17px;color:var(--ink)}
+.sv-likert button{font-size:13px;color:var(--ink)}
 .sv-likert button[aria-pressed="true"],.sv-scale button[aria-pressed="true"],.sv-opt[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.sv-likert button[aria-pressed="true"] b{color:var(--accent-ink)}
 .sv-likert button:focus-visible,.sv-scale button:focus-visible,.sv-opt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sv-scale{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:4px}
 .sv-scale button{font-size:15px;font-weight:600;min-height:42px;padding:0}
@@ -267,7 +266,8 @@ body.exam-guard main{max-width:860px;margin:0 auto}
 .sv-nav{display:flex;gap:8px;justify-content:space-between;margin-top:16px}
 @media (max-width:480px){
   .sv-wrap{padding:12px}.sv-card{padding:16px}
-  .sv-likert span{display:none}
+  .sv-likert{grid-template-columns:1fr}
+  .sv-likert button{font-size:14px;min-height:44px}
   .sv-scale{grid-template-columns:repeat(6,minmax(0,1fr))}
 }
 /* nəticələr */

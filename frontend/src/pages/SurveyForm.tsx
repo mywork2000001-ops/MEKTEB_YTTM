@@ -130,6 +130,14 @@ function ClassPick({ classes, value, miss, onChange }: { classes: { id: number; 
   )
 }
 
+/** scale10 şagirdə rəqəm kimi yox, 5 sözlə göstərilir (uşaqlar balları səhv başa düşürdü); hər söz şkalada bərabər
+ *  addımla bir qiymətə bağlanır: 1–10 → 1, 3, 6, 8, 10; 0–10 (NPS) → 0, 3, 5, 8, 10 (tövsiyə edən ≥ 9 yalnız «Mütləq»). */
+function scaleWords(q: SvQuestion): [string, number][] {
+  const lo = q.options?.min ?? 0, hi = q.options?.max ?? 10
+  const words = q.key === 'nps' ? ['Heç vaxt', 'Çətin ki', 'Bilmirəm', 'Yəqin ki, bəli', 'Mütləq'] : ['Çox pis', 'Pis', 'Orta', 'Yaxşı', 'Əla']
+  return words.map((w, i) => [w, lo + Math.round((i * (hi - lo)) / 4)])
+}
+
 function Question({ q, likert, v, miss, onChange }: { q: SvQuestion; likert: string[]; v: Val; miss: boolean; onChange: (v: Val) => void }) {
   const label = q.text + (q.required ? '' : ' (istəyə görə)')
   return (
@@ -137,12 +145,10 @@ function Question({ q, likert, v, miss, onChange }: { q: SvQuestion; likert: str
       <p>{label}</p>
       {q.kind === 'likert5' && (
         <div className="sv-likert">{likert.map((l, i) => (
-          <button key={i} type="button" aria-pressed={v === i + 1} aria-label={l} title={l} onClick={() => onChange(i + 1)}><b>{i + 1}</b><span>{l}</span></button>))}</div>)}
-      {q.kind === 'scale10' && (() => { const lo = q.options?.min ?? 0, hi = q.options?.max ?? 10
-        return <>
-          <div className="sv-scale" style={{ gridTemplateColumns: `repeat(${Math.min(hi - lo + 1, 11)},minmax(0,1fr))` }}>
-            {Array.from({ length: hi - lo + 1 }, (_, i) => lo + i).map(n => <button key={n} type="button" aria-pressed={v === n} onClick={() => onChange(n)}>{n}</button>)}</div>
-          <div className="sv-scale-ends"><span>{lo} – çox pis</span><span>{hi} – əla</span></div></> })()}
+          <button key={i} type="button" aria-pressed={v === i + 1} onClick={() => onChange(i + 1)}>{l}</button>))}</div>)}
+      {q.kind === 'scale10' && (
+        <div className="sv-likert">{scaleWords(q).map(([l, n]) => (
+          <button key={n} type="button" aria-pressed={v === n} onClick={() => onChange(n)}>{l}</button>))}</div>)}
       {q.kind === 'single' && (
         <div className="sv-opts">{(q.options?.choices || []).map((c, i) => (
           <button key={i} type="button" className="sv-opt" aria-pressed={v === i} onClick={() => onChange(v === i ? undefined : i)}>{c}</button>))}</div>)}
