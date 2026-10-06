@@ -212,7 +212,8 @@ def task_results(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
                      'submitted_at': aware(a.submitted_at) if a and a.submitted_at else None,
                      'auto_submitted': bool(a and a.auto_submitted), 'correct': a.correct if a else None,
                      'total': a.total if a else None, 'grade': a.grade if a else None,
-                     'pct': round(a.correct * 100 / a.total, 1) if a and a.submitted_at and a.total else None})
+                     'pct': round(a.correct * 100 / a.total, 1) if a and a.submitted_at and a.total else None,
+                     'solution_at': aware(a.solution_at) if a and a.solution_key and a.solution_at else None})
     done = [a for a in atts.values() if a.submitted_at]
     per_q = []
     for i, q in enumerate(t.questions):
@@ -221,6 +222,19 @@ def task_results(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
                       'pct': round(ok * 100 / len(done), 1) if done else None})
     summary = {k: sum(r['status'] == k for r in rows) for k in ('başlamayıb', 'həll edir', 'təhvil verib')}
     return {'task': task_out(t), 'rows': rows, 'questions': per_q, 'summary': summary, 'server_time': now()}
+
+
+@router.get('/{ta_id}/{task_id}/solution/{student_id}')
+def student_solution(ta_id: int, task_id: int, student_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Şagirdin göndərdiyi həll şəkilləri (bir PDF)."""
+    from .portal import solution_response
+    ta = own_assignment(db, user, ta_id)
+    t = get_or_404(db, OnlineTask, task_id, 'Tapşırıq')
+    if t.assignment_id != ta.id:
+        raise HTTPException(404, 'Tapşırıq tapılmadı')
+    a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == student_id))
+    st = db.get(Student, student_id)
+    return solution_response(db, a, f'{(st.full_name if st else "sagird")} – {t.title}.pdf'[:150])
 
 
 @router.post('/{ta_id}/{task_id}/archive')

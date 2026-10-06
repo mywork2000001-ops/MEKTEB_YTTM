@@ -60,7 +60,7 @@ export default function Plan() {
             return (
               <div key={k} className="jrow cols" style={{ ['--cols' as any]: '84px minmax(0,1fr) auto', ['--mcols' as any]: '64px minmax(0,1fr) auto', background: i.date === isoDate(new Date()) ? 'var(--accent-soft)' : undefined }}>
                 <span className="small">{show ? <b>{i.weekday} {fmtDate(i.date).slice(0, 5)}</b> : ''}<br /><span className="muted">{i.time}</span></span>
-                <span><b>{i.topic || '—'}</b>{i.taught && <span className="small" style={{ color: 'var(--ok)' }} title="jurnalda yazılıb"> ✓</span>}
+                <span style={{ textAlign: 'justify', hyphens: 'auto', overflowWrap: 'anywhere' }}><b>{i.topic || '—'}</b>{i.taught && <span className="small" style={{ color: 'var(--ok)' }} title="jurnalda yazılıb"> ✓</span>}
                   <span className="sub small muted"> {i.subject}{i.group ? ' · ' + i.class_name : ''}{i.plan_seq ? ` · №${i.plan_seq}` : ''}</span>
                   <PlanNotes l={i} compact /></span>
                 {examLabel(i) ? <Pill tone="warn">{examLabel(i)}</Pill> : <span />}

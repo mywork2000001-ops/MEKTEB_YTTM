@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import random
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -295,6 +295,7 @@ def tasks(user: User = Depends(student_only), db: Session = Depends(get_db)):
                     'deadline': aware(a.deadline) if a else None,
                     'result': {'correct': a.correct, 'total': a.total, 'grade': a.grade} if a and a.submitted_at else None,
                     'can_review': _can_review(t, a, at), 'kind': t.kind,
+                    'solution_at': a.solution_at if a and a.solution_key else None,
                     'topic_seq': pl.seq if pl else None, 'topic': pl.topic if pl else None})
     return out
 
@@ -578,3 +579,50 @@ def analytics(date_from: dt.date | None = None, date_to: dt.date | None = None, 
                     'class_avg': {k: avg(k) for k in ('avg_grade', 'attendance_pct', 'homework_pct')},
                     'class_size': len(others)})
     return {'from': date_from, 'to': date_to, 'subjects': out}
+
+
+# ---------------------------------------------------------------- həllin şəkilləri (mövzu testi və sınaq): bir PDF
+SOLUTION_MAX = 25 * 1024 ** 2
+
+
+def solution_response(db: Session, a: TaskAttempt, name: str):
+    from urllib.parse import quote
+
+    from fastapi.responses import StreamingResponse
+
+    from ..storage import storage_for_key
+    if not a or not a.solution_key:
+        raise HTTPException(404, 'Həll faylı yoxdur')
+    st = storage_for_key(a.solution_key)
+    return StreamingResponse(st.stream(a.solution_key, db), media_type='application/pdf', headers={
+        'Content-Disposition': f"inline; filename*=UTF-8''{quote(name)}"})
+
+
+@router.post('/tasks/{task_id}/solution')
+def upload_solution(task_id: int, file: UploadFile = File(...), user: User = Depends(student_only),
+                    db: Session = Depends(get_db)):
+    """Şagird həllin şəkillərini (brauzerdə bir PDF-ə yığılır) müəllimə göndərir – test bağlanana qədər; təkrar göndərmə əvəz edir."""
+    from ..storage import get_storage
+    s = me_student(db, user)
+    t = _task_for(db, s, task_id)
+    a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
+    if not a:
+        raise HTTPException(400, 'Əvvəlcə testə başlayın')
+    if now() >= aware(t.closes_at):
+        raise HTTPException(400, 'Test bağlanıb – həll göndərilmir')
+    head = file.file.read(5)
+    file.file.seek(0)
+    if head != b'%PDF-':
+        raise HTTPException(400, 'Fayl PDF deyil')
+    key, size = get_storage().save(file.file, f'hell-{t.id}-{s.id}.pdf', 'application/pdf', SOLUTION_MAX, db)
+    a.solution_key, a.solution_size, a.solution_at = key, size, now()
+    db.commit()
+    return {'solution_at': a.solution_at, 'solution_size': size}
+
+
+@router.get('/tasks/{task_id}/solution')
+def my_solution(task_id: int, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    s = me_student(db, user)
+    t = _task_for(db, s, task_id)
+    a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
+    return solution_response(db, a, f'hell-{t.id}.pdf')

@@ -1,7 +1,8 @@
 // Şagird: vaxtlı tapşırıqlar. Taymer serverin vaxtına görə; cavablar avtomatik saxlanılır; vaxt bitəndə avtomatik təhvil.
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ApiError, get, post, put } from '../../api'
+import { api, ApiError, get, post, put } from '../../api'
+import { imagesToPdf } from '../../imagesToPdf'
 import { useT } from '../../i18n'
 import { AsyncBtn, Drawer, ErrorBox, gradeTone, Loading, Pill, Seg, toast, Top, useLoad } from '../../ui'
 import { MathText } from '../../MathText'
@@ -67,11 +68,42 @@ export default function Tasks() {
               <span><b>{x.title}</b><span className="sub small muted"><br />{x.subject}{x.topic_seq ? ` · mövzu №${x.topic_seq}` : ''} · {x.teacher} · {hm(x.opens_at)} – {hm(x.closes_at).slice(-5)} · {x.duration_min} dəq · {x.questions} sual</span></span>
               <span className="row">{x.result ? <Pill tone={gradeTone(x.result.grade)}>{x.result.correct}/{x.result.total} → {x.result.grade}</Pill> : <Pill tone={x.status === 'açıq' || x.status === 'həll edilir' ? 'ok' : x.status === 'buraxılıb' ? 'bad' : undefined}>{x.status}</Pill>}</span>
               <span>{(x.status === 'açıq' || x.status === 'həll edilir') && <button className="btn primary sm" onClick={() => { enterFs(); setSolving(x.id) }}>{x.status === 'açıq' ? t('Başla') : 'Davam et'}</button>}
-                {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>Cavablara bax</button>}</span>
+                {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>Cavablara bax</button>}
+                {(x.status === 'həll edilir' || x.status === 'təhvil verilib') && new Date(x.closes_at) > new Date() &&
+                  <SolutionUpload id={x.id} at={x.solution_at} compact onDone={reload} />}</span>
             </div>))}
         </div></>)}
       {review && <Review id={review} onClose={() => setReview(null)} />}
     </>
+  )
+}
+
+/** Həllin şəkilləri: telefonla çəkilir / seçilir, brauzerdə bir PDF-ə yığılıb müəllimə göndərilir (test bağlanana qədər). */
+export function SolutionUpload({ id, at, compact, onDone }: { id: number; at?: string | null; compact?: boolean; onDone?: () => void }) {
+  const [files, setFiles] = useState<File[]>([])
+  const [busy, setBusy] = useState(false)
+  const [sent, setSent] = useState(at || null)
+  const send = async () => {
+    if (!files.length) return
+    setBusy(true)
+    try {
+      const pdf = await imagesToPdf(files)
+      if (pdf.size > 25 * 1024 ** 2) throw new Error('PDF 25 MB-dan böyükdür – şəkillərin sayını azaldın')
+      const fd = new FormData()
+      fd.append('file', pdf, `hell-${id}.pdf`)
+      const r = await api<any>(`/api/portal/tasks/${id}/solution`, { method: 'POST', form: fd })
+      setSent(r.solution_at); setFiles([]); toast(`Həll göndərildi (${files.length} şəkil, bir PDF)`); onDone?.()
+    } catch (e) { toast('Xəta: ' + (e as Error).message) } finally { setBusy(false) }
+  }
+  return (
+    <div className={compact ? 'row' : 'stack'} style={{ gap: 6, marginTop: compact ? 0 : 12 }}>
+      {!compact && <b className="small">📷 Həllin şəkilləri (müəllimə bir PDF kimi gedir)</b>}
+      <label className="btn sm">{files.length ? `${files.length} şəkil seçilib` : sent ? 'Yenidən şəkil seç' : '📷 Həlli göndər'}
+        <input type="file" accept="image/*" multiple hidden onChange={e => setFiles(f => [...f, ...Array.from(e.target.files || [])])} /></label>
+      {files.length > 0 && <><button type="button" className="btn primary sm" disabled={busy} onClick={send}>{busy ? 'Göndərilir…' : 'PDF kimi göndər'}</button>
+        <button type="button" className="btn sm ghost" disabled={busy} onClick={() => setFiles([])}>Təmizlə</button></>}
+      {sent && <a className="small" href={`/api/portal/tasks/${id}/solution`} target="_blank" rel="noreferrer">✓ göndərilib – bax</a>}
+    </div>
   )
 }
 
@@ -195,6 +227,7 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
           {i < d.questions.length - 1 ? <button className="btn primary" onClick={() => { flush(); setI(i + 1) }}>Növbəti ›</button> : null}
           <AsyncBtn className="btn primary right" onClick={() => finish(false)}>{t('Təhvil ver')}</AsyncBtn>
         </div>
+        {i === d.questions.length - 1 && <SolutionUpload id={id} />}
       </section>
     </>
   )

@@ -491,6 +491,9 @@ class TaskAttempt(Base):
     total: Mapped[int | None] = mapped_column(Integer)
     grade: Mapped[int | None] = mapped_column(Integer)
     manual: Mapped[dict | None] = mapped_column(JSON)                   # müəllimin açıq sual düzəlişi {"sual indeksi": true/false}
+    solution_key: Mapped[str | None] = mapped_column(String(200))       # həllin şəkilləri – bir PDF (storage açarı)
+    solution_size: Mapped[int | None] = mapped_column(Integer)
+    solution_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (UniqueConstraint('task_id', 'student_id'),)
 
 
