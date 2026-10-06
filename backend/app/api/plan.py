@@ -74,6 +74,8 @@ def attach_p0010(db: Session, cls, lessons: list[dict]) -> None:
     if not m.files:
         return
     for l in lessons:
+        if l.get('assessment_type') in ('KSQ', 'BSQ'):          # summativ dərsə mövzu testi verilmir
+            continue
         best = m.matches(l['topic'], l.get('section'), 1)
         l['p0010'] = best and {'file_id': best[0][0].id, 'label': best[0][0].label, 'url': best[0][0].url}
 

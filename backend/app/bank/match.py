@@ -28,6 +28,12 @@ def stems(s: str) -> set[str]:
     return out - _STOP
 
 
+def _raw(s: str) -> set[str]:
+    """Bölmə adları üçün köklər – köməkçi sözlər atılmır («Həndəsənin əsas anlayışları» bütöv tanınsın)."""
+    s = re.sub(r'^\s*([ivxlc]+|\d+)\.?\s*', '', _norm(s or ''))
+    return {w[:5] for w in s.split() if len(w) >= 3 and not w.isdigit()} - {'bolme', 'ile', 've'}
+
+
 def p0010_files(db: Session) -> list[BankFile]:
     return list(db.scalars(select(BankFile).join(BankSource, BankSource.key == BankFile.source_key).where(
         BankFile.source_key == SOURCE, BankFile.active.is_(True), BankSource.enabled.is_(True), BankFile.question_count > 0,
@@ -41,6 +47,7 @@ class Matcher:
         self.files = p0010_files(db)
         self.fst = {f.id: stems(f.label) for f in self.files}
         self.own = {f.id: stems(f.label.split(' — ', 1)[-1]) for f in self.files}     # alt mövzu adı bölmədən ağırdır
+        self.grp = {f.id: _raw(f.label.split(' — ', 1)[0]) for f in self.files}      # P0010 bölməsi
         df: dict[str, int] = {}
         for st in self.fst.values():
             for w in st:
@@ -51,14 +58,18 @@ class Matcher:
     def matches(self, topic: str, section: str | None = None, limit: int = 6) -> list[tuple[BankFile, float]]:
         t = stems(topic)
         sec = stems(re.sub(r'^\s*\d+\.\s*', '', section or '')) - t
+        sraw = _raw(section or '')
         scored = []
         for f in self.files:
             fs, own = self.fst[f.id], self.own[f.id]
             w = lambda x: self.idf.get(x, 0) * (1 if x in own else 0.5)      # noqa: E731
             s = 2 * sum(w(x) for x in t & fs) + sum(w(x) for x in sec & fs)
             if s > 0:
-                scored.append((f, round(s / (1 + 0.05 * len(fs)), 3)))
-        scored.sort(key=lambda x: (-x[1], x[0].lesson))
+                g = self.grp[f.id]
+                same = bool(g and sraw and len(sraw & g) / len(g) >= 0.5)     # dərsin bölməsi = P0010 bölməsi – öndə
+                scored.append((f, round(s / (1 + 0.05 * len(fs)), 3), same))
+        scored.sort(key=lambda x: (not x[2], -x[1], x[0].lesson))
+        scored = [(f, v) for f, v, _ in scored]
         return scored[:limit]
 
 
