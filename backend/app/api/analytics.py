@@ -357,3 +357,36 @@ def audit_log(user_id: int | None = None, entity: str | None = None, limit: int 
     rows = db.execute(st.order_by(AuditLog.id.desc()).limit(min(limit, 1000)))
     return [{'id': a.id, 'at': a.at, 'user': n, 'action': a.action, 'entity': a.entity, 'entity_id': a.entity_id,
              'details': a.details} for a, n in rows]
+
+
+@router.get('/analytics/{ta_id}/toplu-chapters')
+def toplu_chapters(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«Test toplusu» (P007) əsaslı onlayn testlərin nəticəsi fəsil üzrə faizlə (docs/ix-dim-toplu-perspektiv-promtu.md §4.5).
+    Hər təhvil verilmiş cavab sayılır; fəsil – sualın P007 faylına görə. < 50 % – zəif fəsil."""
+    from ..models import BankFile, BankQuestion, OnlineTask, TaskAttempt
+    from .programs import _toplu_src
+    from .tasks import is_ok
+    ta = own_assignment(db, user, ta_id)
+    src = _toplu_src()
+    chap = {c['p007']['lesson']: c for c in src['chapters']}
+    acc: dict[str, list[int]] = {}
+    tasks = list(db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, OnlineTask.archived_at.is_(None))))
+    ids = {q.get('bank_id') for t in tasks for q in t.questions or [] if q.get('source') == 'p007' and q.get('bank_id')}
+    file_of = dict(db.execute(select(BankQuestion.id, BankFile.lesson).join(BankFile).where(BankQuestion.id.in_(ids or {0}))).all())
+    for t in tasks:
+        idx = [(i, file_of.get(q.get('bank_id'))) for i, q in enumerate(t.questions or []) if q.get('source') == 'p007']
+        idx = [(i, f) for i, f in idx if f in chap]
+        if not idx:
+            continue
+        for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.submitted_at.is_not(None))):
+            for i, f in idx:
+                r = acc.setdefault(f, [0, 0])
+                r[0] += is_ok(t, a, i)
+                r[1] += 1
+    rows = []
+    for f, c in chap.items():
+        if f in acc:
+            ok, n = acc[f]
+            pct = round(100 * ok / n)
+            rows.append({'section': f'{c["num"]}. {c["title"]}', 'part': c['part'], 'answers': n, 'pct': pct, 'weak': pct < 50})
+    return {'chapters': rows}

@@ -403,6 +403,21 @@ export function PerfStats({ m }: { m: any }) {
   )
 }
 
+/** «Test toplusu» (P007) testlərinin nəticəsi fəsil üzrə; zəif fəsillər – Zəif qrupun əlavə proqramı üçün bölmə təklifi. */
+function TopluChapters({ ta }: { ta: number }) {
+  const [r] = useLoad<{ chapters: { section: string; part: string; answers: number; pct: number; weak: boolean }[] }>(
+    () => get(`/api/analytics/${ta}/toplu-chapters`), [ta])
+  if (!r?.chapters.length) return null
+  const weak = r.chapters.filter(c => c.weak)
+  return (
+    <section className="panel" style={{ marginTop: 12 }}><h2>Test toplusu – fəsillər üzrə (P007 testləri)<small>{r.chapters.length}</small></h2>
+      <div className="row" style={{ gap: 6 }}>{r.chapters.map(c => <Pill key={c.section} tone={c.weak ? 'bad' : c.pct < 75 ? 'warn' : 'ok'}>{c.section} – {c.pct}% <span className="muted">({c.answers} cavab)</span></Pill>)}</div>
+      {weak.length > 0 && <p className="small" style={{ margin: '8px 0 0' }}>Zəif fəsillər (&lt; 50%): <b>{weak.map(c => c.section).join(', ')}</b>. Onları Zəif qrupa əlavə proqram kimi qoşmaq olar:
+        Perspektiv plan → «Proqramlar: seç / dəyiş» → «Test toplusu 2025» → səviyyə «Zəif», bölmə seçimində yalnız bu fəsillər.</p>}
+    </section>
+  )
+}
+
 function Performance({ ta, sem }: { ta: number; sem: string }) {
   const [p, err] = useLoad<any>(() => get(`/api/analytics/${ta}/performance`, sem === 'all' ? {} : { semester: sem }), [ta, sem])
   const narrow = useNarrow()
@@ -427,6 +442,7 @@ function Performance({ ta, sem }: { ta: number; sem: string }) {
               <td className="r num">{r.marks}</td><td className="r num">{r.semester_grade ?? '—'}</td></tr>))}</tbody>
         </table></div>
       )}
+      <TopluChapters ta={ta} />
       <p className="small muted">Qiymət: yarımil qiyməti (KSQ×0,4 + BSQ×0,6) varsa o, yoxdursa formativ qiymətlərin ortası (ən azı {p.summary.min_marks} qiymət). Müvəffəqiyyət = «2» almayanlar / qiymətləndirilənlər; keyfiyyət = «4» və «5» / qiymətləndirilənlər; SOU = (100·n5 + 64·n4 + 36·n3 + 16·n2) / n.</p>
     </>
   )

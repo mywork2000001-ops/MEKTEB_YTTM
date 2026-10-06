@@ -12,7 +12,12 @@ type TopicTestInfo = { task_id: number; title: string; opens_at: string; closes_
 
 type Item = { date: string; weekday: string; period: number; time: string | null; held: boolean; shift: number
   lesson: { seq: number; topic: string; section: string | null; assessment_type: string; exam_no: number | null; official_date: string
-    id: number; standards?: string[] | null; tt_pages?: string | null; tests?: TopicTestInfo[] } | null }
+    id: number; standards?: string[] | null; tt_pages?: string | null; tests?: TopicTestInfo[]
+    tasks?: { kind: string; start: number; end: number }[] | null } | null }
+const TASK_LETTER: Record<string, string> = { sinif: 'S', ev: 'E', mustaqil: 'M' }
+/** [{kind:'sinif',start:1,end:14}, …] -> «S 1–14, E 15–24, M 25–27» (Test toplusu tapşırıqları) */
+const tasksText = (ts?: { kind: string; start: number; end: number }[] | null) =>
+  (ts || []).map(t => `${TASK_LETTER[t.kind] || t.kind} ${t.start}${t.end !== t.start ? '–' + t.end : ''}`).join(', ')
 const DAYS = ['Bazar', 'Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə']
 /** «IV BÖLMƏ – FAİZ. NİSBƏT» -> «IV bölmə – Faiz. Nisbət» (böyük hərflərlə yazılmış bölmə adı oxunaqlı olsun) */
 export const sectionText = (s: string) => s.replace(/\s+/g, ' ').trim().split(' – ').map((part, i) => {
@@ -72,7 +77,7 @@ export default function Plan() {
               const today = i.date === isoDate(new Date())
               const l = i.lesson
               const meta = l ? [`№${l.seq}`, l.section && sectionText(l.section), l.standards?.length ? 'altst. ' + l.standards.join(', ') : '',
-                l.tt_pages || '', i.shift ? `rəsmi tarix ${fmtDate(l.official_date)}` : ''].filter(Boolean) : []
+                l.tt_pages || '', tasksText(l.tasks), i.shift ? `rəsmi tarix ${fmtDate(l.official_date)}` : ''].filter(Boolean) : []
               return (
                 <div key={i.date + i.period}>
                   {showDate && <div className={'plan-day' + (today ? ' today' : '')}>{DAYS[new Date(i.date + 'T00:00').getDay()]}, {fmtDate(i.date)}{today ? ' · bu gün' : ''}</div>}
