@@ -66,7 +66,9 @@ class Matcher:
             s = 2 * sum(w(x) for x in t & fs) + sum(w(x) for x in sec & fs)
             if s > 0:
                 g = self.grp[f.id]
-                same = bool(g and sraw and len(sraw & g) / len(g) >= 0.5)     # dərsin bölməsi = P0010 bölməsi – öndə
+                # dərsin bölməsi = P0010 bölməsi – öndə; tez-tez rast gələn sözlər («ədədlər») az çəkili (idf)
+                gw = sum(self.idf.get(x, 1) for x in g)
+                same = bool(g and sraw and sum(self.idf.get(x, 1) for x in sraw & g) / gw >= 0.6)
                 scored.append((f, round(s / (1 + 0.05 * len(fs)), 3), same))
         scored.sort(key=lambda x: (not x[2], -x[1], x[0].lesson))
         scored = [(f, v) for f, v, _ in scored]

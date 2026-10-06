@@ -89,7 +89,7 @@
 .plan-day{padding:9px 16px;background:var(--sunk);font-weight:700;font-size:13.5px;border-top:1px solid var(--line)}
 .plan-day:first-child{border-top:0}
 .plan-day.today{background:var(--accent-soft);color:var(--accent)}
-.plan-row{display:grid;grid-template-columns:118px minmax(0,1fr) auto;gap:6px 16px;align-items:start;padding:12px 16px;border-top:1px solid var(--line)}
+.plan-row{display:grid;grid-template-columns:118px minmax(0,1fr) fit-content(320px);gap:6px 16px;align-items:start;padding:12px 16px;border-top:1px solid var(--line)}
 .plan-when{display:flex;flex-direction:column;font-size:13px;line-height:1.35}
 .plan-what{display:flex;flex-direction:column;gap:3px;min-width:0}
 .plan-topic{font-weight:600;line-height:1.45;overflow-wrap:break-word;text-align:justify;hyphens:auto}
