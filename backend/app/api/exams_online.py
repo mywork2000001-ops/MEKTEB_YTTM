@@ -461,5 +461,9 @@ def student_exams(db: Session, s: Student, task_ids: list[int]) -> list[dict]:
                 place_all=me and me['place_all'], all_count=res['summary']['wrote'],
                 avg_pct=res['summary']['avg_pct'], max_pct=res['summary']['max_pct'],
                 class_avg_pct=round(sum(r['pct'] for r in mine_cls) / len(mine_cls), 1) if mine_cls else None)
+        else:                                    # hələ açıqdır: öz faizi görünür, yer – bağlananda
+            a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
+            if a and a.submitted_at and a.total:
+                item.update(my_pct=round(a.correct * 100 / a.total, 1), my_correct=a.correct, my_total=a.total)
         out.append(item)
     return out

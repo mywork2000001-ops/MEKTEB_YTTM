@@ -14,7 +14,7 @@ const THEME: Record<string, [string, string, string]> = {
   seriya: ['#3b82f6', '#1d4ed8', 'Sınaq seriyası'], manual: ['#f59e0b', '#b45309', 'Müəllimdən təşəkkür'],
 }
 export const verifyUrl = (code: string) => `${location.origin}/v/${code}`
-const dmy = (s: string) => new Date(s).toLocaleDateString('az-AZ', { day: '2-digit', month: '2-digit', year: 'numeric' })
+const dmy = (s: string) => { const d = new Date(s); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}` }
 
 export async function qrData(code: string) {
   return QRCode.toDataURL(verifyUrl(code), { margin: 0, width: 220, color: { dark: '#0f172a', light: '#ffffff' } })

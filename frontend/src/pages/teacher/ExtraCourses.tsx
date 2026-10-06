@@ -6,6 +6,7 @@ import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, Loading, Pill, Seg, St
 import { head, printDoc, table } from '../../print'
 import { useMyLessons } from './common'
 import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
+import { azDT } from '../../ui'
 
 type Sess = { id: number; date: string; weekday: string; start: string; end: string; format: 'əyani' | 'onlayn'; room: string | null; link: string | null
   topics: { plan_lesson_id: number | null; seq: number | null; text: string }[]; goals: string | null; resources: string | null; homework: string | null
@@ -257,7 +258,7 @@ function Held({ course, s, onClose, onDone }: { course: number; s: Sess; onClose
       {s.format === 'onlayn' && <p className="small muted">Onlayn «Qoşul» basanlar avtomatik «var» təklif olunur – yoxlayıb təsdiqləyin.</p>}
       {!rows ? <Loading /> : rows.map(r => (
         <div key={r.student_id} className="row" style={{ borderTop: '1px solid var(--line)', padding: '6px 0' }}>
-          <span className="grow small"><b>{r.full_name}</b>{r.joined_at ? <span className="muted"> · qoşulub {new Date(r.joined_at).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })}</span> : null}</span>
+          <span className="grow small"><b>{r.full_name}</b>{r.joined_at ? <span className="muted"> · qoşulub {azDT(new Date(r.joined_at), { hour: '2-digit', minute: '2-digit' })}</span> : null}</span>
           <Seg value={val(r)} onChange={v => setSt(x => ({ ...x, [r.student_id]: v }))} options={[['var', 'var'], ['gecikdi', 'gecikdi'], ['yox', 'yox'], ['üzrlü', 'üzrlü']]} />
         </div>))}
     </Drawer>

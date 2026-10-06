@@ -12,14 +12,13 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import require
-from ..domain.answers import check
 from ..domain.plan import view_range
 from ..domain.rules import grade_from_points, semester_grade
 from ..models import (Attendance, Exam, ExamScore, GroupMember, HomeworkCheck, JournalEntry, Mark, OnlineTask, PlanLesson,
                       Role, SchoolClass, Student, TaskAttempt, TeachingAssignment, User, now)
 from ..services import SCHOOL_TZ, journal_entries, plan_ctx, roster, taught_lesson, today
 from .plan import WEEKDAYS, bell
-from .tasks import aware, expire_due, finalize
+from .tasks import aware, expire_due, finalize, is_ok
 
 router = APIRouter(prefix='/api/portal', tags=['portal'])
 SUBMIT_GRACE = dt.timedelta(seconds=10)     # vaxt bitən anda göndərilən son cavablar üçün (şəbəkə gecikməsi)
@@ -401,7 +400,7 @@ def review(task_id: int, user: User = Depends(student_only), db: Session = Depen
     for i in a.order:
         q = t.questions[i]
         given = (a.answers or {}).get(str(i))
-        out.append({**_public_q(q, i), 'given': given, 'ok': check(q, given), 'correct': q.get('correct'),
+        out.append({**_public_q(q, i), 'given': given, 'ok': is_ok(t, a, i), 'correct': q.get('correct'),
                     'answer': q.get('answer'), 'explanation': q.get('explanation')})
     return {'title': t.title, 'correct': a.correct, 'total': a.total, 'grade': a.grade, 'questions': out}
 
@@ -540,27 +539,28 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
                          'exams': ex_rows, **_stats(db, _entries(db, ta.id), s.id),
                          'semester_grades': {k: semester_grade(*v) for k, v in per_sem.items()}})
     task_rows, mistakes = [], []
+    done = []
     for t in _my_tasks(db, s):
         a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
-        if not a or not a.submitted_at:
-            continue
-        task_rows.append({'id': t.id, 'title': t.title, 'submitted_at': aware(a.submitted_at), 'correct': a.correct,
+        if a and a.submitted_at:
+            done.append((t, a))
+    done.sort(key=lambda x: aware(x[1].submitted_at), reverse=True)          # ən yenisi yuxarıda
+    for t, a in done:
+        ta = db.get(TeachingAssignment, t.assignment_id)
+        task_rows.append({'id': t.id, 'title': t.title, 'kind': t.kind, 'subject': ta.subject if ta else None,
+                          'submitted_at': aware(a.submitted_at), 'closes_at': aware(t.closes_at), 'correct': a.correct,
                           'total': a.total, 'pct': round(a.correct * 100 / a.total, 1) if a.total else None,
-                          'grade': a.grade, 'auto_submitted': a.auto_submitted})
+                          # sınaq formativ qiymətə təsir etmir – qiymət göstərilmir
+                          'grade': None if t.kind == 'sinaq' else a.grade, 'auto_submitted': a.auto_submitted,
+                          'can_review': _can_review(t, a, at), 'solution': bool(a.solution_key)})
         if _can_review(t, a, at):
             for i in a.order:
                 q = t.questions[i]
-                given = (a.answers or {}).get(str(i))
-                if not check(q, given):
-                    mistakes.append({'task': t.title, **_public_q(q, i), 'given': given, 'correct': q.get('correct'),
-                                     'answer': q.get('answer'), 'explanation': q.get('explanation')})
-    badges = []
-    if any(r['pct'] == 100 for r in task_rows):
-        badges.append({'key': 'perfect', 'title': 'Tam bal', 'text': 'Tapşırığı 100% həll etdin'})
-    if len(task_rows) >= 5:
-        badges.append({'key': 'steady', 'title': 'Ardıcıl', 'text': '5 tapşırıq təhvil verdin'})
-    if any((x['attendance_pct'] or 0) == 100 and x['marks'] for x in subjects):
-        badges.append({'key': 'present', 'title': 'Hər dərsdə', 'text': 'Heç bir dərsi buraxmamısan'})
+                if not is_ok(t, a, i):                                    # müəllimin açıq sual düzəlişi nəzərə alınır
+                    mistakes.append({'task': t.title, 'task_id': t.id, **_public_q(q, i), 'given': (a.answers or {}).get(str(i)),
+                                     'correct': q.get('correct'), 'answer': q.get('answer'), 'explanation': q.get('explanation')})
+    # nailiyyətlər «Uğurlarım»dadır (app/certificates.py::achievements) – burada təkrarlanmır
+    badges: list = []
     return {'subjects': subjects, 'tasks': task_rows, 'mistakes': mistakes[:100], 'badges': badges}
 
 

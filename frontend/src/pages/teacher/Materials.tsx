@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { api, get, post, put } from '../../api'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmtDate, gradeTone, PickFirst, Pill, Seg, toast, Top, useLoad } from '../../ui'
 import { LessonSelect, TargetPicker, useMyLessons, usePick } from './common'
+import { azDT } from '../../ui'
 
 type Mat = { id: number; kind: 'task' | 'video' | 'link' | 'note'; title: string; body: string | null; url: string | null; due_at: string | null
   file: { name: string; type: string; size: number; url: string } | null; submitted: number; graded: number; targets: number; created_at: string }
 export const KIND: Record<string, string> = { task: 'Tapşırıq (PDF/fayl)', video: 'Video dərs', link: 'Link', note: 'Qeyd' }
-const dtf = (s: string) => new Date(s).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+const dtf = (s: string) => azDT(new Date(s), { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
 export default function Materials() {
   const [lessons, err0] = useMyLessons()

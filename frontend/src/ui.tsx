@@ -169,3 +169,38 @@ export function AsyncBtn({ onClick, children, className = 'btn', disabled, ok }:
     }}>{busy ? '…' : children}</button>
   )
 }
+
+/** Tarix/saat – brauzerin «az» lokalından asılı olmadan (bəzi brauzerlər «10-06» verir): 06.10.2026 15:00.
+ *  Ay adı (month: 'long') və həftə günü Intl-dən, rəqəmlər əl ilə. */
+export function azDT(v: Date | string | number, o?: Intl.DateTimeFormatOptions, mode: 'all' | 'date' | 'time' = 'all'): string {
+  const d = v instanceof Date ? v : new Date(v)
+  if (isNaN(+d)) return '—'
+  const opts: Intl.DateTimeFormatOptions = o ?? (mode === 'time' ? { hour: '2-digit', minute: '2-digit' }
+    : mode === 'date' ? { day: '2-digit', month: '2-digit', year: 'numeric' } : { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const pad = (n: number) => String(n).padStart(2, '0')
+  let date = ''
+  if (opts.month === 'long' || opts.month === 'short') {
+    const name = (k: 'month' | 'weekday', f: string) => new Intl.DateTimeFormat('az', { [k]: f }).format(d)
+    date = [opts.weekday ? name('weekday', opts.weekday as string) + ',' : '', opts.day ? String(d.getDate()) : '', name('month', opts.month),
+      opts.year ? String(d.getFullYear()) : ''].filter(Boolean).join(' ')
+  } else if (opts.day || opts.month || opts.year) {
+    date = [opts.day ? pad(d.getDate()) : '', opts.month ? pad(d.getMonth() + 1) : '', opts.year ? String(d.getFullYear()) : ''].filter(Boolean).join('.')
+  }
+  const time = opts.hour ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : ''
+  return [date, time].filter(Boolean).join(' ')
+}
+
+/** Açılma – bağlanma: eyni gündürsə «06.10 16:32 – 18:32», yoxsa «06.10 16:32 – 07.10 18:32» (bağlanma tarixi itməsin). */
+export function azRange(a: string | Date, b: string | Date): string {
+  const x = new Date(a), y = new Date(b)
+  const dm: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }
+  return `${azDT(x, dm)} – ${x.toDateString() === y.toDateString() ? azDT(y, { hour: '2-digit', minute: '2-digit' }) : azDT(y, dm)}`
+}
+
+/** «IV BÖLMƏ – FAİZ. NİSBƏT» → «IV bölmə – Faiz. Nisbət» (böyük hərflə yazılmış bölmə adı oxunaqlı olsun). */
+export const prettySection = (s: string) => s.replace(/\s+/g, ' ').trim().split(' – ').map((part, i) => {
+  if (i === 0) return part.replace(/BÖLMƏ/i, 'bölmə')
+  if (part !== part.toLocaleUpperCase('az')) return part
+  const low = part.toLocaleLowerCase('az')
+  return low.replace(/(^|[.!?]\s+)(\p{L})/gu, (_, a, c) => a + c.toLocaleUpperCase('az'))
+}).join(' – ')

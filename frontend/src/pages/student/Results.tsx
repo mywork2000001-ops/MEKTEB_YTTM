@@ -5,6 +5,10 @@ import { ErrorBox, fmt, fmtDate, gradeTone, Loading, Pill, Stat, Top, useLoad } 
 import { MathText } from '../../MathText'
 import { useAuth } from '../../auth'
 import { printMistakes, printResults } from './studentPrint'
+import { useNavigate } from 'react-router-dom'
+import { Review } from './Tasks'
+import { Bar } from './Achievements'
+import { azDT } from '../../ui'
 
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 
@@ -14,6 +18,10 @@ export default function Results() {
   const [ex] = useLoad<any>(() => get('/api/portal/exams'), [])
   const [tr] = useLoad<any[]>(() => get('/api/portal/topic-rating'), [])
   const [allMistakes, setAllMistakes] = useState(false)
+  const [ach] = useLoad<any>(() => get('/api/portal/achievements'), [])
+  const [review, setReview] = useState<number | null>(null)
+  const [tk, setTk] = useState<'all' | 'movzu' | 'sinaq'>('all')
+  const nav = useNavigate()
   const { me } = useAuth()
   if (!d) return err ? <ErrorBox error={err} /> : <Loading />
   return (
@@ -21,14 +29,20 @@ export default function Results() {
       <Top title={t('Nəticələrim')} actions={<span className="row no-print" style={{ gap: 6 }}>
         <button className="btn sm" onClick={() => printResults(d, ex, me, false, tr || [])}>Çap / PDF</button>
         {d.mistakes.length > 0 && <button className="btn sm" onClick={() => printResults(d, ex, me, true, tr || [])}>Səhvlərlə birlikdə</button>}</span>} />
-      {d.badges.length > 0 && (
-        <section className="panel" style={{ marginBottom: 16 }}><h2>{t('Nailiyyətlər')}</h2>
-          <div className="row">{d.badges.map((b: any) => <Pill key={b.key} tone="acc">★ {b.title} – {b.text}</Pill>)}</div></section>)}
+      {ach && (
+        <section className="panel click" style={{ marginBottom: 16 }} onClick={() => nav('/achievements')} title="Uğurlarım">
+          <div className="row" style={{ alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 44, height: 44, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 900, color: '#fff', background: 'linear-gradient(135deg,#8b5cf6,#3b82f6)' }}>{ach.level}</div>
+            <div className="grow"><b>{ach.level_name}</b> <span className="small muted">· {ach.xp} XP · 🔥 {ach.streak} · 🏆 {ach.certificates} sertifikat · {ach.badges.filter((b: any) => b.earned).length} nişan</span>
+              {ach.level_to && <div style={{ marginTop: 4 }}><Bar value={ach.xp - ach.level_from} max={ach.level_to - ach.level_from} color="linear-gradient(90deg,#8b5cf6,#3b82f6)" /></div>}</div>
+            <span className="small" style={{ color: 'var(--acc, var(--accent))' }}>Uğurlarım ›</span>
+          </div>
+        </section>)}
       {d.subjects.map((s: any, i: number) => (
         <section key={i} className="panel" style={{ marginBottom: 16 }}>
           <h2>{s.subject} <small>{s.class_name} · {s.teacher}</small></h2>
           <div className="kpis" style={{ marginBottom: 12 }}>
-            <Stat value={fmt(s.avg_grade, 2)} label="orta qiymət" /><Stat value={fmt(s.attendance_pct) + '%'} label="davamiyyət" /><Stat value={fmt(s.homework_pct) + '%'} label="ev tapşırığı" />
+            <Stat value={fmt(s.avg_grade, 2)} label="orta qiymət" /><Stat value={s.attendance_pct != null ? fmt(s.attendance_pct) + '%' : '—'} label="davamiyyət" /><Stat value={s.homework_pct != null ? fmt(s.homework_pct) + '%' : '—'} label="ev tapşırığı" />
           </div>
           <div className="row" style={{ marginBottom: 8 }}>
             {[1, 2].map(k => <Pill key={k} tone={gradeTone(s.semester_grades[k])}>{k}-ci yarımil: {s.semester_grades[k] ?? '—'}</Pill>)}
@@ -53,7 +67,7 @@ export default function Results() {
               <div className="row" style={{ gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
                 {x.avg_pct != null && <Pill tone={x.avg_pct >= 70 ? 'ok' : x.avg_pct >= 40 ? 'warn' : 'bad'}>orta {fmt(x.avg_pct)}%</Pill>}
                 {x.place_class && <Pill tone="acc">sinifdə {x.place_class}/{x.class_count}</Pill>}
-                {x.delta != null && <Pill tone={x.delta > 0 ? 'ok' : x.delta < 0 ? 'bad' : undefined}>dinamika {x.delta > 0 ? '+' : ''}{fmt(x.delta)}</Pill>}
+                {x.delta != null && <Pill tone={x.delta > 0 ? 'ok' : x.delta < 0 ? 'bad' : undefined}>dinamika {x.delta > 0 ? '+' : ''}{fmt(x.delta)}%</Pill>}
                 <span className="small muted">sinif ortası {fmt(x.class_avg)}%</span>
                 {x.missed > 0 && <span className="small" style={{ color: 'var(--bad)' }}>{x.missed} testi yazmamısan</span>}
               </div>
@@ -62,10 +76,10 @@ export default function Results() {
       {ex?.items?.length > 0 && (
         <section className="panel" style={{ marginBottom: 16 }}>
           <h2>Sınaq imtahanları <small>{ex.items.length}{ex.delta != null ? ` · son dinamika ${ex.delta > 0 ? '+' : ''}${fmt(ex.delta)}%` : ''}</small></h2>
-          {ex.items.map((x: any) => (
+          {[...ex.items].reverse().map((x: any) => (
             <div key={x.batch_id} style={{ borderBottom: '1px solid var(--line)', padding: '8px 0' }}>
               <div className="row"><b className="grow">{x.title}</b><span className="small muted">{fmtDate(x.opens_at)}</span></div>
-              {!x.closed ? <span className="small muted">Nəticə və yer sınaq bağlandıqdan sonra görünəcək.</span>
+              {!x.closed ? <span className="small muted">{x.my_pct != null ? <>Sənin nəticən: <b>{fmt(x.my_pct)}%</b> ({x.my_correct}/{x.my_total}) · </> : ''}Yer və sinif nəticələri sınaq {azDT(new Date(x.closes_at), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}-də bağlandıqdan sonra görünəcək.</span>
                 : x.status !== 'yazıb' ? <span className="small muted">Sınağı yazmamısan.</span> : (
                 <div className="row" style={{ gap: 6, marginTop: 4 }}>
                   <Pill tone={x.pct >= 70 ? 'ok' : x.pct >= 40 ? 'warn' : 'bad'}>{fmt(x.pct)}% · {x.correct} düz, {x.wrong} səhv, {x.blank} boş</Pill>
@@ -76,11 +90,19 @@ export default function Results() {
             </div>))}
         </section>)}
       <section className="panel" style={{ marginBottom: 16 }}>
-        <h2>Onlayn tapşırıqlar <small>{d.tasks.length}</small></h2>
-        {d.tasks.length === 0 ? <p className="muted">Hələ təhvil verilmiş tapşırıq yoxdur.</p> : d.tasks.map((x: any) => (
-          <div key={x.id} className="row" style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--line)', padding: '6px 0' }}>
-            <span>{x.title}{x.auto_submitted && <span className="small muted"> · vaxt bitdi</span>}</span>
-            <Pill tone={gradeTone(x.grade)}>{x.correct}/{x.total} · {fmt(x.pct, 0)}% → {x.grade}</Pill></div>))}
+        <h2>Onlayn testlər <small>{d.tasks.length}</small></h2>
+        {d.tasks.length > 0 && <div className="row" style={{ gap: 6, marginBottom: 6 }}>
+          {([['all', 'Hamısı'], ['movzu', 'Mövzu testləri'], ['sinaq', 'Sınaqlar']] as const).map(([k, l]) =>
+            <button key={k} className="chip" aria-pressed={tk === k} onClick={() => setTk(k)}>{l} <span className="muted">({k === 'all' ? d.tasks.length : d.tasks.filter((x: any) => x.kind === k).length})</span></button>)}</div>}
+        {d.tasks.length === 0 ? <p className="muted">Hələ təhvil verilmiş test yoxdur.</p> : d.tasks.filter((x: any) => tk === 'all' || x.kind === tk).map((x: any) => (
+          <div key={x.id} className="row" style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--line)', padding: '6px 0', gap: 6 }}>
+            <span className="grow" style={{ minWidth: 0 }}>{x.title}
+              <span className="sub small muted"><br />{x.kind === 'sinaq' ? 'sınaq' : x.kind === 'movzu' ? 'mövzu testi' : 'tapşırıq'}{x.subject ? ' · ' + x.subject : ''} · {fmtDate(x.submitted_at)}
+                {x.auto_submitted && ' · vaxt bitdi'}{x.solution && ' · 📷 həll göndərilib'}</span></span>
+            <span className="row" style={{ gap: 4 }}>
+              <Pill tone={x.grade ? gradeTone(x.grade) : x.pct >= 70 ? 'ok' : x.pct >= 40 ? 'warn' : 'bad'}>{x.correct}/{x.total} · {fmt(x.pct, 0)}%{x.grade ? ` → ${x.grade}` : ''}</Pill>
+              {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>Cavablar</button>}</span></div>))}
+        {d.tasks.some((x: any) => x.kind === 'sinaq') && <p className="small muted" style={{ margin: '6px 0 0' }}>Sınaq formativ qiymətə təsir etmir – yalnız faiz və yer.</p>}
       </section>
       <section className="panel">
         <h2>{t('Səhvlərim')} <small>{d.mistakes.length}</small>{d.mistakes.length > 0 && <button className="btn sm right no-print" onClick={() => printMistakes(d, me, true)}>Səhv dəftəri – çap</button>}</h2>
@@ -93,6 +115,7 @@ export default function Results() {
           </details>))}
         {!allMistakes && d.mistakes.length > 10 && <button className="btn show-more" onClick={() => setAllMistakes(true)}>Hamısını göstər ({d.mistakes.length})</button>}
       </section>
+      {review && <Review id={review} onClose={() => setReview(null)} />}
     </>
   )
 }

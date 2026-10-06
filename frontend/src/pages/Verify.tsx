@@ -1,5 +1,6 @@
 // Sertifikatın açıq yoxlanması (girişsiz): /v/:code – QR koddan açılır.
 import { useEffect, useState } from 'react'
+import { fmtDate } from '../ui'
 
 type V = { code: string; title: string; kind: string; student: string; issued_at: string; valid: boolean; school: string | null
   teacher: string | null; subject: string | null; pct: number | null; place: number | null; of: number | null }
@@ -22,7 +23,7 @@ export default function Verify({ code }: { code: string }) {
             <p style={{ margin: '0 0 4px' }}><b>{v.student}</b></p>
             <p style={{ margin: '0 0 8px' }}>{v.title}</p>
             <p className="small muted" style={{ margin: 0 }}>
-              {[v.subject, v.pct != null ? `${Math.round(v.pct)}%` : '', v.place ? `sinifdə ${v.place}-ci yer` : '', new Date(v.issued_at).toLocaleDateString('az-AZ')].filter(Boolean).join(' · ')}
+              {[v.subject, v.pct != null ? `${Math.round(v.pct)}%` : '', v.place ? `sinifdə ${v.place}-ci yer` : '', fmtDate(v.issued_at)].filter(Boolean).join(' · ')}
               <br />{[v.school, v.teacher].filter(Boolean).join(' · ')}<br />Kod: <b>{v.code}</b></p>
           </>)}
       </div>

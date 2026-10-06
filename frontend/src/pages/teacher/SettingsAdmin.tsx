@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { get, patch, post } from '../../api'
 import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, Loading, Pill, toast, useLoad } from '../../ui'
+import { azDT } from '../../ui'
 
 export default function SettingsAdmin({ tab }: { tab: 'teachers' | 'bank' | 'audit' }) {
   if (tab === 'teachers') return <Teachers />
@@ -69,7 +70,7 @@ function Bank() {
     }
     setPolling(false); reload(); reloadS()
   }
-  const when = (s?: string) => (s ? new Date(s).toLocaleString('az-AZ') : '—')
+  const when = (s?: string) => (s ? azDT(new Date(s), undefined, 'all') : '—')
   return (
     <div className="grid g2">
       <section className="panel">
@@ -146,7 +147,7 @@ function Audit() {
       </section>
       <p className="small muted">Kim, nə vaxt, nəyi dəyişib. Mesajların məzmunu burada yoxdur.</p>
       <div className="tbl-wrap"><table><thead><tr><th>Vaxt</th><th>İstifadəçi</th><th>Əməliyyat</th><th>Obyekt</th></tr></thead>
-        <tbody>{(rows || []).map(a => <tr key={a.id}><td className="small">{new Date(a.at).toLocaleString('az-AZ')}</td><td>{a.user || '—'}</td><td>{a.action}</td><td className="small">{a.entity} {a.entity_id ? '#' + a.entity_id : ''}</td></tr>)}</tbody></table></div>
+        <tbody>{(rows || []).map(a => <tr key={a.id}><td className="small">{azDT(new Date(a.at), undefined, 'all')}</td><td>{a.user || '—'}</td><td>{a.action}</td><td className="small">{a.entity} {a.entity_id ? '#' + a.entity_id : ''}</td></tr>)}</tbody></table></div>
     </>
   )
 }

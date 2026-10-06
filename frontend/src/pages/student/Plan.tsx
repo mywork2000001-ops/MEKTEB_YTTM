@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { get } from '../../api'
 import { useT } from '../../i18n'
-import { ErrorBox, fmtDate, isoDate, Loading, Pill, Seg, Top, useLoad } from '../../ui'
+import { azDT, ErrorBox, fmtDate, isoDate, Loading, Pill, Seg, Top, useLoad } from '../../ui'
 import { useAuth } from '../../auth'
 import { printPlan } from './studentPrint'
 
@@ -20,7 +20,7 @@ export function PlanNotes({ l, compact }: { l: any; compact?: boolean }) {
   ].filter(Boolean)
   // X–XI: dərsin P0010 testi – yalnız dərsin tarixi və saatı çatanda açılır
   const p10 = l.p0010 ? <>{notes.length ? ' · ' : ''}Test: <a href={l.p0010.url} target="_blank" rel="noreferrer">{l.p0010.label}</a></>
-    : l.p0010_opens_at ? <>{notes.length ? ' · ' : ''}🔒 Test dərs başlayanda açılır ({fmtDate(l.p0010_opens_at)}, {new Date(l.p0010_opens_at).toLocaleTimeString('az', { hour: '2-digit', minute: '2-digit' })})</> : null
+    : l.p0010_opens_at ? <>{notes.length ? ' · ' : ''}🔒 Test dərs başlayanda açılır ({fmtDate(l.p0010_opens_at)}, {azDT(new Date(l.p0010_opens_at), { hour: '2-digit', minute: '2-digit' })})</> : null
   if (!notes.length && !p10) return null
   return compact ? <span className="sub small muted"><br />{notes.join(' · ')}{p10}</span>
     : <p className="small muted" style={{ margin: '0 0 8px' }}>{notes.join(' · ')}{p10}</p>

@@ -11,6 +11,7 @@ import { TaskActions } from './Tasks'
 import { RatingPanel } from './ResultsCenter'
 import { PeriodBar, usePeriod } from '../../periods'
 import ExamSeriesPanel from './ExamSeries'
+import { azDT } from '../../ui'
 
 type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; teacher: string; mine: boolean; students: number }
 type Exam = { id: number; title: string; subject: string; grade: number | null; classes: string[]; opens_at: string | null; closes_at: string | null
@@ -24,7 +25,7 @@ type Res = { batch: { id: number; title: string; subject: string; grade: number 
   rows: Row[]; questions: { index: number; text: any; kind: string; correct: number; of: number; pct: number | null }[]; access: 'full' | 'own' }
 
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
-const dt = (s: string | null) => (s ? new Date(s).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—')
+const dt = (s: string | null) => (s ? azDT(new Date(s), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—')
 const stateTone = (s: string) => (s === 'açıqdır' ? 'ok' : s === 'bitib' ? 'info' : undefined)
 const PENALTY: [string, string][] = [['0', 'cərimə yoxdur'], ['4', '4 səhv 1 düzü aparır'], ['3', '3 səhv 1 düzü aparır']]
 

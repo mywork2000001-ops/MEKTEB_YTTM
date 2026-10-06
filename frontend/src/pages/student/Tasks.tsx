@@ -5,7 +5,7 @@ import { api, ApiError, get, post, put } from '../../api'
 import { imagesToPdf } from '../../imagesToPdf'
 import { confetti } from '../../certificate'
 import { useT } from '../../i18n'
-import { AsyncBtn, Drawer, ErrorBox, gradeTone, Loading, Pill, Seg, toast, Top, useLoad } from '../../ui'
+import { azRange, azDT, AsyncBtn, Drawer, ErrorBox, gradeTone, Loading, Pill, Seg, toast, Top, useLoad } from '../../ui'
 import { MathText } from '../../MathText'
 import { printReview } from './studentPrint'
 import { useAuth } from '../../auth'
@@ -24,7 +24,6 @@ const exitFs = () => { if (document.fullscreenElement) document.exitFullscreen()
 const block = (e: { preventDefault: () => void }) => e.preventDefault()
 const isField = (t: EventTarget | null) => t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement
 
-const hm = (s: string) => new Date(s).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
 export default function Tasks() {
   const t = useT()
@@ -38,7 +37,7 @@ export default function Tasks() {
     const x = list.find(q => q.id === Number(linkId))
     if (!x) toast('Bu test sizin üçün deyil və ya silinib')
     else if (x.status === 'açıq' || x.status === 'həll edilir') setSolving(x.id)
-    else toast(x.status === 'gözlənilir' ? `Test hələ açılmayıb: ${new Date(x.opens_at).toLocaleString('az-AZ')}` : `Test: ${x.status}`)
+    else toast(x.status === 'gözlənilir' ? `Test hələ açılmayıb: ${azDT(new Date(x.opens_at), undefined, 'all')}` : `Test: ${x.status}`)
     nav('/tasks', { replace: true })
   }, [linkId, list])
   const [review, setReview] = useState<number | null>(null)
@@ -66,7 +65,7 @@ export default function Tasks() {
           {mine.length > 0 && shown.length === 0 && <div className="empty">Bu dövrdə test yoxdur – «‹ ›» ilə başqa dövrə keçin və ya «Hamısı»nı seçin.</div>}
           {shown.map(x => (
             <div key={x.id} className="jrow">
-              <span><b>{x.title}</b><span className="sub small muted"><br />{x.subject}{x.topic_seq ? ` · mövzu №${x.topic_seq}` : ''} · {x.teacher} · {hm(x.opens_at)} – {hm(x.closes_at).slice(-5)} · {x.duration_min} dəq · {x.questions} sual</span></span>
+              <span><b>{x.title}</b><span className="sub small muted"><br />{x.subject}{x.topic_seq ? ` · mövzu №${x.topic_seq}` : ''} · {x.teacher} · {azRange(x.opens_at, x.closes_at)} · {x.duration_min} dəq · {x.questions} sual</span></span>
               <span className="row">{x.result ? <Pill tone={gradeTone(x.result.grade)}>{x.result.correct}/{x.result.total} → {x.result.grade}</Pill> : <Pill tone={x.status === 'açıq' || x.status === 'həll edilir' ? 'ok' : x.status === 'buraxılıb' ? 'bad' : undefined}>{x.status}</Pill>}</span>
               <span>{(x.status === 'açıq' || x.status === 'həll edilir') && <button className="btn primary sm" onClick={() => { enterFs(); setSolving(x.id) }}>{x.status === 'açıq' ? t('Başla') : 'Davam et'}</button>}
                 {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>Cavablara bax</button>}
@@ -236,7 +235,7 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
   )
 }
 
-function Review({ id, onClose }: { id: number; onClose: () => void }) {
+export function Review({ id, onClose }: { id: number; onClose: () => void }) {
   const { me } = useAuth()
   const [d, err] = useLoad<any>(() => get(`/api/portal/tasks/${id}/review`), [id])
   return (

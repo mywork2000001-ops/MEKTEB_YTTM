@@ -1,14 +1,14 @@
 // Dövr filtri (gün / həftə / ay / yarımil / il) + sıralama (mövzu / tarix) – onlayn test və sınaq siyahıları üçün.
 // Yarımil: I – sentyabr–yanvar, II – fevral–avqust; tədris ili 1 sentyabrdan.
 import { useState } from 'react'
-import { Seg } from './ui'
+import { azDT, Seg } from './ui'
 
 export type Period = 'all' | 'day' | 'week' | 'month' | 'half' | 'year'
 export type Sort = 'topic' | 'date'
 
 const PERIODS: [Period, string][] = [['all', 'Hamısı'], ['day', 'Gün'], ['week', 'Həftə'], ['month', 'Ay'], ['half', 'Yarımil'], ['year', 'İl']]
 const d0 = (y: number, m: number, d = 1) => new Date(y, m, d)
-const dm = (d: Date) => d.toLocaleDateString('az-AZ', { day: '2-digit', month: '2-digit' })
+const dm = (d: Date) => azDT(d, { day: '2-digit', month: '2-digit' })
 
 /** [başlanğıc, son) – yerli vaxtla. */
 export function periodRange(p: Period, a: Date): [Date, Date] | null {
@@ -28,9 +28,9 @@ function periodLabel(p: Period, r: [Date, Date] | null): string {
   const [s, e] = r
   const last = new Date(e.getTime() - 86400000)
   switch (p) {
-    case 'day': return s.toLocaleDateString('az-AZ', { day: '2-digit', month: 'long', year: 'numeric', weekday: 'short' })
+    case 'day': return azDT(s, { day: '2-digit', month: 'long', year: 'numeric', weekday: 'short' })
     case 'week': return `${dm(s)} – ${dm(last)}.${last.getFullYear()}`
-    case 'month': return s.toLocaleDateString('az-AZ', { month: 'long', year: 'numeric' })
+    case 'month': return azDT(s, { month: 'long', year: 'numeric' })
     case 'half': { const sy = s.getMonth() === 8 ? s.getFullYear() : s.getFullYear() - 1; return `${s.getMonth() === 8 ? 'I' : 'II'} yarımil ${sy}/${String(sy + 1).slice(2)}` }
     default: return `${s.getFullYear()}/${String(s.getFullYear() + 1).slice(2)} tədris ili`
   }

@@ -4,7 +4,7 @@ import { useT } from '../../i18n'
 import { NextExtra } from './Extra'
 import Notifications from './Notifications'
 import { examLabel } from './Plan'
-import { ErrorBox, fmtDate, gradeTone, isoDate, Loading, longDate, Pill, useLoad, WD } from '../../ui'
+import { azDT, azRange, ErrorBox, fmtDate, gradeTone, isoDate, Loading, longDate, Pill, useLoad, WD } from '../../ui'
 
 export default function Today() {
   const t = useT()
@@ -36,6 +36,8 @@ export default function Today() {
             <ol className="timeline">{day.lessons.map((l: any, i: number) => (
               <li key={i}><time>{l.time}</time><span><b>{l.subject}</b> · {l.topic || '—'}{examLabel(l) && <> <Pill tone="warn">{examLabel(l)}</Pill></>}
                 {l.homework && <><br /><span className="small">Evə verildi: <b>{l.homework}</b></span></>}
+                {l.p0010 ? <><br /><span className="small">Test: <a href={l.p0010.url} target="_blank" rel="noreferrer">{l.p0010.label}</a></span></>
+                  : l.p0010_opens_at && <><br /><span className="small muted">🔒 Test dərs başlayanda açılır ({azDT(new Date(l.p0010_opens_at), { hour: '2-digit', minute: '2-digit' })})</span></>}
                 {l.marks.map((m: any, j: number) => <span key={j}> <Pill tone={gradeTone(m.grade)}>{m.grade}</Pill></span>)}</span></li>))}</ol>)}
           <button className="btn sm" onClick={() => nav('/lesson')}>Ətraflı</button>
         </section>
@@ -43,7 +45,7 @@ export default function Today() {
           <h2>{t('Tapşırıqlar')} <small>{open.length}</small></h2>
           {open.length === 0 ? <p className="muted">Açıq tapşırıq yoxdur.</p> : open.map(x => (
             <div key={x.id} className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-              <span><b>{x.title}</b><br /><span className="small muted">{new Date(x.opens_at).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} – {new Date(x.closes_at).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })}</span></span>
+              <span><b>{x.title}</b><br /><span className="small muted">{azRange(x.opens_at, x.closes_at)}</span></span>
               <Pill tone={x.status === 'gözlənilir' ? undefined : 'ok'}>{x.status}</Pill></div>))}
           <button className="btn sm" onClick={() => nav('/tasks')}>{t('Tapşırıqlar')}</button>
           <h2 style={{ marginTop: 16 }}>{t('Müəllimlərim')}</h2>

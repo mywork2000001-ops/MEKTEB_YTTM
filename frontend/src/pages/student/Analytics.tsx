@@ -59,7 +59,7 @@ async function printReport(d: any, me: any, from: string, to: string) {
           `${fmtN(s.me.attendance_pct)} / ${fmtN(s.class_avg.attendance_pct)}`, `${fmtN(s.me.homework_pct)} / ${fmtN(s.class_avg.homework_pct)}`])) +
       (ksq.length ? '<h2>Summativ qiymətləndirmə (KSQ / BSQ)</h2>' + table(['Fənn', 'İmtahan', 'Tarix', 'Bal', '%', 'Qiymət'], ksq, [3, 4, 5]) : '') +
       (res.tasks.length ? '<h2>Onlayn tapşırıqlar</h2>' + table(['Tapşırıq', 'Düzgün', '%', 'Qiymət'],
-        res.tasks.map((x: any) => [x.title, `${x.correct}/${x.total}`, fmtN(x.pct, 0), x.grade]), [1, 2, 3]) : '') +
+        res.tasks.map((x: any) => [x.title, `${x.correct}/${x.total}`, fmtN(x.pct, 0), x.grade ?? (x.kind === 'sinaq' ? 'sınaq' : '—')]), [1, 2, 3]) : '') +
       (sinaq.length ? '<h2>Sınaq imtahanları</h2>' + table(['Sınaq', 'Tarix', '%', 'Düz / səhv / boş', 'Yer (sinifdə)'],
         sinaq.map((x: any) => [x.title, fmtD(x.opens_at), fmtN(x.pct), `${x.correct} / ${x.wrong} / ${x.blank}`, `${x.place_class}/${x.class_count}`]), [2, 4]) : '') +
       '<p class="note">Sinif ortası adsız hesablanır – başqa şagirdlərin nəticəsi göstərilmir.</p>'

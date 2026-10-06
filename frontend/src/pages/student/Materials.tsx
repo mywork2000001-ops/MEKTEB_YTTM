@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { api, get } from '../../api'
 import { AsyncBtn, ErrorBox, gradeTone, Loading, Pill, toast, Top, useLoad } from '../../ui'
+import { azDT } from '../../ui'
 
 const KIND: Record<string, string> = { task: 'Tapşırıq', video: 'Video dərs', link: 'Link', note: 'Qeyd' }
-const dtf = (s: string) => new Date(s).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+const dtf = (s: string) => azDT(new Date(s), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
 function ytEmbed(url: string): string | null {
   const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]{6,})/)

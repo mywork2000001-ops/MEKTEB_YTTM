@@ -2,7 +2,7 @@
 // görünəndə növbəyə düşür (docs/sinaq-seriyasi-promtu.md).
 import { useEffect, useState } from 'react'
 import { del as apiDel, get, patch, post } from '../../api'
-import { Drawer, ErrorBox, Field, Loading, Pill, Seg, toast, useLoad } from '../../ui'
+import { azDT, Drawer, ErrorBox, Field, Loading, Pill, Seg, toast, useLoad } from '../../ui'
 
 type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; mine: boolean; students: number }
 type BFile = { id: number; label: string; questions: number; kind: string; grades: number[]; source: string }
@@ -14,7 +14,7 @@ type Series = {
 }
 const WD = ['Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə', 'Bazar']
 const SOURCES: [string, string][] = [['sinaqlar', 'Sınaqlar (illər üzrə)'], ['p012', 'P012 · Riyaziyyat 11 Buraxılış'], ['p009', 'P009 · Riyaziyyat 11 DİM'], ['p004', 'P004 · TAİM']]
-const when = (s: string) => new Date(s).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+const when = (s: string) => azDT(new Date(s), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 const rule = (s: Series) => s.period === 'day' ? `hər ${s.every > 1 ? s.every + ' ' : ''}gün` : s.period === 'week'
   ? `hər ${s.every > 1 ? s.every + ' ' : ''}həftə, ${WD[s.weekday ?? 0]}` : `hər ${s.every > 1 ? s.every + ' ' : ''}ay, ${s.month_day}-i`
 

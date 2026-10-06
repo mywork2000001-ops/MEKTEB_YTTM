@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { flushOutbox, get, outbox, put } from './api'
 import { toast } from './ui'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
@@ -6,7 +6,8 @@ import { useAuth } from './auth'
 import { useT } from './i18n'
 import { Drawer, Icon } from './ui'
 import { SurveyNudge } from './pages/student/Surveys'
-import { CertNudge } from './pages/student/Achievements'
+// yeni sertifikat pəncərəsi (QR kitabxanası ilə) – yalnız şagirdə, ayrıca yüklənir
+const CertNudge = lazy(() => import('./pages/student/Achievements').then(m => ({ default: m.CertNudge })))
 
 export type NavItem = { to: string; icon: string; label: string; short?: string }
 
@@ -112,7 +113,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </main>
       </div>
       {student && <SurveyNudge />}
-      {student && <CertNudge />}
+      {student && <Suspense fallback={null}><CertNudge /></Suspense>}
       <nav className="tabbar" aria-label="Əsas bölmələr">
         {tabs.map(to => { const i = items.find(x => x.to === to)!; return (
           <button key={to} aria-current={active(to) ? 'page' : undefined} onClick={() => nav(to)}><Icon name={i.icon} />{t(i.short || i.label)}</button>) })}

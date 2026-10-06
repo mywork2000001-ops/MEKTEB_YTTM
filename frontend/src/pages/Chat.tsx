@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, del, get, patch, post } from '../api'
 import { useAuth } from '../auth'
 import { useT } from '../i18n'
-import { Drawer, ErrorBox, Icon, Pill, toast, Top, useLoad } from '../ui'
+import { azDT, Drawer, ErrorBox, Icon, Pill, toast, Top, useLoad } from '../ui'
 
 type Room = { id: number; kind: 'class' | 'dm' | 'staff'; title: string; unread: number; avatar?: string | null; last: { text: string; at: string; mine?: boolean; sender?: string } | null }
 type Msg = { id: number; sender_id: number; sender: string; avatar?: string | null; text: string | null; deleted: boolean; edited?: boolean; at: string; file: { name: string; type: string; size: number; url: string } | null }
@@ -87,15 +87,15 @@ const initials = (n: string) => n.split(' ').slice(0, 2).map(w => w[0] || '').jo
 const when = (s?: string) => {
   if (!s) return ''
   const d = new Date(s), now = new Date()
-  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
+  if (d.toDateString() === now.toDateString()) return azDT(d, { hour: '2-digit', minute: '2-digit' })
   const y = new Date(now); y.setDate(now.getDate() - 1)
   if (d.toDateString() === y.toDateString()) return 'dünən'
-  return d.toLocaleDateString('az-AZ', { day: '2-digit', month: '2-digit' })
+  return azDT(d, { day: '2-digit', month: '2-digit' })
 }
 const dayLabel = (s: string) => {
   const d = new Date(s), now = new Date(), y = new Date(now); y.setDate(now.getDate() - 1)
   return d.toDateString() === now.toDateString() ? 'Bu gün' : d.toDateString() === y.toDateString() ? 'Dünən'
-    : d.toLocaleDateString('az-AZ', { day: 'numeric', month: 'long', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' })
+    : azDT(d, { day: 'numeric', month: 'long', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' })
 }
 
 function Avatar({ room }: { room: Room }) {
@@ -156,7 +156,7 @@ export default function Chat() {
           <p className="small muted">Yalnız «!» ilə bildirilən mesajlar görünür, yazışmanın qalanı görünmür.</p>
           <div className="stack">{reports.map(r => (
             <section key={r.id} className="panel">
-              <p className="small muted">{r.class_name} · bildirən: {r.reporter} · {new Date(r.at).toLocaleString('az-AZ')}</p>
+              <p className="small muted">{r.class_name} · bildirən: {r.reporter} · {azDT(new Date(r.at), undefined, 'all')}</p>
               <p><b>{r.message.sender}:</b> {r.message.text}</p>
               {r.reason && <p className="small">Səbəb: {r.reason}</p>}
               {r.resolved ? <Pill tone="ok">baxılıb</Pill> : <button className="btn sm" onClick={async () => { await post(`/api/chat/reports/${r.id}/resolve`); setReports(await get('/api/chat/reports')) }}>Baxıldı</button>}
@@ -309,7 +309,7 @@ function RoomView({ room, onBack }: { room: Room; onBack: () => void }) {
                     : m.file.type.startsWith('video/') ? <video controls src={m.file.url} preload="metadata" />
                     : <a href={m.file.url} target="_blank" rel="noreferrer">📄 {m.file.name} ({Math.round(m.file.size / 1024)} KB)</a>)}
                 </>}
-                <span className="who" style={{ textAlign: 'right' }}>{m.edited && <i>düzəldilib · </i>}{new Date(m.at).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })}
+                <span className="who" style={{ textAlign: 'right' }}>{m.edited && <i>düzəldilib · </i>}{azDT(new Date(m.at), { hour: '2-digit', minute: '2-digit' })}
                   {mine && !m.deleted && (() => {
                     const who = reads.filter(r => r.user_id !== me?.id && r.last_read_id >= m.id)
                     if (room.kind === 'dm') return <span className={'chat-tick' + (who.length ? ' read' : '')} title={who.length ? 'Oxundu' : 'Göndərildi'}>{who.length ? ' ✓✓ oxundu' : ' ✓'}</span>

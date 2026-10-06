@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { get, post, put } from '../../api'
 import { printCert, type Cert } from '../../certificate'
 import { CertDrawer } from '../student/Achievements'
-import { ErrorBox, Field, Pill, toast, useLoad } from '../../ui'
+import { ErrorBox, Field, fmtDate, Pill, toast, useLoad } from '../../ui'
 import { StudentPicker } from './common'
 
 type Rules = { enabled: boolean; movzu: number; sinaq_pct: number; sinaq_top: number; seriya: number }
@@ -30,7 +30,7 @@ export default function CertificatesPanel({ ta }: { ta: number }) {
         {d.items.length === 0 && <div className="empty">Hələ sertifikat yoxdur.</div>}
         {d.items.map(c => (
           <div key={c.id} className="jrow" style={{ gridTemplateColumns: 'minmax(0,1fr) auto', opacity: c.revoked ? 0.5 : 1 }}>
-            <span><b>{c.student}</b> <span className="small muted">· {c.title} · {new Date(c.issued_at).toLocaleDateString('az-AZ')}</span>
+            <span><b>{c.student}</b> <span className="small muted">· {c.title} · {fmtDate(c.issued_at)}</span>
               {' '}<Pill tone={c.revoked ? 'bad' : 'info'}>{c.revoked ? 'ləğv edilib' : KIND[c.kind] || c.kind}</Pill></span>
             <span className="row" style={{ gap: 4 }}>
               <button className="btn sm" onClick={() => setOpen(c)}>Bax</button>

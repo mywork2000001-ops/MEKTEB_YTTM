@@ -6,6 +6,7 @@ import { LessonSelect, useMyLessons, usePick } from './common'
 import { ProgramBox } from './Programs'
 import { head, printDoc, table } from '../../print'
 import TopicTest from './TopicTest'
+import { azDT } from '../../ui'
 
 type TopicTestInfo = { task_id: number; title: string; opens_at: string; closes_at: string; state: 'gözlənilir' | 'açıqdır' | 'bitib'
   questions: number; submitted: number; total: number | null; avg_pct: number | null; journal: 'yazılıb' | 'gözləyir' | 'yox' }
@@ -151,7 +152,7 @@ export default function Plan() {
   )
 }
 
-const hm = (s: string) => new Date(s).toLocaleTimeString('az', { hour: '2-digit', minute: '2-digit' })
+const hm = (s: string) => azDT(new Date(s), { hour: '2-digit', minute: '2-digit' })
 const dm = (s: string) => { const x = new Date(s); return `${String(x.getDate()).padStart(2, '0')}.${String(x.getMonth() + 1).padStart(2, '0')}` }
 
 /** Mövzuya bağlı onlayn testin vəziyyəti: gözlənilir / açıqdır / bitib (orta nəticə, jurnal). */

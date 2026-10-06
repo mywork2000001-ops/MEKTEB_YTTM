@@ -32,7 +32,7 @@ export function printResults(d: any, ex: any, me: Who, withMistakes: boolean, tr
     sin.map((x: any) => [x.title, fmtD(x.opens_at), fmtN(x.pct), `${x.correct} / ${x.wrong} / ${x.blank}`, `${x.place_class}/${x.class_count}`,
       `${x.place_all}/${x.all_count}`, fmtN(x.avg_pct)]), [2, 4, 5, 6]) + (ex.delta != null ? NOTE(`Son dinamika: ${ex.delta > 0 ? '+' : ''}${fmtN(ex.delta)}%`) : '')
   if (d.tasks.length) body += '<h2>Onlayn tapşırıqlar</h2>' + table(['Tapşırıq', 'Düzgün', '%', 'Qiymət'],
-    d.tasks.map((x: any) => [x.title + (x.auto_submitted ? ' (vaxt bitdi)' : ''), `${x.correct}/${x.total}`, fmtN(x.pct, 0), x.grade]), [1, 2, 3])
+    d.tasks.map((x: any) => [x.title + (x.auto_submitted ? ' (vaxt bitdi)' : ''), `${x.correct}/${x.total}`, fmtN(x.pct, 0), x.grade ?? (x.kind === 'sinaq' ? 'sınaq' : '—')]), [1, 2, 3])
   if (withMistakes && d.mistakes.length) body += '<div class="pb"></div>' + mistakesHtml(d.mistakes, false)
   body += NOTE('Sinif ortası adsız hesablanır – başqa şagirdlərin nəticəsi göstərilmir.')
   printDoc({ title: `Nəticələrim – ${me?.full_name || ''}`, body })
