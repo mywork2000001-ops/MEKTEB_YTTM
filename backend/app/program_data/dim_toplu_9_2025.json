@@ -272,7 +272,7 @@
       "closed": 70,
       "p007": {
         "lesson": "polygons-quadrilaterals/polygons-quadrilaterals.html",
-        "in_bank": false
+        "in_bank": true
       }
     },
     {
@@ -287,7 +287,7 @@
       "closed": 52,
       "p007": {
         "lesson": "circle-disk/circle-disk.html",
-        "in_bank": false
+        "in_bank": true
       }
     },
     {

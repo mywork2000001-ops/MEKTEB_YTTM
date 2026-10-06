@@ -51,14 +51,14 @@ səh. 156–165 – cavablar. Fəsillərin daxilində yarımbaşlıq yoxdur – 
 | 14 | Ehtimal nəzəriyyəsi və statistika | Cəbr | 89–97 | 118 | 1–80 | probability-statistics | ✓ | 7 / 6 / 4 |
 | 15 | Həndəsənin əsas anlayışları | Həndəsə | 98–104 | 118 | 1–70 | geometry-basics | ✓ | 7 / 5 / 4 |
 | 16 | Üçbucaqlar | Həndəsə | 105–110 | 112 | 1–72 | triangles | ✓ | 7 / 5 / 4 |
-| 17 | Çoxbucaqlılar. Dördbucaqlılar | Həndəsə | 111–116 | 120 | 1–70 | polygons-quadrilaterals | **yox** | 7 / 6 / 4 |
-| 18 | Çevrə və dairə | Həndəsə | 117–124 | 121 | 1–52 | circle-disk | **yox** | 7 / 6 / 4 |
+| 17 | Çoxbucaqlılar. Dördbucaqlılar | Həndəsə | 111–116 | 120 | 1–70 | polygons-quadrilaterals | ✓ | 7 / 6 / 4 |
+| 18 | Çevrə və dairə | Həndəsə | 117–124 | 121 | 1–52 | circle-disk | ✓ | 7 / 6 / 4 |
 | 19 | Fiqurların sahəsi | Həndəsə | 125–134 | 206 | 1–145 | area-of-figures | ✓ | 10 / 8 / 6 |
 | 20 | Hərəkət. Oxşarlıq | Həndəsə | 135–141 | 98 | 1–50 | motion-similarity | ✓ | 6 / 5 / 4 |
 | 21 | Koordinatlar metodu | Həndəsə | 142–150 | 150 | 1–120 | coordinates | ✓ | 8 / 6 / 5 |
 | 22 | Çoxüzlülər, onların səthi və həcmi | Həndəsə | 151–153 | 66 | 1–47 | polyhedra | ✓ | 5 / 4 / 3 |
 | – | 2025 buraxılış tapşırıqları | – | 154–155 | 25 | 1–15 | exam-2025 | ✓ | ehtiyat |
-| | **Cəmi** | | | **2836** | | | 20/22 | **160 / 127 / 94** + ehtiyat 10 / 9 / 8 |
+| | **Cəmi** | | | **2836** | | | 22/22 | **160 / 127 / 94** + ehtiyat 10 / 9 / 8 |
 
 Dərs sayı – göstəricidir (170 / 136 / 102 yuva: həftədə 5 / 4 / 3 saat × 34 həftə); tətbiqdə sinfin cədvəlindən hesablanır.
 
@@ -70,11 +70,11 @@ Dərs sayı – göstəricidir (170 / 136 / 102 yuva: həftədə 5 / 4 / 3 saat 
   şagird sinifdə 17–25-i həll edib, evdə 26–31-i – onlayn test məhz həmin tapşırıqlardır (və ya müəllimin seçdiyi hissəsi).
 - Bazada: `BankSource 'p007'`, `BankFile.lesson = '<mövzu>/<mövzu>.html'`, `grades = [9]` (`bank/classify.py`). Həm qapalı, həm açıq
   suallar idxal olunur (açıq – `kind = 'open'`, `answer`).
-- **Boşluq:** `polygons-quadrilaterals` (fəsil 17) və `circle-disk` (fəsil 18) viktorina-nın P007 idxal siyahısında yoxdur – faylların
-  formatı fərqlidir (`questionsData` iş vaxtı `rawData`+`part2Data` / `rawQuestions`+`answersKey`-dən qurulur), mövcud çıxarıcılar
-  0 sual qaytarır. Bu iki fəsil üçün test bazada yoxdur → UI-də «Bazada yoxdur – P007-də aç» linki. **Ayrıca iş (başqa repo,
-  `Documents/Claude/Projects/viktorina.html`):** `P007_LESSONS`-a iki mövzu + bu iki format üçün çıxarıcı, `scripts/check-viktorina-import.cjs`
-  ilə yoxlama (0 itki); sonra tətbiqin bank sinxronizasiyası onları avtomatik gətirir – burada kod dəyişikliyi lazım deyil.
+- **Fəsil 17–18 və qid (həll olunub, 06.10.2026):** viktorina `539c74bc` – `extractP007BuiltData` (`polygons-quadrilaterals` 120,
+  `circle-disk` 121 sual) və bütün P007 mövzularında `_qid` (əvvəl 9 mövzuda və triangles 21–112-də yox idi). Yoxlama: hər faylda
+  `qid = 1..N`, N = kitabdakı tapşırıq sayı. Tətbiq: `bank/sync.py` qid dəyişəndə də sualı yeniləyir; köhnə sualların nömrəsi
+  üçün **bir dəfə məcburi sinxronizasiya** (Tənzimləmələr → Admin → «Hamısını yenidən oxu», `POST /api/bank/sync?force=true`). UI-də
+  «Bazada yoxdur – P007-də aç» linki yalnız faktiki baza boş olanda (endpoint `in_bank=false`) göstərilir.
 
 ## 3. Mərhələ 1 – Daxili proqram (backend)
 1. `programs.py`: `ensure_builtin` `dim_toplu_9_2025.json`-dan **bir** ümumi proqram yaradır (idempotent, `key = 'dim-toplu-9-2025'`):
@@ -111,7 +111,7 @@ Dərs sayı – göstəricidir (170 / 136 / 102 yuva: həftədə 5 / 4 / 3 saat 
 2. Mövzu testi formasında (mövcud: müəllim plan mövzusuna onlayn test təyin edir) yeni düymə **«Toplu tapşırıqlarından (P007)»**:
    seçim – «Dərsin tapşırıqları» / «Ev tapşırığı (onlayn yoxlama)» / «Fəsil testi: N təsadüfi sual» (defolt N = 15, qapalı:açıq ≈ 2:1);
    → `OnlineTask` bazadakı suallardan (surət – mövcud qayda), ad: «Natural ədədlər · tapşırıqlar 26–31 (ev)». Qarışdırma – mövcud.
-3. Fəsil 17–18 (bazada yoxdur) – düymə yerinə «P007-də aç» linki və izah; viktorina idxalı düzələndən sonra avtomatik işləyir.
+3. Fayl faktiki bazada yoxdursa (`in_bank=false`) – düymə yerinə «P007-də aç» linki və izah.
 4. Sınaq dərsləri: C-blokunda «Toplu sınağı» – ② Cəbr (fəsil 1–14, hər fəsildən 2 sual), ③ Həndəsə (15–22), ① diaqnostik (hər fəsildən 1),
    ④ `exam-2025` faylı olduğu kimi (25 sual – real imtahan forması). Nəticə «Sınaq jurnalı»na və reytinqə (mövcud axın).
    Eyni sinif üçün təkrar sınaqda əvvəl verilmiş suallar (qid) təkrarlanmır.
@@ -151,4 +151,4 @@ cavab açarı və PDF repoda yoxdur; `pytest` və `tsc` təmiz.
 - Qapalı/açıq sərhədləri cavab cədvəlindən (səh. 156–165) oxunub; şübhə olarsa PDF-də yoxla (indeks = səhifə − 3).
 
 **İcra ardıcıllığı:** Mərhələ 1 (+ testlər) → Mərhələ 3-ün kitabxana/önbaxış hissəsi → Mərhələ 2 → analitika (§4.5).
-Paralel (başqa repo): viktorina-da fəsil 17–18 üçün P007 çıxarıcısı.
+Paralel iş (viktorina, fəsil 17–18 + qid) – görülüb, bax §2.

@@ -136,3 +136,13 @@ def test_restored_question_reactivates(env):
     site.files['a.html'] = saved
     r = run()
     assert r.updated == 1 and qs()[('a.html', 2)].active
+
+
+def test_qid_added_later_updates_existing_question(env):
+    site, run, qs = env
+    run()
+    assert qs()[('a.html', 1)].qid is None
+    site.page = b'<html>v4</html>'                                          # viktorina indi tapşırıq nömrəsini ötürür
+    site.files['a.html'] = [dict(q, _qid=i + 1) for i, q in enumerate(site.files['a.html'])]
+    r = run()
+    assert r.updated == 2 and [qs()[('a.html', n)].qid for n in (1, 2)] == ['1', '2']

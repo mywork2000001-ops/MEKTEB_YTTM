@@ -160,7 +160,7 @@ def _apply_questions(db: Session, f: BankFile, qs: list[dict], res: SyncResult):
         if cur is None:
             db.add(BankQuestion(file_id=f.id, **row))
             res.added += 1
-        elif cur.content_hash != row['content_hash'] or not cur.active:
+        elif cur.content_hash != row['content_hash'] or not cur.active or cur.qid != row['qid']:   # qid – kitab nömrəsi (plan testi)
             for k, v in row.items():
                 setattr(cur, k, v)
             cur.active, cur.updated_at = True, now()
