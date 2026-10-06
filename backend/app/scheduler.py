@@ -1,6 +1,9 @@
 """Arxa plan işləri: test bazasının avtomatik yenilənməsi (viktorina.html dəyişəndə özü yenilənir)."""
+import contextlib
 import datetime as dt
 import logging
+import os
+import tempfile
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -72,6 +75,47 @@ def _keepalive_job():
         httpx.get(url.rstrip('/') + '/api/health', timeout=30)
     except Exception as e:                                   # noqa: BLE001
         log.warning('keepalive: %s', e)
+
+
+# ---------------------------------------------------------------- bir neçə proses (uvicorn --workers)
+_LOCK_DIR = os.environ.get('MK_LOCK_DIR') or tempfile.gettempdir()
+_leader_fh = None
+
+
+@contextlib.contextmanager
+def startup_lock():
+    """Bootstrap (miqrasiyalar) eyni anda yalnız bir prosesdə. Windows-da (lokal, tək proses) – kilidsiz."""
+    try:
+        import fcntl
+    except ImportError:
+        yield
+        return
+    with open(os.path.join(_LOCK_DIR, 'mk-startup.lock'), 'w') as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def leader() -> bool:
+    """Fon işlərini bu proses aparsın? Kilidi ilk tutan – prosesin ömrü boyu saxlayır (ölsə, kilid özü açılır)."""
+    global _leader_fh
+    try:
+        import fcntl
+    except ImportError:
+        return True
+    if _leader_fh:
+        return True
+    fh = open(os.path.join(_LOCK_DIR, 'mk-scheduler.lock'), 'w')
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        log.info('fon işləri başqa prosesdədir')
+        return False
+    _leader_fh = fh
+    return True
 
 
 def start():

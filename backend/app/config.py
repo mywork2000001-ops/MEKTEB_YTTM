@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # Render pulsuz planı 15 dəq trafiksiz qalanda yatır: server öz ünvanına müraciət edir (Bakı vaxtı ilə saatlar)
     keepalive_url: str | None = None                     # boşdursa RENDER_EXTERNAL_URL (Render özü verir)
     keepalive_hours: str = '7-23'                        # 07:00–23:00 oyaq; gecə yatır
+    # bir neçə uvicorn prosesi (MK_WORKERS) olanda: hər prosesin baza bağlantıları; fon işləri yalnız birində
+    db_pool_size: int = 10
+    db_max_overflow: int = 15
     storage: str = 'local'                               # local | db | gdrive (hostinqdə: gdrive, qoşulana qədər db)
     gdrive_folder_id: str | None = None
     gdrive_client_id: str | None = None

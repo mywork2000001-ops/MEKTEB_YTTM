@@ -31,6 +31,34 @@ from ..models import AppState, BankFile, BankQuestion, BankSource, BankSync, now
 
 log = logging.getLogger('bank')
 _lock = threading.Lock()
+
+
+class _ProcLock:
+    """Proseslər arası kilid (uvicorn --workers): eyni anda yalnız bir Chromium. Windows-da – yalnız _lock."""
+    fh = None
+
+    def acquire(self) -> bool:
+        try:
+            import fcntl
+        except ImportError:
+            return True
+        import tempfile
+        self.fh = open(os.path.join(os.environ.get('MK_LOCK_DIR') or tempfile.gettempdir(), 'mk-banksync.lock'), 'w')
+        try:
+            fcntl.flock(self.fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            self.fh.close()
+            self.fh = None
+            return False
+
+    def release(self):
+        if self.fh:
+            self.fh.close()                                   # bağlananda kilid açılır
+            self.fh = None
+
+
+_plock = _ProcLock()
 LANGS = ('az', 'ru', 'en')
 CHROME_DEFAULTS = ['C:/Program Files/Google/Chrome/Application/chrome.exe',
                    '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser']
@@ -177,6 +205,9 @@ def run_sync(db: Session, trigger: str = 'manual', force: bool = False,
     """Bir sinxronizasiya. Eyni anda yalnız biri işləyir (qalanları dərhal «busy» qaytarır)."""
     if not _lock.acquire(blocking=False):
         return SyncResult(status='busy')
+    if not _plock.acquire():
+        _lock.release()
+        return SyncResult(status='busy')
     cfg = settings()
     log_row = BankSync(trigger=trigger)
     db.add(log_row)
@@ -277,4 +308,5 @@ def run_sync(db: Session, trigger: str = 'manual', force: bool = False,
         row.finished_at = now()
         row.message = '\n'.join(res.errors[:50]) or None
         db.commit()
+        _plock.release()
         _lock.release()

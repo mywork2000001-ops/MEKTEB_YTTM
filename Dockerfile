@@ -19,4 +19,5 @@ COPY backend/ ./
 COPY --from=web /web/dist /app/frontend/dist
 EXPOSE 8000
 # Miqrasiyalar və ilk quraşdırma tətbiq açılanda (bootstrap) avtomatik icra olunur
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
+# MK_WORKERS – uvicorn prosesləri (pulsuz plan: 1; Standard 1 CPU / 2 GB: 2–3). Fon işləri yalnız birində (app/scheduler.py)
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${MK_WORKERS:-1} --proxy-headers --forwarded-allow-ips='*'"]

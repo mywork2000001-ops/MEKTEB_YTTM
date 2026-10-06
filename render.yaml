@@ -11,7 +11,7 @@ services:
   - type: web
     name: muellim-komekcisi
     runtime: docker
-    plan: free
+    plan: free                        # 90 şagird eyni anda: Render panelində Instance Type → Standard (ödəniş – sahibi edir)
     region: frankfurt
     healthCheckPath: /api/health
     autoDeploy: true
@@ -28,5 +28,7 @@ services:
         value: db
       - key: MK_BANK_SYNC_MINUTES
         value: "60"
+      - key: MK_WORKERS               # uvicorn prosesləri: pulsuz plan – boş (1); Standard (1 CPU, 2 GB) – 2. Dəyər Render panelində
+        sync: false
       - key: MK_BANK_HOOK_TOKEN       # viktorina deploy → POST /api/bank/hook (eyni dəyər GitHub secret-də)
         sync: false
