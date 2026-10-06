@@ -15,10 +15,11 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import staff
-from ..models import BankFile, BankQuestion, BankSource, ExamSeries, OnlineTask, Role, TestBatch, User, now
+from ..models import (BankFile, BankQuestion, BankSource, ExamSeries, OnlineTask, Role, SchoolClass, TeachingAssignment,
+                      TestBatch, User, now)
 from ..services import SCHOOL_TZ, class_grade, roster
 from .common import audit
-from .exams_online import _can_target
+from .exams_online import _can_target, given_files, grade_fits
 from .tasks import _snapshot, aware
 
 router = APIRouter(prefix='/api/exam-series', tags=['exam-series'])
@@ -78,13 +79,39 @@ def _grade_ok(f: BankFile, grade: int | None) -> bool:
     return grade is None or not f.grades or grade in f.grades
 
 
+def _grades(db: Session, ta_ids) -> dict[int, int | None]:
+    """Dərs → sinif rəqəmi (arxivlənmiş / əlçatmaz dərs atlanır)."""
+    out = {}
+    for i in ta_ids:
+        ta = db.get(TeachingAssignment, i)
+        cls = ta and db.get(SchoolClass, ta.class_id)
+        if cls:
+            out[i] = class_grade(db, cls)
+    return out
+
+
+def _given_to(db: Session, ta_ids: list[int]) -> dict[int, dict[int, str]]:
+    """Fayl → {ta_id: sinif} – sınaq bu dərslərə artıq verilib (təkrar göndərilmir, docs/sinaq-tekrar-qadagasi-promtu.md)."""
+    return {fid: {c['ta_id']: c['class_name'] for c in g['classes'] if c['full']}
+            for fid, g in given_files(db, ta_ids).items() if g['full']}
+
+
 @router.get('/files')
-def files(sources: str = 'sinaqlar', grade: int | None = None, all_kinds: bool = False, user: User = Depends(staff),
-          db: Session = Depends(get_db)):
-    """Sınaq faylları (növ «sınaq»; all_kinds – mənbənin bütün faylları)."""
+def files(sources: str = 'sinaqlar', grade: int | None = None, all_kinds: bool = False, ta_ids: str = '',
+          user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Sınaq faylları (növ «sınaq»; all_kinds – mənbənin bütün faylları); given – seçilmiş siniflərdən hansına verilib."""
     src = [x for x in sources.split(',') if x]
+    tas = []
+    for x in {int(x) for x in ta_ids.split(',') if x.strip().isdigit()}:
+        try:
+            tas.append(_can_target(db, user, x)[0].id)
+        except HTTPException:
+            continue
+    given = _given_to(db, tas)
+    gr = _grades(db, tas)
     return [{'id': f.id, 'label': f.label, 'questions': f.question_count, 'kind': f.kind, 'grades': f.grades or [],
-             'source': f.source_key}
+             'source': f.source_key, 'given': sorted(given.get(f.id, {}).values()),
+             'grade_ok': all(grade_fits(f, g) for g in gr.values())}
             for f in db.scalars(_files_q(src)) if _grade_ok(f, grade) and (all_kinds or f.kind == 'sinaq')]
 
 
@@ -92,8 +119,13 @@ def files(sources: str = 'sinaqlar', grade: int | None = None, all_kinds: bool =
 def _sync_new(db: Session, s: ExamSeries) -> int:
     """auto_new: seriya yaradılandan sonra bankda görünən, səviyyəsi uyğun sınaqlar növbənin sonuna."""
     known = set(s.queue or []) | {x['file_id'] for x in s.done or []}
+    tas = {t['ta_id'] for t in s.targets}
+    given = _given_to(db, list(tas))
+    gr = _grades(db, tas)
+    # avtomatik – yalnız öz sinfinin sınağı (başqa sinfin / sinifsiz fayl müəllimin təsdiqini gözləyir)
     new = [f.id for f in db.scalars(_files_q(s.sources).where(BankFile.id > (s.since_file_id or 0)))
-           if f.kind == 'sinaq' and _grade_ok(f, s.grade) and f.id not in known]
+           if f.kind == 'sinaq' and _grade_ok(f, s.grade) and f.id not in known and not tas <= set(given.get(f.id, {}))
+           and any(grade_fits(f, g) for g in gr.values())]
     if new:
         s.queue = list(s.queue or []) + new
     return len(new)
@@ -109,12 +141,17 @@ def _send(db: Session, s: ExamSeries, f: BankFile, o: dt.datetime) -> TestBatch 
     qs = _snapshot(db, ids)
     c = o + dt.timedelta(hours=s.window_hours)
     title = f.label[:200]
+    given = _given_to(db, [tg['ta_id'] for tg in s.targets]).get(f.id, {})
     b = None
     for tg in s.targets:
+        if tg['ta_id'] in given:
+            continue                                         # bu sinfə artıq verilib (əl ilə və ya başqa seriya) – təkrar yox
         try:
             ta, cls = _can_target(db, user, tg['ta_id'])
         except HTTPException:
             continue                                         # sinif arxivləşib / əlçatmazdır – atlanır
+        if not grade_fits(f, class_grade(db, cls)) and f.id not in (s.other_ok or []):
+            continue                                         # başqa sinfin sınağı – müəllim təsdiqləməyib
         if b is None:
             b = TestBatch(kind='sinaq', title=title, subject=ta.subject, grade=class_grade(db, cls), penalty=s.penalty,
                           created_by=user.id)
@@ -181,6 +218,7 @@ class SeriesIn(BaseModel):
     sources: list[str] = Field(min_length=1, max_length=10)
     grade: int | None = Field(None, ge=1, le=12)
     queue: list[int] = Field(default_factory=list, max_length=200)
+    other_ok: list[int] = Field(default_factory=list, max_length=200)   # başqa sinfin / sinifsiz – təsdiqlənmiş fayllar
     auto_new: bool = True
     period: Literal['day', 'week', 'month'] = 'week'
     every: int = Field(1, ge=1, le=12)
@@ -226,17 +264,27 @@ def _check_queue(db: Session, queue: list[int], sources: list[str]) -> None:
 
 def series_out(db: Session, s: ExamSeries) -> dict:
     q = list(s.queue or [])
-    labels = {f.id: f.label for f in db.scalars(select(BankFile).where(BankFile.id.in_(q + [0])))}
+    files = {f.id: f for f in db.scalars(select(BankFile).where(BankFile.id.in_(q + [0])))}
+    labels = {i: f.label for i, f in files.items()}
+    tas = {t['ta_id'] for t in s.targets}
+    given = _given_to(db, list(tas)) if q else {}
+    gr = _grades(db, tas) if q else {}
+    ok = set(s.other_ok or [])
+    # sınaq alacaq siniflər: verilməyib və sinfi uyğundur (və ya müəllim təsdiqləyib)
+    gets = {i: {ta for ta, g in gr.items() if ta not in given.get(i, {}) and (i in ok or grade_fits(files.get(i), g))} for i in q}
     slots, t = [], aware(s.next_at)
+    sendable = [i for i in q if gets[i]]                                    # heç kimə getməyəcəklər atlanır
     for i in range(6):
-        fid = q[i] if i < len(q) else None
+        fid = sendable[i] if i < len(sendable) else None
         slots.append({'at': t, 'weekday': WD[t.astimezone(TZ).weekday()], 'file_id': fid, 'label': labels.get(fid)})
         t = advance(s, t)
     return {'id': s.id, 'title': s.title, 'subject': s.subject, 'targets': s.targets, 'sources': s.sources, 'grade': s.grade,
             'period': s.period, 'every': s.every, 'weekday': s.weekday, 'month_day': s.month_day, 'open_time': s.open_time,
             'window_hours': s.window_hours, 'duration_min': s.duration_min, 'penalty': s.penalty,
             'show_answers': s.show_answers, 'shuffle': s.shuffle, 'auto_new': s.auto_new, 'active': s.active,
-            'next_at': aware(s.next_at), 'queue': [{'id': i, 'label': labels.get(i)} for i in q],
+            'next_at': aware(s.next_at),
+            'queue': [{'id': i, 'label': labels.get(i), 'given': sorted(given.get(i, {}).values()),
+                       'other_ok': i in ok, 'skip': not gets[i]} for i in q],
             'done': s.done or [], 'preview': slots}
 
 
@@ -259,12 +307,19 @@ def create_series(body: SeriesIn, user: User = Depends(staff), db: Session = Dep
     if len(subjects) > 1:
         raise HTTPException(400, 'Bir seriya yalnız bir fənn üzrə ola bilər')
     _check_queue(db, body.queue, body.sources)
+    gr = _grades(db, [t.ta_id for t in body.targets])
+    bad = [f.label for i in body.queue if i not in body.other_ok and (f := db.get(BankFile, i))
+           and not all(grade_fits(f, g) for g in gr.values())]
+    if bad:
+        raise HTTPException(409, {'message': f'«{bad[0]}» seçilmiş siniflərin sinfinə uyğun deyil (başqa sinfin və ya sinfi '
+                                             'göstərilməmiş sınaq). Təsdiq edin və ya növbədən çıxarın.', 'grade': bad})
     t0 = now()
     s = ExamSeries(created_by=user.id, title=body.title, subject=subjects.pop(), targets=[t.model_dump() for t in body.targets],
                    sources=body.sources, grade=body.grade, period=body.period, every=body.every, weekday=body.weekday,
                    month_day=body.month_day, open_time=body.open_time, window_hours=body.window_hours,
                    duration_min=body.duration_min, penalty=body.penalty, show_answers=body.show_answers,
                    shuffle=body.shuffle, auto_new=body.auto_new, queue=list(dict.fromkeys(body.queue)), done=[],
+                   other_ok=[i for i in dict.fromkeys(body.other_ok) if i in body.queue],
                    since_file_id=db.scalar(select(func.coalesce(func.max(BankFile.id), 0))) or 0,
                    next_at=t0, active=True)
     s.next_at = first_slot(s, body.start or t0.astimezone(TZ).date(), t0).astimezone(dt.timezone.utc)

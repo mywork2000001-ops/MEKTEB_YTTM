@@ -500,6 +500,7 @@ class ExamSeries(Base):
     auto_new: Mapped[bool] = mapped_column(Boolean, default=True)
     queue: Mapped[list] = mapped_column(JSON, default=list)             # [bank_file_id, ...]
     done: Mapped[list] = mapped_column(JSON, default=list)              # [{file_id, batch_id, at}]
+    other_ok: Mapped[list | None] = mapped_column(JSON, default=list)   # başqa sinfin / sinifsiz – müəllim təsdiqləyib [file_id]
     since_file_id: Mapped[int] = mapped_column(Integer, default=0)      # auto_new: yalnız bundan sonra bankda görünən fayllar
     next_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
     active: Mapped[bool] = mapped_column(Boolean, default=True)

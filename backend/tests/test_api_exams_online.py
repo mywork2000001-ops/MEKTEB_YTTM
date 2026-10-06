@@ -100,7 +100,7 @@ def test_online_exam_journal_rating_privacy(world, clock, monkeypatch):
     # ikinci sınaq (yalnız X e): 2-ci şagird irəliləyir → kumulyativ reytinqdə dinamika
     clock.t = dt.datetime(2026, 10, 6, 10, 0, tzinfo=UTC)
     win2 = {'opens_at': '2026-10-06T11:00:00Z', 'closes_at': '2026-10-06T14:00:00Z'}
-    b2 = admin.post('/api/exams-online', json={**body, 'title': 'Sınaq 2', 'penalty': 0,
+    b2 = admin.post('/api/exams-online', json={**body, 'title': 'Sınaq 2', 'penalty': 0, 'allow_repeat': True,
                                                 'targets': [{'ta_id': ta, **win2}]}).json()['id']
     with S() as db:
         t2 = db.query(OnlineTask).filter_by(batch_id=b2).one().id

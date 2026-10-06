@@ -50,7 +50,7 @@ def setup(world):
                               topic='Kvadrat tənliklər' if i == 4 else f'Mövzu {i + 1}', date=dt.date(2026, 9, 15)))
         db.add(BankSource(key='p012', label='P012'))
         db.flush()
-        f = BankFile(source_key='p012', lesson='usi-1.html', label='ÜSİ-1', url='http://x/usi-1.html')
+        f = BankFile(source_key='p012', lesson='usi-1.html', label='ÜSİ-1', url='http://x/usi-1.html', grades=[10])
         db.add(f)
         db.flush()
         qs = [BankQuestion(file_id=f.id, n=1, kind='mcq', text={'az': '2+2=?'}, options=[{'az': '3'}, {'az': '4'}],

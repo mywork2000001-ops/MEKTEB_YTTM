@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
+from collections import Counter
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,7 +23,7 @@ from ..services import ws_cond
 from ..db import get_db
 from ..deps import staff
 from ..domain.rules import rank, summative_grade
-from ..models import (AuditLog, OnlineTask, Role, SchoolClass, Student, TaskAttempt, TeachingAssignment, TestBatch,
+from ..models import (AuditLog, BankFile, BankQuestion, OnlineTask, Role, SchoolClass, Student, TaskAttempt, TeachingAssignment, TestBatch,
                       User, now)
 from ..services import class_grade, roster
 from .common import audit, need_school
@@ -75,6 +76,77 @@ def _batch(db: Session, user: User, batch_id: int) -> tuple[TestBatch, str]:
     if not b:
         raise HTTPException(404, 'Sınaq tapılmadı')
     return b, _access(db, user, b)
+
+
+# ---------------------------------------------------------------- təkrar sınaq (docs/sinaq-tekrar-qadagasi-promtu.md)
+def _file_counts(db: Session, bank_ids) -> Counter:
+    """Suallar hansı viktorina faylından və neçəsi (bank_id → BankQuestion.file_id)."""
+    ids = {i for i in bank_ids if i}
+    if not ids:
+        return Counter()
+    return Counter(f for _, f in db.execute(select(BankQuestion.id, BankQuestion.file_id).where(BankQuestion.id.in_(ids))))
+
+
+def _full(used: int, of: int) -> bool:
+    """Faylın suallarının ən azı yarısı – «bu sınaq verilib» (azı – «qismən istifadə olunub»)."""
+    return used * 2 >= max(1, of)
+
+
+def given_files(db: Session, ta_ids: list[int]) -> dict[int, dict]:
+    """Bu dərslərə verilmiş (arxivlənməmiş) sınaqların faylları: {file_id: {label, of, used, full, classes:[…]}}."""
+    if not ta_ids:
+        return {}
+    tasks = list(db.scalars(select(OnlineTask).where(OnlineTask.assignment_id.in_(ta_ids), OnlineTask.kind == 'sinaq',
+                                                     OnlineTask.archived_at.is_(None)).order_by(OnlineTask.opens_at)))
+    per = [(t, _file_counts(db, [q.get('bank_id') for q in t.questions or [] if isinstance(q, dict)])) for t in tasks]
+    fids = {f for _, c in per for f in c}
+    if not fids:
+        return {}
+    files = {f.id: f for f in db.scalars(select(BankFile).where(BankFile.id.in_(fids)))}
+    names: dict[int, str] = {}
+    out: dict[int, dict] = {}
+    for t, cnt in per:
+        if t.assignment_id not in names:
+            names[t.assignment_id] = db.get(SchoolClass, db.get(TeachingAssignment, t.assignment_id).class_id).name
+        for fid, n in cnt.items():
+            f = files.get(fid)
+            of = f.question_count if f and f.question_count else n
+            e = out.setdefault(fid, {'label': f.label if f else '', 'of': of, 'used': 0, 'full': False, 'classes': []})
+            e['used'] = max(e['used'], n)
+            e['full'] = e['full'] or _full(n, of)
+            e['classes'].append({'ta_id': t.assignment_id, 'class_name': names[t.assignment_id], 'title': t.title,
+                                 'at': aware(t.opens_at), 'batch_id': t.batch_id, 'full': _full(n, of)})
+    return out
+
+
+def repeats(db: Session, ta_ids: list[int], cnt: Counter) -> list[dict]:
+    """Yeni sınağın sualları bu dərslərdən hansına artıq verilmiş faylı təkrarlayır."""
+    given = given_files(db, ta_ids)
+    return [{'class_name': c['class_name'], 'ta_id': c['ta_id'], 'label': g['label'], 'title': c['title'],
+             'at': c['at'].isoformat()}
+            for fid, n in cnt.items() if (g := given.get(fid)) and _full(n, g['of'])
+            for c in g['classes'] if c['full']]
+
+
+def _nth(n: int | None) -> str:
+    """Sinif sıra şəkilçisi: 9-cu, 10-cu, 11-ci, 6-cı, 3-cü."""
+    return f"{n}-{_SUFFIX.get(n, 'ci')}" if n else '?'
+
+
+_SUFFIX = {3: 'cü', 4: 'cü', 6: 'cı', 9: 'cu', 10: 'cu'}
+
+
+def grade_fits(f: BankFile | None, grade: int | None) -> bool:
+    """Sinfə avtomatik yalnız öz sinfinin sınağı: 11 → yalnız «11» işarəli fayl. Başqa sinfin və ya sinfi göstərilməmiş
+    fayl – yalnız müəllimin təsdiqi ilə. Sinfin rəqəmi bilinmirsə yoxlanmır."""
+    return f is None or grade is None or grade in (f.grades or [])
+
+
+def grade_issues(db: Session, classes: list[tuple[str, int | None]], cnt: Counter) -> list[dict]:
+    """Yeni sınağın faylları hansı sinfə uyğun deyil (sinif adı, sinif rəqəmi, fayl, faylın sinifləri)."""
+    files = {f.id: f for f in db.scalars(select(BankFile).where(BankFile.id.in_(list(cnt) or [0])))}
+    return [{'class_name': name, 'grade': g, 'label': f.label, 'grades': f.grades or []}
+            for fid in cnt if (f := files.get(fid)) for name, g in classes if not grade_fits(f, g)]
 
 
 # ---------------------------------------------------------------- hesab
@@ -191,6 +263,18 @@ def target_students(ta_id: int, user: User = Depends(staff), db: Session = Depen
             for s in sorted(roster(db, ta), key=lambda s: s.full_name)]
 
 
+@router.get('/given')
+def given(ta_ids: str = '', user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Seçilmiş dərslərə artıq verilmiş sınaq faylları (BankPicker «verilib» nişanı)."""
+    ok = []
+    for x in {int(x) for x in ta_ids.split(',') if x.strip().isdigit()}:
+        try:
+            ok.append(_can_target(db, user, x)[0].id)
+        except HTTPException:
+            continue
+    return {str(k): v for k, v in given_files(db, ok).items()}
+
+
 class ExamTarget(BaseModel):
     ta_id: int
     opens_at: dt.datetime
@@ -208,6 +292,8 @@ class ExamIn(BaseModel):
     show_answers: Literal['after_close', 'after_submit', 'never'] = 'after_close'
     penalty: Literal[0, 3, 4] = 0
     targets: list[ExamTarget] = Field(min_length=1, max_length=60)
+    allow_repeat: bool = False                  # bilərəkdən təkrar – müəllim təsdiqləyib
+    allow_other_grade: bool = False             # başqa sinfin / sinifsiz sınaq – müəllim təsdiqləyib
 
     @model_validator(mode='after')
     def _v(self):
@@ -240,19 +326,44 @@ def create_exam(body: ExamIn, user: User = Depends(staff), db: Session = Depends
     if len(subjects) > 1:
         raise HTTPException(400, 'Bir sınaq yalnız bir fənn üzrə ola bilər')
     qs = _snapshot(db, body.bank_ids) + [custom_snapshot(q) for q in body.custom]
-    b = TestBatch(kind='sinaq', title=body.title, subject=plan[0][0].subject, grade=class_grade(db, plan[0][1]),
+    title = body.title.strip()
+    names = {p[0].id: p[1].name for p in plan}
+    cnt = _file_counts(db, [q.get('bank_id') for q in qs])
+    rep = repeats(db, list(names), cnt)
+    bad = grade_issues(db, [(cls.name, class_grade(db, cls)) for _, cls, *_ in plan], cnt)
+    if bad and not body.allow_other_grade:
+        x = bad[0]
+        whose = f"{', '.join(_nth(g) for g in x['grades'])} sinfin" if x['grades'] else 'sinfi göstərilməmiş'
+        raise HTTPException(409, {'message': f'«{x["label"]}» {whose} sınağıdır, {x["class_name"]} isə {_nth(x["grade"])} sinifdir. '
+                                             'Sinfə yalnız öz sinfinin sınağı verilir – başqasını vermək üçün təsdiq edin.',
+                                  'grade': bad})
+    # eyni dərsdə eyni adlı aktiv sınaq – siyahıda iki eyni sətir olardı
+    same = [{'class_name': names[t.assignment_id], 'title': t.title, 'at': aware(t.opens_at).isoformat()}
+            for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id.in_(list(names)), OnlineTask.kind == 'sinaq',
+                                                         OnlineTask.archived_at.is_(None)))
+            if t.title.strip().casefold() == title.casefold()]
+    if (rep or same) and not body.allow_repeat:
+        first = (rep or same)[0]
+        what = f'«{first.get("label") or first["title"]}»' if rep else f'«{title}» adlı sınaq'
+        raise HTTPException(409, {'message': f'{what} {first["class_name"]} sinfinə artıq verilib – təkrar sınaq qarışıqlıq '
+                                             'yaradır. Başqa sınaq seçin və ya «Bilərəkdən təkrar» qutusunu işarələyin.',
+                                  'repeat': rep, 'same_title': same})
+    if (rep or same) and 'təkrar' not in title.casefold():
+        title = f'{title[:190]} (təkrar)'
+    b = TestBatch(kind='sinaq', title=title, subject=plan[0][0].subject, grade=class_grade(db, plan[0][1]),
                   penalty=body.penalty, created_by=user.id)
     db.add(b)
     db.flush()
     for ta, cls, o, c, sids in plan:
-        t = OnlineTask(assignment_id=ta.id, title=body.title, description=body.description, opens_at=o, closes_at=c,
+        t = OnlineTask(assignment_id=ta.id, title=title, description=body.description, opens_at=o, closes_at=c,
                        duration_min=body.duration_min, questions=copy.deepcopy(qs), shuffle=body.shuffle,
                        show_answers=body.show_answers, student_ids=sids, created_by=user.id, kind='sinaq', batch_id=b.id)
         db.add(t)
         db.flush()
-        audit(db, user, 'create', 'task', t.id, kind='sinaq', batch=b.id, class_name=cls.name, questions=len(qs))
+        audit(db, user, 'create', 'task', t.id, kind='sinaq', batch=b.id, class_name=cls.name, questions=len(qs),
+              repeat=bool(rep or same), other_grade=bool(bad))
     db.commit()
-    return {'id': b.id, 'tasks': len(plan), 'questions': len(qs)}
+    return {'id': b.id, 'tasks': len(plan), 'questions': len(qs), 'title': title}
 
 
 @router.get('')

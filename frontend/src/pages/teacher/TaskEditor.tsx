@@ -132,8 +132,14 @@ export function bankGroup(src: string, label: string) {
   return ''
 }
 
+// Sınaq bu siniflərə verilib (GET /api/exams-online/given): full – faylın ən azı yarısı
+export type Given = { label: string; of: number; used: number; full: boolean; classes: { ta_id: number; class_name: string; title: string; at: string; full: boolean }[] }
+const ddmm = (s: string) => { const d = new Date(s); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}` }
+
 // main – əsas mənbələr (əvvəlcədən seçilir, qalanları «Digər mənbələr» arxasında); exclude – heç göstərilmir; tall – uzun siyahı
-export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, legend, main, exclude, tall }: { has: (k: string) => boolean; add: (q: Q[]) => void; remove: (k: string) => void; onTitle: (t: string) => void; disabled: boolean; first: boolean; kinds?: string[]; legend?: string; main?: string[]; exclude?: string[]; tall?: boolean }) {
+// given – seçilmiş siniflərə verilmiş fayllar; grades – seçilmiş siniflərin rəqəmləri: verilmiş və başqa sinfin / sinifsiz
+// fayllar gizlədilir (açarla görünür) – təkrar və yanlış sinif qarışıqlığı olmasın (docs/sinaq-tekrar-qadagasi-promtu.md)
+export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, legend, main, exclude, tall, given, grades }: { has: (k: string) => boolean; add: (q: Q[]) => void; remove: (k: string) => void; onTitle: (t: string) => void; disabled: boolean; first: boolean; kinds?: string[]; legend?: string; main?: string[]; exclude?: string[]; tall?: boolean; given?: Record<string, Given>; grades?: number[] }) {
   const [sources, setSources] = useState<any[]>([])
   const [srcSel, setSrcSel] = useState<string[]>([])
   const [more, setMore] = useState(!main)
@@ -142,9 +148,10 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
   const [qByFile, setQByFile] = useState<Record<number, any[]>>({})
   const [filter, setFilter] = useState('')
   const [n, setN] = useState(10)
+  const [showAll, setShowAll] = useState(false)
   const kindKey = kinds?.join(',') || ''
   useEffect(() => {
-    get<any[]>('/api/bank/sources').then(x => setSources(x.filter(s => s.enabled && s.active &&
+    get<any[]>('/api/bank/sources').then(x => setSources(x.filter(s => s.enabled && (s.active || s.questions > 0) &&
       !exclude?.includes(s.key) && (!kindKey || kindKey.split(',').some(k => (s.kinds || {})[k])))))
   }, [kindKey, exclude?.join(',')])
   const mainKey = main?.join(',') || ''
@@ -163,8 +170,13 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
   const groups = lesSel.map(l => ({ l, items: (qByFile[l.id] || []).map(q => fromBank(q, l.src, l.label)) }))
   const pool = groups.flatMap(g => g.items)
   const random = () => add([...pool.filter(q => !has(q.key))].sort(() => Math.random() - 0.5).slice(0, n))
-  const list = (k: string) => (lessons[k] || []).filter(l => (!kinds || kinds.includes(l.kind || 'movzu')) &&
+  const wasGiven = (l: any) => !!given?.[l.id]?.full
+  const otherGrade = (l: any) => !!grades?.length && !grades.every(g => (l.grades || []).includes(g))
+  const all = (k: string) => (lessons[k] || []).filter(l => (!kinds || kinds.includes(l.kind || 'movzu')) &&
     (!filter || l.label.toLowerCase().includes(filter.toLowerCase())))
+  const hiddenOf = (l: any) => (wasGiven(l) || otherGrade(l)) && !lesSel.some(x => x.id === l.id)
+  const list = (k: string) => all(k).filter(l => showAll || !hiddenOf(l))
+  const hidden = srcSel.reduce((n, k) => n + all(k).filter(hiddenOf).length, 0)
   return (
     <fieldset disabled={disabled}><legend>{legend || (first ? '1. Viktorinadan: mənbələr və bölmələr' : 'Test bazasından (viktorina – avtomatik yenilənir)')}</legend>
       <div className="stack">
@@ -175,6 +187,9 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
         {srcSel.length > 0 && (
           <>
             <input className="sel" placeholder="Bölmə / alt mövzu axtar" value={filter} onChange={e => setFilter(e.target.value)} />
+            {(hidden > 0 || showAll) && (given || grades) && <label className="check small">
+              <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
+              Verilmiş və başqa sinfin sınaqlarını da göstər <span className="muted">({hidden} gizlədilib – seçilsə, göndərəndə təsdiq soruşulacaq)</span></label>}
             <div className="jlist" style={{ maxHeight: tall ? '60vh' : 220, overflow: 'auto' }}>
               {srcSel.map(k => (
                 <div key={k}>
@@ -184,7 +199,10 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
                       <div className="small muted" style={{ padding: '6px 12px 2px', fontWeight: 600 }}>{bankGroup(k, l.label)}</div>}
                     <label className="check" style={{ padding: '0 12px', minHeight: 36 }}>
                       <input type="checkbox" checked={lesSel.some(x => x.id === l.id)} onChange={() => toggleLes(l, k)} />
-                      <span className="small">{l.label} <span className="muted">({l.questions}{l.grades?.length ? ` · ${l.grades.join(', ')}-cu sinif` : ''})</span></span></label></div>))}
+                      <span className="small">{l.label} <span className="muted">({l.questions}{l.grades?.length ? ` · ${l.grades.join(', ')}-cu sinif` : ''})</span>
+                        {wasGiven(l) && <> <Pill tone="warn">verilib · {given![l.id].classes.filter(c => c.full).map(c => `${c.class_name} ${ddmm(c.at)}`).join(', ')}</Pill></>}
+                        {!wasGiven(l) && given?.[l.id] && <> <Pill>qismən istifadə olunub</Pill></>}
+                        {otherGrade(l) && <> <Pill tone="warn">{l.grades?.length ? 'başqa sinfin' : 'sinfi göstərilməyib'}</Pill></>}</span></label></div>))}
                   {!lessons[k] && <p className="small muted" style={{ padding: '0 12px' }}>Yüklənir…</p>}
                 </div>))}
             </div>

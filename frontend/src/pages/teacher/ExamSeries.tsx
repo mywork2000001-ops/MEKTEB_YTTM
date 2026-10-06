@@ -6,11 +6,11 @@ import { azDT, Drawer, ErrorBox, Field, Loading, Pill, Seg, toast, useLoad } fro
 import { bankGroup } from './TaskEditor'
 
 type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; mine: boolean; students: number }
-type BFile = { id: number; label: string; questions: number; kind: string; grades: number[]; source: string }
+type BFile = { id: number; label: string; questions: number; kind: string; grades: number[]; source: string; given: string[]; grade_ok: boolean }
 type Series = {
   id: number; title: string; subject: string; period: 'day' | 'week' | 'month'; every: number; weekday: number | null
   month_day: number | null; open_time: string; window_hours: number; duration_min: number; auto_new: boolean; active: boolean
-  next_at: string; queue: { id: number; label: string | null }[]; done: { file_id: number; batch_id: number; at: string }[]
+  next_at: string; queue: { id: number; label: string | null; given: string[]; other_ok: boolean; skip: boolean }[]; done: { file_id: number; batch_id: number; at: string }[]
   preview: { at: string; weekday: string; file_id: number | null; label: string | null }[]; targets: { ta_id: number }[]; sources: string[]
 }
 const WD = ['Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə', 'Bazar']
@@ -50,7 +50,10 @@ export default function ExamSeriesPanel() {
               </div>
               {s.queue.length > 0 && <details><summary className="small">Növbə ({s.queue.length})</summary>
                 {s.queue.map((q, i) => (
-                  <div key={q.id} className="row small" style={{ gap: 6 }}><span className="grow">{i + 1}. {q.label}</span>
+                  <div key={q.id} className="row small" style={{ gap: 6 }}><span className="grow">{i + 1}. {q.label}
+                    {q.skip ? <> <Pill tone="warn">atlanacaq – {q.given.length ? `verilib: ${q.given.join(', ')}` : 'sinfə uyğun deyil'}</Pill></>
+                      : q.given.length > 0 && <> <Pill>{q.given.join(', ')} – artıq verilib, atlanır</Pill></>}
+                    {q.other_ok && <> <Pill>başqa sinfin – təsdiqlənib</Pill></>}</span>
                     <button className="btn sm ghost" disabled={i === 0} onClick={() => { const x = s.queue.map(y => y.id); [x[i - 1], x[i]] = [x[i], x[i - 1]]; act(() => patch(`/api/exam-series/${s.id}`, { queue: x }), 'Sıra dəyişdi') }}>↑</button>
                     <button className="btn sm ghost" onClick={() => act(() => patch(`/api/exam-series/${s.id}`, { queue: s.queue.map(y => y.id).filter(y => y !== q.id) }), 'Növbədən çıxarıldı')}>✕</button>
                   </div>))}
@@ -71,15 +74,21 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
   const [tas, setTas] = useState<number[]>([])
   const [files, setFiles] = useState<BFile[] | null>(null)
   const [queue, setQueue] = useState<number[]>([])
+  const [showAll, setShowAll] = useState(false)
+  const [okOther, setOkOther] = useState(false)
   const [err, setErr] = useState<unknown>()
   const [busy, setBusy] = useState(false)
   useEffect(() => {
     setFiles(null)
-    get<BFile[]>('/api/exam-series/files', { sources: f.sources.join(','), ...(f.grade ? { grade: f.grade } : {}) }).then(setFiles, setErr)
-  }, [f.sources.join(','), f.grade])
+    get<BFile[]>('/api/exam-series/files', { sources: f.sources.join(','), ta_ids: tas.join(','), ...(f.grade ? { grade: f.grade } : {}) }).then(setFiles, setErr)
+  }, [f.sources.join(','), f.grade, tas.join(',')])
+  // verilmiş və başqa sinfin / sinifsiz sınaqlar gizlədilir; seçilsə – müəllimin təsdiqi lazımdır
+  const odd = (x: BFile) => x.given.length > 0 || !x.grade_ok
+  const pickable = (files || []).filter(x => !odd(x))
+  const other = queue.filter(id => files?.find(x => x.id === id && !x.grade_ok))
   const groups = useMemo(() => {
     const out: { key: string; title: string; items: BFile[] }[] = []
-    for (const x of files || []) {
+    for (const x of (files || []).filter(x => showAll || !odd(x) || queue.includes(x.id))) {
       const g = bankGroup(x.source, x.label)
       const key = `${x.source}|${g}`
       const title = [SOURCES.find(([k]) => k === x.source)?.[1] || x.source, g].filter(Boolean).join(' · ')
@@ -88,13 +97,13 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
       else out.push({ key, title, items: [x] })
     }
     return out
-  }, [files])
+  }, [files, showAll, queue])
   const subj = targets?.find(t => tas.includes(t.ta_id))?.subject
   const toggle = (id: number) => setQueue(q => q.includes(id) ? q.filter(x => x !== id) : [...q, id])
   const submit = async () => {
     setBusy(true)
     try {
-      await post('/api/exam-series', { ...f, grade: f.grade ? Number(f.grade) : null, targets: tas.map(ta_id => ({ ta_id })), queue,
+      await post('/api/exam-series', { ...f, grade: f.grade ? Number(f.grade) : null, targets: tas.map(ta_id => ({ ta_id })), queue, other_ok: okOther ? other : [],
         weekday: f.period === 'week' ? f.weekday : null, month_day: f.period === 'month' ? f.month_day : null })
       toast('Seriya yaradıldı'); onDone()
     } catch (e) { setErr(e) } finally { setBusy(false) }
@@ -102,7 +111,7 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
   return (
     <Drawer title="Yeni sınaq seriyası" onClose={onClose}
       footer={<><span className="small muted grow">{queue.length} sınaq növbədə · {tas.length} sinif</span><button className="btn" onClick={onClose}>Ləğv et</button>
-        <button className="btn primary" disabled={busy || !tas.length || (!queue.length && !f.auto_new)} onClick={submit}>Yarat</button></>}>
+        <button className="btn primary" disabled={busy || !tas.length || (!queue.length && !f.auto_new) || (other.length > 0 && !okOther)} onClick={submit}>Yarat</button></>}>
       <div className="stack">
         <div className="fg">
           <Field label="Ad" full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
@@ -132,23 +141,31 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
           <label className="check"><input type="checkbox" checked={f.auto_new} onChange={e => setF({ ...f, auto_new: e.target.checked })} /> Yeni sınaqları avtomatik əlavə et (viktorina-ya əlavə olunanlar)</label>
           {!files ? <Loading /> : files.length === 0 ? <p className="small muted">Bu mənbələrdə sınaq yoxdur.</p> : <>
             <div className="row" style={{ gap: 6 }}>
-              <button type="button" className="btn sm ghost" onClick={() => setQueue(queue.length === files.length ? [] : files.map(x => x.id))}>{queue.length === files.length ? 'Heç biri' : 'Hamısını seç'}</button>
-              <span className="small muted">seçilib {queue.length} / cəmi {files.length}</span>
+              <button type="button" className="btn sm ghost" onClick={() => setQueue(queue.length >= pickable.length ? [] : pickable.map(x => x.id))}>{queue.length >= pickable.length ? 'Heç biri' : 'Hamısını seç'}</button>
+              <span className="small muted">seçilib {queue.length} / cəmi {pickable.length}</span>
             </div>
+            {files.length > pickable.length && <label className="check small"><input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
+              Verilmiş və başqa sinfin sınaqlarını da göstər <span className="muted">({files.length - pickable.length} gizlədilib)</span></label>}
+            {!tas.length && <p className="small muted" style={{ margin: 0 }}>Əvvəlcə sinifləri seçin – siyahı sinfə görə süzülür (11-ci sinfə yalnız 11-in sınaqları).</p>}
             <div className="jlist" style={{ maxHeight: '60vh', overflowY: 'auto' }}>{groups.map(g => {
-              const all = g.items.every(x => queue.includes(x.id))
+              const free = g.items.filter(x => !odd(x))
+              const all = free.length > 0 && free.every(x => queue.includes(x.id))
               return <div key={g.key}>
                 <div className="row small" style={{ padding: '6px 12px', background: 'var(--surface-2)' }}>
                   <b className="grow">{g.title} <span className="muted">({g.items.length})</span></b>
                   <button type="button" className="btn sm ghost" onClick={() => setQueue(q => all ? q.filter(id => !g.items.some(x => x.id === id))
-                    : [...q, ...g.items.filter(x => !q.includes(x.id)).map(x => x.id)])}>{all ? 'heç biri' : 'hamısı'}</button>
+                    : [...q, ...free.filter(x => !q.includes(x.id)).map(x => x.id)])}>{all ? 'heç biri' : 'hamısı'}</button>
                 </div>
                 {g.items.map(x => {
                   const n = queue.indexOf(x.id)
                   return <label key={x.id} className="check small" style={{ padding: '0 12px' }}><input type="checkbox" checked={n >= 0} onChange={() => toggle(x.id)} />
-                    {n >= 0 && <b>{n + 1}.</b>} {x.label} <span className="muted">({x.questions} sual{x.grades.length ? ` · ${x.grades.join(', ')}-cu sinif` : ' · sinif göstərilməyib'})</span></label>
+                    {n >= 0 && <b>{n + 1}.</b>} {x.label} <span className="muted">({x.questions} sual{x.grades.length ? ` · ${x.grades.join(', ')}-cu sinif` : ' · sinif göstərilməyib'})</span>
+                    {x.given.length > 0 && <Pill tone="warn">verilib: {x.given.join(', ')}</Pill>}{!x.grade_ok && <Pill tone="warn">başqa sinfin</Pill>}</label>
                 })}</div>
             })}</div></>}
+          {other.length > 0 && <label className="check small" style={{ color: 'var(--warn)' }}><input type="checkbox" checked={okOther} onChange={e => setOkOther(e.target.checked)} />
+            {other.length} sınaq seçilmiş siniflərin sinfinə uyğun deyil – bilərəkdən verirəm (təsdiq)</label>}
+          <p className="small muted" style={{ margin: 0 }}>Artıq verilmiş sınaq sinfə ikinci dəfə göndərilmir; avtomatik əlavə olunanlar yalnız sinfin öz sınaqlarıdır.</p>
         </fieldset>
         <ErrorBox error={err} />
       </div>

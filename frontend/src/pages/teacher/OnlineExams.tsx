@@ -2,11 +2,11 @@
 // ümumi yer), siniflərin reytinqi, sual analizi, açıq sualın əl ilə yoxlanması, kumulyativ reytinq. Formativ jurnala düşmür.
 import { StudentPicker } from './common'
 import { useEffect, useMemo, useState } from 'react'
-import { del as apiDel, get, post, put } from '../../api'
+import { ApiError, del as apiDel, get, post, put } from '../../api'
 import { MathText } from '../../MathText'
 import { ConfirmName, Drawer, ErrorBox, Field, fmt, Loading, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
 import { esc, head, printDoc, table } from '../../print'
-import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
+import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Given, type Q } from './TaskEditor'
 import { TaskActions } from './Tasks'
 import { RatingPanel } from './ResultsCenter'
 import { PeriodBar, usePeriod } from '../../periods'
@@ -39,6 +39,11 @@ export default function OnlineExams() {
   const [open, setOpen] = useState<number | null>(null)
   const f = usePeriod('exams', 'date')
   const all = list || []
+  // eyni adlı sınaq ikinci dəfə (və ya «(təkrar)») – «təkrar» nişanı
+  const base = (t: string) => t.replace(/s*(təkrar)s*$/i, '').trim().toLocaleLowerCase('az')
+  const firstId = new Map<string, number>()
+  for (const x of [...all].sort((a, b) => a.id - b.id)) if (!firstId.has(base(x.title))) firstId.set(base(x.title), x.id)
+  const isRepeat = (x: Exam) => firstId.get(base(x.title)) !== x.id || /(təkrar)s*$/i.test(x.title)
   const shown = all.filter(x => !x.opens_at || f.has(x.opens_at)).sort(f.sort === 'topic'
     ? (a, b) => a.title.localeCompare(b.title, 'az', { numeric: true }) || Date.parse(b.opens_at || '') - Date.parse(a.opens_at || '')
     : (a, b) => Date.parse(b.opens_at || '') - Date.parse(a.opens_at || ''))
@@ -55,7 +60,7 @@ export default function OnlineExams() {
           {all.length > 0 && shown.length === 0 && <div className="empty">Bu dövrdə sınaq yoxdur – «‹ ›» ilə başqa dövrə keçin və ya «Hamısı»nı seçin.</div>}
           {shown.map(x => (
             <div key={x.id} className="jrow cols click" onClick={() => setOpen(x.id)} style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 6 }}>
-              <div className="row"><b className="grow">{x.title}</b><Pill tone={stateTone(x.state)}>{x.state}</Pill>{x.mine && <Pill tone="acc">mənim</Pill>}</div>
+              <div className="row"><b className="grow">{x.title}</b><Pill tone={stateTone(x.state)}>{x.state}</Pill>{isRepeat(x) && <Pill tone="warn">təkrar</Pill>}{x.mine && <Pill tone="acc">mənim</Pill>}</div>
               <span className="small muted">{x.subject}{x.grade ? ` · ${x.grade}-cu sinif` : ''} · {x.classes.join(', ')} · {dt(x.opens_at)} – {dt(x.closes_at)} · {x.questions} sual · {x.wrote} yazıb{x.avg_pct != null ? ` · orta ${fmt(x.avg_pct)}%` : ''}</span>
             </div>))}
         </div></>)}
@@ -77,6 +82,9 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
   const [qs, setQs] = useState<Q[]>([])
   const [err, setErr] = useState<unknown>()
   const [busy, setBusy] = useState(false)
+  const [given, setGiven] = useState<Record<string, Given>>({})
+  const [ask, setAsk] = useState<{ message: string; repeat: boolean; grade: boolean } | null>(null)
+  const [confirm, setConfirm] = useState(false)
   useEffect(() => {
     get<Target[]>('/api/exams-online/targets').then(t => { setTargets(t); setSubject(t[0]?.subject || '') }, setErr)
   }, [])
@@ -85,6 +93,14 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
   const row = (id: number): TRow => rows[id] || { on: false, ...common }
   const set = (id: number, p: Partial<TRow>) => setRows(r => ({ ...r, [id]: { ...row(id), ...p } }))
   const chosen = shown.filter(t => row(t.ta_id).on)
+  const chosenKey = chosen.map(t => t.ta_id).join(',')
+  const grades = [...new Set(chosen.map(t => t.grade).filter((g): g is number => !!g))]
+  useEffect(() => {
+    setAsk(null); setConfirm(false)
+    if (!chosenKey) { setGiven({}); return }
+    get<Record<string, Given>>('/api/exams-online/given', { ta_ids: chosenKey }).then(setGiven, () => setGiven({}))
+  }, [chosenKey])
+  useEffect(() => { setAsk(null); setConfirm(false) }, [qs.length])
   const has = (k: string) => qs.some(q => q.key === k)
   const add = (list: Q[]) => setQs(cur => [...cur, ...list.filter(q => !cur.some(c => c.key === q.key))])
   const remove = (k: string) => setQs(cur => cur.filter(q => q.key !== k))
@@ -102,11 +118,19 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
       const r = await post<{ tasks: number }>('/api/exams-online', {
         title: f.title.trim(), duration_min: f.duration, penalty: Number(f.penalty), shuffle: f.shuffle, show_answers: f.show,
         bank_ids: [], custom: qs.map(toCustom),
+        allow_repeat: confirm && !!ask?.repeat, allow_other_grade: confirm && !!ask?.grade,
         targets: chosen.map(t => { const x = row(t.ta_id); return { ta_id: t.ta_id, opens_at: iso(x.d1, x.t1), closes_at: iso(x.d2, x.t2), student_ids: x.ids ?? null } }),
       })
       toast(`Sınaq ${r.tasks} sinfə göndərildi`)
       onDone()
-    } catch (e) { setErr(e) } finally { setBusy(false) }
+    } catch (e) {
+      const d = e instanceof ApiError && e.status === 409 ? (e.data as any)?.detail : null
+      if (d && typeof d === 'object') {
+        // təkrar və ya başqa sinfin sınağı – müəllimin açıq təsdiqi lazımdır; ikisi də ola bilər, hər biri ayrıca soruşulur
+        setAsk(a => ({ message: d.message, repeat: !!(a?.repeat || d.repeat?.length || d.same_title?.length), grade: !!(a?.grade || d.grade?.length) }))
+        setConfirm(false); setErr(undefined)
+      } else setErr(e)
+    } finally { setBusy(false) }
   }
   return (
     <Drawer title="Yeni sınaq imtahanı" onClose={onClose}
@@ -157,7 +181,7 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
               {!shown.length && <div className="empty">Dərsiniz yoxdur.</div>}
             </div>
           </fieldset>
-          <BankPicker has={has} add={add} remove={remove} disabled={false} first={false} main={EXAM_SOURCES} exclude={['p004']} tall
+          <BankPicker has={has} add={add} remove={remove} disabled={false} first={false} main={EXAM_SOURCES} exclude={['p004']} tall given={given} grades={grades}
             legend="Test bazasından – sınaqlar, yekun testlər və mövzu bölmələri" onTitle={t => !f.title && setF(x => ({ ...x, title: t }))} />
           <fieldset><legend>Seçilmiş suallar ({qs.length})</legend>
             {qs.length === 0 ? <p className="small muted">Yuxarıdan sınağı seçib «Hamısını əlavə et» basın (orijinal sınaq formatı).</p> : (
@@ -171,6 +195,11 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
             <OwnQuestion onAdd={q => add([q])} />
           </fieldset>
           {problem && <p className="small" style={{ color: 'var(--warn)', margin: 0 }}>{problem}</p>}
+          {ask && <div className="stack" style={{ gap: 6, padding: 10, border: '1px solid var(--warn)', borderRadius: 8 }}>
+            <span className="small">⚠ {ask.message}</span>
+            <label className="check small"><input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)} />
+              {ask.repeat && ask.grade ? 'Bilərəkdən təkrar və başqa sinfin sınağını göndərirəm' : ask.repeat ? 'Bilərəkdən təkrar göndərirəm (adına «təkrar» yazılacaq)' : 'Bilərəkdən başqa sinfin sınağını göndərirəm'}</label>
+          </div>}
           <ErrorBox error={err} />
         </div>)}
     </Drawer>
