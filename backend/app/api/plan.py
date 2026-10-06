@@ -64,6 +64,20 @@ def my_lessons(user: User = Depends(staff), db: Session = Depends(get_db)):
     return out
 
 
+def attach_p0010(db: Session, cls, lessons: list[dict]) -> None:
+    """X–XI sinif: hər plan dərsinə mövzusuna ən uyğun P0010 test faylı (docs/x-xi-p0010-testleri-promtu.md)."""
+    from ..services import class_grade
+    if class_grade(db, cls) not in (10, 11) or not lessons:
+        return
+    from ..bank.match import Matcher
+    m = Matcher(db)
+    if not m.files:
+        return
+    for l in lessons:
+        best = m.matches(l['topic'], l.get('section'), 1)
+        l['p0010'] = best and {'file_id': best[0][0].id, 'label': best[0][0].label, 'url': best[0][0].url}
+
+
 @router.get('/plan/{ta_id}')
 def plan_view(ta_id: int, view: str = 'week', date: dt.date | None = None, user: User = Depends(staff),
               db: Session = Depends(get_db)):
@@ -83,6 +97,7 @@ def plan_view(ta_id: int, view: str = 'week', date: dt.date | None = None, user:
     for i in items:
         if i['lesson']:
             i['lesson']['tests'] = tests.get(i['lesson']['id'], [])
+    attach_p0010(db, ctx.cls, [i['lesson'] for i in items if i['lesson']])
     return {'class_name': ctx.cls.name, 'subject': ta.subject, 'from': a, 'to': b, 'items': items,
             'unfit': [lesson_out(ctx.lessons[i]) for i in ctx.unfit], 'has_plan': bool(ctx.lessons)}
 

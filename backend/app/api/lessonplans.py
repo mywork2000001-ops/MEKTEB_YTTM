@@ -176,6 +176,10 @@ def _context(db: Session, user: User, ctx, s, notes: str | None) -> tuple[dict, 
          'prev_topic': prev_pl.topic if prev_pl else None, 'prev_homework': prev_entry.homework if prev_entry else None,
          'next_topic': nxt.topic if nxt else None, 'next_exam': exam, 'notes': (notes or '').strip() or None,
          'homework_plan': hw, 'homework_nums': hw_nums, 'review_topics': _review_topics(db, ctx, i)}
+    from .plan import attach_p0010
+    x = {'topic': pl.topic, 'section': pl.section}
+    attach_p0010(db, ctx.cls, [x])              # X–XI: mövzuya uyğun P0010 test faylı (yoxlama və ev tapşırığı üçün)
+    c['p0010'] = (x.get('p0010') or {}).get('label')
     return c, pl
 
 

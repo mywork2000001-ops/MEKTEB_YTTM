@@ -34,23 +34,33 @@ def p0010_files(db: Session) -> list[BankFile]:
         BankFile.kind == 'movzu').order_by(BankFile.lesson)))
 
 
+class Matcher:
+    """Bankdakı P0010 faylları bir dəfə oxunur (plan görünüşündə hər dərs üçün təkrar sorğu olmasın)."""
+
+    def __init__(self, db: Session):
+        self.files = p0010_files(db)
+        self.fst = {f.id: stems(f.label) for f in self.files}
+        self.own = {f.id: stems(f.label.split(' — ', 1)[-1]) for f in self.files}     # alt mövzu adı bölmədən ağırdır
+        df: dict[str, int] = {}
+        for st in self.fst.values():
+            for w in st:
+                df[w] = df.get(w, 0) + 1
+        n = len(self.files)
+        self.idf = {w: math.log((n + 1) / (c + 1)) + 0.1 for w, c in df.items()}
+
+    def matches(self, topic: str, section: str | None = None, limit: int = 6) -> list[tuple[BankFile, float]]:
+        t = stems(topic)
+        sec = stems(re.sub(r'^\s*\d+\.\s*', '', section or '')) - t
+        scored = []
+        for f in self.files:
+            fs, own = self.fst[f.id], self.own[f.id]
+            w = lambda x: self.idf.get(x, 0) * (1 if x in own else 0.5)      # noqa: E731
+            s = 2 * sum(w(x) for x in t & fs) + sum(w(x) for x in sec & fs)
+            if s > 0:
+                scored.append((f, round(s / (1 + 0.05 * len(fs)), 3)))
+        scored.sort(key=lambda x: (-x[1], x[0].lesson))
+        return scored[:limit]
+
+
 def p0010_matches(db: Session, topic: str, section: str | None = None, limit: int = 6) -> list[tuple[BankFile, float]]:
-    files = p0010_files(db)
-    if not files:
-        return []
-    fst = {f.id: stems(f.label) for f in files}
-    df: dict[str, int] = {}
-    for st in fst.values():
-        for w in st:
-            df[w] = df.get(w, 0) + 1
-    idf = lambda w: math.log((len(files) + 1) / (df.get(w, 0) + 1)) + 0.1     # noqa: E731
-    t, sec = stems(topic), stems(re.sub(r'^\s*\d+\.\s*', '', section or '')) - stems(topic)
-    scored = []
-    for f in files:
-        own = stems(f.label.split(' — ', 1)[-1])          # alt mövzu adı bölmə adından ağırdır
-        w_of = lambda w: idf(w) * (1 if w in own else 0.5)  # noqa: E731
-        s = 2 * sum(w_of(w) for w in t & fst[f.id]) + sum(w_of(w) for w in sec & fst[f.id])
-        if s > 0:
-            scored.append((f, round(s / (1 + 0.05 * len(fst[f.id])), 3)))
-    scored.sort(key=lambda x: (-x[1], x[0].lesson))
-    return scored[:limit]
+    return Matcher(db).matches(topic, section, limit)

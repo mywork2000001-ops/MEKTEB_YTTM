@@ -28,3 +28,9 @@ doldurulsun – IX sinifdə P007 kimi (bax docs/ix-dim-toplu-perspektiv-promtu.m
 ## Qəbul
 X və ya XI sinfin plan dərsində «Mövzuya onlayn test» açılır → P0010-dan mövzuya uyğun suallar artıq seçilib, digər uyğun
 fayllar bir kliklə; IX və aşağı siniflərdə dəyişiklik yoxdur.
+
+## Əlavə (06.10.2026): hər plan dərsi P0010-a bağlı
+- `GET /api/plan/{ta}` – X–XI sinifdə hər dərsə `p0010 = {file_id, label, url}` (ən uyğun fayl, `bank/match.py::Matcher` –
+  bank bir dəfə oxunur). Plan sətrində «P0010: <fayl>» linki, düymə «🧪 Test (P0010)».
+- Gündəlik plan (AI) kontekstinə «P0010 test bankı (mövzuya uyğun fayl)» sətri – yalnız X–XI-də.
+- Uyğunluq mövzu adına görədir, saxlanılmır: P0010 bankı yenilənəndə bağlantı özü yenilənir.

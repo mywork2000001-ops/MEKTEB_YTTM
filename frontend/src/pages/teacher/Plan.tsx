@@ -13,7 +13,8 @@ type TopicTestInfo = { task_id: number; title: string; opens_at: string; closes_
 type Item = { date: string; weekday: string; period: number; time: string | null; held: boolean; shift: number
   lesson: { seq: number; topic: string; section: string | null; assessment_type: string; exam_no: number | null; official_date: string
     id: number; standards?: string[] | null; tt_pages?: string | null; tests?: TopicTestInfo[]
-    tasks?: { kind: string; start: number; end: number }[] | null } | null }
+    tasks?: { kind: string; start: number; end: number }[] | null
+    p0010?: { file_id: number; label: string; url: string } | null } | null }
 const TASK_LETTER: Record<string, string> = { sinif: 'S', ev: 'E', mustaqil: 'M' }
 /** [{kind:'sinif',start:1,end:14}, …] -> «S 1–14, E 15–24, M 25–27» (Test toplusu tapşırıqları) */
 const tasksText = (ts?: { kind: string; start: number; end: number }[] | null) =>
@@ -84,14 +85,15 @@ export default function Plan() {
                   <div className="plan-row">
                     <span className="plan-when"><b>{lessonWhen(i.period, i.time)}</b>{i.time && !docCtx.private && <span className="muted">{i.time}</span>}</span>
                     <span className="plan-what">
-                      {l ? <><span className="plan-topic">{l.topic}</span><span className="plan-meta">{meta.join(' · ')}</span></> : <span className="muted">Perspektiv planda mövzu yoxdur</span>}
+                      {l ? <><span className="plan-topic">{l.topic}</span><span className="plan-meta">{meta.join(' · ')}</span>
+                        {l.p0010 && <span className="plan-meta">P0010: <a href={l.p0010.url} target="_blank" rel="noreferrer" title="P0010 test faylını aç">{l.p0010.label}</a></span>}</> : <span className="muted">Perspektiv planda mövzu yoxdur</span>}
                     </span>
                     {l && <span className="plan-tags">
                       {l.assessment_type !== 'formativ' && <Pill tone="warn">{l.assessment_type}{l.exam_no ? '-' + l.exam_no : ''}</Pill>}
                       {i.held && <Pill tone="info">mövzu davam edir</Pill>}
                       {l.tests?.map(t => <TestPill key={t.task_id} t={t} />)}
                       {!['KSQ', 'BSQ'].includes(l.assessment_type) && (
-                        <button className="btn sm" onClick={() => setTestFor(l.id)} title="Bu mövzuya onlayn test təyin et">🧪 Test</button>)}
+                        <button className="btn sm" onClick={() => setTestFor(l.id)} title={l.p0010 ? 'P0010 sualları özü əlavə olunur' : 'Bu mövzuya onlayn test təyin et'}>🧪 Test{l.p0010 ? ' (P0010)' : ''}</button>)}
                     </span>}
                   </div>
                 </div>)

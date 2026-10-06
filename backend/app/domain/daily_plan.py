@@ -115,6 +115,8 @@ def user_prompt(c: dict) -> str:
          f"Test toplusu səhifələri: {c['tt_pages'] or '—'}",
          f"Tapşırıqlar (plan): {c['tasks'] or '—'}",
          RES_LEGEND]
+    if c.get('p0010'):
+        L.insert(-1, f"P0010 test bankı (mövzuya uyğun fayl, yoxlama/ev tapşırığı üçün): {c['p0010']}")
     if c.get('continues_from'):
         L.append('DİQQƏT: bu mövzu əvvəlki dərsdə başlanıb – bu, mövzunun DAVAMI (möhkəmləndirmə, tətbiq) dərsidir.')
     if c.get('continues_next'):
