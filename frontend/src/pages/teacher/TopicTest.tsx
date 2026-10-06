@@ -19,6 +19,8 @@ type Peers = { topic: { id: number; seq: number; topic: string; section: string 
 type Row = { on: boolean; pl: number | null; d1: string; t1: string; d2: string; t2: string; ids: number[] | null }   // ids: null – bütün sinif
 type Lv = 'Zəif' | 'Orta' | 'Güclü'
 const LV: Lv[] = ['Zəif', 'Orta', 'Güclü']
+type Toplu = { mode: 'chapter' | 'exam' | 'diag' | 'mock'; in_bank: boolean; url?: string; chapter?: string; has_ev?: boolean
+  title?: string; questions: any[]; missing: number[]; absent?: string[] }
 type Prev = { task_id: number; title: string; class_name: string; opens_at: string; questions: any[]; count: number; avg_pct: number | null }
 
 const nextDay = (d: string) => { const x = new Date(d + 'T00:00'); x.setDate(x.getDate() + 1); return localParts(x.toISOString())[0] }
@@ -38,6 +40,9 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
   const [vk, setVk] = useState<Lv>('Orta')
   const [vqs, setVqs] = useState<Record<Lv, Q[]>>({ 'Zəif': [], 'Orta': [], 'Güclü': [] })
   const [prev, setPrev] = useState<Prev[] | null>(null)
+  const [toplu, setToplu] = useState<Toplu | null>(null)
+  const [tn, setTn] = useState(15)
+  const [tbusy, setTbusy] = useState(false)
   const qs = variants ? vqs[vk] : plain
   const setQs = (fn: (cur: Q[]) => Q[]) => (variants ? setVqs(v => ({ ...v, [vk]: fn(v[vk]) })) : setPlain(fn))
   const [f, setF] = useState({ title: '', duration: 20, show: 'after_close', shuffle: true, journal: true })
@@ -51,8 +56,21 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
       setF(x => ({ ...x, title: `№${p.topic.seq} ${p.topic.topic} – mövzu testi`.slice(0, 200) }))
     }, setErr)
     get<Prev[]>(`/api/plan/${ta}/topics/${pl}/previous`).then(setPrev, () => setPrev([]))
+    get<Toplu>(`/api/programs/toplu/questions?lesson_id=${pl}`).then(setToplu, () => setToplu(null))   // «Test toplusu» dərsi deyilsə – 400
   }, [ta, pl])
   const takePrev = (p: Prev) => { setQs(cur => [...cur, ...p.questions.map((q, i) => fromSnapshot(q, `p${p.task_id}-${i}`)).filter(q => !cur.some(c => c.key === q.key))]); toast(`${p.count} sual götürüldü`) }
+
+  // «Test toplusu» dərsi: S/E/M aralığı, ev tapşırığı, fəsil testi və ya sınaq – P007 bankından (docs/ix-dim-toplu-perspektiv-promtu.md §4)
+  const takeToplu = async (scope: 'lesson' | 'ev' | 'chapter') => {
+    setTbusy(true)
+    try {
+      const r = await get<Toplu>(`/api/programs/toplu/questions?lesson_id=${pl}&scope=${scope}&n=${tn}`)
+      if (!r.questions.length) { toast('Bu aralıqda bazada sual yoxdur'); return }
+      add(r.questions.map(q => fromSnapshot(q, 'b' + q.bank_id)))
+      if (r.title) setF(x => ({ ...x, title: r.title!.slice(0, 200) }))
+      toast(`${r.questions.length} sual götürüldü${r.missing.length ? ` · bazada yoxdur: ${r.missing.length}` : ''}`)
+    } catch (e) { setErr(e) } finally { setTbusy(false) }
+  }
 
   const has = (k: string) => qs.some(q => q.key === k)
   const add = (list: Q[]) => setQs(cur => [...cur, ...list.filter(q => !cur.some(c => c.key === q.key))])
@@ -156,6 +174,27 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
                   <button type="button" className="btn sm" onClick={() => takePrev(p)}>Sualları götür</button>
                 </div>))}
               <p className="small muted" style={{ margin: '6px 0 0' }}>Keçən illərin testləri də burada görünür – yeni ildə eyni mövzuya sualları bir kliklə götürün.</p>
+            </fieldset>)}
+          {toplu && (
+            <fieldset><legend>Toplu tapşırıqlarından (P007){toplu.chapter ? ` – ${toplu.chapter}` : ''}</legend>
+              {!toplu.in_bank ? (
+                <p className="small muted" style={{ margin: 0 }}>Bu fəslin P007 testləri hələ test bazasında yoxdur (admin «Hamısını yenidən oxu» ilə yeniləyə bilər).{' '}
+                  {toplu.url && <a href={toplu.url} target="_blank" rel="noreferrer">P007-də aç</a>}</p>
+              ) : toplu.mode === 'chapter' ? (
+                <div className="row" style={{ gap: 6 }}>
+                  <button type="button" className="btn sm" disabled={tbusy} onClick={() => takeToplu('lesson')}>Dərsin tapşırıqları</button>
+                  {toplu.has_ev && <button type="button" className="btn sm" disabled={tbusy} onClick={() => takeToplu('ev')}>Ev tapşırığı (onlayn yoxlama)</button>}
+                  <button type="button" className="btn sm" disabled={tbusy} onClick={() => takeToplu('chapter')}>Fəsil testi:</button>
+                  <input type="number" className="sel" style={{ width: 64 }} min={1} max={100} value={tn} onChange={e => setTn(Number(e.target.value) || 15)} />
+                  <span className="small muted">təsadüfi sual (qapalı : açıq ≈ 2 : 1)</span>
+                </div>
+              ) : (
+                <div className="row" style={{ gap: 6 }}>
+                  <button type="button" className="btn sm" disabled={tbusy} onClick={() => takeToplu('lesson')}>
+                    {toplu.mode === 'exam' ? '2025 imtahan tapşırıqlarını götür' : toplu.mode === 'diag' ? 'Diaqnostik test (hər fəsildən 1)' : 'Toplu sınağı (hər fəsildən 2)'}</button>
+                  {toplu.mode !== 'exam' && <span className="small muted">Bu sinfə əvvəl verilmiş suallar təkrarlanmır.</span>}
+                  {!!toplu.absent?.length && <span className="small muted">Bazada olmayan fəsillər: {toplu.absent.length}</span>}
+                </div>)}
             </fieldset>)}
           {variants && <div className="row"><span className="small">Variant:</span>
             {LV.map(k => <button key={k} type="button" className="chip" aria-pressed={vk === k} onClick={() => setVk(k)}>{k} <span className="muted">({vqs[k].length})</span></button>)}</div>}

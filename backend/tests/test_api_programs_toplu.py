@@ -115,3 +115,88 @@ def test_builtin_program_api(world):
     geo = [s['name'] for s in d['sections'] if s['part'] == 'Həndəsə']
     pv = t.get(f"/api/programs/{tp[0]['id']}/preview/{ta}", params={'sections': json.dumps(geo)}).json()
     assert all(not x['section'].startswith('1.') for x in pv['list'])
+
+
+# ---------------------------------------------------------------- P007 sualları plan dərsinə (§4)
+def _bank_world(world):
+    from app.models import BankFile, BankQuestion, BankSource, PlanLesson, TeachingAssignment
+    as_, S = world
+    admin = as_('admin')
+    cid = admin.post('/api/classes', json={'name': 'IX a'}).json()['id']
+    admin.post(f'/api/classes/{cid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 2, 'slots': {'1': [1, 5]}})
+    c1, c17 = SRC['chapters'][0], SRC['chapters'][16]
+    f1 = c1['p007']['lesson'].split('/', 1)[0]
+    with S() as db:
+        ta = db.query(TeachingAssignment).filter_by(class_id=cid).one()
+        rows = [('1. Natural ədədlər', 'Natural ədədlər (2/7): tapşırıqlar 1–27',
+                 f'TT 2025 (IX), s.4–8; S 1–14; E 15–24; M 25–27; P007: {f1}',
+                 [{'kind': 'sinif', 'label': '', 'start': 1, 'end': 14}, {'kind': 'ev', 'label': '', 'start': 15, 'end': 24},
+                  {'kind': 'mustaqil', 'label': '', 'start': 25, 'end': 27}]),
+                ('Diaqnostika', 'Diaqnostik test', 'TT 2025 (IX); P007: hər fəsildən 1 sual', None),
+                ('Sınaq', 'Sınaq: Cəbr (fəsil 1–14)', 'TT 2025 (IX); P007: Cəbr fəsilləri', None),
+                (f'{c17["num"]}. {c17["title"]}', f'{c17["title"]} (1/5): tapşırıqlar 1–20',
+                 f'TT 2025 (IX), s.1–2; S 1–20; P007: {c17["p007"]["lesson"].split("/", 1)[0]}',
+                 [{'kind': 'sinif', 'label': '', 'start': 1, 'end': 20}]),
+                ('Mövzu', 'Adi mövzu', 'Dərslik', None)]
+        pls = []
+        for i, (sec, topic, res, tasks) in enumerate(rows, 1):
+            pl = PlanLesson(assignment_id=ta.id, seq=i, semester=1, assessment_type='formativ', section=sec,
+                            topic=f'IX sinif: {topic}', resources=res, tasks=tasks, date=dt.date(2026, 9, 15))
+            db.add(pl)
+            pls.append(pl)
+        db.add(BankSource(key='p007', label='P007'))
+        db.flush()
+        f = BankFile(source_key='p007', lesson=c1['p007']['lesson'], label='Natural ədədlər', url='http://x/n.html',
+                     question_count=31)
+        db.add(f)
+        db.flush()
+        for i in range(1, 31):
+            db.add(BankQuestion(file_id=f.id, n=i, qid=str(i), kind='mcq' if i <= 20 else 'open', text={'az': f'S{i}'},
+                                options=[{'az': '1'}, {'az': '2'}] if i <= 20 else None, correct=0 if i <= 20 else None,
+                                answer=None if i <= 20 else '1', content_hash=f'h{i}', active=i != 16))
+        db.add(BankQuestion(file_id=f.id, n=31, qid='a', kind='mcq', text={'az': 'nömrəsiz'}, options=[{'az': '1'}],
+                            correct=0, content_hash='hx'))
+        db.commit()
+        return admin, ta.id, [p.id for p in pls]
+
+
+def test_toplu_questions_lesson_and_ev(world):
+    admin, ta, (les, diag, mock, geo, plain) = _bank_world(world)
+    r = admin.get(f'/api/programs/toplu/questions?lesson_id={les}').json()
+    assert r['mode'] == 'chapter' and r['in_bank'] and r['has_ev']
+    assert [q['qid'] for q in r['questions']] == [i for i in range(1, 28) if i != 16]     # deaktiv və nömrəsiz – yox
+    assert r['missing'] == [16] and r['title'] == 'Natural ədədlər · tapşırıqlar 1–27'
+    assert all('correct' in q and q['bank_id'] for q in r['questions'])
+    r = admin.get(f'/api/programs/toplu/questions?lesson_id={les}&scope=ev').json()
+    assert [q['qid'] for q in r['questions']] == [i for i in range(15, 25) if i != 16] and r['title'].endswith('(ev)')
+    r = admin.get(f'/api/programs/toplu/questions?lesson_id={les}&scope=chapter&n=9').json()
+    kinds = [q['kind'] for q in r['questions']]
+    assert len(kinds) == 9 and kinds.count('mcq') == 6 and len({q['qid'] for q in r['questions']}) == 9
+
+
+def test_toplu_questions_not_in_bank_and_access(world):
+    admin, ta, (les, diag, mock, geo, plain) = _bank_world(world)
+    r = admin.get(f'/api/programs/toplu/questions?lesson_id={geo}').json()
+    assert r['in_bank'] is False and r['questions'] == [] and r['url'].startswith('https://')
+    assert admin.get(f'/api/programs/toplu/questions?lesson_id={plain}').status_code == 400
+    as_, _ = world
+    assert as_('yad').get(f'/api/programs/toplu/questions?lesson_id={les}').status_code == 404
+
+
+def test_toplu_mock_does_not_repeat(world):
+    from app.models import OnlineTask
+    admin, ta, (les, diag, mock, geo, plain) = _bank_world(world)
+    r = admin.get(f'/api/programs/toplu/questions?lesson_id={diag}').json()
+    assert r['mode'] == 'diag' and len(r['questions']) == 1 and len(r['absent']) == 21
+    seen = set()
+    _, S = world
+    for _ in range(5):                                         # 29 sual, hər dəfə 2 – təkrar yoxdur
+        r = admin.get(f'/api/programs/toplu/questions?lesson_id={mock}').json()
+        assert r['mode'] == 'mock' and len(r['questions']) == 2
+        ids = {q['bank_id'] for q in r['questions']}
+        assert not ids & seen
+        seen |= ids
+        with S() as db:
+            db.add(OnlineTask(assignment_id=ta, title='s', opens_at=dt.datetime(2026, 9, 15), closes_at=dt.datetime(2026, 9, 16),
+                              duration_min=10, questions=r['questions']))
+            db.commit()

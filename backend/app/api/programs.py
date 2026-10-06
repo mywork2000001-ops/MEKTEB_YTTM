@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
+import random
+import re
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -14,11 +17,13 @@ from ..db import get_db
 from ..deps import staff
 from typing import Literal
 
-from ..models import AssignmentProgram, PlanProgram, SchoolClass, TeachingAssignment, User, now
-from ..programs import (ROMAN, apply, check_sections, dated, ensure_builtin, ensure_current, is_course, is_toplu, lessons_for, purposes,
+from ..models import (AssignmentProgram, BankFile, BankQuestion, BankSource, OnlineTask, PlanLesson, PlanProgram, SchoolClass,
+                      TeachingAssignment, User, now)
+from ..programs import (DATA, ROMAN, apply, check_sections, dated, ensure_builtin, ensure_current, is_course, is_toplu, lessons_for, purposes,
                         section_names, snapshot, tpl_sections)
 from ..services import class_grade, own_assignment
 from .common import audit, settings_unlocked
+from .tasks import _snapshot
 
 router = APIRouter(prefix='/api/programs', tags=['programs'])
 
@@ -449,3 +454,140 @@ def detach(aid: int, user: User = Depends(settings_unlocked), db: Session = Depe
     audit(db, user, 'delete', 'assignment_program', aid, ta_id=ta.id)
     db.commit()
     return _for(db, ta)
+
+
+# ---------------------------------------------------------------- «Test toplusu» dərsi → P007 sualları (promt §4)
+_P007_TAG = re.compile(r'P007:\s*([^;]+?)\s*$')
+
+
+def _toplu_src() -> dict:
+    return json.loads((DATA / 'dim_toplu_9_2025.json').read_text(encoding='utf-8'))
+
+
+def toplu_lesson(pl: PlanLesson, src: dict) -> dict | None:
+    """Plan dərsi «Test toplusu» proqramındandırsa – onun növü: chapter (fəsil dərsi) | exam | diag | mock (Cəbr/Həndəsə)."""
+    m = _P007_TAG.search(pl.resources or '')
+    if not m:
+        return None
+    tag = m.group(1)
+    for c in src['chapters']:
+        if c['p007']['lesson'].split('/', 1)[0] == tag:
+            return {'mode': 'chapter', 'chapter': c}
+    if src['exam_2025']['p007']['lesson'].split('/', 1)[0] == tag:
+        return {'mode': 'exam'}
+    if pl.section == 'Diaqnostika' or 'hər fəsildən' in tag:
+        return {'mode': 'diag'}
+    for part in ('Cəbr', 'Həndəsə'):
+        if part in tag:
+            return {'mode': 'mock', 'part': part}
+    return None
+
+
+def _p007_url(src: dict, lesson: str) -> str:
+    return src['p007']['url'].replace('{lesson}', lesson)
+
+
+def _p007_qs(db: Session, lesson: str) -> dict[int, BankQuestion] | None:
+    """Faylın aktiv sualları qid (= toplu tapşırıq nömrəsi) üzrə; fayl bazada yoxdursa – None. qid rəqəm deyilsə – atılır."""
+    f = db.scalar(select(BankFile).join(BankSource, BankSource.key == BankFile.source_key).where(
+        BankFile.source_key == 'p007', BankFile.lesson == lesson, BankFile.active.is_(True), BankSource.enabled.is_(True)))
+    if f is None:
+        return None
+    out: dict[int, BankQuestion] = {}
+    for q in db.scalars(select(BankQuestion).where(BankQuestion.file_id == f.id, BankQuestion.active.is_(True))
+                        .order_by(BankQuestion.n)):
+        try:
+            n = int(str(q.qid).strip())
+        except (TypeError, ValueError):
+            continue
+        out.setdefault(n, q)
+    return out or None
+
+
+def _pick(qs: list[BankQuestion], n: int, rnd: random.Random) -> list[BankQuestion]:
+    """n təsadüfi sual, qapalı : açıq ≈ 2 : 1 (birindən çatmırsa – digərindən)."""
+    mcq, opn = [q for q in qs if q.kind == 'mcq'], [q for q in qs if q.kind != 'mcq']
+    k = min(len(mcq), max(n - len(opn), round(n * 2 / 3)))
+    got = rnd.sample(mcq, k) + rnd.sample(opn, min(len(opn), n - k))
+    return got
+
+
+def _used_bank_ids(db: Session, ta_id: int) -> set[int]:
+    """Bu sinif/qrupa əvvəl verilmiş test bazası sualları (sınaqda təkrarlanmasın)."""
+    return {q.get('bank_id') for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta_id,
+                                                                          OnlineTask.archived_at.is_(None)))
+            for q in (t.questions or []) if q.get('bank_id')}
+
+
+@router.get('/toplu/questions')
+def toplu_questions(lesson_id: int, scope: Literal['lesson', 'ev', 'chapter'] = 'lesson', n: int = 15,
+                    user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Plan dərsinin «Test toplusu» tapşırıqları P007 bankından: dərsin S/E/M aralığı, yalnız ev tapşırığı və ya fəsildən
+    n təsadüfi sual; sınaq/diaqnostika/2025 imtahanı dərsində – fəsillərdən qarışıq (əvvəl verilənlər təkrarlanmır)."""
+    pl = db.get(PlanLesson, lesson_id)
+    if not pl:
+        raise HTTPException(404, 'Dərs tapılmadı')
+    ta = own_assignment(db, user, pl.assignment_id)
+    src = _toplu_src()
+    info = toplu_lesson(pl, src)
+    if info is None:
+        raise HTTPException(400, 'Bu dərs «Test toplusu» proqramından deyil')
+    n = max(1, min(n, 100))
+    rnd = random.Random()
+    out = {'mode': info['mode'], 'scope': scope, 'in_bank': True, 'missing': [], 'questions': []}
+    picked: list[BankQuestion] = []
+    if info['mode'] == 'chapter':
+        c = info['chapter']
+        file = c['p007']['lesson']
+        out.update(file=file, url=_p007_url(src, file), chapter=f'{c["num"]}. {c["title"]}',
+                   ranges=pl.tasks or [], has_ev=any(t.get('kind') == 'ev' for t in pl.tasks or []))
+        qs = _p007_qs(db, file)
+        if qs is None:
+            out['in_bank'] = False
+            return out
+        if scope == 'chapter':
+            picked = sorted(_pick(list(qs.values()), n, rnd), key=lambda q: int(q.qid))
+            out['title'] = f'{c["title"]} · fəsil testi ({len(picked)} sual)'
+        else:
+            rng = [t for t in pl.tasks or [] if scope == 'lesson' or t.get('kind') == 'ev']
+            if not rng:
+                raise HTTPException(400, 'Bu dərsdə ev tapşırığı aralığı yoxdur')
+            nums = [i for t in rng for i in range(t['start'], t['end'] + 1)]
+            picked = [qs[i] for i in nums if i in qs]
+            out['missing'] = [i for i in nums if i not in qs]
+            a, b = min(nums), max(nums)
+            out['title'] = f'{c["title"]} · tapşırıqlar {a}–{b}' + (' (ev)' if scope == 'ev' else '')
+    elif info['mode'] == 'exam':
+        ex = src['exam_2025']
+        file = ex['p007']['lesson']
+        out.update(file=file, url=_p007_url(src, file))
+        qs = _p007_qs(db, file)
+        if qs is None:
+            out['in_bank'] = False
+            return out
+        picked = [qs[i] for i in sorted(qs)]
+        out['missing'] = [i for i in range(1, ex['tasks'] + 1) if i not in qs]
+        out['title'] = '2025 buraxılış imtahanı tapşırıqları (IX)'
+    else:
+        chs = [c for c in src['chapters'] if info['mode'] == 'diag' or c['part'] == info['part']]
+        per = 1 if info['mode'] == 'diag' else 2
+        used = _used_bank_ids(db, ta.id)
+        absent = []
+        for c in chs:
+            qs = _p007_qs(db, c['p007']['lesson'])
+            if qs is None:
+                absent.append(f'{c["num"]}. {c["title"]}')
+                continue
+            fresh = [q for q in qs.values() if q.id not in used]
+            got = _pick(fresh, per, rnd)
+            if len(got) < per:                   # təzə sual qalmayıb – əvvəl verilənlərdən tamamla
+                got += _pick([q for q in qs.values() if q not in got], per - len(got), rnd)
+            picked += sorted(got, key=lambda q: int(q.qid))
+        out['absent'] = absent
+        out['in_bank'] = bool(picked)
+        out['url'] = _p007_url(src, chs[0]['p007']['lesson'])
+        out['title'] = ('Diaqnostik test (hər fəsildən 1 tapşırıq)' if info['mode'] == 'diag'
+                        else f'Sınaq: {info["part"]} (hər fəsildən {per} tapşırıq)')
+    snaps = _snapshot(db, [q.id for q in picked]) if picked else []
+    out['questions'] = [{**s, 'qid': int(q.qid)} for s, q in zip(snaps, picked)]
+    return out
