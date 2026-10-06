@@ -7,6 +7,7 @@ import Login from './pages/Login'
 import Join from './pages/Join'
 import QrLogin from './pages/QrLogin'
 const SurveyPublic = lazy(() => import('./pages/SurveyPublic'))
+const Verify = lazy(() => import('./pages/Verify'))
 import { Loading, ToastHost } from './ui'
 
 // Yeni yayımdan sonra açıq səhifə köhnə hissəni (chunk) tapmırsa – bir dəfə avtomatik yenilənir (ağ ekran olmasın)
@@ -57,6 +58,7 @@ const S = {
   Results: lazy(() => import('./pages/student/Results')),
   Surveys: lazy(() => import('./pages/student/Surveys')),
   Analytics: lazy(() => import('./pages/student/Analytics')),
+  Achievements: lazy(() => import('./pages/student/Achievements')),
   Settings: lazy(() => import('./pages/student/Settings')),
 }
 const Chat = lazy(() => import('./pages/Chat'))
@@ -71,6 +73,8 @@ export default function App() {
   if (qr) return <I18nCtx.Provider value={lang}><QrLogin token={qr[1]} /></I18nCtx.Provider>
   const sv = location.pathname.match(/^\/s\/([\w-]+)$/)          // anonim şagird sorğusu (WhatsApp / QR linki) – girişsiz
   if (sv) return <I18nCtx.Provider value={lang}><Suspense fallback={<Loading />}><SurveyPublic token={sv[1]} /></Suspense></I18nCtx.Provider>
+  const vf = location.pathname.match(/^\/v\/([\w-]+)$/)          // sertifikatın yoxlanması (QR) – girişsiz
+  if (vf) return <I18nCtx.Provider value={lang}><Suspense fallback={<Loading />}><Verify code={vf[1]} /></Suspense></I18nCtx.Provider>
   if (!ready) return <Loading />
   return (
     <I18nCtx.Provider value={lang}>
@@ -91,6 +95,7 @@ export default function App() {
                 <Route path="/results" element={<S.Results />} />
                 <Route path="/surveys" element={<S.Surveys />} />
                 <Route path="/analytics" element={<S.Analytics />} />
+                <Route path="/achievements" element={<S.Achievements />} />
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/settings" element={<S.Settings />} />
                 <Route path="*" element={<Navigate to="/" replace />} />

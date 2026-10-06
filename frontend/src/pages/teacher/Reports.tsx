@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import CertificatesPanel from './CertificatesPanel'
 import { useNavigate } from 'react-router-dom'
 import { get } from '../../api'
 import { useAuth } from '../../auth'
@@ -443,6 +444,7 @@ function Performance({ ta, sem }: { ta: number; sem: string }) {
         </table></div>
       )}
       <TopluChapters ta={ta} />
+      <CertificatesPanel ta={ta} />
       <p className="small muted">Qiymət: yarımil qiyməti (KSQ×0,4 + BSQ×0,6) varsa o, yoxdursa formativ qiymətlərin ortası (ən azı {p.summary.min_marks} qiymət). Müvəffəqiyyət = «2» almayanlar / qiymətləndirilənlər; keyfiyyət = «4» və «5» / qiymətləndirilənlər; SOU = (100·n5 + 64·n4 + 36·n3 + 16·n2) / n.</p>
     </>
   )

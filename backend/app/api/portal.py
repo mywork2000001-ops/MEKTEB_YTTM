@@ -382,9 +382,12 @@ def submit(task_id: int, body: AnswersIn | None = None, user: User = Depends(stu
         n = len(t.questions)
         a.answers = {**(a.answers or {}), **{k: v for k, v in body.answers.items() if k.isdigit() and int(k) < n}}
     finalize(db, t, a, at, auto=late)
+    from ..certificates import for_attempt
+    cert = for_attempt(db, t, a)                             # mövzu testi ≥ hədd – sertifikat dərhal
     db.commit()
     return {'correct': a.correct, 'total': a.total, 'grade': a.grade, 'auto_submitted': a.auto_submitted,
-            'can_review': _can_review(t, a, at)}
+            'can_review': _can_review(t, a, at), 'pct': round(100 * a.correct / a.total) if a.total else None,
+            'certificate': {'code': cert.code, 'title': cert.title} if cert else None}
 
 
 @router.get('/tasks/{task_id}/review')

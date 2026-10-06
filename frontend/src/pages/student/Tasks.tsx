@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError, get, post, put } from '../../api'
 import { imagesToPdf } from '../../imagesToPdf'
+import { confetti } from '../../certificate'
 import { useT } from '../../i18n'
 import { AsyncBtn, Drawer, ErrorBox, gradeTone, Loading, Pill, Seg, toast, Top, useLoad } from '../../ui'
 import { MathText } from '../../MathText'
@@ -179,6 +180,8 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
       // vaxt bitəndə də son cavablar göndərilir (server 10 san. gecikməni qəbul edir)
       const r = await post(`/api/portal/tasks/${id}/submit`, { answers: { ...ansRef.current } })
       toast(auto ? `Vaxt bitdi – təhvil verildi: ${r.correct}/${r.total}` : `Təhvil verildi: ${r.correct}/${r.total} → ${r.grade}`)
+      if (r.certificate || (r.pct ?? 0) >= 80) confetti()                           // təbrik
+      if (r.certificate) toast(`🏆 Yeni sertifikat: ${r.certificate.title} – «Uğurlarım»da`)
     } catch (e) { if (!(e instanceof ApiError && e.status === 409)) toast('Xəta: ' + (e as Error).message) }
     onDone()
   }

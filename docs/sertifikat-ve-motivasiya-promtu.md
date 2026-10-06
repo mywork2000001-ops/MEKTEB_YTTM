@@ -62,3 +62,13 @@
 Şagird mövzu testində 92 % alır → «Uğurlarım»da sertifikat görünür, çap olunur (A4 albom, məktəb və müəllim adı ilə), QR
 yoxlama səhifəsini açır və «etibarlıdır» göstərir; müəllim sertifikatı ləğv edəndə yoxlama «ləğv edilib» deyir; nəticə
 ekranında təbrik və nişan; heç bir şagird başqasının adını/balını görmür.
+
+## 8. Götürülən qərarlar (icra, 06.10.2026)
+- Avtomatik növlər: movzu (≥ 90 %, təhvil anında), sinaq (bağlanandan sonra ≥ 80 % və ya ilk 3 yer), seriya (≥ 4 sınaq
+  göndərilib, ≥ 80 % iştirak), manual. «Fəsil» və «yarımil» sertifikatları sonraya (şagird üzrə etibarlı məlumat yoxdur).
+- Hədlər sinif/qrup üzrə (`teaching_assignments.cert_rules`), default `DEFAULT_RULES`; miqrasiya e4a6c8d0f2b3.
+- Sertifikat şagirdin hesabına bağlıdır: ad tətbiqdəki addan avtomatik, şagird ID-si sertifikatda çap olunmur (istifadəçi:
+  «не на сертификат – свяжи»); yeni sertifikat tətbiq açılanda özü göstərilir (CertNudge + konfetti), sonra «görüldü».
+- Kod `MK-YY-XXXXXXXX` (0/O, 1/I yoxdur), QR → `/v/:code` (girişsiz), yoxlamada ad qısaldılır.
+- Nişan/XP/səviyyə/seriya/həftəlik hədəf/bölmə proqresi saxlanılmır – `GET /api/portal/achievements` nəticələrdən hesablayır.
+- Şagird: «Uğurlarım» (/achievements); müəllim: Hesabatlar → Performans → «Sertifikatlar» (siyahı, əl ilə, ləğv, hədlər).

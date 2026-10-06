@@ -167,6 +167,8 @@ class TeachingAssignment(Base, Archivable):
     program_sections: Mapped[list | None] = mapped_column(JSON)
     # hər plan dərsinə avtomatik mövzu testi (X–XI – P0010, «Test toplusu» – P007), dərs günü yaradılır (app/auto_tests.py)
     auto_tests: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # sertifikat hədləri (None – default, app/certificates.py::DEFAULT_RULES)
+    cert_rules: Mapped[dict | None] = mapped_column(JSON)
     __table_args__ = (UniqueConstraint('teacher_id', 'class_id', 'subject'),)
     teacher: Mapped[User] = relationship()
     cls: Mapped[SchoolClass] = relationship()
@@ -453,6 +455,25 @@ class TestBatch(Base):
     penalty: Mapped[int] = mapped_column(Integer, default=0)            # sınaq: N səhv 1 düzü aparır (0 – cərimə yox)
     created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Certificate(Base):
+    """Şagird sertifikatı – yalnız serverdəki faktiki nəticədən (və ya müəllimin əl ilə verdiyi); code ilə açıq yoxlanılır
+    (docs/sertifikat-ve-motivasiya-promtu.md). source – təkrar verilməsin deyə: «task:12», «series:3», «manual:…»."""
+    __tablename__ = 'certificates'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(20), unique=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), index=True)
+    assignment_id: Mapped[int | None] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='SET NULL'))
+    kind: Mapped[str] = mapped_column(String(12))                       # movzu | sinaq | seriya | manual
+    source: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(300))
+    details: Mapped[dict] = mapped_column(JSON, default=dict)           # {pct, correct, total, place, of, subject, teacher, school}
+    issued_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    issued_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))   # şagird «yeni» nişanı üçün
+    __table_args__ = (UniqueConstraint('student_id', 'kind', 'source', name='uq_certificate_source'),)
 
 
 class ExamSeries(Base):

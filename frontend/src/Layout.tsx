@@ -6,6 +6,7 @@ import { useAuth } from './auth'
 import { useT } from './i18n'
 import { Drawer, Icon } from './ui'
 import { SurveyNudge } from './pages/student/Surveys'
+import { CertNudge } from './pages/student/Achievements'
 
 export type NavItem = { to: string; icon: string; label: string; short?: string }
 
@@ -37,6 +38,7 @@ export const STUDENT_NAV: NavItem[] = [
   { to: '/extra', icon: 'groups', label: 'Əlavə məşğələlər', short: 'Məşğələ' },
   { to: '/plan', icon: 'plan', label: 'Plan' },
   { to: '/results', icon: 'rating', label: 'Nəticələrim', short: 'Nəticə' },
+  { to: '/achievements', icon: 'star', label: 'Uğurlarım', short: 'Uğurlar' },
   { to: '/analytics', icon: 'reports', label: 'Analitika' },
   { to: '/surveys', icon: 'star', label: 'Sorğular' },
   { to: '/chat', icon: 'feedback', label: 'Çat' },
@@ -110,6 +112,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </main>
       </div>
       {student && <SurveyNudge />}
+      {student && <CertNudge />}
       <nav className="tabbar" aria-label="Əsas bölmələr">
         {tabs.map(to => { const i = items.find(x => x.to === to)!; return (
           <button key={to} aria-current={active(to) ? 'page' : undefined} onClick={() => nav(to)}><Icon name={i.icon} />{t(i.short || i.label)}</button>) })}
