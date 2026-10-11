@@ -917,3 +917,13 @@ label.f textarea{min-height:84px;padding:10px 12px;resize:vertical}
   .drawer{animation:slide .2s ease-out}@keyframes slide{from{transform:translateX(28px);opacity:.6}}
   @media (max-width:700px){.drawer{animation:up .22s ease-out}@keyframes up{from{transform:translateY(40px);opacity:.6}}}
 }
+/* «⋯ Daha çox» menyusu və saylı çiplər (test bölmələri) */
+.more{position:relative;display:inline-block}
+.more>summary{list-style:none;min-width:40px}
+.more>summary::-webkit-details-marker{display:none}
+.more-pop{position:absolute;left:0;top:calc(100% + 4px);z-index:30;min-width:200px;max-width:calc(100vw - 32px);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);box-shadow:0 8px 24px rgba(0,0,0,.14);padding:4px;display:flex;flex-direction:column}
+.more-pop button,.more-pop a{all:unset;cursor:pointer;padding:10px 12px;border-radius:6px;font-size:14px;color:var(--ink)}
+.more-pop button:hover,.more-pop a:hover,.more-pop button:focus-visible{background:var(--surface-2)}
+.more-pop .danger{color:var(--bad)}
+.chip .chip-n{margin-left:6px;font-weight:700;opacity:.75}
+a.btn{text-decoration:none}

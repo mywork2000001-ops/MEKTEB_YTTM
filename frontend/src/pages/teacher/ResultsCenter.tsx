@@ -69,7 +69,7 @@ function PeriodPick({ f }: { f: PP }) {
 
 function ClassSelect({ lessons, value, onChange, all = 'Hamısı (bütün siniflərim)' }: { lessons?: MyLesson[]; value: number | null; onChange: (v: number | null) => void; all?: string | null }) {
   return (
-    <select className="sel" aria-label="Sinif / qrup" value={value ?? ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}>
+    <select className="sel" aria-label="Sinif / qrup" style={{ width: 'auto', maxWidth: 280 }} value={value ?? ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}>
       <option value="">{all ?? '— Sinif / qrup seçin —'}</option>
       {(lessons || []).map(l => <option key={l.id} value={l.id}>{l.class_name}{l.subject !== 'Riyaziyyat' ? ` · ${l.subject}` : ''}</option>)}
     </select>
@@ -84,19 +84,26 @@ export default function ResultsCenter() {
   const f = usePeriodParams()
   const [lessons] = useMyLessons()
   const openStudent = (id: number) => { setStudent(id); setTab('student') }
-  const [kf, setKfRaw] = useState<KF>(() => { try { return (localStorage.getItem('mk-rc-kind') as KF) || 'all' } catch { return 'all' } })
+  const [kf, setKfRaw] = useState<KF>(() => {
+    const q = sp.get('kind') as KF | null                    // «Sınaq imtahanları → Reytinq» keçidi
+    if (q && ['all', 'movzu', 'sinaq'].includes(q)) return q
+    try { return (localStorage.getItem('mk-rc-kind') as KF) || 'all' } catch { return 'all' }
+  })
+  const [rta, setRta] = useState<number | null>(null)
+  const [sort, setSort] = useState<Sort>('place')
   const setKf = (v: KF) => { setKfRaw(v); try { localStorage.setItem('mk-rc-kind', v) } catch { /* noop */ } }
   const kinds = kindsOf(kf)
   const [miss] = useLoad<{ students: { chronic: boolean }[] }>(() => get('/api/results-center/missing', { kind: kf, ...f.params }), [kf, f.label])
   const chronic = miss?.students.filter(x => x.chronic).length || 0
-  useEffect(() => { if (sp.get('student') || sp.get('tab')) setSp({}, { replace: true }) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (sp.get('student') || sp.get('tab') || sp.get('kind')) setSp({}, { replace: true }) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
-      <Top title="Test nəticələri" sub="Mövzu testləri və sınaqlar ayrıca · yazmayanlar · şagird, sinif, qrup və ümumi analitika · süni intellektin pedaqoji rəyi" />
+      <Top title="Test nəticələri" sub="Bütün analitika bir yerdə: mövzu testləri və sınaqlar ayrıca – reytinq, yazmayanlar, şagird, sinif və qrup, ümumi, süni intellektin rəyi." />
       <div className="tabs rtabs no-print">{TABS.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{l}
         {k === 'missing' && chronic > 0 && <span className="pill bad" style={{ marginLeft: 6 }} title="xroniki yazmayanlar">{chronic}</span>}</button>)}</div>
-      <div className="toolbar no-print" style={{ flexWrap: 'wrap' }}><LSeg label="Növ" value={kf} onChange={setKf} options={KF_OPTS} /><PeriodPick f={f} /></div>
-      {tab === 'rating' && <RatingTab f={f} lessons={lessons} onStudent={openStudent} kinds={kinds} />}
+      <div className="toolbar no-print" style={{ flexWrap: 'wrap' }}><LSeg label="Növ" value={kf} onChange={setKf} options={KF_OPTS} /><PeriodPick f={f} />
+        {tab === 'rating' && <><ClassSelect lessons={lessons} value={rta} onChange={setRta} /><LSeg label="Sıralama" value={sort} onChange={setSort} options={SORTS} /></>}</div>
+      {tab === 'rating' && kinds.map(k => <div key={k} style={{ marginBottom: 18 }}><RatingPanel f={f} lessons={lessons} onStudent={openStudent} kind={k} ta={rta} sort={sort} /></div>)}
       {tab === 'missing' && <Missing f={f} lessons={lessons} onStudent={openStudent} kind={kf} />}
       {tab === 'student' && <StudentPanel f={f} id={student} setId={setStudent} kinds={kinds} kf={kf} />}
       {tab === 'class' && <ClassPanel f={f} lessons={lessons} onStudent={openStudent} kinds={kinds} kf={kf} />}
@@ -112,21 +119,6 @@ type RRow = { student_id: number; full_name: string; class_name: string; given: 
 type RTest = { unit: string; title: string; date: string; topic: string | null; avg_pct: number | null; wrote: number; given: number; missed: number; closed: boolean }
 type RData = { kind: Kind; tests: RTest[]; rows: RRow[]; total: number; classes: { class_name: string; avg_pct: number | null; participation: number | null; wrote: number; given: number; place: number | null }[]
   improved: RRow[]; attention: RRow[] }
-
-/** «Hamısı» – iki ayrı reytinq ardıcıl (ortalar qarışmır); sinif və sıralama ümumi. */
-function RatingTab({ f, lessons, onStudent, kinds }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kinds: Kind[] }) {
-  const [ta, setTa] = useState<number | null>(null)
-  const [sort, setSort] = useState<Sort>('place')
-  return (
-    <>
-      <div className="toolbar no-print" style={{ flexWrap: 'wrap' }}>
-        <ClassSelect lessons={lessons} value={ta} onChange={setTa} />
-        <LSeg label="Sıralama" value={sort} onChange={setSort} options={SORTS} />
-      </div>
-      {kinds.map(k => <div key={k} style={{ marginBottom: 18 }}><RatingPanel f={f} lessons={lessons} onStudent={onStudent} kind={k} ta={ta} sort={sort} /></div>)}
-    </>
-  )
-}
 
 const sortRows = (rows: RRow[], s: Sort) => (s === 'place' ? rows : [...rows].sort(s === 'delta'
   ? (a, b) => (a.delta == null ? 1 : 0) - (b.delta == null ? 1 : 0) || (b.delta ?? 0) - (a.delta ?? 0)
@@ -156,7 +148,7 @@ export function RatingPanel({ f, lessons, onStudent, initial = 'movzu', kind: fi
         d.rows.map(r => [r.place_all ?? '—', r.place_class ?? '—', r.full_name, r.class_name, `${r.wrote} / ${r.given}`, fmtN(r.avg_pct), fmtN(r.last_pct), sgn(r.delta), flags(r).join(', ')]), [4, 5, 6, 7]) +
       (d.classes.length > 1 ? '<h2>Siniflər üzrə</h2>' + table(['Yer', 'Sinif', 'Orta %', 'İştirak %', 'Nəticə sayı'], d.classes.map(c => [c.place ?? '—', c.class_name, fmtN(c.avg_pct), fmtN(c.participation), c.wrote]), [2, 3, 4]) : '') +
       '<h2>Testlər</h2>' + table(['Tarix', 'Test', 'Mövzu', 'Yazıb / verilən', 'Orta %'], d.tests.map(t => [fmtD(t.date), t.title, t.topic || '', `${t.wrote} / ${t.given}`, fmtN(t.avg_pct)]), [3, 4]) +
-      `<p class="note">${kind === 'movzu' ? 'Mövzu testləri formativ jurnala düşür; reytinq onların orta faizi üzrədir.' : 'Sınaqlar formativ qiymətə təsir etmir; faiz cərimə (səhv ÷ N) nəzərə alınmaqla.'} «Az iştirak» – verilən testlərin yarısından azını yazıb. Bərabər orta – eyni yer.</p>`,
+      `<p class="note">${kind === 'movzu' ? 'Mövzu testləri formativ jurnala düşür; reytinq onların orta faizi üzrədir.' : 'Sınaqlar formativ qiymətə təsir etmir; faiz cərimə (səhv ÷ N) nəzərə alınmaqla.'} Yer – verilən testlərin yarısından çoxunu yazanlara; az yazan sonda, yersiz. Bərabər orta – eyni yer.</p>`,
   })
   return (
     <>
@@ -185,9 +177,9 @@ export function RatingPanel({ f, lessons, onStudent, initial = 'movzu', kind: fi
                   <tr key={r.student_id} className="click" onClick={() => onStudent?.(r.student_id)}><td className="r num"><b>{r.place_all ?? '—'}</b></td><td className="r num">{r.place_class ?? '—'}</td>
                     <td><b>{r.full_name}</b><span className="sub">{r.class_name}</span></td><td className="r num">{r.wrote}/{r.given}</td>
                     <td className="r num"><b>{fmt(r.avg_pct)}</b></td><td className="r num">{fmt(r.last_pct)}</td>
-                    <td className="r num">{r.delta == null ? '—' : <Pill tone={r.delta > 0 ? 'ok' : r.delta < 0 ? 'bad' : undefined}>{sgn(r.delta)} bənd</Pill>}</td><td><Flags r={r} /></td></tr>))}</tbody>
+                    <td className="r num">{r.delta == null ? '—' : r.delta === 0 ? <span className="muted">0</span> : <Pill tone={r.delta > 0 ? 'ok' : 'bad'}>{sgn(r.delta)} bənd</Pill>}</td><td><Flags r={r} /></td></tr>))}</tbody>
               </table></div>)}
-            <p className="small muted" style={{ margin: '8px 0 0' }}>{kind === 'movzu' ? 'Mövzu testləri formativ jurnala düşür.' : 'Sınaqlar formativ qiymətə təsir etmir; faiz cərimə ilə.'} Mövzu testi və sınaq reytinqi heç vaxt qarışmır. Şagirdə toxunun – profil açılır.</p>
+            <p className="small muted" style={{ margin: '8px 0 0' }}>{kind === 'movzu' ? 'Mövzu testləri formativ jurnala düşür.' : 'Sınaqlar formativ qiymətə təsir etmir; faiz cərimə ilə.'} Yer – verilən testlərin yarısından çoxunu yazanlara (az yazan sonda, yersiz). Mövzu testi və sınaq reytinqi qarışmır. Şagirdə toxunun – profil açılır.</p>
           </section>
           {d.classes.length > 1 && <section className="panel"><h2>Siniflər</h2>
             {d.classes.map(c => <div key={c.class_name} className="row small"><b>{c.place ?? '—'}.</b><span className="grow">{c.class_name}</span><span className="muted">iştirak {pct(c.participation)}</span><b>{pct(c.avg_pct)}</b></div>)}</section>}

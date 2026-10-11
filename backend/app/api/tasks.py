@@ -185,7 +185,7 @@ def custom_snapshot(q: 'CustomQ') -> dict:
 
 
 def task_out(t: OnlineTask) -> dict:
-    return {'id': t.id, 'title': t.title, 'description': t.description, 'opens_at': aware(t.opens_at),
+    return {'id': t.id, 'ta_id': t.assignment_id, 'title': t.title, 'description': t.description, 'opens_at': aware(t.opens_at),
             'closes_at': aware(t.closes_at), 'duration_min': t.duration_min, 'questions': len(t.questions),
             'shuffle': t.shuffle, 'show_answers': t.show_answers, 'student_ids': t.student_ids,
             'archived': t.archived_at is not None, 'kind': t.kind, 'batch_id': t.batch_id,
@@ -224,6 +224,50 @@ def create_task(ta_id: int, body: TaskIn, user: User = Depends(staff), db: Sessi
     return task_out(t)
 
 
+def expire_many(db: Session, tasks: list[OnlineTask]) -> None:
+    """expire_due – bir sorğu ilə bir neçə tapşırıq üçün (siyahılar hər test üçün ayrıca sorğu etməsin)."""
+    by_id = {t.id: t for t in tasks}
+    if not by_id:
+        return
+    t0, changed = now(), False
+    for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id.in_(list(by_id)), TaskAttempt.submitted_at.is_(None))):
+        if aware(a.deadline) <= t0:
+            finalize(db, by_id[a.task_id], a, t0, auto=True)
+            changed = True
+    if changed:
+        db.commit()
+
+
+@router.get('/mine')
+def my_tasks(archived: bool = False, kind: str = 'movzu', user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Bütün dərslərimin testləri bir siyahıda (sinif seçmədən): sinif adı, mövzu, təhvil sayı və orta faiz."""
+    from ..models import SchoolClass
+    from ..services import ws_cond
+    tas = {ta.id: ta for ta in db.scalars(select(TeachingAssignment).where(
+        TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None), ws_cond(user)))}
+    if not tas:
+        return []
+    flt = OnlineTask.archived_at.is_not(None) if archived else OnlineTask.archived_at.is_(None)
+    tasks = list(db.scalars(select(OnlineTask).where(OnlineTask.assignment_id.in_(list(tas)), OnlineTask.kind == kind, flt)
+                            .order_by(OnlineTask.opens_at.desc())))
+    expire_many(db, tasks)
+    names = {c.id: c.name for c in db.scalars(select(SchoolClass).where(SchoolClass.id.in_({ta.class_id for ta in tas.values()})))}
+    stats: dict[int, list] = {}
+    for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id.in_([t.id for t in tasks] or [-1]),
+                                                  TaskAttempt.submitted_at.is_not(None))):
+        if a.total:
+            stats.setdefault(a.task_id, []).append(a.correct * 100 / a.total)
+    pls = {p.id: p for p in db.scalars(select(PlanLesson).where(
+        PlanLesson.id.in_({t.plan_lesson_id for t in tasks if t.plan_lesson_id} or {-1})))}
+    out = []
+    for t in tasks:
+        ta, v, pl = tas[t.assignment_id], stats.get(t.id, []), pls.get(t.plan_lesson_id)
+        out.append({**task_out(t), 'ta_id': ta.id, 'class_name': names.get(ta.class_id), 'subject': ta.subject,
+                    'submitted': len(v), 'avg_pct': round(sum(v) / len(v), 1) if v else None,
+                    'topic': pl and {'seq': pl.seq, 'topic': pl.topic}})
+    return out
+
+
 @router.get('/{ta_id}')
 def list_tasks(ta_id: int, archived: bool = False, user: User = Depends(staff), db: Session = Depends(get_db)):
     """archived=true – silinmiş (arxivdəki) testlər: geri qaytarmaq və ya yenidən göndərmək üçün."""
@@ -250,6 +294,7 @@ def task_results(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
     expire_due(db, t)
     atts = {a.student_id: a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id))}
     targets = [s for s in roster(db, ta) if t.student_ids is None or s.id in t.student_ids]
+    pen, sinaq = penalty_of(db, t), t.kind == 'sinaq'      # sınaq: faiz cərimə ilə, qiymət yox – sınaq jurnalı ilə eyni
     rows = []
     for s in targets:
         a = atts.get(s.id)
@@ -260,8 +305,9 @@ def task_results(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
                      'deadline': aware(a.deadline) if a else None,
                      'submitted_at': aware(a.submitted_at) if a and a.submitted_at else None,
                      'auto_submitted': bool(a and a.auto_submitted), 'correct': a.correct if a else None,
-                     'total': a.total if a else None, 'grade': a.grade if a else None,
-                     'pct': round(a.correct * 100 / a.total, 1) if a and a.submitted_at and a.total else None,
+                     'total': a.total if a else None, 'grade': None if sinaq or not a else a.grade,
+                     'pct': (exam_score(t, a, pen)['pct'] if sinaq else round(a.correct * 100 / a.total, 1))
+                     if a and a.submitted_at and a.total else None,
                      'solution_at': aware(a.solution_at) if a and a.solution_key and a.solution_at else None})
     done = [a for a in atts.values() if a.submitted_at]
     per_q = []

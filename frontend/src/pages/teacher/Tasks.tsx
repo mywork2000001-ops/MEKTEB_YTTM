@@ -2,8 +2,8 @@
 import { useEffect, useState } from 'react'
 import { del as apiDel, get, post } from '../../api'
 import { MathText } from '../../MathText'
-import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, PickFirst, Pill, Seg, toast, Top, useLoad, ord } from '../../ui'
-import { LessonSelect, type MyLesson, type Preset, StudentPicker, useMyLessons, usePick } from './common'
+import { AsyncBtn, Chips, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, Loading, More, Pill, toast, Top, useLoad, ord } from '../../ui'
+import { type MyLesson, type Preset, StudentPicker, useMyLessons, usePick } from './common'
 import { PeriodBar, usePeriod } from '../../periods'
 import { Link } from 'react-router-dom'
 import TaskEditor from './TaskEditor'
@@ -11,91 +11,114 @@ import { esc, head, mathHtml, printDoc, table } from '../../print'
 import { azDT } from '../../ui'
 
 type Task = { id: number; title: string; created_at?: string | null; opens_at: string; closes_at: string; duration_min: number; questions: number; submitted: number; avg_pct: number | null; student_ids: number[] | null
-  kind?: string | null; topic?: { seq: number; topic: string } | null; journal_auto?: boolean; journal_done_at?: string | null }
+  kind?: string | null; topic?: { seq: number; topic: string } | null; journal_auto?: boolean; journal_done_at?: string | null
+  ta_id?: number; class_name?: string | null }
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 const dt = (s: string) => azDT(new Date(s), { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const hm = (s: string) => azDT(new Date(s), { hour: '2-digit', minute: '2-digit' })
 export const taskLink = (id: number) => `${location.origin}/t/${id}`
 
+type St = 'all' | 'open' | 'soon' | 'closed'
+const stateOf = (t: { opens_at: string; closes_at: string }, now = Date.now()): Exclude<St, 'all'> =>
+  now < Date.parse(t.opens_at) ? 'soon' : now < Date.parse(t.closes_at) ? 'open' : 'closed'
+const ST_ORDER: Record<Exclude<St, 'all'>, number> = { open: 0, soon: 1, closed: 2 }
+
 export default function Tasks() {
   const [lessons, err0] = useMyLessons()
-  const [ta, setTa] = usePick('tasks')
-  const [view, setView] = useState<'active' | 'archived'>('active')
-  const [list, err, , reload] = useLoad<Task[] | null>(() => (ta ? get(`/api/tasks/${ta}`, view === 'archived' ? { archived: true } : {}) : Promise.resolve(null)), [ta, view])
+  const [ta, setTa] = usePick('tasks-all')                // boş – bütün siniflərim (sinif seçmədən hər şey görünür)
+  const [archived, setArchived] = useState(false)
+  const [list, err, loading, reload] = useLoad<Task[]>(() => get('/api/tasks/mine', archived ? { archived: true } : {}), [archived])
+  const [st, setSt] = useState<St>('all')
   const [resend, setResend] = useState<Task | null>(null)
-  const [edit, setEdit] = useState<number | null>(null)
-  const [watch, setWatch] = useState<number | null>(null)
+  const [edit, setEdit] = useState<Task | null>(null)
+  const [watch, setWatch] = useState<Task | null>(null)
   const [share, setShare] = useState<Task | null>(null)
   const [del, setDel] = useState<Task | null>(null)
-  const f = usePeriod('tasks', 'topic')
-  const cls = lessons?.find(l => l.id === ta)
-  // yalnız perspektiv planın mövzu testləri; plandan kənar testlər – «Sınaq imtahanları»nda
-  const topics = (list || []).filter(t => t.kind === 'movzu')
-  const shown = topics.filter(t => f.has(t.opens_at)).sort(f.sort === 'topic'
-    ? (a, b) => (a.topic?.seq ?? 1e9) - (b.topic?.seq ?? 1e9) || Date.parse(a.opens_at) - Date.parse(b.opens_at)
-    : (a, b) => Date.parse(b.opens_at) - Date.parse(a.opens_at))
+  const f = usePeriod('tasks', 'date')
+  const now = Date.now()
+  const inClass = (list || []).filter(t => !ta || t.ta_id === ta)
+  const inPeriod = inClass.filter(t => f.has(t.opens_at))
+  const count = (k: Exclude<St, 'all'>) => inPeriod.filter(t => stateOf(t, now) === k).length
+  // açıq testlər yuxarıda, sonra gözlənilənlər, sonra bağlananlar (seçilmiş sıralama ilə)
+  const shown = inPeriod.filter(t => st === 'all' || stateOf(t, now) === st).sort((a, b) =>
+    ST_ORDER[stateOf(a, now)] - ST_ORDER[stateOf(b, now)] || (f.sort === 'topic'
+      ? (a.class_name || '').localeCompare(b.class_name || '', 'az') || (a.topic?.seq ?? 1e9) - (b.topic?.seq ?? 1e9)
+      : Date.parse(b.opens_at) - Date.parse(a.opens_at)))
+  const many = !ta                                       // «Bütün siniflərim» – hər testdə sinif nişanı
   return (
     <>
-      <Top title="Onlayn tapşırıqlar" sub="Perspektiv planın mövzu testləri · yeni test planda mövzunun «🧪 Test» düyməsi ilə yaradılır · plandan kənar testlər «Sınaq imtahanları»ndadır"
-        actions={<Link className="btn" to="/exams-online">Sınaq imtahanları →</Link>} />
+      <Top title={archived ? 'Silinmiş mövzu testləri' : 'Onlayn tapşırıqlar'}
+        sub={archived ? 'Geri qaytarmaq və ya birdəfəlik silmək olar' : 'Perspektiv planın mövzu testləri – təyin etmək, izləmək, idarə etmək. Plandan kənar testlər – «Sınaq imtahanları», analitika – «Test nəticələri».'}
+        actions={archived ? <button className="btn" onClick={() => setArchived(false)}>‹ Mövzu testləri</button>
+          : <Link className="btn primary" to="/plan" title="Perspektiv planda mövzunun yanındakı «🧪 Test» düyməsi">+ Mövzu testi təyin et</Link>} />
       <ErrorBox error={err0 || err} />
-      <div className="toolbar"><LessonSelect lessons={lessons} value={ta} onChange={setTa} />
-        {ta && <Seg value={view} onChange={setView} options={[['active', 'Mövzu testləri'], ['archived', 'Silinənlər']]} />}</div>
-      {!ta ? <PickFirst /> : (<>
-        {topics.length > 0 && <PeriodBar f={f} count={shown.length} total={topics.length} />}
+      <div className="toolbar">
+        <select className="sel" aria-label="Sinif / qrup" style={{ width: 'auto', maxWidth: 280 }} value={ta ?? ''} onChange={e => setTa(e.target.value ? Number(e.target.value) : null)}>
+          <option value="">Bütün siniflərim</option>
+          {(lessons || []).map(l => <option key={l.id} value={l.id}>{l.class_name}{l.subject !== 'Riyaziyyat' ? ` · ${l.subject}` : ''}</option>)}
+        </select>
+        {!archived && <Chips label="Vəziyyət" value={st} onChange={setSt} options={[['all', 'Hamısı', inPeriod.length], ['open', '● Açıq', count('open')],
+          ['soon', 'Gözlənilir', count('soon')], ['closed', 'Bağlanıb', count('closed')]]} />}
+      </div>
+      {loading && !list ? <Loading /> : (<>
+        {inClass.length > 0 && <PeriodBar f={f} count={shown.length} total={inClass.length} topicLabel="Sinif və mövzu üzrə" />}
         <div className="jlist">
-          {list && topics.length === 0 && <div className="empty">{view === 'archived' ? 'Silinmiş mövzu testi yoxdur.' : 'Hələ mövzu testi yoxdur – «Perspektiv plan»da mövzunun yanındakı «🧪 Test» ilə yaradın.'}</div>}
-          {topics.length > 0 && shown.length === 0 && <div className="empty">Bu dövrdə test yoxdur – «‹ ›» ilə başqa dövrə keçin və ya «Hamısı»nı seçin.</div>}
+          {list && inClass.length === 0 && <div className="empty">{archived ? 'Silinmiş mövzu testi yoxdur.'
+            : <>Hələ mövzu testi yoxdur. <Link to="/plan">Perspektiv plan</Link>da mövzunun yanındakı «🧪 Test» ilə təyin edin.</>}</div>}
+          {inClass.length > 0 && shown.length === 0 && <div className="empty">Bu seçimdə test yoxdur – vəziyyəti və ya dövrü dəyişin.</div>}
           {shown.map(t => {
-            const now = Date.now(), o = Date.parse(t.opens_at), c = Date.parse(t.closes_at)
-            const live = now >= o && now < c
+            const s = stateOf(t, now)
             return (
               <div className="jrow cols" key={t.id} style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 8 }}>
                 <div className="row" style={{ flexWrap: 'wrap' }}>
-                  <Pill tone="acc">{t.topic ? `№${t.topic.seq}` : 'mövzu planda yoxdur'}</Pill>
+                  {many && <Pill tone="info">{t.class_name}</Pill>}
+                  <Pill tone="acc">{t.topic ? `№${t.topic.seq}` : 'planda yoxdur'}</Pill>
                   <b className="grow">{t.title}</b>
                   {t.journal_auto && <Pill tone={t.journal_done_at ? 'ok' : undefined}>{t.journal_done_at ? 'jurnala yazılıb' : 'jurnala yazılacaq'}</Pill>}
-                  {now < o ? <Pill>gözlənilir</Pill> : live ? <Pill tone="ok">● açıqdır</Pill> : <Pill tone="info">bağlanıb</Pill>}
+                  {s === 'soon' ? <Pill>gözlənilir</Pill> : s === 'open' ? <Pill tone="ok">● açıqdır</Pill> : <Pill tone="info">bağlanıb</Pill>}
                 </div>
-                <span className="small muted">{dt(t.opens_at)} – {t.opens_at.slice(0, 10) === t.closes_at.slice(0, 10) ? hm(t.closes_at) : dt(t.closes_at)} · {t.duration_min} dəq{t.topic ? ` · «${t.topic.topic}»` : ''} · {t.questions} sual · {t.student_ids ? `${t.student_ids.length} şagird` : 'bütün sinif'} · {t.submitted} təhvil · orta {fmt(t.avg_pct)}%</span>
-                {view === 'archived' ? (
+                <span className="small muted">{dt(t.opens_at)} – {t.opens_at.slice(0, 10) === t.closes_at.slice(0, 10) ? hm(t.closes_at) : dt(t.closes_at)} · {t.duration_min} dəq · {t.questions} sual · {t.student_ids ? `${t.student_ids.length} şagird` : 'bütün sinif'} · <b>{t.submitted}</b> təhvil{t.avg_pct != null ? <> · orta <b>{fmt(t.avg_pct)}%</b></> : ''}</span>
+                {archived ? (
                   <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                    <AsyncBtn className="btn sm primary" ok="Test geri qaytarıldı" onClick={async () => { await post(`/api/tasks/${ta}/${t.id}/restore`); reload() }}>Geri qaytar</AsyncBtn>
-                    <button className="btn sm" onClick={() => setWatch(t.id)}>Nəticələr</button>
+                    <AsyncBtn className="btn sm primary" ok="Test geri qaytarıldı" onClick={async () => { await post(`/api/tasks/${t.ta_id}/${t.id}/restore`); reload() }}>Geri qaytar</AsyncBtn>
+                    <button className="btn sm" onClick={() => setWatch(t)}>Nəticələr</button>
                     <button className="btn sm ghost" onClick={() => setDel(t)}>Birdəfəlik sil</button>
                   </div>
                 ) : (
-                <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                  <button className={'btn sm' + (live ? ' primary' : '')} onClick={() => setWatch(t.id)}>{live ? 'Canlı izlə' : 'Nəticələr'}</button>
-                  <button className="btn sm" onClick={() => setShare(t)}>Link göndər</button>
-                  <button className="btn sm" onClick={() => setResend(t)}>Yenidən göndər</button>
-                  <button className="btn sm" onClick={() => paper(ta!, t.id, cls?.class_name || '')}>Kağız variant</button>
-                  <button className="btn sm" onClick={() => setEdit(t.id)}>Redaktə</button>
-                  <button className="btn sm ghost" onClick={() => setDel(t)}>Sil</button>
-                </div>)}
-                {del?.id === t.id && <ConfirmName name={t.title} action={view === 'archived' ? 'Birdəfəlik sil' : 'Sil'} onCancel={() => setDel(null)}
+                  <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                    <button className={'btn sm' + (s === 'open' ? ' primary' : '')} onClick={() => setWatch(t)}>{s === 'open' ? 'Canlı izlə' : 'Nəticələr'}</button>
+                    <button className="btn sm" onClick={() => setShare(t)}>Link göndər</button>
+                    <More>
+                      <button onClick={() => setResend(t)}>Yenidən göndər</button>
+                      <button onClick={() => paper(t.ta_id!, t.id, t.class_name || '')}>Kağız variant (çap)</button>
+                      <button onClick={() => setEdit(t)}>Redaktə</button>
+                      <button className="danger" onClick={() => setDel(t)}>Sil</button>
+                    </More>
+                  </div>)}
+                {del?.id === t.id && <ConfirmName name={t.title} action={archived ? 'Birdəfəlik sil' : 'Sil'} onCancel={() => setDel(null)}
                   onConfirm={async () => {
-                    if (view === 'archived') { await apiDel(`/api/tasks/${ta}/${t.id}`); toast('Test sistemdən birdəfəlik silindi') }
-                    else { await post(`/api/tasks/${ta}/${t.id}/archive`); toast('Test silindi – «Silinənlər»dən geri qaytarmaq və ya birdəfəlik silmək olar') }
+                    if (archived) { await apiDel(`/api/tasks/${t.ta_id}/${t.id}`); toast('Test sistemdən birdəfəlik silindi') }
+                    else { await post(`/api/tasks/${t.ta_id}/${t.id}/archive`); toast('Test silindi – «Silinənlər»dən geri qaytarmaq və ya birdəfəlik silmək olar') }
                     setDel(null); reload() }} />}
               </div>)
           })}
-        </div></>
-      )}
-      {edit && ta && <TaskEditor ta={ta} taskId={edit} fromBank={false} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
-      {watch && ta && <Watch ta={ta} id={watch} onClose={() => { setWatch(null); reload() }} />}
-      {share && <Share task={share} cls={cls?.class_name || ''} onClose={() => setShare(null)} />}
-      {resend && ta && <Resend ta={ta} task={resend} lessons={lessons || []} onClose={() => setResend(null)}
+        </div>
+        {!archived && <p className="small" style={{ marginTop: 12 }}><button className="btn sm ghost" onClick={() => setArchived(true)}>🗑 Silinənlər</button></p>}
+      </>)}
+      {edit && <TaskEditor ta={edit.ta_id!} taskId={edit.id} fromBank={false} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
+      {watch && <Watch ta={watch.ta_id!} id={watch.id} onClose={() => { setWatch(null); reload() }} />}
+      {share && <Share task={share} cls={share.class_name || ''} onClose={() => setShare(null)} />}
+      {resend && <Resend ta={resend.ta_id!} task={resend} lessons={lessons || []} onClose={() => setResend(null)}
         onDone={(t, sameClass) => {
           setResend(null)
           if (t.kind === 'sinaq') toast('Hədəf sinfin planında bu mövzu yoxdur – test sınaq kimi «Sınaq imtahanları»na düşdü')
-          if (sameClass) { setView('active'); reload() }
-          setShare(t) }} />}
+          if (sameClass) reload()
+          setShare({ ...t, class_name: lessons?.find(l => l.id === t.ta_id)?.class_name ?? resend.class_name }) }} />}
     </>
   )
 }
 
-/** Bir testin idarəsi (sınaq bölməsində hər sinif üçün): canlı izlə, link, yenidən göndər, kağız variant, redaktə. */
+/** Bir testin idarəsi (sınaq jurnalında hər sinif üçün): canlı izlə, link; nadir əməllər «⋯» menyusunda. */
 export function TaskActions({ ta, id, cls, onChange }: { ta: number; id: number; cls: string; onChange: () => void }) {
   const [lessons] = useMyLessons()
   const [mode, setMode] = useState<null | 'watch' | 'share' | 'resend' | 'edit'>(null)
@@ -107,11 +130,13 @@ export function TaskActions({ ta, id, cls, onChange }: { ta: number; id: number;
   return (
     <>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-        <button className="btn sm" onClick={() => setMode('watch')}>Canlı izlə / nəticələr</button>
+        <button className="btn sm" onClick={() => setMode('watch')}>Canlı izlə</button>
         <button className="btn sm" onClick={() => open('share')}>Link göndər</button>
-        <button className="btn sm" onClick={() => open('resend')}>Yenidən göndər</button>
-        <button className="btn sm" onClick={() => paper(ta, id, cls)}>Kağız variant</button>
-        <button className="btn sm" onClick={() => setMode('edit')}>Redaktə</button>
+        <More>
+          <button onClick={() => open('resend')}>Yenidən göndər</button>
+          <button onClick={() => paper(ta, id, cls)}>Kağız variant (çap)</button>
+          <button onClick={() => setMode('edit')}>Redaktə</button>
+        </More>
       </div>
       {mode === 'watch' && <Watch ta={ta} id={id} onClose={() => { setMode(null); onChange() }} onResendAbsent={() => open('resend', 'absent')} />}
       {mode === 'share' && task && <Share task={task} cls={cls} onClose={() => setMode(null)} />}
@@ -264,7 +289,7 @@ function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; on
                   <span className="small muted">{r.answered}/{total} cavab · {left(r.deadline)}</span></>}
               </span>
               <span className="row">{r.status === 'təhvil verib'
-                ? <><span className="small">{r.correct}/{r.total}</span><Pill tone={gradeTone(r.grade)}>{fmt(r.pct, 0)}% → {r.grade}</Pill></>
+                ? <><span className="small">{r.correct}/{r.total}</span><Pill tone={r.grade ? gradeTone(r.grade) : r.pct >= 70 ? 'ok' : r.pct >= 40 ? 'warn' : 'bad'}>{fmt(r.pct, r.grade ? 0 : 1)}%{r.grade ? ` → ${r.grade}` : ''}</Pill></>
                 : <Pill tone={r.status === 'həll edir' ? 'info' : undefined}>{r.status}</Pill>}
                 {live && r.status !== 'başlamayıb' && <AsyncBtn className="btn sm ghost" ok="Təkrar icazə verildi"
                   onClick={async () => { await apiDel(`/api/tasks/${ta}/${id}/attempts/${r.student_id}`); reload() }}>Təkrar icazə</AsyncBtn>}</span>

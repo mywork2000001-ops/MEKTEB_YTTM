@@ -22,6 +22,14 @@ KINDS = ('movzu', 'sinaq')
 LOW_PART = 0.5            # iştirak bundan azdırsa – «az iştirak» nişanı
 CHRONIC_N, CHRONIC_SHARE = 3, 0.5   # xroniki yazmayan: ≥3 test və ya verilənlərin ≥50%-i (ən azı 2)
 ATTENTION_PCT = 40.0
+RANK_PART = 0.5          # reytinqdə yer – verilən testlərin YARISINDAN ÇOXUNU yazana (4-dən 3-ü; yarısı – «xroniki», yersiz)
+
+
+def rank_value(p: dict) -> float | None:
+    """Yer üçün dəyər: az yazan (iştirak ≤ 50%) yer almır – 4 testdən 2-ni 100% yazan birinci olmasın («xroniki» ilə ziddiyyət)."""
+    if p['avg_pct'] is None or (p['given'] and p['wrote'] <= p['given'] * RANK_PART):
+        return None
+    return p['avg_pct']
 
 
 def _aware(t: dt.datetime) -> dt.datetime:
@@ -214,11 +222,13 @@ def per_student(rows: list[dict]) -> dict[int, dict]:
 def rating(data: dict) -> dict:
     """Kumulyativ reytinq (bir növ): şagirdlər (sinifdə və ümumi yer), siniflər, irəliləyənlər, diqqət tələb edənlər."""
     ps = list(per_student(data['rows']).values())
-    for k, _, place in rank([(str(i), p['avg_pct']) for i, p in enumerate(ps)]):
+    for p in ps:
+        p['ranked'] = rank_value(p) is not None
+    for k, _, place in rank([(str(i), rank_value(p)) for i, p in enumerate(ps)]):
         ps[int(k)]['place_all'] = place
     for cname in {p['class_name'] for p in ps}:
         idx = [i for i, p in enumerate(ps) if p['class_name'] == cname]
-        for k, _, place in rank([(str(i), ps[i]['avg_pct']) for i in idx]):
+        for k, _, place in rank([(str(i), rank_value(ps[i])) for i in idx]):
             ps[int(k)]['place_class'] = place
     classes: dict[str, dict] = {}
     for r in data['rows']:
@@ -241,7 +251,7 @@ def rating(data: dict) -> dict:
         if p.pop('visible'):
             p.pop('series')
             rows.append(p)
-    rows.sort(key=lambda r: (r['place_all'] is None, r['place_all'] or 0, r['full_name']))
+    rows.sort(key=lambda r: (r['place_all'] is None, r['place_all'] or 0, -(r['avg_pct'] or -1), r['full_name']))
     improved = sorted([r for r in rows if r['delta'] is not None and r['delta'] > 0], key=lambda r: -r['delta'])[:10]
     attention = [r for r in rows if r['attention']]
     return {'tests': data['tests'], 'rows': rows, 'total': total, 'classes': cl, 'improved': improved,

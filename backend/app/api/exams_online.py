@@ -376,31 +376,39 @@ def create_exam(body: ExamIn, user: User = Depends(staff), db: Session = Depends
 @router.get('')
 def list_exams(user: User = Depends(staff), db: Session = Depends(get_db)):
     """Görə bildiyim sınaqlar: yaratdıqlarım, siniflərimə göndərilənlər, admin – məktəbin hamısı."""
-    st = select(TestBatch).where(TestBatch.kind == 'sinaq').order_by(TestBatch.id.desc())
-    out = []
-    for b in db.scalars(st):
-        try:
-            _access(db, user, b)
-        except HTTPException:
+    # toplu sorğular (əvvəl hər paket üçün 6–8 sorğu idi); icazə qaydası _access ilə eynidir
+    batches = list(db.scalars(select(TestBatch).where(TestBatch.kind == 'sinaq').order_by(TestBatch.id.desc())))
+    per: dict[int, list] = {}
+    for t, ta, cls in db.execute(select(OnlineTask, TeachingAssignment, SchoolClass)
+                                 .join(TeachingAssignment, TeachingAssignment.id == OnlineTask.assignment_id)
+                                 .join(SchoolClass, SchoolClass.id == TeachingAssignment.class_id)
+                                 .where(OnlineTask.batch_id.in_([b.id for b in batches] or [-1])).order_by(OnlineTask.id)):
+        per.setdefault(t.batch_id, []).append((t, ta, cls))
+    seen = []
+    for b in batches:
+        rows = per.get(b.id, [])
+        live = [r for r in rows if r[0].archived_at is None]
+        if not live or rows[0][2].school_id != user.school_id:        # boş və ya başqa məkanın sınağı
             continue
-        all_tasks = list(db.scalars(select(OnlineTask).where(OnlineTask.batch_id == b.id)))
-        live = [t for t in all_tasks if t.archived_at is None]
-        if not live:
+        if not (b.created_by == user.id or user.role == Role.admin
+                or any(ta.teacher_id == user.id for _, ta, _ in rows)):
             continue
-        ts = live
-        by_id = {t.id: t for t in ts}
-        names = [db.get(SchoolClass, db.get(TeachingAssignment, t.assignment_id).class_id).name for t in ts]
-        done = [a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id.in_([t.id for t in ts]),
-                                                                TaskAttempt.submitted_at.is_not(None))) if a.total]
-        t0 = now()
-        o = min((aware(t.opens_at) for t in ts), default=None)
-        c = max((aware(t.closes_at) for t in ts), default=None)
-        out.append({'id': b.id, 'title': b.title, 'subject': b.subject, 'grade': b.grade, 'classes': names,
-                    'opens_at': o, 'closes_at': c, 'questions': len(ts[0].questions) if ts else 0,
-                    'mine': b.created_by == user.id, 'wrote': len(done),
-                    'avg_pct': round(sum(exam_score(by_id[a.task_id], a, b.penalty)['pct'] for a in done) / len(done), 1)
-                    if done else None,
-                    'state': 'gözlənilir' if o and t0 < o else 'açıqdır' if c and t0 < c else 'bitib'})
+        seen.append((b, live))
+    done: dict[int, list] = {}
+    for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id.in_([t.id for _, live in seen for t, _, _ in live] or [-1]),
+                                                  TaskAttempt.submitted_at.is_not(None))):
+        if a.total:
+            done.setdefault(a.task_id, []).append(a)
+    t0, out = now(), []
+    for b, live in seen:
+        pcts = [exam_score(t, a, b.penalty)['pct'] for t, _, _ in live for a in done.get(t.id, [])]
+        o = min(aware(t.opens_at) for t, _, _ in live)
+        c = max(aware(t.closes_at) for t, _, _ in live)
+        out.append({'id': b.id, 'title': b.title, 'subject': b.subject, 'grade': b.grade, 'classes': [cls.name for _, _, cls in live],
+                    'opens_at': o, 'closes_at': c, 'questions': len(live[0][0].questions),
+                    'mine': b.created_by == user.id, 'wrote': len(pcts),
+                    'avg_pct': round(sum(pcts) / len(pcts), 1) if pcts else None,
+                    'state': 'gözlənilir' if t0 < o else 'açıqdır' if t0 < c else 'bitib'})
     return out
 
 

@@ -204,3 +204,29 @@ export const prettySection = (s: string) => s.replace(/\s+/g, ' ').trim().split(
   const low = part.toLocaleLowerCase('az')
   return low.replace(/(^|[.!?]\s+)(\p{L})/gu, (_, a, c) => a + c.toLocaleUpperCase('az'))
 }).join(' – ')
+
+/** «⋯ Daha çox» – nadir əməllər (yenidən göndər, kağız variant, redaktə, sil) sətirdən çıxarılır. Kənara toxunanda bağlanır. */
+export function More({ children, label = 'Daha çox' }: { children: ReactNode; label?: string }) {
+  const ref = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    const h = (e: MouseEvent) => { const d = ref.current; if (d?.open && !d.contains(e.target as Node)) d.open = false }
+    document.addEventListener('click', h)
+    return () => document.removeEventListener('click', h)
+  }, [])
+  return (
+    <details ref={ref} className="more" onClick={e => { if ((e.target as HTMLElement).closest('.more-pop button, .more-pop a') && ref.current) ref.current.open = false }}>
+      <summary className="btn sm" aria-label={label} title={label}>⋯</summary>
+      <div className="more-pop" role="menu">{children}</div>
+    </details>
+  )
+}
+
+/** Saylı seçim çipləri (vəziyyət filtri: Açıq 2 · Gözlənilir 1 · …). */
+export function Chips<T extends string>({ value, onChange, options, label }: { value: T; onChange: (v: T) => void; options: [T, string, number?][]; label?: string }) {
+  return (
+    <div className="row" role="group" aria-label={label} style={{ gap: 6, flexWrap: 'wrap' }}>
+      {options.map(([k, l, n]) => <button key={k} className="chip" aria-pressed={value === k} onClick={() => onChange(k)}>
+        {l}{n != null && <span className="chip-n">{n}</span>}</button>)}
+    </div>
+  )
+}
