@@ -120,3 +120,23 @@ def test_closed_exam_cache_refreshes_after_manual_check(world, clock, monkeypatc
     oi = next(i for i, q in enumerate(full) if q['kind'] == 'open')
     admin.put(f'/api/exams-online/{bid}/attempt/{tid[ta]}/{st[0]["id"]}', json={'index': oi, 'ok': True})
     assert c.get('/api/portal/exams').json()['items'][0]['pct'] == 100.0
+
+
+def test_resend_joins_same_exam(world, clock, monkeypatch):
+    """Yazmayana «Yenidən göndər» – eyni sınaq (yeni paket yox): siyahıda bir sətir, jurnalda şagird bir dəfə, son cəhdi ilə."""
+    admin, ta, ta_c, st, xs, bid, tid = _two_classes(world, clock, monkeypatch)
+    clock.t = dt.datetime(2026, 9, 29, 11, 30, tzinfo=UTC)
+    _answer(st[0], tid[ta], ALL_OK)
+    clock.t = dt.datetime(2026, 9, 29, 12, 30, tzinfo=UTC)                     # X e bağlanıb – st[1] yazmayıb
+    r = admin.post(f'/api/tasks/{ta}/{tid[ta]}/copy', json={'target_ta_id': ta, 'student_ids': [st[1]['id']],
+                                                           'opens_at': '2026-09-29T12:40:00Z', 'closes_at': '2026-09-29T13:40:00Z'})
+    assert r.status_code == 200 and r.json()['batch_id'] == bid
+    clock.t = dt.datetime(2026, 9, 29, 13, 0, tzinfo=UTC)
+    _answer(st[1], r.json()['id'], ALL_OK)
+    assert [x['id'] for x in admin.get('/api/exams-online').json()] == [bid]
+    clock.t = dt.datetime(2026, 9, 29, 15, 1, tzinfo=UTC)
+    res = admin.get(f'/api/exams-online/{bid}').json()
+    mine = [x for x in res['rows'] if x['student_id'] == st[1]['id']]
+    assert len(mine) == 1 and mine[0]['status'] == 'yazıb' and mine[0]['task_id'] == r.json()['id']
+    assert len([c for c in res['classes'] if c['class_name'] == 'X e']) == 1
+    assert res['summary']['students'] == 5                                      # 3 (X e) + 2 (X c), təkrar yox

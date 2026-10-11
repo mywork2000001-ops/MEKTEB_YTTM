@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { del as apiDel, get, patch, post } from '../../api'
 import { azDT, Drawer, ErrorBox, Field, Loading, Pill, Seg, toast, useLoad } from '../../ui'
 import { bankGroup } from './TaskEditor'
+import { heldLabel, useExamDates, type Dated } from './examDates'
 
 type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; mine: boolean; students: number }
-type BFile = { id: number; label: string; questions: number; kind: string; grades: number[]; source: string; given: string[]; grade_ok: boolean }
+type BFile = Dated & { id: number; label: string; questions: number; kind: string; grades: number[]; source: string; given: string[]; grade_ok: boolean }
 type Series = {
   id: number; title: string; subject: string; period: 'day' | 'week' | 'month'; every: number; weekday: number | null
   month_day: number | null; open_time: string; window_hours: number; duration_min: number; auto_new: boolean; active: boolean
@@ -86,9 +87,11 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
   const odd = (x: BFile) => x.given.length > 0 || !x.grade_ok
   const pickable = (files || []).filter(x => !odd(x))
   const other = queue.filter(id => files?.find(x => x.id === id && !x.grade_ok))
+  const dates = useExamDates(files || [])
   const groups = useMemo(() => {
     const out: { key: string; title: string; items: BFile[] }[] = []
-    for (const x of (files || []).filter(x => showAll || !odd(x) || queue.includes(x.id))) {
+    // sınağın tarixinə görə (yenidən köhnəyə) və tarix filtri ilə; növbəyə salınmış sınaq süzgəcdən asılı olmadan görünür
+    for (const x of dates.sort((files || []).filter(x => (showAll || !odd(x) || queue.includes(x.id)) && (dates.fits(x) || queue.includes(x.id))))) {
       const g = bankGroup(x.source, x.label)
       const key = `${x.source}|${g}`
       const title = [SOURCES.find(([k]) => k === x.source)?.[1] || x.source, g].filter(Boolean).join(' · ')
@@ -97,7 +100,7 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
       else out.push({ key, title, items: [x] })
     }
     return out
-  }, [files, showAll, queue])
+  }, [files, showAll, queue, dates.fits])
   const subj = targets?.find(t => tas.includes(t.ta_id))?.subject
   const toggle = (id: number) => setQueue(q => q.includes(id) ? q.filter(x => x !== id) : [...q, id])
   const submit = async () => {
@@ -144,6 +147,7 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
               <button type="button" className="btn sm ghost" onClick={() => setQueue(queue.length >= pickable.length ? [] : pickable.map(x => x.id))}>{queue.length >= pickable.length ? 'Heç biri' : 'Hamısını seç'}</button>
               <span className="small muted">seçilib {queue.length} / cəmi {pickable.length}</span>
             </div>
+            {files.some(x => x.held_on) && dates.bar}
             {files.length > pickable.length && <label className="check small"><input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
               Verilmiş və başqa sinfin sınaqlarını da göstər <span className="muted">({files.length - pickable.length} gizlədilib)</span></label>}
             {!tas.length && <p className="small muted" style={{ margin: 0 }}>Əvvəlcə sinifləri seçin – siyahı sinfə görə süzülür (11-ci sinfə yalnız 11-in sınaqları).</p>}
@@ -159,7 +163,7 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
                 {g.items.map(x => {
                   const n = queue.indexOf(x.id)
                   return <label key={x.id} className="check small" style={{ padding: '0 12px' }}><input type="checkbox" checked={n >= 0} onChange={() => toggle(x.id)} />
-                    {n >= 0 && <b>{n + 1}.</b>} {x.label} <span className="muted">({x.questions} sual{x.grades.length ? ` · ${x.grades.join(', ')}-cu sinif` : ' · sinif göstərilməyib'})</span>
+                    {n >= 0 && <b>{n + 1}.</b>} {heldLabel(x) && <Pill tone="info">{heldLabel(x)}</Pill>} {x.label} <span className="muted">({x.questions} sual{x.grades.length ? ` · ${x.grades.join(', ')}-cu sinif` : ' · sinif göstərilməyib'})</span>
                     {x.given.length > 0 && <Pill tone="warn">verilib: {x.given.join(', ')}</Pill>}{!x.grade_ok && <Pill tone="warn">başqa sinfin</Pill>}</label>
                 })}</div>
             })}</div></>}

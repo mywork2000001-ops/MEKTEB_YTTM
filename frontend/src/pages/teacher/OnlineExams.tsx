@@ -21,7 +21,7 @@ type Exam = { id: number; title: string; subject: string; grade: number | null; 
   questions: number; mine: boolean; wrote: number; avg_pct: number | null; state: 'gözlənilir' | 'açıqdır' | 'bitib' }
 type Row = { student_id: number | null; full_name: string | null; class_name: string; task_id: number; status: 'yazıb' | 'yazmayıb' | 'yazır' | 'gözlənilir'
   correct: number | null; wrong: number | null; blank: number | null; points: number | null; pct: number | null; grade: number | null
-  place_all: number | null; place_class: number | null; retake: boolean }
+  place_all: number | null; place_class: number | null; retake: boolean; late?: boolean }
 type Res = { batch: { id: number; title: string; subject: string; grade: number | null; penalty: number; questions: number }
   summary: { students: number; wrote: number; avg_pct: number | null; max_pct: number | null; min_pct: number | null }
   classes: { task_id: number; ta_id: number; own: boolean; class_name: string; students: number; wrote: number; avg_pct: number | null; max_pct: number | null; place: number | null; state: string; opens_at: string; closes_at: string }[]
@@ -255,7 +255,7 @@ function Results({ id, onClose, onChange }: { id: number; onClose: () => void; o
               <tbody>{rows.map((r, i) => (
                 <tr key={i} className={r.student_id && r.status === 'yazıb' ? 'click' : ''} onClick={() => r.student_id && r.status === 'yazıb' && setAtt(r)}>
                   <td className="r num"><b>{r.place_all ?? '—'}</b></td><td className="r num">{r.place_class ?? '—'}</td>
-                  <td>{r.full_name ? <b>{r.full_name}</b> : <span className="muted">{name(r)}</span>}<span className="sub">{r.class_name}{r.retake ? ' · təkrar cəhd' : ''}</span></td>
+                  <td>{r.full_name ? <b>{r.full_name}</b> : <span className="muted">{name(r)}</span>}<span className="sub">{r.class_name}{r.retake ? ' · təkrar cəhd' : ''}{r.late ? ' · sonradan yazıb' : ''}</span></td>
                   {r.status === 'yazıb' ? <>
                     <td className="r num">{r.correct}</td><td className="r num">{r.wrong}</td><td className="r num">{r.blank}</td>
                     <td className="r num">{fmt(r.points, r.points != null && r.points % 1 ? 2 : 0)}</td><td className="r num"><b>{fmt(r.pct)}</b></td></>

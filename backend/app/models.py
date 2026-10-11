@@ -235,6 +235,8 @@ class BankFile(Base):
     grades: Mapped[list | None] = mapped_column(JSON)                    # [9] – hansı siniflər üçün
     subject: Mapped[str | None] = mapped_column(String(60), default='Riyaziyyat')
     meta_locked: Mapped[bool] = mapped_column(Boolean, default=False)    # admin əl ilə düzəldib – avtomatik təsnifat toxunmur
+    held_on: Mapped[dt.date | None] = mapped_column(Date)                # sınağın keçirildiyi tarix (etiketdən; ay/il – ayın/ilin 1-i)
+    held_prec: Mapped[str | None] = mapped_column(String(5))             # day | month | year – tarixin dəqiqliyi
     __table_args__ = (UniqueConstraint('source_key', 'lesson'),)
 
 

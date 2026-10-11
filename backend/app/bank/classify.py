@@ -4,6 +4,7 @@ Viktorina-da bu məlumat yoxdur – mənbə açarı və faylın adından çıxar
 sinxronizasiya ona toxunmur."""
 from __future__ import annotations
 
+import datetime as dt
 import re
 
 from ..domain.classes import ROMAN
@@ -33,6 +34,26 @@ def grades_from_label(label: str) -> list[int]:
     return sorted(out)
 
 
+_DAY = re.compile(r'\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b')
+_MONTHS = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avqust', 'sentyabr', 'oktyabr', 'noyabr', 'dekabr']
+_MONTH = re.compile(r'\b(' + '|'.join(_MONTHS) + r')\s+(\d{4})\b', re.I)
+_YEAR = re.compile(r'\b(20\d{2})\b')
+
+
+def held_from_label(label: str) -> tuple[dt.date | None, str | None]:
+    """Sınağın keçirilmə tarixi etiketdən: «27.09.2026» → gün; «sentyabr 2026» → ay; «2026 · …» / «(…, 2026)» → il."""
+    if m := _DAY.search(label):
+        try:
+            return dt.date(int(m[3]), int(m[2]), int(m[1])), 'day'
+        except ValueError:
+            pass
+    if m := _MONTH.search(label):
+        return dt.date(int(m[2]), _MONTHS.index(m[1].lower()) + 1, 1), 'month'
+    if m := _YEAR.search(label):
+        return dt.date(int(m[1]), 1, 1), 'year'
+    return None, None
+
+
 def classify(source_key: str, label: str) -> dict:
     """{'kind', 'grades', 'subject'} – fayl üçün avtomatik təsnifat."""
     if _DIAG.search(label):
@@ -51,6 +72,7 @@ def classify(source_key: str, label: str) -> dict:
 
 def apply(f) -> bool:
     """BankFile-a təsnifatı yazır (kilidli deyilsə). Dəyişiklik oldusa True."""
+    f.held_on, f.held_prec = held_from_label(f.label or '')     # tarix – faktdır, admin kilidindən asılı deyil
     if f.meta_locked:
         return False
     c = classify(f.source_key, f.label or '')

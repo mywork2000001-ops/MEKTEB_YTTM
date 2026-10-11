@@ -432,6 +432,9 @@ def copy_task(ta_id: int, task_id: int, body: CopyIn, user: User = Depends(staff
     pl_id = _target_topic(db, src, target) if src.kind == 'movzu' else None
     if pl_id:                                     # mövzu testi – hədəf sinfin planında həmin mövzuya
         kind, batch_id = 'movzu', None
+    elif src.kind == 'sinaq' and src.batch_id and db.get(TestBatch, src.batch_id):
+        kind, batch_id = 'sinaq', src.batch_id      # yenidən göndərilən sınaq – EYNİ sınaq (yeni paket yox: təkrar sətir olmasın)
+        _forget(batch_id)
     else:                                         # plandan kənar – sınaq
         kind, batch_id = 'sinaq', exam_batch(db, target, title, user).id
     t = OnlineTask(assignment_id=target.id, title=title, description=src.description,

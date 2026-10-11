@@ -110,6 +110,7 @@ def files(sources: str = 'sinaqlar', grade: int | None = None, all_kinds: bool =
     given = _given_to(db, tas)
     gr = _grades(db, tas)
     return [{'id': f.id, 'label': f.label, 'questions': f.question_count, 'kind': f.kind, 'grades': f.grades or [],
+             'held_on': f.held_on, 'held_prec': f.held_prec,
              'source': f.source_key, 'given': sorted(given.get(f.id, {}).values()),
              'grade_ok': all(grade_fits(f, g) for g in gr.values())}
             for f in db.scalars(_files_q(src)) if _grade_ok(f, grade) and (all_kinds or f.kind == 'sinaq')]

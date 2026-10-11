@@ -99,7 +99,8 @@ def lessons(source: str, db: Session = Depends(get_db), _: User = Depends(staff)
     rows = db.scalars(select(BankFile).where(BankFile.source_key == source, BankFile.active.is_(True))
                       .order_by(BankFile.id))
     return [{'id': f.id, 'label': f.label, 'questions': f.question_count, 'kind': f.kind or 'movzu',
-             'grades': f.grades or [], 'subject': f.subject, 'meta_locked': bool(f.meta_locked)} for f in rows]
+             'grades': f.grades or [], 'subject': f.subject, 'meta_locked': bool(f.meta_locked),
+             'held_on': f.held_on, 'held_prec': f.held_prec} for f in rows]
 
 
 class FilePatch(BaseModel):

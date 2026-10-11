@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
+import re
 from collections import Counter
 from typing import Literal
 
@@ -87,6 +88,29 @@ def _file_counts(db: Session, bank_ids) -> Counter:
     return Counter(f for _, f in db.execute(select(BankQuestion.id, BankQuestion.file_id).where(BankQuestion.id.in_(ids))))
 
 
+def _norm_q(text) -> str:
+    t = (text.get('az') or next(iter(text.values()), '')) if isinstance(text, dict) else (text or '')
+    return re.sub(r'[\s$\\{}.,;:()]+', '', str(t)).lower()
+
+
+def _text_index(db: Session) -> dict[str, int]:
+    """Bankdakı sınaq suallarının mətni → fayl (fayl adını/yerini dəyişsə də, verilmiş sınaq tanınsın)."""
+    idx: dict[str, int] = {}
+    for qid, fid, text in db.execute(select(BankQuestion.id, BankQuestion.file_id, BankQuestion.text).join(BankFile)
+                                     .where(BankQuestion.active.is_(True), BankFile.active.is_(True), BankFile.kind == 'sinaq')):
+        k = _norm_q(text)
+        if len(k) > 12:
+            idx.setdefault(k, fid)
+    return idx
+
+
+def _task_counts(db: Session, qs: list, idx: dict[str, int]) -> Counter:
+    """Tapşırığın sualları hansı fayldan: bank nömrəsi ilə VƏ mətnlə (hansı çoxdursa)."""
+    by_id = _file_counts(db, [q.get('bank_id') for q in qs if isinstance(q, dict)])
+    by_text = Counter(f for q in qs if isinstance(q, dict) and (f := idx.get(_norm_q(q.get('text')))))
+    return Counter({f: max(by_id.get(f, 0), by_text.get(f, 0)) for f in set(by_id) | set(by_text)})
+
+
 def _full(used: int, of: int) -> bool:
     """Faylın suallarının ən azı yarısı – «bu sınaq verilib» (azı – «qismən istifadə olunub»)."""
     return used * 2 >= max(1, of)
@@ -98,7 +122,8 @@ def given_files(db: Session, ta_ids: list[int]) -> dict[int, dict]:
         return {}
     tasks = list(db.scalars(select(OnlineTask).where(OnlineTask.assignment_id.in_(ta_ids), OnlineTask.kind == 'sinaq',
                                                      OnlineTask.archived_at.is_(None)).order_by(OnlineTask.opens_at)))
-    per = [(t, _file_counts(db, [q.get('bank_id') for q in t.questions or [] if isinstance(q, dict)])) for t in tasks]
+    idx = _text_index(db) if tasks else {}
+    per = [(t, _task_counts(db, t.questions or [], idx)) for t in tasks]
     fids = {f for _, c in per for f in c}
     if not fids:
         return {}
@@ -160,45 +185,58 @@ def results(db: Session, b: TestBatch) -> dict:
     q_ok: list[int] = []
     q_n = 0
     meta = []
+    # sinif (dərs) üzrə: «Yenidən göndər» eyni paketə əlavə olunur – şagird bir dəfə, son təhvil verdiyi cəhdi ilə
+    by_ta: dict[int, list[OnlineTask]] = {}
     for t in tasks:
-        expire_due(db, t)
-        ta = db.get(TeachingAssignment, t.assignment_id)
+        by_ta.setdefault(t.assignment_id, []).append(t)
+    for ta_id, ts in by_ta.items():
+        ts.sort(key=lambda x: (aware(x.opens_at), x.id))
+        for t in ts:
+            expire_due(db, t)
+        ta = db.get(TeachingAssignment, ta_id)
         cls = db.get(SchoolClass, ta.class_id)
-        meta.append({'task_id': t.id, 'ta_id': ta.id, 'class_name': cls.name, 'teacher_id': ta.teacher_id,
-                     'opens_at': aware(t.opens_at), 'closes_at': aware(t.closes_at),
-                     'state': 'gözlənilir' if t0 < aware(t.opens_at) else 'açıqdır' if t0 < aware(t.closes_at) else 'bitib'})
-        atts = {a.student_id: a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id))}
+        o, c = min(aware(t.opens_at) for t in ts), max(aware(t.closes_at) for t in ts)
+        meta.append({'task_id': ts[-1].id, 'task_ids': [t.id for t in ts], 'ta_id': ta.id, 'class_name': cls.name,
+                     'teacher_id': ta.teacher_id, 'opens_at': o, 'closes_at': c,
+                     'state': 'gözlənilir' if t0 < o else 'açıqdır' if t0 < c else 'bitib'})
+        atts: dict[tuple[int, int], TaskAttempt] = {(a.task_id, a.student_id): a for a in db.scalars(
+            select(TaskAttempt).where(TaskAttempt.task_id.in_([t.id for t in ts])))}
         if not q_ok:
-            q_ok = [0] * len(t.questions)
-        for s in roster(db, ta):
-            if t.student_ids is not None and s.id not in t.student_ids:
+            q_ok = [0] * len(ts[0].questions)
+        for st in roster(db, ta):
+            mine = [t for t in ts if t.student_ids is None or st.id in t.student_ids]
+            if not mine:
                 continue
-            a = atts.get(s.id)
-            row = {'student_id': s.id, 'full_name': s.full_name, 'class_name': cls.name, 'task_id': t.id,
+            got = [(t, atts[(t.id, st.id)]) for t in mine if (t.id, st.id) in atts]
+            done = sorted([(t, a) for t, a in got if a.submitted_at and a.total], key=lambda x: aware(x[1].submitted_at))
+            t, a = done[-1] if done else (mine[-1], None)
+            row = {'student_id': st.id, 'full_name': st.full_name, 'class_name': cls.name, 'task_id': t.id,
                    'ta_id': ta.id, 'teacher_id': ta.teacher_id, 'status': 'yazmayıb', 'correct': None, 'wrong': None,
-                   'blank': None, 'points': None, 'pct': None, 'grade': None, 'retake': (t.id, s.id) in retakes,
+                   'blank': None, 'points': None, 'pct': None, 'grade': None,
+                   'retake': any((x.id, st.id) in retakes for x in mine), 'late': bool(done) and t.id != ts[0].id,
                    'submitted_at': None}
-            if a and a.submitted_at and a.total:
+            if a:
                 sc = exam_score(t, a, b.penalty)
                 row.update(status='yazıb', **sc, grade=summative_grade(sc['pct']), submitted_at=aware(a.submitted_at))
                 if len(t.questions) == len(q_ok):         # sual analizi – eyni suallı siniflər üzrə
                     for i in range(len(q_ok)):
                         q_ok[i] += is_ok(t, a, i)
                     q_n += 1
-            elif a:
+            elif any(not x.submitted_at for _, x in got):
                 row['status'] = 'yazır'
-            elif t0 < aware(t.closes_at):
-                row['status'] = 'gözlənilir'              # sinfin vaxtı bitməyib – hələ yaza bilər
+                row['task_id'] = next(x for x, y in got if not y.submitted_at).id
+            elif any(t0 < aware(x.closes_at) for x in mine):
+                row['status'] = 'gözlənilir'              # vaxtı bitməyib – hələ yaza bilər
             rows.append(row)
     wrote = [r for r in rows if r['status'] == 'yazıb']
     for k, _, place in rank([(str(i), r['points']) for i, r in enumerate(rows) if r['status'] == 'yazıb']):
         rows[int(k)]['place_all'] = place
     by_class: dict[int, list[int]] = {}
     for i, r in enumerate(rows):
-        by_class.setdefault(r['task_id'], []).append(i)
+        by_class.setdefault(r['ta_id'], []).append(i)
     classes = []
     for m in meta:
-        idx = by_class.get(m['task_id'], [])
+        idx = by_class.get(m['ta_id'], [])
         for k, _, place in rank([(str(i), rows[i]['points']) for i in idx if rows[i]['status'] == 'yazıb']):
             rows[int(k)]['place_class'] = place
         w = [rows[i]['pct'] for i in idx if rows[i]['status'] == 'yazıb']
@@ -335,7 +373,7 @@ def create_exam(body: ExamIn, user: User = Depends(staff), db: Session = Depends
     qs = _snapshot(db, body.bank_ids) + [custom_snapshot(q) for q in body.custom]
     title = body.title.strip()
     names = {p[0].id: p[1].name for p in plan}
-    cnt = _file_counts(db, [q.get('bank_id') for q in qs])
+    cnt = _task_counts(db, qs, _text_index(db))           # fayl nömrəsi və mətn üzrə (fayl yerini dəyişsə də)
     rep = repeats(db, list(names), cnt)
     bad = grade_issues(db, [(cls.name, class_grade(db, cls)) for _, cls, *_ in plan], cnt)
     if bad and not body.allow_other_grade:
@@ -543,17 +581,21 @@ def class_exams(db: Session, ta: TeachingAssignment, a: dt.date | None = None, b
     from zoneinfo import ZoneInfo
     from ..services import SCHOOL_TZ
     out, t0 = [], now()
+    per: dict[int, list[OnlineTask]] = {}          # paket üzrə (yenidən göndərmə eyni sınaqdır – bir sütun)
     for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, OnlineTask.kind == 'sinaq',
-                                                 OnlineTask.archived_at.is_(None)).order_by(OnlineTask.opens_at)):
-        d = aware(t.opens_at).astimezone(ZoneInfo(SCHOOL_TZ)).date()
-        bt = db.get(TestBatch, t.batch_id) if t.batch_id else None
+                                                 OnlineTask.archived_at.is_(None), OnlineTask.batch_id.is_not(None))
+                        .order_by(OnlineTask.opens_at)):
+        per.setdefault(t.batch_id, []).append(t)
+    for bid, ts in per.items():
+        d = aware(ts[0].opens_at).astimezone(ZoneInfo(SCHOOL_TZ)).date()
+        bt = db.get(TestBatch, bid)
         if not bt or (a and d < a) or (b and d > b):
             continue
-        closed = t0 >= aware(t.closes_at)
+        closed = all(t0 >= aware(t.closes_at) for t in ts)
         rows = {r['student_id']: {'status': r['status'] if r['status'] == 'yazıb' or not closed else 'yazmayıb',
                                   'pct': r['pct'], 'grade': r['grade']}
-                for r in closed_results(db, bt)['rows'] if r['task_id'] == t.id}
-        out.append({'task_id': t.id, 'batch_id': bt.id, 'title': bt.title, 'date': d, 'closed': closed, 'rows': rows})
+                for r in closed_results(db, bt)['rows'] if r['ta_id'] == ta.id}
+        out.append({'task_id': ts[0].id, 'batch_id': bt.id, 'title': bt.title, 'date': d, 'closed': closed, 'rows': rows})
     return out
 
 
@@ -571,20 +613,20 @@ def student_exams(db: Session, s: Student, task_ids: list[int]) -> list[dict]:
     """Şagirdin sınaqları: öz balı, sinifdə/ümumi yeri, orta və ən yüksək bal (başqasının adı yoxdur).
     Yer yalnız öz sinfinin testi bağlanandan sonra göstərilir (başqaları hələ yazır)."""
     t0, out = now(), []
-    seen = set()
-    for t in db.scalars(select(OnlineTask).where(OnlineTask.id.in_(task_ids), OnlineTask.kind == 'sinaq')
-                        .order_by(OnlineTask.opens_at)):
-        if t.batch_id in seen or t.batch_id is None:
-            continue
-        seen.add(t.batch_id)
-        b = db.get(TestBatch, t.batch_id)
-        closed = t0 >= aware(t.closes_at)
+    per: dict[int, list[OnlineTask]] = {}          # paket üzrə – yenidən göndərilən tapşırıq eyni sınaqdır
+    for t in db.scalars(select(OnlineTask).where(OnlineTask.id.in_(task_ids), OnlineTask.kind == 'sinaq',
+                                                 OnlineTask.batch_id.is_not(None)).order_by(OnlineTask.opens_at)):
+        per.setdefault(t.batch_id, []).append(t)
+    for bid, ts in per.items():
+        t = ts[0]
+        b = db.get(TestBatch, bid)
+        closed = all(t0 >= aware(x.closes_at) for x in ts)
         item = {'batch_id': b.id, 'title': b.title, 'subject': b.subject, 'opens_at': aware(t.opens_at),
-                'closes_at': aware(t.closes_at), 'closed': closed, 'questions': len(t.questions)}
+                'closes_at': max(aware(x.closes_at) for x in ts), 'closed': closed, 'questions': len(t.questions)}
         if closed:
             res = closed_results(db, b)
             me = next((r for r in res['rows'] if r['student_id'] == s.id), None)
-            mine_cls = [r for r in res['rows'] if r['task_id'] == t.id and r['status'] == 'yazıb']
+            mine_cls = [r for r in res['rows'] if me and r['ta_id'] == me['ta_id'] and r['status'] == 'yazıb']
             item.update(
                 status=me['status'] if me else 'yazmayıb', correct=me and me['correct'], wrong=me and me['wrong'],
                 blank=me and me['blank'], points=me and me['points'], pct=me and me['pct'],
@@ -593,8 +635,41 @@ def student_exams(db: Session, s: Student, task_ids: list[int]) -> list[dict]:
                 avg_pct=res['summary']['avg_pct'], max_pct=res['summary']['max_pct'],
                 class_avg_pct=round(sum(r['pct'] for r in mine_cls) / len(mine_cls), 1) if mine_cls else None)
         else:                                    # hələ açıqdır: öz faizi görünür, yer – bağlananda
-            a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
-            if a and a.submitted_at and a.total:
-                item.update(my_pct=exam_score(t, a, b.penalty)['pct'], my_correct=a.correct, my_total=a.total)
+            done = [(x, a) for x in ts if (a := db.scalar(select(TaskAttempt).where(
+                TaskAttempt.task_id == x.id, TaskAttempt.student_id == s.id))) and a.submitted_at and a.total]
+            if done:
+                x, a = max(done, key=lambda p: aware(p[1].submitted_at))
+                item.update(my_pct=exam_score(x, a, b.penalty)['pct'], my_correct=a.correct, my_total=a.total)
         out.append(item)
     return out
+
+
+# ---------------------------------------------------------------- köhnə təkrar paketlər (miqrasiya)
+def merge_resend_batches(bind) -> int:
+    """Miqrasiya e5a7c9d1f3b6: «Yenidən göndər» ilə yaranmış tək-tapşırıqlı sınaq paketlərini mənbə paketinə birləşdirir."""
+    import json
+    import sqlalchemy as sa
+    merged = 0
+    src_of = {}
+    for eid, details in bind.execute(sa.text(
+            "SELECT entity_id, details FROM audit_log WHERE entity = 'task' AND action = 'create'")).fetchall():
+        d = json.loads(details) if isinstance(details, str) else (details or {})
+        if d.get('copied_from') and str(eid).isdigit():
+            src_of[int(eid)] = int(d['copied_from'])
+    tasks = {r[0]: {'kind': r[1], 'batch': r[2]} for r in bind.execute(sa.text(
+        'SELECT id, kind, batch_id FROM online_tasks')).fetchall()}
+    for tid in sorted(src_of):
+        t, s = tasks.get(tid), tasks.get(src_of[tid])
+        if not t or not s or t['kind'] != 'sinaq' or s['kind'] != 'sinaq' or not s['batch'] or t['batch'] == s['batch']:
+            continue
+        if t['batch'] is not None:
+            n = bind.execute(sa.text('SELECT COUNT(*) FROM online_tasks WHERE batch_id = :b'), {'b': t['batch']}).scalar()
+            if n != 1:
+                continue
+        old = t['batch']
+        bind.execute(sa.text('UPDATE online_tasks SET batch_id = :b WHERE id = :i'), {'b': s['batch'], 'i': tid})
+        if old is not None:
+            bind.execute(sa.text('DELETE FROM test_batches WHERE id = :b'), {'b': old})
+        t['batch'] = s['batch']
+        merged += 1
+    return merged

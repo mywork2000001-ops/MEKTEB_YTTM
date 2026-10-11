@@ -5,6 +5,7 @@ import { get, patch, post } from '../../api'
 import { MathText } from '../../MathText'
 import { Drawer, ErrorBox, Field, Pill, toast } from '../../ui'
 import { TargetPicker } from './common'
+import { heldLabel, useExamDates } from './examDates'
 
 type ML = string | { az?: string; ru?: string; en?: string } | null | undefined
 const ml = (x: ML) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
@@ -172,8 +173,10 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
   const random = () => add([...pool.filter(q => !has(q.key))].sort(() => Math.random() - 0.5).slice(0, n))
   const wasGiven = (l: any) => !!given?.[l.id]?.full
   const otherGrade = (l: any) => !!grades?.length && !grades.every(g => (l.grades || []).includes(g))
-  const all = (k: string) => (lessons[k] || []).filter(l => (!kinds || kinds.includes(l.kind || 'movzu')) &&
-    (!filter || l.label.toLowerCase().includes(filter.toLowerCase())))
+  const dates = useExamDates(srcSel.flatMap(k => lessons[k] || []))
+  // sınağın keçirildiyi tarixə görə: yenidən köhnəyə (tarixi olmayanlar sonda); tarix filtri – İl · Ay · Həftə · Gün
+  const all = (k: string) => dates.sort((lessons[k] || []).filter(l => (!kinds || kinds.includes(l.kind || 'movzu')) &&
+    (!filter || l.label.toLowerCase().includes(filter.toLowerCase())) && dates.fits(l)))
   const hiddenOf = (l: any) => (wasGiven(l) || otherGrade(l)) && !lesSel.some(x => x.id === l.id)
   const list = (k: string) => all(k).filter(l => showAll || !hiddenOf(l))
   const hidden = srcSel.reduce((n, k) => n + all(k).filter(hiddenOf).length, 0)
@@ -187,6 +190,7 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
         {srcSel.length > 0 && (
           <>
             <input className="sel" placeholder="Bölmə / alt mövzu axtar" value={filter} onChange={e => setFilter(e.target.value)} />
+            {srcSel.some(k => (lessons[k] || []).some(l => l.held_on)) && dates.bar}
             {(hidden > 0 || showAll) && (given || grades) && <label className="check small">
               <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
               Verilmiş və başqa sinfin sınaqlarını da göstər <span className="muted">({hidden} gizlədilib – seçilsə, göndərəndə təsdiq soruşulacaq)</span></label>}
@@ -199,7 +203,7 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
                       <div className="small muted" style={{ padding: '6px 12px 2px', fontWeight: 600 }}>{bankGroup(k, l.label)}</div>}
                     <label className="check" style={{ padding: '0 12px', minHeight: 36 }}>
                       <input type="checkbox" checked={lesSel.some(x => x.id === l.id)} onChange={() => toggleLes(l, k)} />
-                      <span className="small">{l.label} <span className="muted">({l.questions}{l.grades?.length ? ` · ${l.grades.join(', ')}-cu sinif` : ''})</span>
+                      <span className="small">{heldLabel(l) && <><Pill tone="info">{heldLabel(l)}</Pill> </>}{l.label} <span className="muted">({l.questions}{l.grades?.length ? ` · ${l.grades.join(', ')}-cu sinif` : ''})</span>
                         {wasGiven(l) && <> <Pill tone="warn">verilib · {given![l.id].classes.filter(c => c.full).map(c => `${c.class_name} ${ddmm(c.at)}`).join(', ')}</Pill></>}
                         {!wasGiven(l) && given?.[l.id] && <> <Pill>qismən istifadə olunub</Pill></>}
                         {otherGrade(l) && <> <Pill tone="warn">{l.grades?.length ? 'başqa sinfin' : 'sinfi göstərilməyib'}</Pill></>}</span></label></div>))}
