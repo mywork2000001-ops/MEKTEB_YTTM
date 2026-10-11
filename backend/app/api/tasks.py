@@ -2,6 +2,7 @@
 Məsələn: 29.09.2026 15:00–16:00, müddət 40 dəq. Vaxt bitəndə cavablar avtomatik təhvil verilir (serverdə)."""
 from __future__ import annotations
 
+import copy
 import datetime as dt
 from typing import Literal
 
@@ -38,6 +39,46 @@ def score(task: OnlineTask, a: TaskAttempt):
     ok = sum(is_ok(task, a, i) for i in range(len(task.questions)))
     a.correct, a.total = ok, len(task.questions)
     a.grade = summative_grade(ok * 100 / a.total) if a.total else None
+
+
+def exam_score(task: OnlineTask, a: TaskAttempt, penalty: int = 0) -> dict:
+    """Sınaq balı – hər yerdə eyni (jurnal, reytinq, şagird, sertifikat): bal = düz − səhv ÷ N, faiz = max(0, bal) ÷ sual.
+    Boş cavab səhv sayılmır; müəllimin «düz say»ı boş cavaba verilibsə – düz sayılır, boş yox."""
+    n = len(task.questions)
+    ok = [is_ok(task, a, i) for i in range(n)]
+    blank = sum(1 for i in range(n) if not ok[i] and (a.answers or {}).get(str(i)) in (None, ''))
+    c = sum(ok)
+    wrong = n - c - blank
+    pts = round(c - (wrong / penalty if penalty else 0), 2)
+    return {'correct': c, 'wrong': wrong, 'blank': blank, 'points': pts,
+            'pct': round(max(0.0, pts) * 100 / n, 1) if n else None}
+
+
+def penalty_of(db: Session, task: OnlineTask) -> int:
+    if task.kind != 'sinaq' or not task.batch_id:
+        return 0
+    b = db.get(TestBatch, task.batch_id)
+    return (b.penalty or 0) if b else 0
+
+
+def attempt_pct(db: Session, task: OnlineTask, a: TaskAttempt) -> float | None:
+    """Şagirdə və siyahılara göstərilən faiz: sınaqda cərimə ilə, qalanında düz ÷ ümumi."""
+    if not a.submitted_at or not a.total:
+        return None
+    if task.kind == 'sinaq':
+        return exam_score(task, a, penalty_of(db, task))['pct']
+    return round(a.correct * 100 / a.total, 1)
+
+
+def review_opens_at(db: Session, task: OnlineTask) -> dt.datetime:
+    """«Bağlandıqdan sonra» cavablar: bir neçə sinfə verilmiş paketdə – ən gec bağlanan sinifdən sonra
+    (erkən bağlanan sinif cavabları başqa sinif hələ yazarkən görməsin)."""
+    c = aware(task.closes_at)
+    if task.batch_id:
+        for x in db.scalars(select(OnlineTask.closes_at).where(OnlineTask.batch_id == task.batch_id,
+                                                               OnlineTask.archived_at.is_(None))):
+            c = max(c, aware(x))
+    return c
 
 
 def finalize(db: Session, task: OnlineTask, a: TaskAttempt, at: dt.datetime | None = None, auto: bool = False):
@@ -330,7 +371,6 @@ def copy_task(ta_id: int, task_id: int, body: CopyIn, user: User = Depends(staff
         bad = set(body.student_ids) - {x.id for x in roster(db, target)}
         if bad or not body.student_ids:
             raise HTTPException(400, 'Şagirdlər seçilən sinifdən/qrupdan olmalıdır')
-    import copy as _copy
     title = body.title or src.title
     pl_id = _target_topic(db, src, target) if src.kind == 'movzu' else None
     if pl_id:                                     # mövzu testi – hədəf sinfin planında həmin mövzuya
@@ -338,7 +378,7 @@ def copy_task(ta_id: int, task_id: int, body: CopyIn, user: User = Depends(staff
     else:                                         # plandan kənar – sınaq
         kind, batch_id = 'sinaq', exam_batch(db, target, title, user).id
     t = OnlineTask(assignment_id=target.id, title=title, description=src.description,
-                   opens_at=o, closes_at=c, duration_min=dur, questions=_copy.deepcopy(src.questions),
+                   opens_at=o, closes_at=c, duration_min=dur, questions=copy.deepcopy(src.questions),
                    shuffle=src.shuffle, show_answers=src.show_answers, student_ids=body.student_ids, created_by=user.id,
                    kind=kind, batch_id=batch_id, plan_lesson_id=pl_id)
     db.add(t)
@@ -492,11 +532,17 @@ def update_task(ta_id: int, task_id: int, body: TaskPatch, user: User = Depends(
     if d > (c - o).total_seconds() / 60:
         raise HTTPException(400, 'Həll müddəti açıq qalma aralığından uzun ola bilməz')
     if body.questions is not None:
-        if db.scalar(select(func.count()).select_from(TaskAttempt).where(TaskAttempt.task_id == t.id)):
-            raise HTTPException(409, 'Şagirdlər artıq başlayıb – suallar dəyişdirilə bilməz (ad və vaxt dəyişə bilər)')
+        # sınaq paketi: suallar bütün siniflərdə eyni olmalıdır (jurnal, sual analizi, reytinq) – birlikdə dəyişir
+        same = list(db.scalars(select(OnlineTask).where(OnlineTask.batch_id == t.batch_id))) \
+            if t.kind == 'sinaq' and t.batch_id else [t]
+        if db.scalar(select(func.count()).select_from(TaskAttempt).where(TaskAttempt.task_id.in_([x.id for x in same]))):
+            raise HTTPException(409, 'Şagirdlər artıq başlayıb – suallar dəyişdirilə bilməz (ad və vaxt dəyişə bilər)'
+                                if len(same) == 1 else 'Bu sınağa başqa sinifdə artıq başlayıblar – suallar dəyişdirilə bilməz')
         if not body.questions or len(body.questions) > 100:
             raise HTTPException(400, '1–100 sual olmalıdır')
-        t.questions = [custom_snapshot(q) for q in body.questions]
+        qs = [custom_snapshot(q) for q in body.questions]
+        for x in same:
+            x.questions = copy.deepcopy(qs)
     if body.all_students:
         t.student_ids = None
     elif 'student_ids' in data and body.student_ids is not None:

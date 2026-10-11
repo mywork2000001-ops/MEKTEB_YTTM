@@ -19,7 +19,7 @@ const EXAM_SOURCES = ['sinaqlar', 'p012', 'p009']
 type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; teacher: string; mine: boolean; students: number }
 type Exam = { id: number; title: string; subject: string; grade: number | null; classes: string[]; opens_at: string | null; closes_at: string | null
   questions: number; mine: boolean; wrote: number; avg_pct: number | null; state: 'gözlənilir' | 'açıqdır' | 'bitib' }
-type Row = { student_id: number | null; full_name: string | null; class_name: string; task_id: number; status: 'yazıb' | 'yazmayıb' | 'yazır'
+type Row = { student_id: number | null; full_name: string | null; class_name: string; task_id: number; status: 'yazıb' | 'yazmayıb' | 'yazır' | 'gözlənilir'
   correct: number | null; wrong: number | null; blank: number | null; points: number | null; pct: number | null; grade: number | null
   place_all: number | null; place_class: number | null; retake: boolean }
 type Res = { batch: { id: number; title: string; subject: string; grade: number | null; penalty: number; questions: number }
@@ -40,10 +40,10 @@ export default function OnlineExams() {
   const f = usePeriod('exams', 'date')
   const all = list || []
   // eyni adlı sınaq ikinci dəfə (və ya «(təkrar)») – «təkrar» nişanı
-  const base = (t: string) => t.replace(/s*(təkrar)s*$/i, '').trim().toLocaleLowerCase('az')
+  const base = (t: string) => t.replace(/\s*\(təkrar\)\s*$/i, '').trim().toLocaleLowerCase('az')
   const firstId = new Map<string, number>()
   for (const x of [...all].sort((a, b) => a.id - b.id)) if (!firstId.has(base(x.title))) firstId.set(base(x.title), x.id)
-  const isRepeat = (x: Exam) => firstId.get(base(x.title)) !== x.id || /(təkrar)s*$/i.test(x.title)
+  const isRepeat = (x: Exam) => firstId.get(base(x.title)) !== x.id || /\(təkrar\)\s*$/i.test(x.title)
   const shown = all.filter(x => !x.opens_at || f.has(x.opens_at)).sort(f.sort === 'topic'
     ? (a, b) => a.title.localeCompare(b.title, 'az', { numeric: true }) || Date.parse(b.opens_at || '') - Date.parse(a.opens_at || '')
     : (a, b) => Date.parse(b.opens_at || '') - Date.parse(a.opens_at || ''))

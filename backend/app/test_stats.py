@@ -102,7 +102,7 @@ def _roots(db: Session, tasks: list[OnlineTask]) -> dict[int, int]:
 def collect(db: Session, user: User | None, kind: str, ta_ids: set[int] | None = None,
             date_from: dt.date | None = None, date_to: dt.date | None = None, subject: str | None = None) -> dict:
     """{tests: [...], rows: [...]} – bir növ üzrə. rows: (şagird, test) cütü, yer sinifdə və ümumi."""
-    from .api.tasks import expire_due, is_ok
+    from .api.tasks import exam_score, expire_due
     tasks, vis = _visible_tasks(db, user, kind, ta_ids)
     root = _roots(db, tasks)
     t0 = now()
@@ -150,11 +150,7 @@ def collect(db: Session, user: User | None, kind: str, ta_ids: set[int] | None =
                                           'visible': vis[t.id], 'submitted_at': None})
                 p['visible'] = p['visible'] or vis[t.id]
                 if a and a.submitted_at and a.total:
-                    n = len(t.questions)
-                    ok = sum(is_ok(t, a, i) for i in range(n))
-                    blank = sum(1 for i in range(n) if (a.answers or {}).get(str(i)) in (None, ''))
-                    pts = ok - ((n - ok - blank) / penalty if penalty else 0)
-                    pct = round(max(0.0, pts) * 100 / n, 1)
+                    pct = exam_score(t, a, penalty)['pct']
                     if p['status'] != 'yazıb' or _aware(a.submitted_at) >= p['submitted_at']:
                         p.update(status='yazıb', pct=pct, grade=summative_grade(pct), task_id=t.id,
                                  submitted_at=_aware(a.submitted_at))

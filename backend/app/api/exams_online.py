@@ -27,7 +27,7 @@ from ..models import (AuditLog, BankFile, BankQuestion, OnlineTask, Role, School
                       User, now)
 from ..services import class_grade, roster
 from .common import audit, need_school
-from .tasks import CustomQ, _snapshot, aware, custom_snapshot, expire_due, is_ok, purge_tasks, score
+from .tasks import CustomQ, _snapshot, aware, custom_snapshot, exam_score, expire_due, is_ok, purge_tasks, score
 
 router = APIRouter(prefix='/api/exams-online', tags=['exams-online'])
 
@@ -150,10 +150,6 @@ def grade_issues(db: Session, classes: list[tuple[str, int | None]], cnt: Counte
 
 
 # ---------------------------------------------------------------- hesab
-def _points(correct: int, wrong: int, penalty: int) -> float:
-    return round(correct - (wrong / penalty if penalty else 0), 2)
-
-
 def results(db: Session, b: TestBatch) -> dict:
     """Sınaq jurnalı (adlarla – çağıran tərəf məxfiliyi özü tətbiq edir)."""
     tasks = _tasks(db, b)
@@ -183,19 +179,16 @@ def results(db: Session, b: TestBatch) -> dict:
                    'blank': None, 'points': None, 'pct': None, 'grade': None, 'retake': (t.id, s.id) in retakes,
                    'submitted_at': None}
             if a and a.submitted_at and a.total:
-                ok = [is_ok(t, a, i) for i in range(len(t.questions))]
-                blank = sum(1 for i in range(len(t.questions)) if (a.answers or {}).get(str(i)) in (None, ''))
-                c = sum(ok)
-                wrong = len(ok) - c - blank
-                pts = _points(c, wrong, b.penalty)
-                pct = round(max(0.0, pts) * 100 / len(ok), 1)
-                row.update(status='yazıb', correct=c, wrong=wrong, blank=blank, points=pts, pct=pct,
-                           grade=summative_grade(pct), submitted_at=aware(a.submitted_at))
-                for i, v in enumerate(ok):
-                    q_ok[i] += v
-                q_n += 1
+                sc = exam_score(t, a, b.penalty)
+                row.update(status='yazıb', **sc, grade=summative_grade(sc['pct']), submitted_at=aware(a.submitted_at))
+                if len(t.questions) == len(q_ok):         # sual analizi – eyni suallı siniflər üzrə
+                    for i in range(len(q_ok)):
+                        q_ok[i] += is_ok(t, a, i)
+                    q_n += 1
             elif a:
                 row['status'] = 'yazır'
+            elif t0 < aware(t.closes_at):
+                row['status'] = 'gözlənilir'              # sinfin vaxtı bitməyib – hələ yaza bilər
             rows.append(row)
     wrote = [r for r in rows if r['status'] == 'yazıb']
     for k, _, place in rank([(str(i), r['points']) for i, r in enumerate(rows) if r['status'] == 'yazıb']):
@@ -381,6 +374,7 @@ def list_exams(user: User = Depends(staff), db: Session = Depends(get_db)):
         if not live:
             continue
         ts = live
+        by_id = {t.id: t for t in ts}
         names = [db.get(SchoolClass, db.get(TeachingAssignment, t.assignment_id).class_id).name for t in ts]
         done = [a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id.in_([t.id for t in ts]),
                                                                 TaskAttempt.submitted_at.is_not(None))) if a.total]
@@ -390,7 +384,8 @@ def list_exams(user: User = Depends(staff), db: Session = Depends(get_db)):
         out.append({'id': b.id, 'title': b.title, 'subject': b.subject, 'grade': b.grade, 'classes': names,
                     'opens_at': o, 'closes_at': c, 'questions': len(ts[0].questions) if ts else 0,
                     'mine': b.created_by == user.id, 'wrote': len(done),
-                    'avg_pct': round(sum(a.correct * 100 / a.total for a in done) / len(done), 1) if done else None,
+                    'avg_pct': round(sum(exam_score(by_id[a.task_id], a, b.penalty)['pct'] for a in done) / len(done), 1)
+                    if done else None,
                     'state': 'gözlənilir' if o and t0 < o else 'açıqdır' if c and t0 < c else 'bitib'})
     return out
 
@@ -575,6 +570,6 @@ def student_exams(db: Session, s: Student, task_ids: list[int]) -> list[dict]:
         else:                                    # hələ açıqdır: öz faizi görünür, yer – bağlananda
             a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
             if a and a.submitted_at and a.total:
-                item.update(my_pct=round(a.correct * 100 / a.total, 1), my_correct=a.correct, my_total=a.total)
+                item.update(my_pct=exam_score(t, a, b.penalty)['pct'], my_correct=a.correct, my_total=a.total)
         out.append(item)
     return out

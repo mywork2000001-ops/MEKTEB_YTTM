@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import datetime as dt
 import random
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -18,7 +20,7 @@ from ..models import (Attendance, Exam, ExamScore, GroupMember, HomeworkCheck, J
                       Role, SchoolClass, Student, TaskAttempt, TeachingAssignment, User, now)
 from ..services import SCHOOL_TZ, journal_entries, plan_ctx, roster, taught_lesson, today
 from .plan import WEEKDAYS, bell
-from .tasks import aware, expire_due, finalize, is_ok
+from .tasks import attempt_pct, aware, expire_due, finalize, is_ok, review_opens_at
 
 router = APIRouter(prefix='/api/portal', tags=['portal'])
 SUBMIT_GRACE = dt.timedelta(seconds=10)     # vaxt bitən anda göndərilən son cavablar üçün (şəbəkə gecikməsi)
@@ -272,10 +274,14 @@ def _status(t: OnlineTask, a: TaskAttempt | None, at: dt.datetime) -> str:
     return 'açıq'
 
 
-def _can_review(t: OnlineTask, a: TaskAttempt | None, at: dt.datetime) -> bool:
+def _can_review(db: Session, t: OnlineTask, a: TaskAttempt | None, at: dt.datetime) -> bool:
     if not a or not a.submitted_at or t.show_answers == 'never':
         return False
-    return t.show_answers == 'after_submit' or at >= aware(t.closes_at)
+    return t.show_answers == 'after_submit' or at >= review_opens_at(db, t)
+
+
+def _shown_grade(t: OnlineTask, a: TaskAttempt) -> int | None:
+    return None if t.kind == 'sinaq' else a.grade           # sınaq formativ qiymətə təsir etmir – qiymət göstərilmir
 
 
 @router.get('/tasks')
@@ -292,8 +298,9 @@ def tasks(user: User = Depends(student_only), db: Session = Depends(get_db)):
                     'teacher': _teacher(db, ta), 'opens_at': aware(t.opens_at), 'closes_at': aware(t.closes_at),
                     'duration_min': t.duration_min, 'questions': len(t.questions), 'status': _status(t, a, at),
                     'deadline': aware(a.deadline) if a else None,
-                    'result': {'correct': a.correct, 'total': a.total, 'grade': a.grade} if a and a.submitted_at else None,
-                    'can_review': _can_review(t, a, at), 'kind': t.kind,
+                    'result': {'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a),
+                               'pct': attempt_pct(db, t, a)} if a and a.submitted_at else None,
+                    'can_review': _can_review(db, t, a, at), 'kind': t.kind,
                     'solution_at': a.solution_at if a and a.solution_key else None,
                     'topic_seq': pl.seq if pl else None, 'topic': pl.topic if pl else None})
     return out
@@ -328,7 +335,11 @@ def start(task_id: int, user: User = Depends(student_only), db: Session = Depend
         a = TaskAttempt(task_id=t.id, student_id=s.id, started_at=at, order=order, answers={},
                         deadline=min(at + dt.timedelta(minutes=t.duration_min), aware(t.closes_at)))
         db.add(a)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:                               # eyni anda iki «Başla» (iki klik / cihaz) – eyni cəhd
+            db.rollback()
+            a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
     elif not a.submitted_at and at >= aware(a.deadline):
         finalize(db, t, a, at, auto=True)
         db.commit()
@@ -339,7 +350,9 @@ def start(task_id: int, user: User = Depends(student_only), db: Session = Depend
 
 
 class AnswersIn(BaseModel):
-    answers: dict[str, int | str | None]
+    # açıq cavab ≤ 500 simvol, ≤ 100 sual – bazaya böyük mətn yazılmasın
+    answers: dict[Annotated[str, StringConstraints(max_length=4)],
+                  int | Annotated[str, StringConstraints(max_length=500)] | None] = Field(max_length=100)
 
 
 def _open_attempt(db: Session, s: Student, t: OnlineTask) -> TaskAttempt:
@@ -384,8 +397,8 @@ def submit(task_id: int, body: AnswersIn | None = None, user: User = Depends(stu
     from ..certificates import for_attempt
     cert = for_attempt(db, t, a)                             # mövzu testi ≥ hədd – sertifikat dərhal
     db.commit()
-    return {'correct': a.correct, 'total': a.total, 'grade': a.grade, 'auto_submitted': a.auto_submitted,
-            'can_review': _can_review(t, a, at), 'pct': round(100 * a.correct / a.total) if a.total else None,
+    return {'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a), 'auto_submitted': a.auto_submitted,
+            'can_review': _can_review(db, t, a, at), 'pct': attempt_pct(db, t, a),
             'certificate': {'code': cert.code, 'title': cert.title} if cert else None}
 
 
@@ -394,7 +407,7 @@ def review(task_id: int, user: User = Depends(student_only), db: Session = Depen
     s = me_student(db, user)
     t = _task_for(db, s, task_id)
     a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
-    if not _can_review(t, a, now()):
+    if not _can_review(db, t, a, now()):
         raise HTTPException(403, 'Cavablar hələ açılmayıb' if a and a.submitted_at else 'Tapşırıq təhvil verilməyib')
     out = []
     for i in a.order:
@@ -402,7 +415,7 @@ def review(task_id: int, user: User = Depends(student_only), db: Session = Depen
         given = (a.answers or {}).get(str(i))
         out.append({**_public_q(q, i), 'given': given, 'ok': is_ok(t, a, i), 'correct': q.get('correct'),
                     'answer': q.get('answer'), 'explanation': q.get('explanation')})
-    return {'title': t.title, 'correct': a.correct, 'total': a.total, 'grade': a.grade, 'questions': out}
+    return {'title': t.title, 'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a), 'questions': out}
 
 
 # ---------------------------------------------------------------- nəticələr və analitika
@@ -549,11 +562,10 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
         ta = db.get(TeachingAssignment, t.assignment_id)
         task_rows.append({'id': t.id, 'title': t.title, 'kind': t.kind, 'subject': ta.subject if ta else None,
                           'submitted_at': aware(a.submitted_at), 'closes_at': aware(t.closes_at), 'correct': a.correct,
-                          'total': a.total, 'pct': round(a.correct * 100 / a.total, 1) if a.total else None,
-                          # sınaq formativ qiymətə təsir etmir – qiymət göstərilmir
-                          'grade': None if t.kind == 'sinaq' else a.grade, 'auto_submitted': a.auto_submitted,
-                          'can_review': _can_review(t, a, at), 'solution': bool(a.solution_key)})
-        if _can_review(t, a, at):
+                          'total': a.total, 'pct': attempt_pct(db, t, a),       # sınaqda cərimə ilə – «Sınaq imtahanları» ilə eyni
+                          'grade': _shown_grade(t, a), 'auto_submitted': a.auto_submitted,
+                          'can_review': _can_review(db, t, a, at), 'solution': bool(a.solution_key)})
+        if _can_review(db, t, a, at):
             for i in a.order:
                 q = t.questions[i]
                 if not is_ok(t, a, i):                                    # müəllimin açıq sual düzəlişi nəzərə alınır

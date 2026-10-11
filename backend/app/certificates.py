@@ -91,10 +91,13 @@ def _sinaq_closed(db: Session, t: OnlineTask) -> int:
         return 0
     atts = [a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.submitted_at.is_not(None)))
             if a.total]
+    from .api.tasks import exam_score, penalty_of
+    pen = penalty_of(db, t)
+    sc = {a.id: exam_score(t, a, pen) for a in atts}           # sınaq jurnalı ilə eyni bal və faiz (cərimə ilə)
     n = 0
     for a in atts:
-        p = _pct(a)
-        place = 1 + sum(1 for b in atts if _pct(b) > p)
+        p = sc[a.id]['pct']
+        place = 1 + sum(1 for b in atts if sc[b.id]['points'] > sc[a.id]['points'])
         if p >= r['sinaq_pct'] or place <= r['sinaq_top']:
             c = give(db, db.get(Student, a.student_id), ta, 'sinaq', f'task:{t.id}', f'Sınaq imtahanı: {t.title}',
                      {'pct': p, 'correct': a.correct, 'total': a.total, 'place': place, 'of': len(atts), 'test': t.title})

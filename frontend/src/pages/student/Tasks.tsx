@@ -5,7 +5,7 @@ import { api, ApiError, get, post, put } from '../../api'
 import { imagesToPdf } from '../../imagesToPdf'
 import { confetti } from '../../certificate'
 import { useT } from '../../i18n'
-import { azRange, azDT, AsyncBtn, Drawer, ErrorBox, gradeTone, Loading, Pill, Seg, toast, Top, useLoad } from '../../ui'
+import { azRange, azDT, AsyncBtn, fmt, Drawer, ErrorBox, gradeTone, Loading, Pill, Seg, toast, Top, useLoad } from '../../ui'
 import { MathText } from '../../MathText'
 import { printReview } from './studentPrint'
 import { useAuth } from '../../auth'
@@ -66,7 +66,7 @@ export default function Tasks() {
           {shown.map(x => (
             <div key={x.id} className="jrow">
               <span><b>{x.title}</b><span className="sub small muted"><br />{x.subject}{x.topic_seq ? ` · mövzu №${x.topic_seq}` : ''} · {x.teacher} · {azRange(x.opens_at, x.closes_at)} · {x.duration_min} dəq · {x.questions} sual</span></span>
-              <span className="row">{x.result ? <Pill tone={gradeTone(x.result.grade)}>{x.result.correct}/{x.result.total} → {x.result.grade}</Pill> : <Pill tone={x.status === 'açıq' || x.status === 'həll edilir' ? 'ok' : x.status === 'buraxılıb' ? 'bad' : undefined}>{x.status}</Pill>}</span>
+              <span className="row">{x.result ? <Pill tone={x.result.grade ? gradeTone(x.result.grade) : x.result.pct >= 70 ? 'ok' : x.result.pct >= 40 ? 'warn' : 'bad'}>{x.result.correct}/{x.result.total}{x.result.grade ? ` → ${x.result.grade}` : ` · ${fmt(x.result.pct)}%`}</Pill> : <Pill tone={x.status === 'açıq' || x.status === 'həll edilir' ? 'ok' : x.status === 'buraxılıb' ? 'bad' : undefined}>{x.status}</Pill>}</span>
               <span>{(x.status === 'açıq' || x.status === 'həll edilir') && <button className="btn primary sm" onClick={() => { enterFs(); setSolving(x.id) }}>{x.status === 'açıq' ? t('Başla') : 'Davam et'}</button>}
                 {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>Cavablara bax</button>}
                 {(x.status === 'həll edilir' || x.status === 'təhvil verilib') && new Date(x.closes_at) > new Date() &&
@@ -178,7 +178,7 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
     try {
       // vaxt bitəndə də son cavablar göndərilir (server 10 san. gecikməni qəbul edir)
       const r = await post(`/api/portal/tasks/${id}/submit`, { answers: { ...ansRef.current } })
-      toast(auto ? `Vaxt bitdi – təhvil verildi: ${r.correct}/${r.total}` : `Təhvil verildi: ${r.correct}/${r.total} → ${r.grade}`)
+      toast(`${auto ? 'Vaxt bitdi – təhvil verildi' : 'Təhvil verildi'}: ${r.correct}/${r.total}${r.grade ? ` → ${r.grade}` : r.pct != null ? ` · ${fmt(r.pct)}%` : ''}`)
       if (r.certificate || (r.pct ?? 0) >= 80) confetti()                           // təbrik
       if (r.certificate) toast(`🏆 Yeni sertifikat: ${r.certificate.title} – «Uğurlarım»da`)
     } catch (e) { if (!(e instanceof ApiError && e.status === 409)) toast('Xəta: ' + (e as Error).message) }

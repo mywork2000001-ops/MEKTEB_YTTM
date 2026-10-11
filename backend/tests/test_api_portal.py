@@ -104,7 +104,7 @@ def test_timed_task_flow(world, clock):
     rr = s.put(f'/api/portal/tasks/{t["id"]}/answers', json={'answers': {str(by_text['5·2=?']): 0}})
     assert rr.status_code == 409                                              # vaxt bitdi – avtomatik təhvil
     res = s.get('/api/portal/tasks').json()[0]
-    assert res['status'] == 'təhvil verilib' and res['result'] == {'correct': 2, 'total': 3, 'grade': 4}
+    assert res['status'] == 'təhvil verilib' and res['result'] == {'correct': 2, 'total': 3, 'grade': None, 'pct': 66.7}   # plandan kənar – sınaq, qiymətsiz
     rev = s.get(f'/api/portal/tasks/{t["id"]}/review').json()               # bağlandıqdan sonra açılır
     assert sum(q['ok'] for q in rev['questions']) == 2
     teacher = admin.get(f'/api/tasks/{ta}/{t["id"]}').json()
