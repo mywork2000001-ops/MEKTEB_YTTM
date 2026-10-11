@@ -41,6 +41,14 @@ def score(task: OnlineTask, a: TaskAttempt):
     a.grade = summative_grade(ok * 100 / a.total) if a.total else None
 
 
+def _forget(*batch_ids):
+    """Sınaq paketi dəyişdi – keşlənmiş nəticəsi atılır (app/result_cache.py)."""
+    from .. import result_cache
+    for b in batch_ids:
+        if b:
+            result_cache.forget(b)
+
+
 def exam_score(task: OnlineTask, a: TaskAttempt, penalty: int = 0) -> dict:
     """Sınaq balı – hər yerdə eyni (jurnal, reytinq, şagird, sertifikat): bal = düz − səhv ÷ N, faiz = max(0, bal) ÷ sual.
     Boş cavab səhv sayılmır; müəllimin «düz say»ı boş cavaba verilibsə – düz sayılır, boş yox."""
@@ -290,6 +298,7 @@ def archive_task(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
         db.commit()
         return {'ok': True, 'deleted': True}
     t.archived_at = now()
+    _forget(t.batch_id)
     audit(db, user, 'archive', 'task', t.id)
     db.commit()
     return {'ok': True}
@@ -313,6 +322,7 @@ def delete_task(ta_id: int, task_id: int, user: User = Depends(staff), db: Sessi
 def purge_tasks(db: Session, tasks: list[OnlineTask]) -> int:
     """Tapşırıqları cəhdləri ilə birlikdə birdəfəlik silir; boş qalan sınaq paketi də silinir."""
     batches = {t.batch_id for t in tasks if t.batch_id}
+    _forget(*batches)
     ids = [t.id for t in tasks]
     if not ids:
         return 0
@@ -336,6 +346,7 @@ def restore_task(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
     if t.assignment_id != ta_id:
         raise HTTPException(404, 'Tapşırıq tapılmadı')
     t.archived_at = None
+    _forget(t.batch_id)
     audit(db, user, 'restore', 'task', t.id)
     db.commit()
     return task_out(t)
@@ -411,6 +422,7 @@ def reset_attempt(ta_id: int, task_id: int, student_id: int, user: User = Depend
     if not a:
         raise HTTPException(404, 'Şagird bu testə başlamayıb')
     db.delete(a)
+    _forget(t.batch_id)
     for m in db.scalars(select(Mark).where(Mark.task_id == t.id, Mark.student_id == student_id)):
         db.delete(m)                                  # mövzu testindən jurnala yazılmış qiymət də götürülür
     audit(db, user, 'delete', 'task_attempt', t.id, student_id=student_id)
@@ -562,6 +574,7 @@ def update_task(ta_id: int, task_id: int, body: TaskPatch, user: User = Depends(
     if c != aware(t.closes_at):
         t.journal_done_at = None                      # yeni bitmə vaxtında jurnala yenidən yazılsın
     t.opens_at, t.closes_at = o, c
+    _forget(t.batch_id)
     audit(db, user, 'update', 'task', t.id, fields=sorted(data))
     db.commit()
     return task_out(t)

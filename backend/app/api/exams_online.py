@@ -221,6 +221,20 @@ def results(db: Session, b: TestBatch) -> dict:
             'classes': classes, 'rows': rows, 'questions': questions}
 
 
+def closed_results(db: Session, b: TestBatch) -> dict:
+    """results() – bağlanmış paket üçün qısa keşlə (app/result_cache.py). Nəticə YALNIZ oxunur (dəyişdirmə)."""
+    from .. import result_cache
+    tasks = _tasks(db, b)
+    if not tasks or now() < max(aware(t.closes_at) for t in tasks):
+        return results(db, b)
+    key = (b.id, str(b.created_at))
+    res = result_cache.get(key)
+    if res is None:
+        res = results(db, b)
+        result_cache.put(key, res)
+    return res
+
+
 def _private(res: dict, user: User, access: str) -> dict:
     """Başqa müəllimlərin siniflərindəki şagirdlərin adı gizlədilir (yer və bal qalır)."""
     if access == 'full':
@@ -481,7 +495,9 @@ class ManualIn(BaseModel):
 def set_manual(batch_id: int, task_id: int, student_id: int, body: ManualIn, user: User = Depends(staff),
                db: Session = Depends(get_db)):
     """Açıq sualın əl ilə yoxlanması (məs. «2,50» düz sayılmalıdır) – bal və reytinq yenidən hesablanır."""
+    from .. import result_cache
     t, a = _editable_attempt(db, user, batch_id, task_id, student_id)
+    b = db.get(TestBatch, t.batch_id)
     if body.index >= len(t.questions):
         raise HTTPException(400, 'Belə sual yoxdur')
     if t.questions[body.index]['kind'] != 'open':
@@ -493,6 +509,7 @@ def set_manual(batch_id: int, task_id: int, student_id: int, body: ManualIn, use
         m[str(body.index)] = body.ok
     a.manual = m or None
     score(t, a)
+    result_cache.forget(b.id)
     audit(db, user, 'update', 'task_attempt', t.id, student_id=student_id, index=body.index, ok=body.ok)
     db.commit()
     return {'correct': a.correct, 'total': a.total}
@@ -527,7 +544,7 @@ def class_exams(db: Session, ta: TeachingAssignment, a: dt.date | None = None, b
         closed = t0 >= aware(t.closes_at)
         rows = {r['student_id']: {'status': r['status'] if r['status'] == 'yazıb' or not closed else 'yazmayıb',
                                   'pct': r['pct'], 'grade': r['grade']}
-                for r in results(db, bt)['rows'] if r['task_id'] == t.id}
+                for r in closed_results(db, bt)['rows'] if r['task_id'] == t.id}
         out.append({'task_id': t.id, 'batch_id': bt.id, 'title': bt.title, 'date': d, 'closed': closed, 'rows': rows})
     return out
 
@@ -557,7 +574,7 @@ def student_exams(db: Session, s: Student, task_ids: list[int]) -> list[dict]:
         item = {'batch_id': b.id, 'title': b.title, 'subject': b.subject, 'opens_at': aware(t.opens_at),
                 'closes_at': aware(t.closes_at), 'closed': closed, 'questions': len(t.questions)}
         if closed:
-            res = results(db, b)
+            res = closed_results(db, b)
             me = next((r for r in res['rows'] if r['student_id'] == s.id), None)
             mine_cls = [r for r in res['rows'] if r['task_id'] == t.id and r['status'] == 'yazıb']
             item.update(

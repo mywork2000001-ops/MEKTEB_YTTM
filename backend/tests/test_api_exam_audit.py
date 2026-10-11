@@ -106,3 +106,17 @@ def test_answer_size_limited_and_double_start_safe(world, clock, monkeypatch):
     c.post(f'/api/portal/tasks/{tid[ta]}/start')
     assert c.post(f'/api/portal/tasks/{tid[ta]}/start').status_code == 200     # təkrar «başla» – eyni cəhd
     assert c.put(f'/api/portal/tasks/{tid[ta]}/answers', json={'answers': {'1': 'x' * 5000}}).status_code == 422
+
+
+def test_closed_exam_cache_refreshes_after_manual_check(world, clock, monkeypatch):
+    """Bağlanmış sınağın nəticəsi keşlənir (bildirişlər yüngül olsun), amma müəllimin əl ilə yoxlaması dərhal görünür."""
+    admin, ta, ta_c, st, xs, bid, tid = _two_classes(world, clock, monkeypatch)
+    clock.t = dt.datetime(2026, 9, 29, 11, 30, tzinfo=UTC)
+    c = _answer(st[0], tid[ta], {**ALL_OK, 'x²=9, x>0': 'üç'})                  # 2/3
+    clock.t = dt.datetime(2026, 9, 29, 15, 1, tzinfo=UTC)
+    assert c.get('/api/portal/exams').json()['items'][0]['pct'] == 66.7
+    assert c.get('/api/portal/exams').json()['items'][0]['pct'] == 66.7          # keşdən
+    full = admin.get(f'/api/tasks/{ta}/{tid[ta]}/full').json()['questions_full']
+    oi = next(i for i, q in enumerate(full) if q['kind'] == 'open')
+    admin.put(f'/api/exams-online/{bid}/attempt/{tid[ta]}/{st[0]["id"]}', json={'index': oi, 'ok': True})
+    assert c.get('/api/portal/exams').json()['items'][0]['pct'] == 100.0
