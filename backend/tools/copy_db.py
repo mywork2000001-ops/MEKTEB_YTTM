@@ -25,7 +25,7 @@ def _env() -> dict[str, str]:
     if not f.is_file():
         raise SystemExit(f'{f} yoxdur – SOURCE_URL və TARGET_URL yazın (bax: faylın əvvəlindəki izah)')
     out = {}
-    for line in f.read_text(encoding='utf-8').splitlines():
+    for line in f.read_text(encoding='utf-8-sig').splitlines():
         if '=' in line and not line.lstrip().startswith('#'):
             k, v = line.split('=', 1)
             out[k.strip()] = v.strip().strip('"\'')
@@ -70,15 +70,32 @@ def main(copy: bool) -> None:
         busy = [t.name for t in tables if d.execute(select(func.count()).select_from(t)).scalar()]
     if busy:
         raise SystemExit(f'Hədəf baza boş deyil ({", ".join(busy[:5])}) – yeni boş Neon bazası istifadə edin')
-    with src.connect() as s, dst.begin() as d:                   # hamısı bir tranzaksiyada – yarımçıq köçmə qalmır
+    snap = {'isolation_level': 'REPEATABLE READ'} if src.dialect.name == 'postgresql' else {}
+    with src.connect().execution_options(**snap) as s, dst.begin() as d:   # mənbədən bir an; hədəfə bir tranzaksiya
+        done: set[str] = set()
+        later: list[tuple] = []                                  # dairəvi istinad (məs. schools.owner_id → users): sonra
         for t in tables:
+            pk = list(t.primary_key.columns)
+            defer = [c.name for c in t.columns for fk in c.foreign_keys
+                     if fk.column.table.name not in done and c.nullable and len(pk) == 1]
             n = 0
             res = s.execution_options(stream_results=True, yield_per=CHUNK).execute(select(t))
             for part in res.mappings().partitions(CHUNK):
-                d.execute(insert(t), [dict(r) for r in part])
+                rows = [dict(r) for r in part]
+                for r in rows:
+                    vals = {k: r[k] for k in defer if r[k] is not None}
+                    if vals:
+                        later.append((t, pk[0].name, r[pk[0].name], vals))
+                        r.update({k: None for k in vals})
+                d.execute(insert(t), rows)
                 n += len(part)
+            done.add(t.name)
             if n:
                 print(f'  {t.name}: {n}')
+        for t, key, kv, vals in later:
+            d.execute(t.update().where(t.c[key] == kv).values(**vals))
+        if later:
+            print(f'  sonradan bərpa edilən istinadlar: {len(later)}')
         for t in tables if dst.dialect.name == 'postgresql' else []:
             if 'id' in t.c and len(t.primary_key.columns) == 1 and t.c.id.autoincrement is not False:
                 d.execute(text(f"SELECT setval(pg_get_serial_sequence('{t.name}', 'id'), "
