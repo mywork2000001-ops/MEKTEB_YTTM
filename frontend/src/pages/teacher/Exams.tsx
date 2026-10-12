@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, del, get, patch, post, put } from '../../api'
-import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Pill, toast, useLoad } from '../../ui'
+import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, Pill, toast, useLoad } from '../../ui'
 import type { MyLesson } from './common'
 import { head, printDoc, SIGN, table } from '../../print'
 import { tt } from '../../i18n'
@@ -216,6 +216,10 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   const [pickd, setPickd] = useState<number[]>([])
   const [ready, setReady] = useState<Ready | null>(null)
   const [checking, setChecking] = useState(false)
+  const [openV, setOpenV] = useState<number | null>(null)
+  const [sibs, setSibs] = useState<{ ta_id: number; class_name: string; exam_id: number | null; variants: boolean; locked: boolean }[]>([])
+  const [also, setAlso] = useState<number[]>([])
+  useEffect(() => { get<typeof sibs>(`/api/exams/${ta.id}/${e.id}/siblings`).then(setSibs, () => setSibs([])) }, [e.id])   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { get<Sources>(`/api/exams/${ta.id}/${e.id}/sources`).then(setSrc, () => setSrc(null)) }, [e.id])   // eslint-disable-line react-hooks/exhaustive-deps
   const body = () => ({ n, share, file_ids: mode === 'plan' ? null : pickd, only_mine: mode === 'only' })
   // hazırlıq: seçim dəyişəndə hovuz yenidən yoxlanır (kiçik gecikmə ilə)
@@ -227,7 +231,15 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   }, [n, share, mode, pickd.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
   const make = async () => {
     setFail(null)
-    try { await post(`/api/exams/${ta.id}/${e.id}/variants`, body()); toast(tt('Variantlar hazırdır')); reload() } catch (x) { setFail((x as Error).message); throw x }
+    try {
+      if (also.length) {                     // eyni proqramlı siniflər də – hər sinfin nəticəsi ayrıca
+        const r = await post<{ ta_id: number; ok: boolean; error?: string }[]>(`/api/exams/${ta.id}/${e.id}/variants-multi`, { ...body(), ta_ids: [ta.id, ...also] })
+        const name = (id: number) => id === ta.id ? ta.class_name : sibs.find(x => x.ta_id === id)?.class_name || id
+        toast(r.map(x => `${name(x.ta_id)}: ${x.ok ? '✓' : '⚠ ' + (x.error || '')}`).join(' · '))
+        if (r.some(x => !x.ok)) setFail(r.filter(x => !x.ok).map(x => `${name(x.ta_id)}: ${x.error}`).join(' · '))
+      } else { await post(`/api/exams/${ta.id}/${e.id}/variants`, body()); toast(tt('Variantlar hazırdır')) }
+      reload()
+    } catch (x) { setFail((x as Error).message); throw x }
   }
   const load = () => get<KsqPrint>(`/api/exams/${ta.id}/${e.id}/variants/print`)
   const has = !!d?.variants.length
@@ -268,12 +280,24 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
               {mode === 'plan' && <button className="btn sm" onClick={() => setMode('add')}>＋ {tt('Test əlavə et')}</button>}
             </div>}
           </>}
-          {fail && <div className="small" style={{ color: 'var(--bad)', marginTop: 6 }}>{fail}</div>}
+          {sibs.length > 0 && <div className="kpick" style={{ maxHeight: 'none' }}>
+            <b className="small">{tt('Eyni proqramlı siniflər – eyni ayarlarla birlikdə hazırla')}</b>
+            {sibs.map(x => <label key={x.ta_id} className="check small"><input type="checkbox" disabled={x.locked} checked={also.includes(x.ta_id)}
+              onChange={ev => setAlso(p => ev.target.checked ? [...p, x.ta_id] : p.filter(i => i !== x.ta_id))} />{x.class_name}
+              <span className="muted"> · {x.locked ? tt('nəticə yazılıb – dəyişmir') : x.exam_id ? (x.variants ? tt('variantlar var – yenilənəcək') : tt('imtahan var')) : tt('imtahan yaradılacaq')}</span></label>)}
+            <p className="small muted" style={{ margin: '4px 0 0' }}>{tt('Siniflər arasında suallar ən çox 20 % təkrarlanır.')}</p></div>}
+          {fail && <div className="small" style={{ color: 'var(--bad)', marginTop: 6, whiteSpace: 'pre-wrap' }}>{fail}</div>}
           <div className="row" style={{ marginTop: 10, gap: 6 }}>
             <AsyncBtn className={'btn ' + (has ? 'ghost sm' : 'primary')} disabled={!ok} onClick={make}>{has ? '↻ ' + tt('Yenidən yarat') : tt('Variantları yarat')}</AsyncBtn></div>
         </Step>
         <Step no={2} title={tt('Variantlar')} active={has} state={has ? tt('{n} şagird', { n: d!.variants.length }) : undefined}>
-          {has ? <ol className="small kvars">{d!.variants.map(v => <li key={v.student_id}>{v.full_name || '—'} <span className="muted">{v.code}</span></li>)}</ol>
+          {has ? <>
+            <p className="small muted" style={{ margin: '0 0 6px' }}>{tt('Şagirdə toxunun – sualları görün, əvəz edin, düzəldin və ya ləğv edin.')}</p>
+            <div className="kvars2">{d!.variants.map(v => <button key={v.student_id} className={'chip' + (openV === v.student_id ? ' on' : '')} aria-pressed={openV === v.student_id}
+              onClick={() => setOpenV(openV === v.student_id ? null : v.student_id)}>{v.full_name || '—'} <span className="muted">{v.code}</span></button>)}</div>
+            {openV && <VariantView ta={ta.id} examId={e.id} sid={openV} name={d!.variants.find(v => v.student_id === openV)?.full_name || ''}
+              annulled={new Set(((d!.exam.items || []) as any[]).filter(it => it.annulled).map(it => it.n))} onChange={reload} />}
+          </>
             : <p className="small muted" style={{ margin: 0 }}>{tt('Əvvəl 1-ci addım.')}</p>}
         </Step>
         <Step no={3} title={tt('Çap')} active={has}>
@@ -394,5 +418,63 @@ function EditExam({ ta, e, onClose, onDone }: { ta: MyLesson; e: Exam & { title?
       </div>
       <p className="small muted">{tt('Bal və tapşırıqların quruluşu burada dəyişmir (kağız variantlarda sual sayı «Yenidən yarat» ilə).')}</p>
     </Drawer>
+  )
+}
+
+type VQ = { slot: number; kind: 'mcq' | 'open'; level: string; points: number; text: any; options?: any[] | null; correct?: number | null
+  answer?: string | null; topic?: string | null; topic_actual?: string | null; bank_id?: number | null; template?: string | null; replaced?: boolean; edited?: boolean }
+const LET = 'ABCDE'
+const az = (x: any) => (x && typeof x === 'object' ? x.az ?? Object.values(x)[0] : x) ?? ''
+
+/** Variantın sualları: 🔄 əvəz et · ✏ redaktə · ⊘ slotu hamı üçün ləğv et · 🔄 bu slotu bütün şagirdlərdə əvəz et. */
+function VariantView({ ta, examId, sid, name, annulled, onChange }: { ta: number; examId: number; sid: number; name: string; annulled: Set<number>; onChange: () => void }) {
+  const [qs, setQs] = useState<VQ[] | null>(null)
+  const [edit, setEdit] = useState<number | null>(null)
+  const load = () => get<any>(`/api/exams/${ta}/${examId}/variants`).then(d => setQs(d.variants.find((v: any) => v.student_id === sid)?.questions || []))
+  useEffect(() => { load() }, [sid])   // eslint-disable-line react-hooks/exhaustive-deps
+  const act = async (fn: () => Promise<unknown>, ok: string) => { try { await fn(); toast(ok + ' · ' + tt('çap olunubsa – vərəqi yenidən çap edin')); await load(); onChange() } catch (x) { toast((x as Error).message) } }
+  if (!qs) return <Loading />
+  return (
+    <div className="vview">
+      <p className="small muted" style={{ margin: '4px 0 8px' }}>{name}: {tt('{n} sual', { n: qs.length })}</p>
+      {qs.sort((a, b) => a.slot - b.slot).map(q => (
+        <div key={q.slot} className={'vq' + (annulled.has(q.slot) ? ' off' : '')}>
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="vno">{q.slot}</span>
+            <span className="small muted grow">{q.topic_actual || q.topic || '—'} · {q.kind === 'mcq' ? tt('test') : tt('açıq')} · {q.level} · {String(q.points).replace('.', ',')} {tt('bal')}
+              {q.replaced && ' · 🔄'}{q.edited && ' · ✏'}{annulled.has(q.slot) && <b style={{ color: 'var(--bad)' }}> · {tt('ləğv edilib')}</b>}</span>
+            <AsyncBtn className="btn sm ghost" title={tt('Bu şagirddə başqa sualla əvəz et (eyni mövzu, növ və çətinlik)')}
+              onClick={() => act(() => post(`/api/exams/${ta}/${examId}/variants/${sid}/${q.slot}/replace`, { hide_in_bank: false }), tt('Sual əvəz olundu'))}>🔄</AsyncBtn>
+            <button className="btn sm ghost" title={tt('Redaktə et')} onClick={() => setEdit(edit === q.slot ? null : q.slot)}>✏</button>
+            <AsyncBtn className="btn sm ghost" title={tt('Bu slotu BÜTÜN şagirdlərdə yeni sualla əvəz et')}
+              onClick={() => act(() => post(`/api/exams/${ta}/${examId}/slots/${q.slot}/replace-all`, {}), tt('Slot bütün şagirdlərdə əvəz olundu'))}>🔄👥</AsyncBtn>
+            <AsyncBtn className="btn sm ghost" title={annulled.has(q.slot) ? tt('Ləğvi geri qaytar') : tt('Səhv sual: bu slotu hamı üçün ləğv et (bal 100-ə miqyaslanır)')}
+              onClick={() => act(() => post(`/api/exams/${ta}/${examId}/slots/${q.slot}/annul`, { annulled: !annulled.has(q.slot) }), annulled.has(q.slot) ? tt('Ləğv geri qaytarıldı') : tt('Slot ləğv edildi'))}>⊘</AsyncBtn>
+          </div>
+          <div className="vtext">{az(q.text)}</div>
+          {q.kind === 'mcq' ? <div className="small">{(q.options || []).map((o, i) => <span key={i} style={{ marginRight: 10, fontWeight: i === q.correct ? 800 : 400 }}>{LET[i]}) {az(o)}{i === q.correct ? ' ✓' : ''}</span>)}</div>
+            : <div className="small">{tt('Cavab')}: <b>{q.answer}</b></div>}
+          {q.bank_id && <AsyncBtn className="btn sm ghost" title={tt('Bankdakı səhv sual: bir daha heç bir varianta düşməsin və bu şagirddə əvəz olunsun')}
+            onClick={() => act(() => post(`/api/exams/${ta}/${examId}/variants/${sid}/${q.slot}/replace`, { hide_in_bank: true }), tt('Sual bankda gizlədildi və əvəz olundu'))}>🚫 {tt('Bankda gizlət')}</AsyncBtn>}
+          {edit === q.slot && <QEdit q={q} onSave={body => act(() => put(`/api/exams/${ta}/${examId}/variants/${sid}/${q.slot}`, body), tt('Yadda saxlanıldı')).then(() => setEdit(null))} />}
+        </div>))}
+    </div>
+  )
+}
+
+function QEdit({ q, onSave }: { q: VQ; onSave: (b: any) => Promise<void> }) {
+  const [text, setText] = useState<string>(az(q.text))
+  const [opts, setOpts] = useState<string[]>((q.options || []).map(az))
+  const [cor, setCor] = useState<number>(q.correct ?? 0)
+  const [ans, setAns] = useState<string>(q.answer || '')
+  return (
+    <div className="fg" style={{ marginTop: 6, padding: 8, border: '1px dashed var(--line)', borderRadius: 8 }}>
+      <Field label={tt('Sualın mətni')}><textarea rows={3} value={text} onChange={x => setText(x.target.value)} /></Field>
+      {q.kind === 'mcq' ? opts.map((o, i) => (
+        <label key={i} className="row small" style={{ gap: 6 }}><input type="radio" checked={cor === i} onChange={() => setCor(i)} /> {LET[i]})
+          <input className="grow" value={o} onChange={x => setOpts(p => p.map((v, k) => (k === i ? x.target.value : v)))} /></label>))
+        : <Field label={tt('Düzgün cavab (kart xanaları: rəqəm, - , / ;)')}><input value={ans} maxLength={8} onChange={x => setAns(x.target.value)} /></Field>}
+      <AsyncBtn className="btn sm primary" onClick={() => onSave(q.kind === 'mcq' ? { text, options: opts, correct: cor } : { text, answer: ans })}>{tt('Yadda saxla')}</AsyncBtn>
+    </div>
   )
 }

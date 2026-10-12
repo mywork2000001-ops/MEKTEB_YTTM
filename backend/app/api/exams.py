@@ -350,6 +350,166 @@ def get_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sess
     return _variants_out(db, ta, _exam(db, ta_id, exam_id))
 
 
+def _rescore(db: Session, e: Exam, student_ids: list[int] | None = None) -> int:
+    """Skanı olan şagirdlərin balı yenidən hesablanır (sual düzəldiləndə / slot ləğv olunanda)."""
+    from ..models import ExamScan
+    from .exam_scans import apply
+    q = select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.reading.is_not(None))
+    if student_ids is not None:
+        q = q.where(ExamScan.student_id.in_(student_ids or [0]))
+    n = 0
+    for sc in db.scalars(q):
+        apply(db, e, sc)
+        n += 1
+    return n
+
+
+def _variant(db: Session, e: Exam, sid: int, slot: int) -> tuple[ExamVariant, int]:
+    v = db.get(ExamVariant, (e.id, sid))
+    if v is None:
+        raise HTTPException(404, 'Variant tapılmadı')
+    i = next((k for k, q in enumerate(v.questions) if q['slot'] == slot), None)
+    if i is None:
+        raise HTTPException(404, 'Sual tapılmadı')
+    return v, i
+
+
+class ReplaceIn(BaseModel):
+    hide_in_bank: bool = False                       # səhv bank sualı – bir daha heç bir varianta düşməsin
+
+
+@router.post('/{ta_id}/{exam_id}/variants/{student_id}/{slot}/replace')
+def replace_question(ta_id: int, exam_id: int, student_id: int, slot: int, body: ReplaceIn | None = None,
+                     user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Tək sualı əvəz edir: eyni mövzu → aralığın başqa mövzusu, eyni növ və çətinlik; sinifdə təkrarsızlıq qorunur."""
+    import random
+    from ..domain.ksq_variants import norm_text, pick_one
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    v, i = _variant(db, e, student_id, slot)
+    old = v.questions[i]
+    if body and body.hide_in_bank and old.get('bank_id'):
+        bq = db.get(BankQuestion, old['bank_id'])
+        if bq:
+            bq.active = False
+    students, topics, cands, hist, others, _ = _prepare(db, ta, e, VariantsIn(n=len(v.questions)))
+    taken = {q.get('key') for x in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)) for q in x.questions}
+    hidden = {old.get('key')} | ({'b:' + bq.content_hash} if body and body.hide_in_bank and old.get('bank_id') and bq else set())
+    cands = [c for c in cands if c.key not in taken and c.key not in hidden]
+    texts = {norm_text(q.get('text')) for x in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)) for q in x.questions}
+    got = pick_one(old, topics, cands, taken | hidden | texts | hist.get(student_id, set()), random.randrange(10 ** 9))
+    if got is None:
+        raise HTTPException(409, 'Bu slot üçün başqa uyğun sual tapılmadı (mövzular üzrə hovuz bitib)')
+    new = {**got, 'slot': slot, 'kind': old['kind'], 'level': old['level'], 'topic': old.get('topic')}
+    qs = list(v.questions)
+    qs[i] = {**new, 'points': old['points'], 'replaced': True}
+    v.questions = qs
+    _rescore(db, e, [student_id])
+    audit(db, user, 'update', 'exam_variant', e.id, student_id=student_id, slot=slot, op='replace')
+    db.commit()
+    return qs[i]
+
+
+class ReplaceAllIn(BaseModel):
+    file_ids: list[int] | None = Field(None, max_length=60)    # bu slot üçün başqa test(lər); boş – plan testləri
+
+
+@router.post('/{ta_id}/{exam_id}/slots/{slot}/replace-all')
+def replace_slot_all(ta_id: int, exam_id: int, slot: int, body: ReplaceAllIn | None = None, user: User = Depends(staff),
+                     db: Session = Depends(get_db)):
+    """Bir slotu BÜTÜN şagirdlərdə əvəz edir (məs. başqa test təyin etmək): hər şagirdə yeni, sinifdə təkrarsız sual."""
+    import random
+    from ..domain.ksq_variants import norm_text, pick_one
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
+    if not vs:
+        raise HTTPException(404, 'Variant yoxdur')
+    n = len(vs[0].questions)
+    _, topics, cands, hist, _, _ = _prepare(db, ta, e, VariantsIn(n=n, file_ids=body.file_ids if body else None,
+                                                                    only_mine=bool(body and body.file_ids)))
+    olds = {q.get('key') for v in vs for q in v.questions if q['slot'] == slot}
+    taken = {q.get('key') for v in vs for q in v.questions if q['slot'] != slot} | olds
+    texts = {norm_text(q.get('text')) for v in vs for q in v.questions}
+    rng = random.Random()
+    done, failed = 0, 0
+    for v in vs:
+        i = next(k for k, q in enumerate(v.questions) if q['slot'] == slot)
+        old = v.questions[i]
+        got = pick_one(old, topics, cands, taken | texts | hist.get(v.student_id, set()), rng.randrange(10 ** 9))
+        if got is None:
+            failed += 1
+            continue
+        taken.add(got.get('key'))
+        texts.add(norm_text(got.get('text')))
+        qs = list(v.questions)
+        qs[i] = {**got, 'slot': slot, 'kind': old['kind'], 'level': old['level'], 'topic': old.get('topic'),
+                 'points': old['points'], 'replaced': True}
+        v.questions = qs
+        done += 1
+    _rescore(db, e)
+    audit(db, user, 'update', 'exam_variant', e.id, slot=slot, op='replace_all', done=done, failed=failed)
+    db.commit()
+    return {'ok': failed == 0, 'replaced': done, 'failed': failed}
+
+
+class QuestionEditIn(BaseModel):
+    text: str = Field(min_length=1, max_length=3000)
+    options: list[str] | None = Field(None, max_length=5)
+    correct: int | None = Field(None, ge=0, le=4)
+    answer: str | None = Field(None, max_length=60)
+
+
+@router.put('/{ta_id}/{exam_id}/variants/{student_id}/{slot}')
+def edit_question(ta_id: int, exam_id: int, student_id: int, slot: int, body: QuestionEditIn,
+                  user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Sualın mətni / variantları / düzgün cavabı düzəldilir (yalnız bu variantda); skanı varsa bal yenidən hesablanır."""
+    from ..domain.ksq_variants import card_answer
+    own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    v, i = _variant(db, e, student_id, slot)
+    q = dict(v.questions[i])
+    lang = 'az'
+    q['text'] = {**(q['text'] if isinstance(q.get('text'), dict) else {}), lang: body.text}
+    if q['kind'] == 'mcq':
+        if not body.options or len(body.options) < 2 or body.correct is None or body.correct >= len(body.options):
+            raise HTTPException(400, 'Test sualı üçün ən azı 2 variant və düzgün cavab lazımdır')
+        q['options'] = [{'az': o} for o in body.options]
+        q['correct'] = body.correct
+    else:
+        if not card_answer(body.answer):
+            raise HTTPException(400, 'Açıq cavab kartın xanalarına yazıla bilməlidir: rəqəm, «-», «,», «/», «;» (≤ 8 simvol)')
+        q['answer'] = body.answer
+    q['edited'] = True
+    qs = list(v.questions)
+    qs[i] = q
+    v.questions = qs
+    n = _rescore(db, e, [student_id])
+    audit(db, user, 'update', 'exam_variant', e.id, student_id=student_id, slot=slot, op='edit')
+    db.commit()
+    return {**q, 'rescored': n}
+
+
+class AnnulIn(BaseModel):
+    annulled: bool = True
+
+
+@router.post('/{ta_id}/{exam_id}/slots/{slot}/annul')
+def annul_slot(ta_id: int, exam_id: int, slot: int, body: AnnulIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Slotu hamı üçün ləğv edir (səhv sual): bal hesablanmır, qalan ballar 100-ə miqyaslanır; geri qaytarmaq olar."""
+    own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    if not e.items or not any(it['n'] == slot for it in e.items):
+        raise HTTPException(404, 'Slot tapılmadı')
+    if body.annulled and sum(1 for it in e.items if it.get('annulled') or it['n'] == slot) >= len(e.items):
+        raise HTTPException(400, 'Bütün sualları ləğv etmək olmaz')
+    e.items = [{**it, 'annulled': body.annulled} if it['n'] == slot else it for it in e.items]
+    n = _rescore(db, e)
+    audit(db, user, 'update', 'exam', e.id, slot=slot, annulled=body.annulled)
+    db.commit()
+    return {'ok': True, 'rescored': n, 'items': e.items}
+
+
 @router.get('/{ta_id}/{exam_id}/variants/print')
 def print_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Çap üçün: hər şagirdə bir A4 (iki üz) – suallar şagirdin dilində (yoxdursa AZ), cavab kartı üçün imzalı QR; müəllim açarı.
@@ -446,26 +606,18 @@ def variant_sources(ta_id: int, exam_id: int, user: User = Depends(staff), db: S
             'all': [{'file_id': f.id, 'label': f.label, 'questions': f.question_count} for f in p0010_files(db, src)]}
 
 
-@router.post('/{ta_id}/{exam_id}/variants')
-def make_variants(ta_id: int, exam_id: int, body: VariantsIn | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
-    """n sual (10–30) / 100 bal; sinifdə hər şagirdə tam fərqli suallar; başqa siniflərin eyni imtahanı ilə ≤ 20% təkrar.
-    Nəticə yazılıbsa – yenidən yaratmaq olmaz."""
-    from ..domain.ksq_variants import Shortage, bank_candidates, generate, slots
-    ta = own_assignment(db, user, ta_id)
-    e = _exam(db, ta_id, exam_id)
+def _make(db: Session, user: User, ta, e: Exam, body: 'VariantsIn') -> None:
+    """Bir sinif üçün variantlar (yaradılır və ya yenidən): nəticə yazılıbsa – 409, çatışmazlıq – 409 (mətnli)."""
+    from ..domain.ksq_variants import Shortage, generate, slots
     if db.scalar(select(ExamScore).where(ExamScore.exam_id == e.id, ExamScore.points.is_not(None))):
         raise HTTPException(409, 'Nəticələr yazılıb – variantları yenidən yaratmaq olmaz')
-    students = [s.id for s in roster(db, ta)]
+    students, topics, cands, hist, others, _ = _prepare(db, ta, e, body)
     if not students:
         raise HTTPException(400, 'Sinifdə şagird yoxdur')
-    topics = _range_topics(db, ta, e)
     if not topics:
         raise HTTPException(400, 'Perspektiv planda bu imtahanın aralığında mövzu tapılmadı')
     try:
-        body = body or VariantsIn()
-        n = body.n
-        students, topics, cands, hist, others, _ = _prepare(db, ta, e, body)
-        res = generate(students, topics, cands, hist, seed=e.id * 7919, n=n, others=others, share=body.share)
+        res = generate(students, topics, cands, hist, seed=e.id * 7919, n=body.n, others=others, share=body.share)
     except Shortage as sh:
         raise HTTPException(409, {'message': 'Hər şagirdə fərqli sual üçün bazada sual çatmır: ' + sh.message(),
                                   'shortage': sh.items, 'topics': [t for t, _ in topics]})
@@ -474,8 +626,72 @@ def make_variants(ta_id: int, exam_id: int, body: VariantsIn | None = None, user
     db.flush()
     for i, sid in enumerate(students):
         db.add(ExamVariant(exam_id=e.id, student_id=sid, code=f'{e.kind}{e.no}-{i + 1:02d}', questions=res[sid]))
-    e.items = [{'n': s['slot'], 'points': s['points'], 'standard': None, 'kind': s['kind'], 'level': s['level']} for s in slots(n)]
+    e.items = [{'n': s['slot'], 'points': s['points'], 'standard': None, 'kind': s['kind'], 'level': s['level']} for s in slots(body.n)]
     e.max_points = 100
     audit(db, user, 'create', 'exam_variants', e.id, students=len(students), topics=len(topics))
+
+
+@router.post('/{ta_id}/{exam_id}/variants')
+def make_variants(ta_id: int, exam_id: int, body: VariantsIn | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """n sual (10–30) / 100 bal; sinifdə hər şagirdə tam fərqli suallar; başqa siniflərin eyni imtahanı ilə ≤ 20% təkrar."""
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    _make(db, user, ta, e, body or VariantsIn())
     db.commit()
     return _variants_out(db, ta, e)
+
+
+def _siblings(db: Session, user: User, ta) -> list:
+    """Müəllimin eyni proqramlı (və eyni fənli) başqa sinifləri – KSQ/BSQ bir dəfəyə hazırlana bilər."""
+    if not ta.program_id:
+        return []
+    return list(db.scalars(select(TeachingAssignment).where(TeachingAssignment.teacher_id == ta.teacher_id, TeachingAssignment.id != ta.id,
+                                                            TeachingAssignment.program_id == ta.program_id, TeachingAssignment.subject == ta.subject)))
+
+
+@router.get('/{ta_id}/{exam_id}/siblings')
+def siblings(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    from ..models import SchoolClass
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    out = []
+    for t in _siblings(db, user, ta):
+        x = db.scalar(select(Exam).where(Exam.assignment_id == t.id, Exam.kind == e.kind, Exam.no == e.no, Exam.semester == e.semester))
+        has_scores = bool(x and db.scalar(select(ExamScore).where(ExamScore.exam_id == x.id, ExamScore.points.is_not(None))))
+        cls = db.get(SchoolClass, t.class_id)
+        out.append({'ta_id': t.id, 'class_name': cls.name if cls else '', 'exam_id': x.id if x else None, 'date': x.date if x else None,
+                    'variants': bool(x and db.scalar(select(ExamVariant.exam_id).where(ExamVariant.exam_id == x.id).limit(1))), 'locked': has_scores})
+    return out
+
+
+class MultiIn(VariantsIn):
+    ta_ids: list[int] = Field(min_length=1, max_length=20)
+
+
+@router.post('/{ta_id}/{exam_id}/variants-multi')
+def make_variants_multi(ta_id: int, exam_id: int, body: MultiIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Eyni proqramlı bir neçə sinif üçün eyni ayarlarla variantlar (imtahan yoxdursa – eyni tarixlə yaradılır).
+    Siniflərarası ≤ 20 % təkrar qaydası avtomatik işləyir; hər sinfin nəticəsi ayrıca qaytarılır."""
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    allowed = {t.id: t for t in _siblings(db, user, ta)} | {ta.id: ta}
+    out = []
+    for tid in dict.fromkeys(body.ta_ids):
+        t = allowed.get(tid)
+        if t is None:
+            out.append({'ta_id': tid, 'ok': False, 'error': 'Bu sinfin proqramı fərqlidir'})
+            continue
+        x = db.scalar(select(Exam).where(Exam.assignment_id == t.id, Exam.kind == e.kind, Exam.no == e.no, Exam.semester == e.semester))
+        if x is None:
+            x = Exam(assignment_id=t.id, kind=e.kind, no=e.no, semester=e.semester, date=e.date, max_points=100, title=e.title)
+            db.add(x)
+            db.flush()
+        try:
+            with db.begin_nested():
+                _make(db, user, t, x, body)
+            out.append({'ta_id': tid, 'exam_id': x.id, 'ok': True})
+        except HTTPException as ex:
+            d = ex.detail
+            out.append({'ta_id': tid, 'exam_id': x.id, 'ok': False, 'error': d.get('message') if isinstance(d, dict) else d})
+    db.commit()
+    return out

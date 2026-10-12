@@ -208,3 +208,64 @@ def test_readiness_and_share(world):
     keys = [q['key'] for x in v['variants'] for q in x['questions']]
     from collections import Counter
     assert max(Counter(keys).values()) <= 2 and all(len({q['key'] for q in x['questions']}) == 10 for x in v['variants'])
+
+
+def test_question_replace_edit_annul(world):
+    """Sual səviyyəsində: əvəz et (tək və bütün sinifdə), redaktə et (skan yenidən hesablanır), slotu ləğv et (100-ə miqyas)."""
+    admin, ta, e, pr = ksq(world)
+    a = pr['sheets'][0]
+    sid = a['student_id']
+    v0 = admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()
+    mine = next(x for x in v0['variants'] if x['student_id'] == sid)
+    q1 = next(q for q in mine['questions'] if q['slot'] == 12)
+    r = admin.post(f'/api/exams/{ta}/{e["id"]}/variants/{sid}/12/replace').json()
+    allkeys = [q['key'] for x in admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()['variants'] for q in x['questions']]
+    assert r['key'] != q1['key'] and r['kind'] == q1['kind'] and r['points'] == q1['points'] and len(allkeys) == len(set(allkeys))
+    ra = admin.post(f'/api/exams/{ta}/{e["id"]}/slots/3/replace-all').json()
+    assert ra['replaced'] == 3 and ra['failed'] == 0
+    # skan + oxunuş: hamısı düz → 100; 12-ci sualın açarını dəyiş → bal düşür; 12-ci slotu ləğv et → yenə 100
+    admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([a['qr']]), 'image/jpeg'))])
+    from app.domain.ksq_card import key_value
+    qs = {q['slot']: q for q in next(x for x in admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()['variants'] if x['student_id'] == sid)['questions']}
+    scan = admin.get('/api/exam-scans/pending').json()[0]
+    admin.post('/api/exam-scans/import', json=[{'scan_id': scan['scan_id'], 'answers': [{'slot': k, 'value': key_value(q), 'confidence': 1} for k, q in qs.items()]}])
+    pts = lambda: admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'][0]['points']     # noqa: E731
+    assert pts() == 100
+    q12 = qs[12]
+    edit = {'text': 'Düzəldilmiş sual', 'answer': '999'} if q12['kind'] == 'open' else {'text': 'Düzəldilmiş sual', 'options': ['1', '2', '3'], 'correct': (q12['correct'] + 1) % 2}
+    assert admin.put(f'/api/exams/{ta}/{e["id"]}/variants/{sid}/12', json=edit).json()['rescored'] == 1
+    assert pts() < 100
+    assert admin.post(f'/api/exams/{ta}/{e["id"]}/slots/12/annul', json={'annulled': True}).json()['rescored'] == 1
+    assert pts() == 100
+    assert admin.put(f'/api/exams/{ta}/{e["id"]}/variants/{sid}/12', json={'text': 'x', 'answer': 'abc'}).status_code in (200, 400)
+
+
+def test_variants_for_several_classes(world):
+    """Eyni proqramlı siniflər: KSQ bir dəfəyə; ikinci sinifdə imtahan yoxdursa yaranır; fərqli proqramlı sinif rədd edilir."""
+    import datetime as dt
+    from app.models import PlanLesson, PlanProgram, TeachingAssignment
+    admin, ta, e, pr = ksq(world)
+    xc = admin.post('/api/classes', json={'name': 'X c'}).json()['id']
+    admin.post(f'/api/classes/{xc}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 2, 'slots': {'1': [1, 5]}})
+    for i in range(2):
+        admin.post('/api/students', json={'full_name': f'Ikinci Sinif{i}', 'class_id': xc})
+    S = world[1]
+    with S() as db:
+        prog = PlanProgram(title='Riyaziyyat X', subject='Riyaziyyat', kind='fixed', data={'lessons': []})
+        db.add(prog); db.flush()
+        t1 = db.get(TeachingAssignment, ta)
+        t2 = db.query(TeachingAssignment).filter_by(class_id=xc).one()
+        t1.program_id = t2.program_id = prog.id
+        for pl in db.query(PlanLesson).filter_by(assignment_id=ta).all():
+            db.add(PlanLesson(assignment_id=t2.id, seq=pl.seq, semester=pl.semester, assessment_type=pl.assessment_type, exam_no=pl.exam_no,
+                              topic=pl.topic, date=pl.date or dt.date(2026, 9, 15)))
+        db.commit()
+        ta2 = t2.id
+    sib = admin.get(f'/api/exams/{ta}/{e["id"]}/siblings').json()
+    assert [s['ta_id'] for s in sib] == [ta2] and sib[0]['exam_id'] is None
+    r = admin.post(f'/api/exams/{ta}/{e["id"]}/variants-multi', json={'n': 10, 'ta_ids': [ta, ta2, 99999]}).json()
+    assert [x['ok'] for x in r] == [True, True, False]
+    ex2 = admin.get(f'/api/exams/{ta2}').json()['exams']
+    assert len(ex2) == 1 and ex2[0]['kind'] == 'KSQ' and ex2[0]['max_points'] == 100
+    v2 = admin.get(f'/api/exams/{ta2}/{ex2[0]["id"]}/variants').json()['variants']
+    assert len(v2) == 2 and len(v2[0]['questions']) == 10

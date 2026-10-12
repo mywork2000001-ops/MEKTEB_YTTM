@@ -50,7 +50,7 @@ def apply(db: Session, e: Exam, sc: ExamScan) -> None:
     if sc.reading is None:
         sc.status = 'pending'
         return
-    g = grade(v.questions, sc.reading)
+    g = grade(v.questions, sc.reading, {it['n'] for it in (e.items or []) if it.get('annulled')})
     sc.marks, sc.points, sc.flagged, sc.status, sc.error = g['marks'], g['points'], g['flagged'], 'graded', None
     score = db.get(ExamScore, (e.id, sc.student_id)) or ExamScore(exam_id=e.id, student_id=sc.student_id)
     score.points, score.item_marks, score.absent = g['points'], g['marks'], False

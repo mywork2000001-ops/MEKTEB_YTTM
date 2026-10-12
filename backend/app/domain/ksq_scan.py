@@ -114,16 +114,23 @@ def correct(q: dict, value) -> bool:
     return any(_same(value, a) for a in str(q.get('answer') or '').split('|'))
 
 
-def grade(questions: list[dict], reading: list[dict]) -> dict:
-    """Variant sualları + oxunuş → {marks (slot sırası ilə 1/0), points, flagged}. Boş və ya oxunmayan xana – 0 bal."""
+def grade(questions: list[dict], reading: list[dict], annulled: set[int] | None = None) -> dict:
+    """Variant sualları + oxunuş → {marks (slot sırası ilə 1/0), points, flagged}. Boş və ya oxunmayan xana – 0 bal.
+    annulled – müəllimin ləğv etdiyi slotlar (səhv sual): sayılmır, qalan ballar 100-ə miqyaslanır."""
+    annulled = annulled or set()
     by = {int(r['slot']): r for r in reading or [] if r.get('slot') is not None}
     qs = sorted(questions, key=lambda q: q['slot'])
     marks, pts, flagged = [], 0.0, []
+    total = sum(q['points'] for q in qs if q['slot'] not in annulled) or 1
+    full = sum(q['points'] for q in qs) or 100
     for q in qs:
+        if q['slot'] in annulled:
+            marks.append(0)
+            continue
         r = by.get(q['slot'])
         ok = bool(r) and correct(q, r.get('value'))
         marks.append(1 if ok else 0)
         pts += q['points'] if ok else 0
         if r is None or (r.get('confidence') is not None and float(r['confidence']) < LOW):
             flagged.append(q['slot'])
-    return {'marks': marks, 'points': round(pts, 2), 'flagged': flagged}
+    return {'marks': marks, 'points': round(pts * full / total, 2), 'flagged': flagged}

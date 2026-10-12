@@ -209,6 +209,30 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
     return res
 
 
+def pick_one(slot: dict, topics: list[tuple[str, str | None]], cands: list[Cand], exclude: set[str], seed: int) -> dict | None:
+    """Bir slot üçün yeni sual (əvəzetmə): eyni növ; çətinlik – eyni, sonra qonşu; mövzu – slotunku, sonra aralığın başqası;
+    bankda yoxdursa – həmin mövzuların şablonu. exclude – sinifdə işlənmiş açarlar və mətnlər."""
+    rng = random.Random(seed)
+    ti = next((k for k, (t, _) in enumerate(topics) if t == slot.get('topic')), 0)
+    ok = lambda c: c.key not in exclude and norm_text(c.q['text']) not in exclude      # noqa: E731
+    for lvl in (slot['level'], *NEAR[slot['level']]):
+        pool = [c for c in cands if c.kind == slot['kind'] and c.level == lvl and ok(c)]
+        rng.shuffle(pool)
+        pool.sort(key=lambda c: c.topic != ti)
+        if pool:
+            c = pool[0]
+            return {**{k: v for k, v in c.q.items() if k != 'key'}, 'key': c.key, 'level_actual': c.level,
+                    'topic_actual': topics[c.topic][0] if 0 <= c.topic < len(topics) else 'seçilmiş test'}
+    for k in [ti, *[x for x in range(len(topics)) if x != ti]]:
+        t_, sec = topics[k]
+        for t in sorted(T.matching(stems(t_) | stems(sec or '')), key=lambda t: (t.level != slot['level'], rng.random())):
+            for _ in range(60):
+                q = T.instance(t, rng) if slot['kind'] == 'open' else T.mcq_instance(t, rng)
+                if q and q['key'] not in exclude and norm_text(q['text']) not in exclude:
+                    return {**q, 'card_answer': q.get('answer'), 'level_actual': q['level'], 'topic_actual': t_}
+    return None
+
+
 def fairness(variants: dict[int, list[dict]]) -> dict:
     """Ədalət hesabatı: slotun hədəf çətinliyinə dəqiq uyğun sualların payı, mövzu əvəzlənməsi, şablon sayı."""
     qs = [q for v in variants.values() for q in v]
