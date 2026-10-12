@@ -187,7 +187,7 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
   )
 }
 
-type Sources = { source: string; plan: { seq: number; topic: string; files: { file_id: number; label: string; questions: number }[] }[]
+type Sources = { source: string; projects?: { key: string; label: string; default: boolean; files: number }[]; plan: { seq: number; topic: string; files: { file_id: number; label: string; questions: number }[] }[]
   all: { file_id: number; label: string; questions: number }[] }
 type VarRes = { exam: Exam; variants: { student_id: number; full_name: string | null; code: string }[]
   report: { open_pct: number; [k: string]: unknown } | null }
@@ -214,21 +214,22 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   const [src, setSrc] = useState<Sources | null>(null)
   const [mode, setMode] = useState<'plan' | 'add' | 'only'>('plan')
   const [pickd, setPickd] = useState<number[]>([])
+  const [projs, setProjs] = useState<string[]>([])           // seçilmiş test layihələri (boş – sinfin əsas layihəsi)
   const [ready, setReady] = useState<Ready | null>(null)
   const [checking, setChecking] = useState(false)
   const [openV, setOpenV] = useState<number | null>(null)
   const [sibs, setSibs] = useState<{ ta_id: number; class_name: string; exam_id: number | null; variants: boolean; locked: boolean }[]>([])
   const [also, setAlso] = useState<number[]>([])
   useEffect(() => { get<typeof sibs>(`/api/exams/${ta.id}/${e.id}/siblings`).then(setSibs, () => setSibs([])) }, [e.id])   // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { get<Sources>(`/api/exams/${ta.id}/${e.id}/sources`).then(setSrc, () => setSrc(null)) }, [e.id])   // eslint-disable-line react-hooks/exhaustive-deps
-  const body = () => ({ n, share, file_ids: mode === 'plan' ? null : pickd, only_mine: mode === 'only' })
+  useEffect(() => { get<Sources>(`/api/exams/${ta.id}/${e.id}/sources`, projs.length ? { sources: projs.join(',') } : undefined).then(setSrc, () => setSrc(null)) }, [e.id, projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
+  const body = () => ({ n, share, file_ids: mode === 'plan' ? null : pickd, only_mine: mode === 'only', sources: projs.length ? projs : null })
   // hazırlıq: seçim dəyişəndə hovuz yenidən yoxlanır (kiçik gecikmə ilə)
   useEffect(() => {
     if (mode !== 'plan' && !pickd.length) { setReady(null); return }
     setChecking(true)
     const t = setTimeout(() => { post<Ready>(`/api/exams/${ta.id}/${e.id}/readiness`, body()).then(setReady, () => setReady(null)).finally(() => setChecking(false)) }, 350)
     return () => clearTimeout(t)
-  }, [n, share, mode, pickd.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [n, share, mode, pickd.join(','), projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
   const make = async () => {
     setFail(null)
     try {
@@ -262,6 +263,12 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
               <select className="sel" value={share} onChange={x => setShare(Number(x.target.value))}>
                 <option value={1}>{tt('Hər şagirdə fərqli sual')}</option><option value={2}>{tt('Bir sual ən çox 2 şagirdə')}</option></select></label>
           </div>
+          {src?.projects && src.projects.length > 1 && <div style={{ marginTop: 8 }}>
+            <span className="small" style={{ fontWeight: 600 }}>{tt('Test layihələri')}:</span>{' '}
+            {src.projects.map(p => { const on = projs.length ? projs.includes(p.key) : p.default
+              return <button key={p.key} className="chip" aria-pressed={on} title={tt('{n} fayl', { n: p.files })} style={{ margin: '2px 4px 2px 0' }}
+                onClick={() => { const cur = projs.length ? projs : src.projects!.filter(x => x.default).map(x => x.key); const nx = on ? cur.filter(k => k !== p.key) : [...cur, p.key]; setProjs(nx.length ? nx : []) }}>{p.label}</button> })}
+            <p className="small muted" style={{ margin: '2px 0 0' }}>{tt('Mövzuya uyğun testlər seçilmiş layihələrdən avtomatik götürülür; başqa layihəni qoşmaq üçün üzərinə toxunun.')}</p></div>}
           {mode !== 'plan' && src && <div className="kpick">
             {src.all.map(f => <label key={f.file_id} className="check small"><input type="checkbox" checked={pickd.includes(f.file_id)}
               onChange={x => setPickd(p => x.target.checked ? [...p, f.file_id] : p.filter(i => i !== f.file_id))} />{f.label} <span className="muted">({f.questions})</span></label>)}

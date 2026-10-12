@@ -39,17 +39,20 @@ def _raw(s: str) -> set[str]:
     return {w[:5] for w in s.split() if len(w) >= 3 and not w.isdigit()} - {'bolme', 'ile', 've'}
 
 
-def p0010_files(db: Session, source: str = SOURCE) -> list[BankFile]:
-    return list(db.scalars(select(BankFile).join(BankSource, BankSource.key == BankFile.source_key).where(
-        BankFile.source_key == source, BankFile.active.is_(True), BankSource.enabled.is_(True), BankFile.question_count > 0,
-        BankFile.kind == 'movzu').order_by(BankFile.lesson)))
+def p0010_files(db: Session, source: str = SOURCE, any_kind: bool = False) -> list[BankFile]:
+    """Mənbənin aktiv test faylları; any_kind – sınaq/yekun faylları da (əlavə qoşulan layihələr üçün)."""
+    q = select(BankFile).join(BankSource, BankSource.key == BankFile.source_key).where(
+        BankFile.source_key == source, BankFile.active.is_(True), BankSource.enabled.is_(True), BankFile.question_count > 0)
+    if not any_kind:
+        q = q.where(BankFile.kind == 'movzu')
+    return list(db.scalars(q.order_by(BankFile.lesson)))
 
 
 class Matcher:
     """Bankdakı P0010 faylları bir dəfə oxunur (plan görünüşündə hər dərs üçün təkrar sorğu olmasın)."""
 
-    def __init__(self, db: Session, source: str = SOURCE):
-        self.files = p0010_files(db, source)
+    def __init__(self, db: Session, source: str = SOURCE, any_kind: bool = False):
+        self.files = p0010_files(db, source, any_kind)
         self.fst = {f.id: stems(f.label) for f in self.files}
         self.own = {f.id: stems(f.label.split(' — ', 1)[-1]) for f in self.files}     # alt mövzu adı bölmədən ağırdır
         self.grp = {f.id: _raw(f.label.split(' — ', 1)[0]) for f in self.files}      # P0010 bölməsi

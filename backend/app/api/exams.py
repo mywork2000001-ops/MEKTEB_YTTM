@@ -278,17 +278,21 @@ def _range_lessons(db: Session, ta, e: Exam) -> list:
     return out
 
 
-def _plan_files(db: Session, ta, e: Exam, source: str) -> tuple[list, dict[int, list[int]]]:
+def _plan_files(db: Session, ta, e: Exam, source: str | list[str]) -> tuple[list, dict[int, list[int]]]:
     """Hər perspektiv plan dərsinin öz testləri: müəllimin planda seçdiyi fayl (LessonBankLink) üstündür, yoxdursa – mövzuya uyğun 4 fayl."""
     from ..bank.match import Matcher
     from ..models import LessonBankLink
     pls = _range_lessons(db, ta, e)
     links = {k.plan_lesson_id: k for k in db.scalars(select(LessonBankLink).where(LessonBankLink.plan_lesson_id.in_([p.id for p in pls] or [0])))}
-    m = Matcher(db, source)
+    srcs = [source] if isinstance(source, str) else list(source)
+    main = _source(db, ta)
+    ms = [Matcher(db, s, any_kind=s != main) for s in srcs]           # əlavə layihələrdə sınaq faylları da (ad üzrə uyğunluq)
     files: dict[int, list[int]] = {}
     for i, pl in enumerate(pls):
         k = links.get(pl.id)
-        files[i] = ([k.file_id] if k.file_id else []) if k else [f.id for f, _ in m.matches(pl.topic, pl.section, limit=4)]
+        own = ([k.file_id] if k.file_id else []) if k else []
+        auto = [f.id for m in ms for f, _ in m.matches(pl.topic, pl.section, limit=4)] if not k or main not in srcs or len(srcs) > 1 else []
+        files[i] = list(dict.fromkeys(own + auto))
     return pls, files
 
 
@@ -548,6 +552,7 @@ class VariantsIn(BaseModel):
     file_ids: list[int] | None = Field(None, max_length=60)    # müəllimin seçdiyi testlər – plana ƏLAVƏ olunur
     only_mine: bool = False                                   # True – yalnız seçilən testlər (plan nəzərə alınmır)
     share: int = Field(1, ge=1, le=2)                          # bir sual sinifdə ən çox neçə şagirdə (çatışmazlıqda 2)
+    sources: list[str] | None = Field(None, max_length=20)     # test layihələri (bank mənbələri); boş – sinfin əsas layihəsi
 
 
 def _prepare(db: Session, ta, e: Exam, body: 'VariantsIn') -> tuple:
@@ -556,7 +561,7 @@ def _prepare(db: Session, ta, e: Exam, body: 'VariantsIn') -> tuple:
     students = [s.id for s in roster(db, ta)]
     topics = _range_topics(db, ta, e)
     src = _source(db, ta)
-    _, files = _plan_files(db, ta, e, src)
+    _, files = _plan_files(db, ta, e, body.sources or [src])
     if body.file_ids:
         files = {-1: list(dict.fromkeys(body.file_ids))} if body.only_mine else {**files, -1: list(dict.fromkeys(body.file_ids))}
     same = select(Exam.id).join(TeachingAssignment, TeachingAssignment.id == Exam.assignment_id).where(
@@ -593,17 +598,25 @@ def readiness(ta_id: int, exam_id: int, body: 'VariantsIn', user: User = Depends
 
 
 @router.get('/{ta_id}/{exam_id}/sources')
-def variant_sources(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+def variant_sources(ta_id: int, exam_id: int, sources: str | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Variantlar üçün testlər: perspektiv plan dərsləri üzrə (avtomatik) və sinfin bütün test faylları (özü seçmək üçün)."""
     from ..bank.match import p0010_files
     from ..models import BankFile
     ta = own_assignment(db, user, ta_id)
     e = _exam(db, ta_id, exam_id)
     src = _source(db, ta)
-    pls, files = _plan_files(db, ta, e, src)
+    from sqlalchemy import func
+    from ..models import BankSource
+    chosen = [x for x in (sources or '').split(',') if x] or [src]
+    pls, files = _plan_files(db, ta, e, chosen)
+    projects = [{'key': s.key, 'label': s.label, 'default': s.key == src,
+                 'files': db.scalar(select(func.count()).select_from(BankFile).where(BankFile.source_key == s.key, BankFile.active.is_(True), BankFile.question_count > 0)) or 0}
+                for s in db.scalars(select(BankSource).where(BankSource.enabled.is_(True)).order_by(BankSource.key))]
     lab = lambda i: (lambda f: {'file_id': f.id, 'label': f.label, 'questions': f.question_count} if f else None)(db.get(BankFile, i))  # noqa: E731
     return {'source': src, 'plan': [{'seq': pl.seq, 'topic': pl.topic, 'files': [x for x in map(lab, files[i]) if x]} for i, pl in enumerate(pls)],
-            'all': [{'file_id': f.id, 'label': f.label, 'questions': f.question_count} for f in p0010_files(db, src)]}
+            'projects': [p for p in projects if p['files']],
+            'all': [{'file_id': f.id, 'label': f.label, 'questions': f.question_count, 'source': f.source_key}
+                    for s in chosen for f in p0010_files(db, s, any_kind=s != src)]}
 
 
 def _make(db: Session, user: User, ta, e: Exam, body: 'VariantsIn') -> None:

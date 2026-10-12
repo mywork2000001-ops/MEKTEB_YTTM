@@ -310,3 +310,25 @@ def test_openrouter_reader(world, monkeypatch):
     assert body['messages'][1]['content'][1]['image_url']['url'].startswith('data:image/jpeg;base64,')
     assert body['tool_choice']['function']['name'] == 'submit_card'
     _ = json
+
+
+def test_projects_selection(world):
+    """Test layihələri: əsas layihə avtomatik; başqa layihə (məs. sınaqlar) qoşulanda onun mövzuya uyğun faylları da hovuza düşür."""
+    from app.models import BankFile, BankQuestion, BankSource
+    admin, ta, e, pr = ksq(world)
+    with world[1]() as db:
+        db.add(BankSource(key='sinaqlar', label='Sınaqlar')); db.flush()
+        f = BankFile(source_key='sinaqlar', lesson='s/1.html', label='Faiz – sınaq blok', url='http://x', kind='sinaq', question_count=30)
+        db.add(f); db.flush()
+        for i in range(30):
+            db.add(BankQuestion(file_id=f.id, n=i + 1, kind='mcq', text={'az': f'S{i}'}, content_hash=f's{i}', options=[{'az': '1'}, {'az': '2'}], correct=0, diff_auto='orta'))
+        db.commit()
+    src = admin.get(f'/api/exams/{ta}/{e["id"]}/sources').json()
+    keys = {p['key']: p for p in src['projects']}
+    assert keys['p003']['default'] and 'sinaqlar' in keys
+    one = admin.post(f'/api/exams/{ta}/{e["id"]}/readiness', json={'n': 30}).json()
+    two = admin.post(f'/api/exams/{ta}/{e["id"]}/readiness', json={'n': 30, 'sources': ['p003', 'sinaqlar']}).json()
+    mcq = lambda r: next(t for t in r['topics'] if t['topic'] == 'Faiz')['mcq']      # noqa: E731
+    assert mcq(two) == mcq(one) + 30
+    src2 = admin.get(f'/api/exams/{ta}/{e["id"]}/sources', params={'sources': 'p003,sinaqlar'}).json()
+    assert any(x['source'] == 'sinaqlar' for x in src2['all'])
