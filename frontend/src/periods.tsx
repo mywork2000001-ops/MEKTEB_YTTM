@@ -25,15 +25,15 @@ export function periodRange(p: Period, a: Date): [Date, Date] | null {
 }
 
 function periodLabel(p: Period, r: [Date, Date] | null): string {
-  if (!r) return 'bütün testlər'
+  if (!r) return tt('bütün testlər')
   const [s, e] = r
   const last = new Date(e.getTime() - 86400000)
   switch (p) {
     case 'day': return azDT(s, { day: '2-digit', month: 'long', year: 'numeric', weekday: 'short' })
     case 'week': return `${dm(s)} – ${dm(last)}.${last.getFullYear()}`
     case 'month': return azDT(s, { month: 'long', year: 'numeric' })
-    case 'half': { const sy = s.getMonth() === 8 ? s.getFullYear() : s.getFullYear() - 1; return `${s.getMonth() === 8 ? 'I' : 'II'} yarımil ${sy}/${String(sy + 1).slice(2)}` }
-    default: return `${s.getFullYear()}/${String(s.getFullYear() + 1).slice(2)} tədris ili`
+    case 'half': { const sy = s.getMonth() === 8 ? s.getFullYear() : s.getFullYear() - 1; return `${s.getMonth() === 8 ? 'I' : 'II'} ${tt('yarımil')} ${sy}/${String(sy + 1).slice(2)}` }
+    default: return `${s.getFullYear()}/${String(s.getFullYear() + 1).slice(2)} ${tt('tədris ili')}`
   }
 }
 

@@ -772,7 +772,7 @@ label.f textarea{min-height:84px;padding:10px 12px;resize:vertical}
 .calc{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:var(--r-sm);background:var(--surface-2);font-size:13.5px;flex-wrap:wrap}
 .check{display:flex;align-items:center;gap:10px;font-size:14px;min-height:40px}
 .check input{width:20px;height:20px;accent-color:var(--accent)}
-.seg{display:flex;background:var(--sunk);border-radius:var(--r-sm);padding:3px;gap:3px}
+.seg{display:flex;flex-wrap:wrap;background:var(--sunk);border-radius:var(--r-sm);padding:3px;gap:3px}   /* dar ekranda düymələr növbəti sətrə keçir – kəsilmir */
 .seg button{all:unset;cursor:pointer;flex:1;text-align:center;min-height:38px;line-height:38px;border-radius:8px;font-size:14px;font-weight:500;color:var(--ink-2)}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
 .confirm{background:var(--bad-soft);border-radius:var(--r-sm);padding:12px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px;width:100%}

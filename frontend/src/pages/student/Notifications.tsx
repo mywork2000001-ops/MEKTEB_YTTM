@@ -55,11 +55,13 @@ export default function Notifications() {
     <section className="panel" style={{ marginBottom: 16 }}>
       <h2>{tt('Bildirişlər')} <small>{list.length}</small></h2>
       {list.map(n => (
-        <button key={n.key} type="button" className="row" onClick={() => nav(n.link)}
-          style={{ width: '100%', textAlign: 'left', background: 'none', border: 0, borderTop: '1px solid var(--line)', padding: '8px 0', cursor: 'pointer', color: 'inherit' }}>
-          <Pill tone={TONE[n.kind]}>{tt(n.kind)}</Pill>
-          <span className="grow"><b>{n.title}</b><br /><span className="small muted">{n.text}</span></span>
-          {fresh.has(n.key) && <Pill tone="bad">{tt('yeni')}</Pill>}
+        <button key={n.key} type="button" onClick={() => nav(n.link)}
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, width: '100%', textAlign: 'left', background: 'none', border: 0,
+            borderTop: '1px solid var(--line)', padding: '10px 0', cursor: 'pointer', color: 'inherit', font: 'inherit' }}>
+          {/* hər sətir eyni qaydada: nişanlar yuxarıda, başlıq tam endə – mətn sıxılmır */}
+          <span className="row" style={{ gap: 6 }}><Pill tone={TONE[n.kind]}>{tt(n.kind)}</Pill>{fresh.has(n.key) && <Pill tone="bad">{tt('yeni')}</Pill>}</span>
+          <b style={{ overflowWrap: 'anywhere' }}>{n.title}</b>
+          <span className="small muted">{n.text}</span>
         </button>))}
       {perm === 'default' && <div className="row" style={{ marginTop: 8 }}><span className="grow small muted">{tt('Tətbiq açıq olanda bildirişi telefonun ekranında da göstərək?')}</span>
         <button className="btn sm" onClick={ask}>{tt('Bildirişləri aç')}</button></div>}

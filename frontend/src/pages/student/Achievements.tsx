@@ -39,7 +39,7 @@ export default function Achievements() {
               <div className="kpi"><b>🔥 {a.streak}</b><span>{tt('seriya (ən yaxşı {n})', { n: a.best_streak })}</span></div>
               <div className="kpi"><b>{a.tests}</b><span>{tt('test yazılıb')}</span></div>
               <div className="kpi"><b>{a.avg_pct != null ? fmt(a.avg_pct) + '%' : '—'}</b><span>{tt('orta nəticə')}</span></div>
-              <div className="kpi"><b>🏆 {a.certificates}</b><span>sertifikat</span></div>
+              <div className="kpi"><b>🏆 {a.certificates}</b><span>{tt('sertifikat')}</span></div>
             </div>
           </section>
           <section className="panel"><h2>{tt('Həftəlik hədəf')}</h2>

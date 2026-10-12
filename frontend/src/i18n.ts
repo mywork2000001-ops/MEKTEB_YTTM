@@ -413,6 +413,25 @@ const D: Record<string, [string, string]> = {
   "açıq sual": ["open questions", "открытые вопросы"],
   "Nəticə yazılmayıbsa variantlar yenidən seçilir": ["If no results are recorded, variants are chosen again", "Если результаты не внесены, варианты подбираются заново"],
   "Yenidən yarat": ["Recreate", "Создать заново"],
+  // menyu qısa adları, dövr (12.10.2026)
+  "Cədvəl": ["Timetable", "Расписание"],
+  "Əsas": ["Home", "Главная"],
+  "Gündəlik": ["Daily", "Поурочный"],
+  "Hesabat": ["Reports", "Отчёты"],
+  "Məşğələ": ["Extra", "Занятия"],
+  "Nəticə": ["Results", "Итоги"],
+  "Plan": ["Plan", "План"],
+  "Rəhbər": ["Admin", "Руководство"],
+  "Siniflər": ["Classes", "Классы"],
+  "Sorğu": ["Surveys", "Опросы"],
+  "Tənzimləmə": ["Settings", "Настройки"],
+  "Testlər": ["Tests", "Тесты"],
+  "Uğurlar": ["Achievements", "Успехи"],
+  "Daha çox": ["More", "Ещё"],
+  "bütün testlər": ["all tests", "все тесты"],
+  "yarımil": ["half-year", "полугодие"],
+  "tədris ili": ["school year", "учебный год"],
+  "sertifikat": ["certificates", "сертификаты"],
 }
 
 export const I18nCtx = createContext<Lang>('az')
