@@ -509,6 +509,13 @@ const D: Record<string, [string, string]> = {
   "Başlıq / qeyd": ["Title / note", "Название / заметка"],
   "Bal və tapşırıqların quruluşu burada dəyişmir (kağız variantlarda sual sayı «Yenidən yarat» ilə).": ["Points and task structure are not changed here (for paper variants change the question count with «Recreate»).", "Баллы и структура заданий здесь не меняются (число вопросов бумажных вариантов — через «Создать заново»)."],
   "Sual sayını seçin (cəmi 100 bal; ~30 % test, ~70 % açıq). Sinifdə hər şagirdin sualları fərqlidir, əvvəl verilən suallar təkrarlanmır. Bankda çatmayanda suallar parametrli şablonlardan yaranır. Hər şagirdə bir A4 vərəq (iki üz) + cavab kartı.": ["Choose the number of questions (100 points in total; ~30 % multiple choice, ~70 % open). Every student in the class gets different questions; earlier questions are not repeated. If the bank runs short, questions are generated from parametric templates. One A4 sheet per student (double-sided) + answer card.", "Выберите число вопросов (всего 100 баллов; ~30 % тестовых, ~70 % открытых). У каждого ученика класса свои вопросы, ранее выданные не повторяются. Если банка не хватает, вопросы создаются из параметрических шаблонов. Каждому ученику один лист A4 (двусторонний) + бланк ответов."],
+  // KSQ test mənbəyi (13.10.2026)
+  "Ən azı bir test seçin": ["Choose at least one test", "Выберите хотя бы один тест"],
+  "Perspektiv plandan (hər mövzunun öz testləri)": ["From the long-term plan (each topic's own tests)", "Из перспективного плана (у каждой темы свои тесты)"],
+  "Özüm seçirəm": ["I choose myself", "Выбираю сам"],
+  "test yoxdur – şablonlar": ["no test – templates", "теста нет — шаблоны"],
+  "Perspektiv planda bu imtahanın aralığında mövzu yoxdur": ["No topics in the long-term plan for this exam's range", "В перспективном плане нет тем для этого экзамена"],
+  "Seçildi: {n}": ["Selected: {n}", "Выбрано: {n}"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

@@ -187,6 +187,8 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
   )
 }
 
+type Sources = { source: string; plan: { seq: number; topic: string; files: { file_id: number; label: string; questions: number }[] }[]
+  all: { file_id: number; label: string; questions: number }[] }
 type VarRes = { exam: Exam; variants: { student_id: number; full_name: string | null; code: string }[]
   report: { open_pct: number; [k: string]: unknown } | null }
 
@@ -195,9 +197,14 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   const [d, err, , reload] = useLoad<VarRes>(() => get(`/api/exams/${ta.id}/${e.id}/variants`), [e.id])
   const [fail, setFail] = useState<string | null>(null)
   const [n, setN] = useState(30)
+  const [src, setSrc] = useState<Sources | null>(null)
+  const [own, setOwn] = useState(false)
+  const [pickd, setPickd] = useState<number[]>([])
+  useEffect(() => { get<Sources>(`/api/exams/${ta.id}/${e.id}/sources`).then(setSrc, () => setSrc(null)) }, [e.id])   // eslint-disable-line react-hooks/exhaustive-deps
   const make = async () => {
     setFail(null)
-    try { await post(`/api/exams/${ta.id}/${e.id}/variants`, { n }); toast(tt('Variantlar hazırdır')); reload() } catch (x) { setFail((x as Error).message); throw x }
+    if (own && !pickd.length) { setFail(tt('Ən azı bir test seçin')); return }
+    try { await post(`/api/exams/${ta.id}/${e.id}/variants`, { n, file_ids: own ? pickd : null }); toast(tt('Variantlar hazırdır')); reload() } catch (x) { setFail((x as Error).message); throw x }
   }
   const load = () => get<KsqPrint>(`/api/exams/${ta.id}/${e.id}/variants/print`)
   const has = !!d?.variants.length
@@ -210,6 +217,17 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
       {fail && <div className="empty" style={{ color: 'var(--bad)', textAlign: 'left' }}>{fail}</div>}
       <label className="lsel" style={{ marginBottom: 10 }}><span>{tt('Sual sayı')}</span>
         <select className="sel" value={n} onChange={x => setN(Number(x.target.value))}>{[10, 12, 15, 18, 20, 24, 25, 30].map(k => <option key={k} value={k}>{tt('{n} sual · 100 bal', { n: k })}</option>)}</select></label>
+      {src && <section style={{ marginBottom: 10 }}>
+        <label className="lsel" style={{ maxWidth: 420 }}><span>{tt('Testlər')}</span>
+          <select className="sel" value={own ? 'own' : 'plan'} onChange={x => setOwn(x.target.value === 'own')}>
+            <option value="plan">{tt('Perspektiv plandan (hər mövzunun öz testləri)')}</option><option value="own">{tt('Özüm seçirəm')}</option></select></label>
+        {!own ? <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{src.plan.map(p => <li key={p.seq}><b>№{p.seq} {p.topic}</b>: {p.files.length ? p.files.map(f => `${f.label} (${f.questions})`).join('; ') : <span className="muted">{tt('test yoxdur – şablonlar')}</span>}</li>)}
+          {src.plan.length === 0 && <li className="muted">{tt('Perspektiv planda bu imtahanın aralığında mövzu yoxdur')}</li>}</ul>
+        : <div style={{ maxHeight: 260, overflow: 'auto', border: '1px solid var(--line)', borderRadius: 8, padding: 6, marginTop: 6 }}>
+          {src.all.map(f => <label key={f.file_id} className="check small" style={{ display: 'flex', gap: 6 }}><input type="checkbox" checked={pickd.includes(f.file_id)}
+            onChange={x => setPickd(p => x.target.checked ? [...p, f.file_id] : p.filter(i => i !== f.file_id))} />{f.label} <span className="muted">({f.questions})</span></label>)}
+          <p className="small muted" style={{ margin: '4px 0 0' }}>{tt('Seçildi: {n}', { n: pickd.length })}</p></div>}
+      </section>}
       {!d ? null : !has ? (
         <AsyncBtn className="btn primary" onClick={make}>{tt('Variantları yarat')}</AsyncBtn>
       ) : <>

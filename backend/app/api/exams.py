@@ -263,6 +263,42 @@ def semester(ta_id: int, sem: int, user: User = Depends(staff), db: Session = De
 
 
 # ---------------------------------------------------------------- kağız variantları (docs/ksq-bsq-kagiz-promtu.md)
+def _range_lessons(db: Session, ta, e: Exam) -> list:
+    """İmtahanın aralığındakı plan dərsləri (mövzu təkrarlanmır) – _range_topics ilə eyni qayda."""
+    lessons = [pl for pl in plan_ctx(db, ta).lessons if pl.semester == e.semester]
+    lessons.sort(key=lambda pl: pl.seq)
+    me = next((pl for pl in lessons if pl.assessment_type == e.kind and pl.exam_no == e.no), None)
+    end = me.seq if me else max((pl.seq for pl in lessons if pl.date <= e.date), default=10 ** 9)
+    start = max((pl.seq for pl in lessons if pl.assessment_type in ('KSQ', 'BSQ') and pl.seq < end), default=0) if e.kind == 'KSQ' else 0
+    out, seen = [], set()
+    for pl in lessons:
+        if start < pl.seq < end and pl.assessment_type not in ('KSQ', 'BSQ') and pl.topic and pl.topic not in seen:
+            seen.add(pl.topic)
+            out.append(pl)
+    return out
+
+
+def _plan_files(db: Session, ta, e: Exam, source: str) -> tuple[list, dict[int, list[int]]]:
+    """Hər perspektiv plan dərsinin öz testləri: müəllimin planda seçdiyi fayl (LessonBankLink) üstündür, yoxdursa – mövzuya uyğun 4 fayl."""
+    from ..bank.match import Matcher
+    from ..models import LessonBankLink
+    pls = _range_lessons(db, ta, e)
+    links = {k.plan_lesson_id: k for k in db.scalars(select(LessonBankLink).where(LessonBankLink.plan_lesson_id.in_([p.id for p in pls] or [0])))}
+    m = Matcher(db, source)
+    files: dict[int, list[int]] = {}
+    for i, pl in enumerate(pls):
+        k = links.get(pl.id)
+        files[i] = ([k.file_id] if k.file_id else []) if k else [f.id for f, _ in m.matches(pl.topic, pl.section, limit=4)]
+    return pls, files
+
+
+def _source(db: Session, ta) -> str:
+    from ..bank.match import source_for
+    from ..models import SchoolClass
+    from ..services import class_grade
+    return source_for(class_grade(db, db.get(SchoolClass, ta.class_id))) or 'p003'
+
+
 def _range_topics(db: Session, ta, e: Exam) -> list[tuple[str, str | None]]:
     """KSQ: əvvəlki KSQ/BSQ-dan bu imtahana qədər keçilmiş dərslərin mövzuları; BSQ: yarımilin bütün mövzuları (təkrarsız, ardıcıl)."""
     lessons = [pl for pl in plan_ctx(db, ta).lessons if pl.semester == e.semester]
@@ -349,6 +385,21 @@ def print_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Se
 
 class VariantsIn(BaseModel):
     n: int = Field(30, ge=10, le=30)                 # sual sayı – müəllim seçir
+    file_ids: list[int] | None = Field(None, max_length=60)    # müəllimin özü seçdiyi testlər; boş – perspektiv plandan
+
+
+@router.get('/{ta_id}/{exam_id}/sources')
+def variant_sources(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Variantlar üçün testlər: perspektiv plan dərsləri üzrə (avtomatik) və sinfin bütün test faylları (özü seçmək üçün)."""
+    from ..bank.match import p0010_files
+    from ..models import BankFile
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    src = _source(db, ta)
+    pls, files = _plan_files(db, ta, e, src)
+    lab = lambda i: (lambda f: {'file_id': f.id, 'label': f.label, 'questions': f.question_count} if f else None)(db.get(BankFile, i))  # noqa: E731
+    return {'source': src, 'plan': [{'seq': pl.seq, 'topic': pl.topic, 'files': [x for x in map(lab, files[i]) if x]} for i, pl in enumerate(pls)],
+            'all': [{'file_id': f.id, 'label': f.label, 'questions': f.question_count} for f in p0010_files(db, src)]}
 
 
 @router.post('/{ta_id}/{exam_id}/variants')
@@ -372,11 +423,11 @@ def make_variants(ta_id: int, exam_id: int, body: VariantsIn | None = None, user
         same = select(Exam.id).join(TeachingAssignment, TeachingAssignment.id == Exam.assignment_id).where(
             TeachingAssignment.teacher_id == ta.teacher_id, Exam.kind == e.kind, Exam.no == e.no, Exam.semester == e.semester, Exam.id != e.id)
         others = {q.get('key') for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id.in_(same))) for q in v.questions if q.get('key')}
-        from ..bank.match import source_for
-        from ..models import SchoolClass
-        from ..services import class_grade
-        src = source_for(class_grade(db, db.get(SchoolClass, ta.class_id))) or 'p003'
-        res = generate(students, topics, bank_candidates(db, topics, src), _history(db, ta, e, students), seed=e.id * 7919, n=n, others=others)
+        src = _source(db, ta)
+        _, files = _plan_files(db, ta, e, src)
+        if body and body.file_ids:                          # müəllim testləri özü seçib – hamısı istənilən mövzu slotuna
+            files = {-1: list(dict.fromkeys(body.file_ids))}
+        res = generate(students, topics, bank_candidates(db, topics, src, files), _history(db, ta, e, students), seed=e.id * 7919, n=n, others=others)
     except Shortage as sh:
         raise HTTPException(409, {'message': 'Hər şagirdə fərqli sual üçün bazada sual çatmır: ' + sh.message(),
                                   'shortage': sh.items, 'topics': [t for t, _ in topics]})

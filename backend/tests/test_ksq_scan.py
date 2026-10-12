@@ -159,3 +159,28 @@ def test_claude_call_parsing(monkeypatch):
         raise AssertionError
     except RuntimeError as ex:
         assert '429' in str(ex) and 'rate limit' in str(ex)
+
+
+def test_variant_sources_plan_and_own(world):
+    """Hər perspektiv plan dərsinin öz testləri (planda seçilən fayl üstündür) və müəllimin özü seçdiyi testlər."""
+    from app.models import BankFile, BankQuestion, LessonBankLink, PlanLesson
+    admin, ta, e, pr = ksq(world)
+    src = admin.get(f'/api/exams/{ta}/{e["id"]}/sources').json()
+    faiz = next(p for p in src['plan'] if p['topic'] == 'Faiz')
+    assert faiz['files'] and src['all']
+    S = world[1]
+    with S() as db:
+        f2 = BankFile(source_key='p003', lesson='t/x.html', label='Başqa test — Xüsusi', url='http://x', kind='movzu', question_count=60)
+        db.add(f2); db.flush()
+        for i in range(60):
+            k = 'mcq' if i < 20 else 'open'
+            db.add(BankQuestion(file_id=f2.id, n=i + 1, kind=k, text={'az': f'Xüsusi {i}'}, content_hash=f'x{i}', options=[{'az': '1'}, {'az': '2'}] if k == 'mcq' else None,
+                                correct=0 if k == 'mcq' else None, answer=None if k == 'mcq' else str(100 + i), diff_auto=['asan', 'orta', 'çətin'][i % 3] if k == 'open' else ['asan', 'orta'][i % 2]))
+        pl = db.query(PlanLesson).filter_by(assignment_id=ta, topic='Faiz').one()
+        db.add(LessonBankLink(plan_lesson_id=pl.id, file_id=f2.id)); db.commit()
+        fid = f2.id
+    src = admin.get(f'/api/exams/{ta}/{e["id"]}/sources').json()
+    assert [f['file_id'] for f in next(p for p in src['plan'] if p['topic'] == 'Faiz')['files']] == [fid]   # planda seçilən fayl
+    v = admin.post(f'/api/exams/{ta}/{e["id"]}/variants', json={'n': 10, 'file_ids': [fid]}).json()
+    bank = [q for x in v['variants'] for q in x['questions'] if q.get('bank_id')]
+    assert bank and all(q['lesson'] == 'Başqa test — Xüsusi' for q in bank) and len(v['variants'][0]['questions']) == 10

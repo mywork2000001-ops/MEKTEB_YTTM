@@ -89,14 +89,20 @@ class Shortage(Exception):
                          f"{x['missing']} şagird üçün sual çatmır" for x in self.items[:8])
 
 
-def bank_candidates(db, topics: list[tuple[str, str | None]], source: str = 'p003') -> list[Cand]:
+def bank_candidates(db, topics: list[tuple[str, str | None]], source: str = 'p003',
+                    files: dict[int, list[int]] | None = None) -> list[Cand]:
     """Aralıqdakı plan mövzuları → sinfin test bazası (IX – DİM 9 P007, X–XI – P0010; Matcher, hər mövzuya 4 fayl) → yararlı suallar."""
     from sqlalchemy import select
     from ..models import BankQuestion
+    from ..models import BankFile
     m = Matcher(db, source)
     out, seen = [], set()
-    for ti, (topic, section) in enumerate(topics):
-        for f, _ in m.matches(topic, section, limit=4):
+    # files: {mövzu indeksi: [fayl id]} – perspektiv plandakı seçim və ya müəllimin seçdiyi testlər (-1 – istənilən mövzu)
+    plan = files if files is not None else {ti: [f.id for f, _ in m.matches(t, sec, limit=4)] for ti, (t, sec) in enumerate(topics)}
+    for ti, fids in plan.items():
+        for f in (db.get(BankFile, i) for i in fids):
+            if f is None or not f.active:
+                continue
             for q in db.scalars(select(BankQuestion).where(BankQuestion.file_id == f.id, BankQuestion.active.is_(True))):
                 key = 'b:' + (q.content_hash or str(q.id))
                 if key in seen:
