@@ -63,7 +63,7 @@ class Matcher:
         n = len(self.files)
         self.idf = {w: math.log((n + 1) / (c + 1)) + 0.1 for w, c in df.items()}
 
-    def matches(self, topic: str, section: str | None = None, limit: int = 6) -> list[tuple[BankFile, float]]:
+    def matches(self, topic: str, section: str | None = None, limit: int = 6, rel: float = 0.0) -> list[tuple[BankFile, float]]:
         t = stems(topic)
         sec = stems(re.sub(r'^\s*\d+\.\s*', '', section or '')) - t
         sraw = _raw(section or '')
@@ -79,7 +79,12 @@ class Matcher:
                 same = bool(g and sraw and sum(self.idf.get(x, 1) for x in sraw & g) / gw >= 0.6)
                 scored.append((f, round(s / (1 + 0.05 * len(fs)), 3), same))
         scored.sort(key=lambda x: (not x[2], -x[1], x[0].lesson))
+        if rel and any(x[2] for x in scored):                # KSQ: dərsin bölməsinə uyğun fayllar varsa – yalnız onlar
+            scored = [x for x in scored if x[2]]
         scored = [(f, v) for f, v, _ in scored]
+        if rel and scored:                                   # KSQ: yalnız mövzuya həqiqətən yaxın fayllar
+            best = max(v for _, v in scored)
+            scored = [(f, v) for f, v in scored if v >= best * rel]
         return scored[:limit]
 
 

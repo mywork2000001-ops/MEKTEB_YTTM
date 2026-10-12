@@ -291,7 +291,7 @@ def _plan_files(db: Session, ta, e: Exam, source: str | list[str]) -> tuple[list
     for i, pl in enumerate(pls):
         k = links.get(pl.id)
         own = ([k.file_id] if k.file_id else []) if k else []
-        auto = [f.id for m in ms for f, _ in m.matches(pl.topic, pl.section, limit=4)] if not k or main not in srcs or len(srcs) > 1 else []
+        auto = [f.id for m in ms for f, _ in m.matches(pl.topic, pl.section, limit=4, rel=0.45)] if not k or main not in srcs or len(srcs) > 1 else []
         files[i] = list(dict.fromkeys(own + auto))
     return pls, files
 
@@ -339,13 +339,15 @@ def _history(db: Session, ta, e: Exam, student_ids: list[int]) -> dict[int, set[
 
 
 def _variants_out(db: Session, ta, e: Exam) -> dict:
-    from ..domain.ksq_variants import fairness
+    from ..domain.ksq_variants import RULES_V, fairness
     names = {s.id: s.full_name for s in roster(db, ta)}
     vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
     vs.sort(key=lambda v: v.code)
     return {'exam': exam_out(e), 'variants': [{'student_id': v.student_id, 'full_name': names.get(v.student_id), 'code': v.code,
                                                'questions': v.questions} for v in vs],
-            'report': fairness({v.student_id: v.questions for v in vs}) if vs else None}
+            'report': fairness({v.student_id: v.questions for v in vs}) if vs else None,
+            # köhnə qaydalarla yaradılıb (mövzudan kənar sual ola bilər) – müəllimə «Yenidən yarat» təklif olunur
+            'stale': any(q.get('v', 0) < RULES_V for v in vs for q in v.questions if not q.get('edited'))}
 
 
 @router.get('/{ta_id}/{exam_id}/variants')

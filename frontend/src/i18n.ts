@@ -573,6 +573,7 @@ const D: Record<string, [string, string]> = {
   "Test layihələri": ["Test projects", "Проекты тестов"],
   "{n} fayl": ["{n} files", "файлов: {n}"],
   "Mövzuya uyğun testlər seçilmiş layihələrdən avtomatik götürülür; başqa layihəni qoşmaq üçün üzərinə toxunun.": ["Topic-matching tests are taken automatically from the selected projects; tap another project to connect it.", "Тесты по темам берутся автоматически из выбранных проектов; нажмите на другой проект, чтобы подключить его."],
+  "Bu variantlar köhnə qaydalarla yaradılıb – mövzuya uyğun olmayan sual ola bilər. 1-ci addımda «Yenidən yarat» basın (nəticə yazılıbsa – sualları 2-ci addımda tək-tək əvəz edin).": ["These variants were created with the old rules — they may contain off-topic questions. Press «Recreate» in step 1 (if results are recorded, replace questions one by one in step 2).", "Эти варианты созданы по старым правилам — в них могут быть вопросы не по теме. Нажмите «Создать заново» в шаге 1 (если результаты внесены — заменяйте вопросы по одному в шаге 2)."],
 }
 
 export const I18nCtx = createContext<Lang>('az')

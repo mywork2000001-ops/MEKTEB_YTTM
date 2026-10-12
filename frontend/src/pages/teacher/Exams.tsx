@@ -190,7 +190,7 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
 type Sources = { source: string; projects?: { key: string; label: string; default: boolean; files: number }[]; plan: { seq: number; topic: string; files: { file_id: number; label: string; questions: number }[] }[]
   all: { file_id: number; label: string; questions: number }[] }
 type VarRes = { exam: Exam; variants: { student_id: number; full_name: string | null; code: string }[]
-  report: { open_pct: number; [k: string]: unknown } | null }
+  report: { open_pct: number; [k: string]: unknown } | null; stale?: boolean }
 type Ready = { students: number; n: number; need: number; ok: boolean; max_n: number | null
   topics: { topic: string; files: number; mcq: number; open: number; templates: number }[]; selected: { mcq: number; open: number }
   shortage: { slot?: number; kind?: string; level?: string; missing: number }[] }
@@ -248,6 +248,7 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   return (
     <Drawer title={`${e.kind}-${e.no} · ${tt('Kağız variantlar')}`} onClose={onClose}>
       <ErrorBox error={err} />
+      {d?.stale && <div className="kverdict warn" style={{ marginTop: 0 }}>⚠ {tt('Bu variantlar köhnə qaydalarla yaradılıb – mövzuya uyğun olmayan sual ola bilər. 1-ci addımda «Yenidən yarat» basın (nəticə yazılıbsa – sualları 2-ci addımda tək-tək əvəz edin).')}</div>}
       <div className="ksteps">
         <Step no={1} title={tt('Hazırlıq: mövzular və testlər')} active={!has} state={checking ? '…' : ready ? (ok ? '✓ ' + tt('hazırdır') : '⚠ ' + tt('sual çatmır')) : undefined}>
           <p className="small muted" style={{ margin: '0 0 8px' }}>{tt('Suallar yalnız bu imtahana qədər keçilmiş mövzulardan seçilir (perspektiv plan). Sinifdə hər şagirdin sualları fərqlidir.')}</p>

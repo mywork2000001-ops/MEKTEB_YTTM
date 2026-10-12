@@ -29,6 +29,7 @@ _CARD = re.compile(rf'^{_NUM}(?:;{_NUM})*$')
 
 
 N_MIN, N_MAX = 10, 30          # müəllim sual sayını seçir (kart: 9 test + 21 açıq xanaya qədər sığır)
+RULES_V = 3                    # sual seçimi qaydalarının versiyası (3 – audit 13.10: dəqiq mövzu, zəif uyğunluq yox)
 REUSE = 0.2                    # başqa siniflərin eyni imtahan variantları ilə təkrar – ən çox 20% (istifadəçi qaydası, 12.10.2026)
 
 
@@ -98,7 +99,7 @@ def bank_candidates(db, topics: list[tuple[str, str | None]], source: str = 'p00
     m = Matcher(db, source)
     out, seen = [], set()
     # files: {mövzu indeksi: [fayl id]} – perspektiv plandakı seçim və ya müəllimin seçdiyi testlər (-1 – istənilən mövzu)
-    plan = files if files is not None else {ti: [f.id for f, _ in m.matches(t, sec, limit=4)] for ti, (t, sec) in enumerate(topics)}
+    plan = files if files is not None else {ti: [f.id for f, _ in m.matches(t, sec, limit=4, rel=0.45)] for ti, (t, sec) in enumerate(topics)}
     for ti, fids in plan.items():
         for f in (db.get(BankFile, i) for i in fids):
             if f is None or not f.active:
@@ -200,7 +201,7 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
             text_uses[tn] = text_uses.get(tn, 0) + 1
             mine[sid] |= {pick.key, tn}
             res[sid][i] = {**{k: v for k, v in pick.q.items() if k != 'key'}, 'key': pick.key, 'slot': s['slot'],
-                           'kind': s['kind'], 'level': s['level'], 'level_actual': pick.level, 'points': s['points'],
+                           'kind': s['kind'], 'level': s['level'], 'level_actual': pick.level, 'points': s['points'], 'v': RULES_V,
                            'topic': topics[s['topic']][0] if topics else None,
                            'topic_actual': (topics[pick.topic][0] if 0 <= pick.topic < len(topics) else 'seçilmiş test') if topics else None}
     if short:
@@ -221,7 +222,7 @@ def pick_one(slot: dict, topics: list[tuple[str, str | None]], cands: list[Cand]
         pool.sort(key=lambda c: c.topic != ti)
         if pool:
             c = pool[0]
-            return {**{k: v for k, v in c.q.items() if k != 'key'}, 'key': c.key, 'level_actual': c.level,
+            return {**{k: v for k, v in c.q.items() if k != 'key'}, 'key': c.key, 'level_actual': c.level, 'v': RULES_V,
                     'topic_actual': topics[c.topic][0] if 0 <= c.topic < len(topics) else 'seçilmiş test'}
     for k in [ti, *[x for x in range(len(topics)) if x != ti]]:
         t_, sec = topics[k]
@@ -229,7 +230,7 @@ def pick_one(slot: dict, topics: list[tuple[str, str | None]], cands: list[Cand]
             for _ in range(60):
                 q = T.instance(t, rng) if slot['kind'] == 'open' else T.mcq_instance(t, rng)
                 if q and q['key'] not in exclude and norm_text(q['text']) not in exclude:
-                    return {**q, 'card_answer': q.get('answer'), 'level_actual': q['level'], 'topic_actual': t_}
+                    return {**q, 'card_answer': q.get('answer'), 'level_actual': q['level'], 'topic_actual': t_, 'v': RULES_V}
     return None
 
 

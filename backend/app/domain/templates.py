@@ -37,10 +37,52 @@ class Template:
     keys: tuple[str, ...]          # mövzu kökləri (ilk 5 hərf, «ə→e» normallaşdırılmış)
     level: str                     # asan | orta | çətin
     make: Callable[[random.Random], tuple[dict, object, tuple]]   # (mətn {az,ru,en}, cavab, parametrlər)
+    need: tuple[str, ...] = ()     # bunların HAMISI da mövzuda olmalıdır (məs. «sistem» + «tənlik»; «onluq say sistemi» – yox)
 
 
 def _t(az, ru, en):
     return {'az': az, 'ru': ru, 'en': en}
+
+
+def _sets(r):
+    a, b = r.randint(8, 30), r.randint(8, 30)
+    c = r.randint(1, min(a, b) - 1)
+    return (_t(f'$A$ çoxluğunun ${a}$, $B$ çoxluğunun ${b}$ elementi var, $A \\cap B$ çoxluğunun isə ${c}$ elementi var. $A \\cup B$ çoxluğunun neçə elementi var?',
+               f'Во множестве $A$ ${a}$ элементов, в $B$ — ${b}$, в $A \\cap B$ — ${c}$. Сколько элементов в $A \\cup B$?',
+               f'Set $A$ has ${a}$ elements, $B$ has ${b}$, and $A \\cap B$ has ${c}$. How many elements are in $A \\cup B$?'), a + b - c, (a, b, c))
+
+
+def _sets_word(r):
+    n = r.randint(25, 40)
+    x, y = r.randint(10, n - 8), r.randint(8, n - 8)
+    z = r.randint(max(1, x + y - n + 1), min(x, y) - 1)
+    return (_t(f'Sinifdə ${n}$ şagird var. ${x}$ şagird riyaziyyat, ${y}$ şagird fizika dərnəyinə gedir, ${z}$ şagird hər ikisinə. Neçə şagird heç bir dərnəyə getmir?',
+               f'В классе ${n}$ учеников. ${x}$ ходят в кружок математики, ${y}$ — физики, ${z}$ — в оба. Сколько учеников не ходят ни в один кружок?',
+               f'A class has ${n}$ students. ${x}$ attend the maths club, ${y}$ the physics club, ${z}$ both. How many attend neither?'), n - (x + y - z), (n, x, y, z))
+
+
+def _part(r):
+    q = r.choice([3, 4, 5, 6, 8, 10])
+    p = r.choice([k for k in range(1, q) if math.gcd(k, q) == 1])
+    n = q * r.randint(3, 30)
+    return (_t(f'${n}$ ədədinin $\\frac{{{p}}}{{{q}}}$ hissəsini tapın.', f'Найди $\\frac{{{p}}}{{{q}}}$ от числа ${n}$.',
+               f'Find $\\frac{{{p}}}{{{q}}}$ of ${n}$.'), Fraction(n * p, q), (p, q, n))
+
+
+def _part_back(r):
+    q = r.choice([3, 4, 5, 6, 7, 8, 9])
+    p = r.choice([k for k in range(1, q) if math.gcd(k, q) == 1])
+    x = q * r.randint(2, 25)
+    v = x * p // q
+    return (_t(f'Ədədin $\\frac{{{p}}}{{{q}}}$ hissəsi ${v}$-dir. Ədədi tapın.', f'$\\frac{{{p}}}{{{q}}}$ числа равны ${v}$. Найди число.',
+               f'$\\frac{{{p}}}{{{q}}}$ of a number is ${v}$. Find the number.'), x, (p, q, x))
+
+
+def _remainder(r):
+    b = r.randint(3, 19)
+    a = b * r.randint(5, 60) + r.randint(1, b - 1)
+    return (_t(f'${a}$ ədədini ${b}$-yə böldükdə qalıq neçə olar?', f'Какой остаток при делении ${a}$ на ${b}$?',
+               f'What is the remainder when ${a}$ is divided by ${b}$?'), a % b, (a, b))
 
 
 def _pct(r):
@@ -210,24 +252,30 @@ TEMPLATES: list[Template] = [
     Template('divcount', ('natur', 'bolen', 'sadev', 'vuruq'), 'çətin', _divcount),
     Template('frac_add', ('kesrl', 'adike', 'kesr'), 'orta', _frac_add),
     Template('frac_mul', ('kesrl', 'adike', 'kesr'), 'asan', _frac_mul),
-    Template('dec', ('onluq', 'kesrl'), 'asan', _dec),
+    Template('dec', ('onluq', 'kesrl'), 'asan', _dec, ('kesr',)),
     Template('ratio', ('nisbe', 'tenas', 'mutena'), 'orta', _ratio),
-    Template('ap', ('silsi', 'ededi', 'ardic'), 'orta', _ap),
-    Template('ap_sum', ('silsi', 'ededi', 'ardic'), 'çətin', _ap_sum),
+    Template('ap', ('silsi',), 'orta', _ap),                    # «ədədi» – hər «ədədin» sözünə uyğun gəlirdi (audit 13.10)
+    Template('ap_sum', ('silsi',), 'çətin', _ap_sum),
     Template('quad_sum', ('kvadr', 'viyet', 'tenli'), 'orta', _quad_sum),
     Template('quad_big', ('kvadr', 'tenli'), 'çətin', _quad_big),
-    Template('sys', ('siste',), 'çətin', _sys),
+    Template('sys', ('siste',), 'çətin', _sys, ('tenli',)),     # «say sistemi» deyil – tənliklər sistemi
     Template('angle_adj', ('bucaq', 'qonsu'), 'asan', _angle_adj),
     Template('rect', ('sahe', 'duzbu', 'dordb', 'perim'), 'asan', _rect),
     Template('pyth', ('pifaq', 'duzbu', 'ucbuc', 'hipot'), 'orta', _pyth),
     Template('power', ('quvve', 'ustlu', 'tam'), 'orta', _power),
+    Template('sets', ('coxlu',), 'orta', _sets),
+    Template('sets_word', ('coxlu',), 'çətin', _sets_word),
+    Template('part', ('hisse',), 'asan', _part),
+    Template('part_back', ('hisse',), 'orta', _part_back),
+    Template('remainder', ('qaliq',), 'asan', _remainder),
 ]
 BY_ID = {t.id: t for t in TEMPLATES}
 
 
 def matching(topic_stems: set[str]) -> list[Template]:
     """Plan mövzularının köklərinə uyğun şablonlar (açar söz köklərindən biri kifayətdir)."""
-    return [t for t in TEMPLATES if any(k in s or s in k for k in t.keys for s in topic_stems if len(s) >= 4)]
+    hit = lambda k: any(k in s or s in k for s in topic_stems if len(s) >= 4)          # noqa: E731
+    return [t for t in TEMPLATES if any(hit(k) for k in t.keys) and all(hit(k) for k in t.need)]
 
 
 def _num(s: str) -> Fraction | None:

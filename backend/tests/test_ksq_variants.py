@@ -50,7 +50,24 @@ CHECK = {
     'rect': lambda p: p[0] * p[1],
     'pyth': lambda p: Fraction(math.isqrt((p[0] * p[2]) ** 2 + (p[1] * p[2]) ** 2)),
     'power': lambda p: p[0] ** p[3],
+    'sets': lambda p: len(set(range(p[0])) | set(range(p[0] - p[2], p[0] - p[2] + p[1]))),        # sayma ilə: A və B kəsişməsi p[2]
+    'sets_word': lambda p: p[0] - len(set(range(p[1])) | set(range(p[1] - p[3], p[1] - p[3] + p[2]))),
+    'part': lambda p: Fraction(p[2]) / p[1] * p[0],
+    'part_back': lambda p: p[2],
+    'remainder': lambda p: p[0] - (p[0] // p[1]) * p[1],
 }
+
+
+def test_template_topic_audit():
+    """Audit 13.10: X-b KSQ-1 mövzularına aid olmayan şablonlar (silsilə, tənliklər sistemi) düşmür; çoxluq/hissə/qalıq şablonları var."""
+    from app.bank.match import stems
+    ids = lambda t: {x.id for x in T.matching(stems(t))}      # noqa: E731
+    assert not ids('Ədədin bölünəni və böləni. Tam və qalıqlı bölmə') & {'ap', 'ap_sum', 'sys'}
+    assert 'remainder' in ids('Ədədin bölünəni və böləni. Tam və qalıqlı bölmə')
+    assert not ids('Natural ədədlər və onların onluq say sistemində yazılışı') & {'sys', 'dec'}
+    assert {'sets', 'sets_word'} <= ids('Çoxluq anlayışı. Çoxluqların birləşməsi')
+    assert {'part', 'part_back'} <= ids('Ədədin hissəsinin və hissəsinə görə ədədin tapılması')
+    assert 'sys' in ids('Xətti tənliklər sistemi') and 'ap' in ids('Ədədi silsilə')
 
 
 @pytest.mark.parametrize('t', T.TEMPLATES, ids=lambda t: t.id)
