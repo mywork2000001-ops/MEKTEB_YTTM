@@ -174,3 +174,25 @@ def test_fill_task_translations(world):
         q0 = next(x for x in t.questions if x['bank_id'] == ids[0])
         assert q0['text']['ru'] == '2+2=? (ru)' and q0['options'][1]['ru'] == 'четыре' and q0['correct'] == 1
         assert fill_task_translations(db) == 0                       # ikinci dəfə — dəyişiklik yoxdur
+
+
+def test_slots_any_count():
+    """Müəllim sual sayını seçir (10–30): cəmi həmişə 100 bal, test/açıq payı saxlanır, sərhədlər kəsilir."""
+    for n in range(10, 31):
+        s = slots(n)
+        assert len(s) == n and abs(sum(x['points'] for x in s) - 100) < 1e-9 and all(x['points'] >= 0.5 for x in s)
+        assert 0.2 <= sum(x['kind'] == 'mcq' for x in s) / n <= 0.4
+    assert len(slots(5)) == 10 and len(slots(99)) == 30
+
+
+def test_cross_class_reuse_cap():
+    """Başqa sinfin eyni imtahanı ilə təkrar: əvvəl təzə suallar, çatmasa ən çox 20%."""
+    rng = random.Random(1)
+    cands = [Cand(f'b{i}', k, lvl, 0, {'text': {'az': f'q{i}'}, 'kind': k}) for i, (k, lvl) in
+             enumerate([(k, l) for k in ('mcq', 'open') for l in ('asan', 'orta', 'çətin') for _ in range(30)])]
+    others = {c.key for c in cands[::3]}                               # üçdə biri başqa sinifdə işlənib
+    res = generate([1, 2], [('Faiz', None)], cands, {}, seed=3, n=10, others=others)
+    keys = [q['key'] for v in res.values() for q in v]
+    assert len(keys) == 20 and len(set(keys)) == 20
+    assert sum(k in others for k in keys) <= 4                         # 20% × 20
+    _ = rng

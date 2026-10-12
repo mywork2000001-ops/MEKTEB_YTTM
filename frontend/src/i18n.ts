@@ -481,6 +481,8 @@ const D: Record<string, [string, string]> = {
   "gəlib": ["present", "пришли"],
   "gecikib": ["late", "опоздали"],
   "Hamısını «var» et": ["Mark everyone present", "Отметить всех присутствующими"],
+  "Sual sayı": ["Number of questions", "Количество вопросов"],
+  "{n} sual · 100 bal": ["{n} questions · 100 points", "{n} вопросов · 100 баллов"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

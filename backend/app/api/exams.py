@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import staff
 from ..domain.rules import grade_from_points, semester_grade
-from ..models import BankQuestion, Exam, ExamScore, ExamVariant, OnlineTask, User
+from ..models import BankQuestion, Exam, ExamScore, ExamVariant, OnlineTask, TeachingAssignment, User
 from ..services import own_assignment, plan_ctx, roster, today
 from .common import audit, get_or_404
 
@@ -322,9 +322,14 @@ def print_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Se
             'sheets': sheets, 'key': key}
 
 
+class VariantsIn(BaseModel):
+    n: int = Field(30, ge=10, le=30)                 # sual sayı – müəllim seçir
+
+
 @router.post('/{ta_id}/{exam_id}/variants')
-def make_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
-    """30 sual / 100 bal; hər şagirdə tam fərqli suallar. Nəticə yazılıbsa – yenidən yaratmaq olmaz."""
+def make_variants(ta_id: int, exam_id: int, body: VariantsIn | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """n sual (10–30) / 100 bal; sinifdə hər şagirdə tam fərqli suallar; başqa siniflərin eyni imtahanı ilə ≤ 20% təkrar.
+    Nəticə yazılıbsa – yenidən yaratmaq olmaz."""
     from ..domain.ksq_variants import Shortage, bank_candidates, generate, slots
     ta = own_assignment(db, user, ta_id)
     e = _exam(db, ta_id, exam_id)
@@ -337,7 +342,12 @@ def make_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Ses
     if not topics:
         raise HTTPException(400, 'Perspektiv planda bu imtahanın aralığında mövzu tapılmadı')
     try:
-        res = generate(students, topics, bank_candidates(db, topics), _history(db, ta, e, students), seed=e.id * 7919)
+        n = body.n if body else 30
+        # başqa siniflərin (eyni müəllim, eyni KSQ/BSQ nömrəsi və yarımil) variantlarındakı suallar
+        same = select(Exam.id).join(TeachingAssignment, TeachingAssignment.id == Exam.assignment_id).where(
+            TeachingAssignment.teacher_id == ta.teacher_id, Exam.kind == e.kind, Exam.no == e.no, Exam.semester == e.semester, Exam.id != e.id)
+        others = {q.get('key') for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id.in_(same))) for q in v.questions if q.get('key')}
+        res = generate(students, topics, bank_candidates(db, topics), _history(db, ta, e, students), seed=e.id * 7919, n=n, others=others)
     except Shortage as sh:
         raise HTTPException(409, {'message': 'Hər şagirdə fərqli sual üçün bazada sual çatmır: ' + sh.message(),
                                   'shortage': sh.items, 'topics': [t for t, _ in topics]})
@@ -346,7 +356,7 @@ def make_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Ses
     db.flush()
     for i, sid in enumerate(students):
         db.add(ExamVariant(exam_id=e.id, student_id=sid, code=f'{e.kind}{e.no}-{i + 1:02d}', questions=res[sid]))
-    e.items = [{'n': s['slot'], 'points': s['points'], 'standard': None, 'kind': s['kind'], 'level': s['level']} for s in slots()]
+    e.items = [{'n': s['slot'], 'points': s['points'], 'standard': None, 'kind': s['kind'], 'level': s['level']} for s in slots(n)]
     e.max_points = 100
     audit(db, user, 'create', 'exam_variants', e.id, students=len(students), topics=len(topics))
     db.commit()

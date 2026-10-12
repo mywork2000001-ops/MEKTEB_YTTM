@@ -28,13 +28,32 @@ _NUM = r'-?\d+(?:[.,]\d+)?(?:/\d+)?'
 _CARD = re.compile(rf'^{_NUM}(?:;{_NUM})*$')
 
 
-def slots() -> list[dict]:
+N_MIN, N_MAX = 10, 30          # müəllim sual sayını seçir (kart: 9 test + 21 açıq xanaya qədər sığır)
+REUSE = 0.2                    # başqa siniflərin eyni imtahan variantları ilə təkrar – ən çox 20% (istifadəçi qaydası, 12.10.2026)
+
+
+def slots(n: int = 30) -> list[dict]:
+    """n sual: slot planı mütənasib kiçilir (növ/çətinlik payı saxlanır), ballar cəmi 100 olacaq şəkildə 0,5-ə yuvarlanır."""
+    n = max(N_MIN, min(N_MAX, int(n)))
+    cnt = [max(1, round(c * n / 30)) for *_, c in SLOT_PLAN]
+    while sum(cnt) != n:                                   # fərq – ən böyük qrupda (açıq orta)
+        i = max(range(len(cnt)), key=lambda k: cnt[k])
+        cnt[i] += 1 if sum(cnt) < n else -1
+    raw = sum(p * c for (_, _, p, _), c in zip(SLOT_PLAN, cnt))
     out = []
-    for kind, level, pts, n in SLOT_PLAN:
-        out += [{'kind': kind, 'level': level, 'points': pts} for _ in range(n)]
+    for (kind, level, pts, _), c in zip(SLOT_PLAN, cnt):
+        out += [{'kind': kind, 'level': level, 'points': max(0.5, round(pts * 100 / raw * 2) / 2)} for _ in range(c)]
+    diff = round((100 - sum(s['points'] for s in out)) * 2) / 2        # qalıq – ən çətin suallara 0,5-lik addımla
+    k = len(out) - 1
+    while abs(diff) >= 0.5:
+        step = 0.5 if diff > 0 else -0.5
+        if out[k]['points'] + step >= 0.5:
+            out[k]['points'] += step
+            diff -= step
+        k = k - 1 if k > 0 else len(out) - 1
     for i, s in enumerate(out):
         s['slot'] = i + 1
-    assert len(out) == 30 and abs(sum(s['points'] for s in out) - 100) < 1e-9
+    assert len(out) == n and abs(sum(s['points'] for s in out) - 100) < 1e-9
     return out
 
 
@@ -101,10 +120,14 @@ def bank_candidates(db, topics: list[tuple[str, str | None]]) -> list[Cand]:
 
 
 def generate(students: list[int], topics: list[tuple[str, str | None]], cands: list[Cand],
-             history: dict[int, set[str]], seed: int) -> dict[int, list[dict]]:
-    """students × 30 slot → {student_id: [sual surəti]}. Çatışmazlıq olarsa Shortage."""
+             history: dict[int, set[str]], seed: int, n: int = 30, others: set[str] | None = None) -> dict[int, list[dict]]:
+    """students × n slot → {student_id: [sual surəti]}. others – başqa siniflərin eyni imtahanında işlənmiş suallar:
+    əvvəl təzələri seçilir, çatmasa ən çox REUSE (20%) qədəri təkrar ola bilər. Çatışmazlıq olarsa Shortage."""
     rng = random.Random(seed)
-    plan = slots()
+    plan = slots(n)
+    n = len(plan)
+    others = others or set()
+    reuse_left = int(REUSE * n * len(students))
     nt = max(1, len(topics))
     # slotlara mövzu: plan dərslərinin ardıcıllığı ilə dövri (saat payına mütənasib — eyni mövzu bir neçə dərsdirsə çox düşür)
     for i, s in enumerate(plan):
@@ -117,8 +140,8 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
         by.setdefault((c.kind, c.level), []).append(c)
     for lst in by.values():
         rng.shuffle(lst)
-    res: dict[int, list[dict]] = {sid: [None] * 30 for sid in students}      # type: ignore[list-item]
-    order = sorted(range(30), key=lambda i: (plan[i]['kind'] != 'open', plan[i]['level'] != 'çətin'))   # az olanlar əvvəl
+    res: dict[int, list[dict]] = {sid: [None] * n for sid in students}      # type: ignore[list-item]
+    order = sorted(range(n), key=lambda i: (plan[i]['kind'] != 'open', plan[i]['level'] != 'çətin'))   # az olanlar əvvəl
     short: dict[int, int] = {}
     for i in order:
         s = plan[i]
@@ -133,6 +156,10 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
             pick = None
             for lvl in (s['level'], *NEAR[s['level']]):
                 pool = [c for c in by.get((s['kind'], lvl), []) if ok(c)]
+                fresh = [c for c in pool if c.key not in others]          # başqa sinifdə işlənməyənlər əvvəl
+                if not fresh and reuse_left <= 0:
+                    continue
+                pool = fresh or pool
                 same = [c for c in pool if c.topic == s['topic']]
                 if same or pool:
                     pick = (same or pool)[0]
@@ -149,6 +176,8 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
             if pick is None:
                 short[i] = short.get(i, 0) + 1
                 continue
+            if pick.key in others:
+                reuse_left -= 1
             used.add(pick.key)
             used_text.add(norm_text(pick.q['text']))
             res[sid][i] = {**{k: v for k, v in pick.q.items() if k != 'key'}, 'key': pick.key, 'slot': s['slot'],

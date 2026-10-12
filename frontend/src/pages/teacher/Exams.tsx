@@ -178,9 +178,10 @@ type VarRes = { exam: Exam; variants: { student_id: number; full_name: string | 
 function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => void }) {
   const [d, err, , reload] = useLoad<VarRes>(() => get(`/api/exams/${ta.id}/${e.id}/variants`), [e.id])
   const [fail, setFail] = useState<string | null>(null)
+  const [n, setN] = useState(30)
   const make = async () => {
     setFail(null)
-    try { await post(`/api/exams/${ta.id}/${e.id}/variants`); toast(tt('Variantlar hazırdır')); reload() } catch (x) { setFail((x as Error).message); throw x }
+    try { await post(`/api/exams/${ta.id}/${e.id}/variants`, { n }); toast(tt('Variantlar hazırdır')); reload() } catch (x) { setFail((x as Error).message); throw x }
   }
   const load = () => get<KsqPrint>(`/api/exams/${ta.id}/${e.id}/variants/print`)
   const has = !!d?.variants.length
@@ -191,6 +192,8 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
       <ErrorBox error={err} />
       <p className="small muted" style={{ marginTop: 0 }}>{tt('30 sual · 100 bal (9 test, 21 açıq). Hər şagirdin sualları fərqlidir, əvvəl verilən suallar təkrarlanmır. Hər şagirdə bir A4 vərəq: ön üzdə 1–16, arxada 17–30 və cavab kartı. İki üzlü çap edin.')}</p>
       {fail && <div className="empty" style={{ color: 'var(--bad)', textAlign: 'left' }}>{fail}</div>}
+      <label className="lsel" style={{ marginBottom: 10 }}><span>{tt('Sual sayı')}</span>
+        <select className="sel" value={n} onChange={x => setN(Number(x.target.value))}>{[10, 12, 15, 18, 20, 24, 25, 30].map(k => <option key={k} value={k}>{tt('{n} sual · 100 bal', { n: k })}</option>)}</select></label>
       {!d ? null : !has ? (
         <AsyncBtn className="btn primary" onClick={make}>{tt('Variantları yarat')}</AsyncBtn>
       ) : <>

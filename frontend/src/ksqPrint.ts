@@ -13,7 +13,7 @@ export type KsqPrint = {
 }
 
 const L = 'ABCDE'
-const FRONT = 16                    // ön üzdə suallar 1–16
+const front = (n: number) => Math.ceil(n * 16 / 30)   // ön üzdə ~53% (30 sualda 1–16)
 const CELLS = 8                     // açıq cavab xanaları (backend CARD_MAX)
 const HELP: Record<string, string> = {
   az: 'Test (1–9): düzgün cavabın dairəsini tam qaralayın. Açıq (10–30): hər xanaya bir simvol, soldan: 0–9  -  ,  /  ;   Nümunə: 3/7 · 2,5 · -4 · 1;4',
@@ -71,7 +71,7 @@ function card(s: KsqSheet, ex: KsqPrint['exam'], qr: string): string {
     <div class="ctop"><img src="${qr}" alt="">
       <div class="cinfo"><div class="nm">${esc(s.full_name)}</div>
         ${esc(ex.class_name)} · ${esc(ex.subject)} · <b>${ex.kind}-${ex.no}</b> · ${fmtD(ex.date)} · variant <b>${esc(s.code)}</b> · 100 bal
-        <div class="help">${esc(HELP[s.lang] || HELP.az)}</div></div></div>
+        <div class="help">${esc((HELP[s.lang] || HELP.az).replace('1–9', `1–${mcq.length}`).replace('10–30', `${mcq.length + 1}–${s.questions.length}`))}</div></div></div>
     <div class="mcq">${mcq.map(q => `<div class="row"><span class="no">${q.slot}</span>${[...L].map(c => `<span class="bub">${c}</span>`).join('')}</div>`).join('')}</div>
     <div class="open">${open.map(q => `<div class="row"><span class="no">${q.slot}</span><span>${'<span class="box"></span>'.repeat(CELLS)}</span></div>`).join('')}</div>
   </div>`
@@ -79,9 +79,10 @@ function card(s: KsqSheet, ex: KsqPrint['exam'], qr: string): string {
 
 function sheet(s: KsqSheet, ex: KsqPrint['exam'], qr: string): string {
   const head = `<div class="hd"><div><b class="t">${ex.kind}-${ex.no}</b> · ${esc(ex.subject)} · ${esc(ex.class_name)} · ${fmtD(ex.date)}<br>${esc(ex.school)}</div>
-    <div style="text-align:right"><span class="nm">${esc(s.full_name)}</span><br>variant <b>${esc(s.code)}</b> · 30 sual · 100 bal</div></div>`
-  const front = s.questions.filter(q => q.slot <= FRONT), back = s.questions.filter(q => q.slot > FRONT)
-  return `<section class="side">${head}<div class="qs">${front.map(question).join('')}</div></section>
+    <div style="text-align:right"><span class="nm">${esc(s.full_name)}</span><br>variant <b>${esc(s.code)}</b> · ${s.questions.length} sual · 100 bal</div></div>`
+  const F = front(s.questions.length)
+  const fr = s.questions.filter(q => q.slot <= F), back = s.questions.filter(q => q.slot > F)
+  return `<section class="side">${head}<div class="qs">${fr.map(question).join('')}</div></section>
     <section class="side"><div class="hd" style="font-size:8pt"><span>${esc(s.full_name)} · ${esc(s.code)}</span><span>${ex.kind}-${ex.no} · 2-ci üz</span></div>
       <div class="qs">${back.map(question).join('')}</div>${card(s, ex, qr)}</section>`
 }
