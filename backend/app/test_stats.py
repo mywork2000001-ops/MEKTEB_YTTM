@@ -19,15 +19,15 @@ from .models import AuditLog, OnlineTask, PlanLesson, SchoolClass, TaskAttempt, 
 from .services import SCHOOL_TZ, roster, ws_cond
 
 KINDS = ('movzu', 'sinaq')
-LOW_PART = 0.5            # iştirak bundan azdırsa – «az iştirak» nişanı
+LOW_PART = 0.4            # iştirak bundan azdırsa – «az iştirak» nişanı
 CHRONIC_N, CHRONIC_SHARE = 3, 0.5   # xroniki yazmayan: ≥3 test və ya verilənlərin ≥50%-i (ən azı 2)
 ATTENTION_PCT = 40.0
-RANK_PART = 0.5          # reytinqdə yer – verilən testlərin YARISINDAN ÇOXUNU yazana (4-dən 3-ü; yarısı – «xroniki», yersiz)
+RANK_PART = 0.4          # reytinqdə yer – verilən testlərin ən azı 40 %-ni yazana (istifadəçi qərarı, 12.10.2026; 5-dən 2-si)
 
 
 def rank_value(p: dict) -> float | None:
-    """Yer üçün dəyər: az yazan (iştirak ≤ 50%) yer almır – 4 testdən 2-ni 100% yazan birinci olmasın («xroniki» ilə ziddiyyət)."""
-    if p['avg_pct'] is None or (p['given'] and p['wrote'] <= p['given'] * RANK_PART):
+    """Yer üçün dəyər: az yazan (iştirak < 40 %) yer almır – az test yazıb yüksək faizlə birinci olmasın."""
+    if p['avg_pct'] is None or (p['given'] and p['wrote'] < p['given'] * RANK_PART - 1e-9):
         return None
     return p['avg_pct']
 

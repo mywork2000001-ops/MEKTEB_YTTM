@@ -24,15 +24,15 @@ def _row(sid, unit, status, pct=None):
             'status': status, 'pct': pct}
 
 
-def test_rating_needs_half_participation():
-    """4 testdən 1-ni (və ya yarısını) 100% yazan birinci olmur (yer yoxdur); yarısından çoxunu yazan reytinqdədir."""
+def test_rating_needs_40_participation():
+    """Reytinqdə yer – testlərin ≥ 40 %-ni yazana (12.10.2026): 4-dən 1-ni 100% yazan yersiz, 4-dən 2-ni yazan reytinqdədir."""
     rows = [_row(1, 't1', 'yazıb', 100), _row(1, 't2', 'yazmayıb'), _row(1, 't3', 'yazmayıb'), _row(1, 't4', 'yazmayıb'),
             _row(2, 't1', 'yazıb', 60), _row(2, 't2', 'yazıb', 70), _row(2, 't3', 'yazıb', 65), _row(2, 't4', 'yazmayıb'),
             _row(4, 't1', 'yazıb', 100), _row(4, 't2', 'yazıb', 100), _row(4, 't3', 'yazmayıb'), _row(4, 't4', 'yazmayıb'),
             _row(3, 't1', 'yazıb', 50), _row(3, 't2', 'yazıb', 50), _row(3, 't3', 'yazıb', 50), _row(3, 't4', 'yazıb', 50)]
     rt = {r['student_id']: r for r in rating({'tests': [], 'rows': rows})['rows']}
-    assert (rt[2]['place_all'], rt[3]['place_all'], rt[1]['place_all'], rt[4]['place_all']) == (1, 2, None, None)
-    assert rt[1]['ranked'] is False and rt[1]['avg_pct'] == 100.0 and rt[2]['place_class'] == 1
+    assert (rt[4]['place_all'], rt[2]['place_all'], rt[3]['place_all'], rt[1]['place_all']) == (1, 2, 3, None)
+    assert rt[1]['ranked'] is False and rt[1]['avg_pct'] == 100.0 and rt[2]['place_class'] == 2
 
 
 def test_live_watch_for_exam_matches_journal(world, clock, monkeypatch):

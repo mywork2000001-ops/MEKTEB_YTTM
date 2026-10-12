@@ -162,7 +162,7 @@ export function RatingPanel({ f, lessons, onStudent, initial = 'movzu', kind: fi
         d.rows.map(r => [r.place_all ?? '—', r.place_class ?? '—', r.full_name, r.class_name, `${r.wrote} / ${r.given}`, fmtN(r.avg_pct), fmtN(r.last_pct), sgn(r.delta), flags(r).join(', ')]), [4, 5, 6, 7]) +
       (d.classes.length > 1 ? '<h2>Siniflər üzrə</h2>' + table(['Yer', 'Sinif', 'Orta %', 'İştirak %', 'Nəticə sayı'], d.classes.map(c => [c.place ?? '—', c.class_name, fmtN(c.avg_pct), fmtN(c.participation), c.wrote]), [2, 3, 4]) : '') +
       '<h2>Testlər</h2>' + table(['Tarix', 'Test', 'Mövzu', 'Yazıb / verilən', 'Orta %'], d.tests.map(t => [fmtD(t.date), t.title, t.topic || '', `${t.wrote} / ${t.given}`, fmtN(t.avg_pct)]), [3, 4]) +
-      `<p class="note">${kind === 'movzu' ? 'Mövzu testləri formativ jurnala düşür; reytinq onların orta faizi üzrədir.' : 'Sınaqlar formativ qiymətə təsir etmir; faiz cərimə (səhv ÷ N) nəzərə alınmaqla.'} Yer – verilən testlərin yarısından çoxunu yazanlara; az yazan sonda, yersiz. Bərabər orta – eyni yer.</p>`,
+      `<p class="note">${kind === 'movzu' ? 'Mövzu testləri formativ jurnala düşür; reytinq onların orta faizi üzrədir.' : 'Sınaqlar formativ qiymətə təsir etmir; faiz cərimə (səhv ÷ N) nəzərə alınmaqla.'} Yer – verilən testlərin ən azı 40 %-ni yazanlara; az yazan sonda, yersiz. Bərabər orta – eyni yer.</p>`,
   })
   return (
     <>
@@ -193,7 +193,7 @@ export function RatingPanel({ f, lessons, onStudent, initial = 'movzu', kind: fi
                     <td className="r num"><b>{fmt(r.avg_pct)}</b></td><td className="r num">{fmt(r.last_pct)}</td>
                     <td className="r num">{r.delta == null ? '—' : r.delta === 0 ? <span className="muted">0</span> : <Pill tone={r.delta > 0 ? 'ok' : 'bad'}>{sgn(r.delta)} bənd</Pill>}</td><td><Flags r={r} /></td></tr>))}</tbody>
               </table></div>)}
-            <p className="small muted" style={{ margin: '8px 0 0' }}>{kind === 'movzu' ? 'Mövzu testləri formativ jurnala düşür.' : 'Sınaqlar formativ qiymətə təsir etmir; faiz cərimə ilə.'} Yer – verilən testlərin yarısından çoxunu yazanlara (az yazan sonda, yersiz). Mövzu testi və sınaq reytinqi qarışmır. Şagirdə toxunun – profil açılır.</p>
+            <p className="small muted" style={{ margin: '8px 0 0' }}>{kind === 'movzu' ? 'Mövzu testləri formativ jurnala düşür.' : 'Sınaqlar formativ qiymətə təsir etmir; faiz cərimə ilə.'} Yer – verilən testlərin ən azı 40 %-ni yazanlara (az yazan sonda, yersiz). Mövzu testi və sınaq reytinqi qarışmır. Şagirdə toxunun – profil açılır.</p>
           </section>
           {d.classes.length > 1 && <section className="panel"><h2>Siniflər</h2>
             {d.classes.map(c => <div key={c.class_name} className="row small"><b>{c.place ?? '—'}.</b><span className="grow">{c.class_name}</span><span className="muted">iştirak {pct(c.participation)}</span><b>{pct(c.avg_pct)}</b></div>)}</section>}
