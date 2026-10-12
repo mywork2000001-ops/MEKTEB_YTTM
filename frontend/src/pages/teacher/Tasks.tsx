@@ -36,6 +36,7 @@ export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta
   const [watch, setWatch] = useState<Task | null>(null)
   const [share, setShare] = useState<Task | null>(null)
   const [del, setDel] = useState<Task | null>(null)
+  const [exp, setExp] = useState<number | null>(null)          // şagird siyahısı açıq olan test
   const f = usePeriod('tasks', 'date')
   const now = Date.now()
   const inClass = (list || []).filter(t => !ta || t.ta_id === ta)
@@ -66,15 +67,17 @@ export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta
       </div>
     ) : (
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <button className={'btn sm' + (exp === t.id ? ' primary' : '')} onClick={() => setExp(e => (e === t.id ? null : t.id))}>👥 Şagirdlər</button>
+        <button className="btn sm" onClick={() => setEdit(t)}>✏ Redaktə</button>
+        <button className="btn sm ghost" onClick={() => setDel(t)}>🗑 Sil</button>
         <button className={'btn sm' + (s === 'open' ? ' primary' : '')} onClick={() => setWatch(t)}>{s === 'open' ? 'Canlı izlə' : 'Nəticələr'}</button>
-        <button className="btn sm" onClick={() => setShare(t)}>Link göndər</button>
         <More>
+          <button onClick={() => setShare(t)}>Link göndər</button>
           <button onClick={() => setResend(t)}>Yenidən göndər</button>
           <button onClick={() => paper(t.ta_id!, t.id, t.class_name || '')}>Kağız variant (çap)</button>
-          <button onClick={() => setEdit(t)}>Redaktə</button>
-          <button className="danger" onClick={() => setDel(t)}>Sil</button>
         </More>
       </div>)}
+    {exp === t.id && <TaskStudents ta={t.ta_id!} id={t.id} />}
     {del?.id === t.id && <ConfirmName name={t.title} action={archived ? 'Birdəfəlik sil' : 'Sil'} onCancel={() => setDel(null)}
       onConfirm={async () => {
         if (archived) { await apiDel(`/api/tasks/${t.ta_id}/${t.id}`); toast('Test sistemdən birdəfəlik silindi') }
@@ -148,6 +151,28 @@ export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta
           if (sameClass) reload()
           setShare({ ...t, class_name: lessons?.find(l => l.id === t.ta_id)?.class_name ?? resend.class_name }) }} />}
     </>
+  )
+}
+
+const TASK_TONE: Record<string, 'ok' | 'info' | undefined> = { 'təhvil verib': 'ok', 'həll edir': 'info', 'başlamayıb': undefined }
+
+/** Testi alan şagirdlər (əlifba ilə) və vəziyyəti – siyahıda sətrin altında (docs/test-sinaq-siyahi-promtu.md §1). */
+function TaskStudents({ ta, id }: { ta: number; id: number }) {
+  const [d, err] = useLoad<any>(() => get(`/api/tasks/${ta}/${id}`), [ta, id])
+  if (err) return <ErrorBox error={err} />
+  if (!d) return <Loading />
+  const rows = [...d.rows].sort((a: any, b: any) => a.full_name.localeCompare(b.full_name, 'az'))
+  return (
+    <div className="subrows"><div className="subrow" style={{ alignItems: 'stretch' }}>
+      <span className="small muted">{d.summary['təhvil verib']}/{rows.length} təhvil verib · {d.summary['həll edir']} həll edir · {d.summary['başlamayıb']} başlamayıb</span>
+      {rows.length === 0 ? <span className="small muted">Şagird yoxdur.</span>
+        : <ol className="small" style={{ margin: '4px 0 0', paddingLeft: 22, columns: '2 260px', columnGap: 24 }}>
+          {rows.map((r: any) => (
+            <li key={r.student_id} style={{ breakInside: 'avoid', marginBottom: 2 }}>{r.full_name}{' '}
+              <Pill tone={r.status === 'təhvil verib' ? (r.pct >= 70 ? 'ok' : r.pct >= 40 ? 'warn' : 'bad') : TASK_TONE[r.status]}>
+                {r.status === 'təhvil verib' ? `${fmt(r.pct, r.grade ? 0 : 1)}%${r.grade ? ` → ${r.grade}` : ''}` : r.status}</Pill></li>))}
+        </ol>}
+    </div></div>
   )
 }
 

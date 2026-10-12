@@ -133,6 +133,15 @@ def test_online_exam_journal_rating_privacy(world, clock, monkeypatch):
     assert next(x for x in admin.get(f'/api/exams/{ta}/semester/1').json()['students']
                 if x['student_id'] == st[0]['id'])['exam_pct'] is not None
 
+    # adın dəyişdirilməsi (docs/test-sinaq-siyahi-promtu.md §2): yalnız yaradan / admin, bütün siniflərdə birdən
+    assert ilqar.patch(f'/api/exams-online/{bid}', json={'title': 'Başqa ad'}).status_code == 403
+    assert admin.patch(f'/api/exams-online/{bid}', json={'title': '  '}).status_code == 422
+    assert admin.patch(f'/api/exams-online/{bid}', json={'title': 'Buraxılış sınağı №1'}).json()['title'] == 'Buraxılış sınağı №1'
+    assert admin.get(f'/api/exams-online/{bid}').json()['batch']['title'] == 'Buraxılış sınağı №1'
+    with S() as db:
+        assert {t.title for t in db.query(OnlineTask).filter_by(batch_id=bid)} == {'Buraxılış sınağı №1'}
+    assert ilqar.get(f'/api/tasks/{ta_d}').json()[0]['title'] == 'Buraxılış sınağı №1'
+
     # silmə: başqa müəllim yalnız öz sinfini silir; silinən sınaq tam gedir (şagirddə də)
     assert ilqar.delete(f'/api/exams-online/{bid}').json()['deleted'] == 1
     assert admin.get(f'/api/exams-online/{bid}').json()['summary']['students'] == 5

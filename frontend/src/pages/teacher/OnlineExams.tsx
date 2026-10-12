@@ -2,12 +2,12 @@
 // ümumi yer), siniflərin reytinqi, sual analizi, açıq sualın əl ilə yoxlanması, kumulyativ reytinq. Formativ jurnala düşmür.
 import { StudentPicker } from './common'
 import { useEffect, useMemo, useState } from 'react'
-import { ApiError, del as apiDel, get, post, put } from '../../api'
+import { ApiError, del as apiDel, get, patch, post, put } from '../../api'
 import { MathText } from '../../MathText'
 import { Chips, ConfirmName, Drawer, ErrorBox, Field, fmt, Loading, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
 import { Link } from 'react-router-dom'
 import { esc, head, printDoc, table } from '../../print'
-import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Given, type Q } from './TaskEditor'
+import TaskEditor, { BankPicker, iso, localParts, OwnQuestion, toCustom, type Given, type Q } from './TaskEditor'
 import { TaskActions } from './Tasks'
 import { PeriodBar, usePeriod } from '../../periods'
 import ExamSeriesPanel from './ExamSeries'
@@ -41,6 +41,8 @@ export default function OnlineExams({ embedded, ta, view: viewProp }: { embedded
   const [list, err, loading, reload] = useLoad<Exam[]>(() => get('/api/exams-online'), [])
   const [creating, setCreating] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
+  const [exp, setExp] = useState<number | null>(null)          // şagird siyahısı açıq olan sınaq
+  const [editing, setEditing] = useState<Exam | null>(null)
   const f = usePeriod('exams', 'date')
   const all = (list || []).filter(x => !ta || (x.ta_ids || []).includes(ta))     // sinif filtri – həmin sinfə verilən sınaqlar
   // eyni adlı sınaq ikinci dəfə (və ya «(təkrar)») – «təkrar» nişanı
@@ -70,15 +72,105 @@ export default function OnlineExams({ embedded, ta, view: viewProp }: { embedded
         <div className="jlist">
           {list && all.length === 0 && <div className="empty">{ta ? 'Bu sinfə hələ sınaq verilməyib' : 'Hələ sınaq yoxdur'} – «+ Yeni sınaq» ilə test bazasından sınaq seçin.</div>}
           {all.length > 0 && shown.length === 0 && <div className="empty">Bu seçimdə sınaq yoxdur – vəziyyəti və ya dövrü dəyişin.</div>}
-          {shown.map(x => (
-            <div key={x.id} className="jrow cols click" onClick={() => setOpen(x.id)} style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 6 }}>
-              <div className="row"><b className="grow">{x.title}</b><Pill tone={stateTone(x.state)}>{x.state}</Pill>{isRepeat(x) && <Pill tone="warn">təkrar</Pill>}{x.mine && <Pill tone="acc">mənim</Pill>}</div>
-              <span className="small muted">{x.subject}{x.grade ? ` · ${x.grade}-cu sinif` : ''} · {x.classes.join(', ')} · {dt(x.opens_at)} – {dt(x.closes_at)} · {x.questions} sual · {x.wrote} yazıb{x.avg_pct != null ? ` · orta ${fmt(x.avg_pct)}%` : ''}</span>
-            </div>))}
+          {shown.map(x => <ExamRow key={x.id} x={x} repeat={isRepeat(x)} expanded={exp === x.id} onToggle={() => setExp(e => (e === x.id ? null : x.id))}
+            onJournal={() => setOpen(x.id)} onEdit={() => setEditing(x)} onChange={reload} />)}
         </div></>)}
       {creating && <NewExam onClose={() => setCreating(false)} onDone={() => { setCreating(false); reload() }} />}
       {open && <Results id={open} onClose={() => setOpen(null)} onChange={reload} />}
+      {editing && <EditExam x={editing} onClose={() => setEditing(null)} onChange={reload} />}
     </>
+  )
+}
+
+// ---------------------------------------------------------------- siyahı sətri (docs/test-sinaq-siyahi-promtu.md)
+/** Sınaq adı + həmişə görünən «Şagirdlər · Redaktə · Sil»; sətrə klik – sinif-sinif şagird adları sətrin altında açılır. */
+function ExamRow({ x, repeat, expanded, onToggle, onJournal, onEdit, onChange }: { x: Exam; repeat: boolean; expanded: boolean; onToggle: () => void
+  onJournal: () => void; onEdit: () => void; onChange: () => void }) {
+  const [delAsk, setDelAsk] = useState(false)
+  const stop = (fn: () => void) => (e: { stopPropagation: () => void }) => { e.stopPropagation(); fn() }
+  return (
+    <div className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 6 }}>
+      <div className="click stack" style={{ gap: 4 }} onClick={onToggle} role="button" aria-expanded={expanded}>
+        <div className="row"><b className="grow">{expanded ? '▾' : '▸'} {x.title}</b><Pill tone={stateTone(x.state)}>{x.state}</Pill>{repeat && <Pill tone="warn">təkrar</Pill>}{x.mine && <Pill tone="acc">mənim</Pill>}</div>
+        <span className="small muted">{x.subject}{x.grade ? ` · ${x.grade}-cu sinif` : ''} · {x.classes.join(', ')} · {dt(x.opens_at)} – {dt(x.closes_at)} · {x.questions} sual · {x.wrote} yazıb{x.avg_pct != null ? ` · orta ${fmt(x.avg_pct)}%` : ''}</span>
+      </div>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <button className={'btn sm' + (expanded ? ' primary' : '')} onClick={stop(onToggle)}>👥 Şagirdlər</button>
+        <button className="btn sm" onClick={stop(onEdit)}>✏ Redaktə</button>
+        <button className="btn sm ghost" onClick={stop(() => setDelAsk(true))}>🗑 {x.mine ? 'Sil' : 'Sinfimdən sil'}</button>
+        <button className="btn sm ghost" onClick={stop(onJournal)}>Ətraflı jurnal →</button>
+      </div>
+      {delAsk && <ConfirmName name={x.title} action="Birdəfəlik sil" onCancel={() => setDelAsk(false)}
+        onConfirm={async () => { await apiDel(`/api/exams-online/${x.id}`); toast(x.mine ? 'Sınaq bütün siniflərdən silindi' : 'Sınaq sinfinizdən silindi'); setDelAsk(false); onChange() }} />}
+      {delAsk && <span className="small muted">Nəticələr və şagird cəhdləri də silinir – geri qaytarmaq olmur.</span>}
+      {expanded && <ExamStudents id={x.id} />}
+    </div>
+  )
+}
+
+const STATUS_TONE: Record<Row['status'], 'ok' | 'bad' | 'info' | undefined> = { 'yazıb': 'ok', 'yazmayıb': 'bad', 'yazır': 'info', 'gözlənilir': undefined }
+
+/** Sınağı alan siniflərin şagirdləri (əlifba ilə) və vəziyyəti; başqa müəllimin sinfində adlar gizlidir (access: own). */
+function ExamStudents({ id }: { id: number }) {
+  const [d, err] = useLoad<Res>(() => get(`/api/exams-online/${id}`), [id])
+  if (err) return <ErrorBox error={err} />
+  if (!d) return <Loading />
+  return (
+    <div className="subrows">
+      {d.classes.map(c => {
+        const rows = d.rows.filter(r => r.task_id === c.task_id || (r.class_name === c.class_name && !d.classes.some(k => k.task_id === r.task_id)))
+          .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'az'))
+        const hidden = rows.length > 0 && rows.every(r => !r.full_name)
+        return (
+          <div key={c.task_id} className="subrow" style={{ alignItems: 'stretch' }}>
+            <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}><b>{c.class_name}</b><Pill tone={stateTone(c.state)}>{c.state}</Pill>
+              <span className="small muted grow">{c.wrote}/{c.students} yazıb{c.avg_pct != null ? ` · orta ${fmt(c.avg_pct)}%` : ''}</span></div>
+            {hidden ? <span className="small muted">Başqa müəllimin sinfi – şagird adları göstərilmir.</span>
+              : rows.length === 0 ? <span className="small muted">Bu sinifdə şagird yoxdur.</span>
+              : <ol className="small" style={{ margin: '4px 0 0', paddingLeft: 22, columns: '2 260px', columnGap: 24 }}>
+                {rows.map((r, i) => (
+                  <li key={(r.student_id ?? 'x') + '-' + i} style={{ breakInside: 'avoid', marginBottom: 2 }}>
+                    {r.full_name || 'şagird'} <Pill tone={STATUS_TONE[r.status]}>{r.status === 'yazıb' ? `${fmt(r.pct)}%` : r.status}</Pill>
+                    {r.retake && <span className="muted"> · təkrar</span>}</li>))}
+              </ol>}
+          </div>)
+      })}
+    </div>
+  )
+}
+
+/** Redaktə: sınağın adı (bütün siniflərdə birdən; yalnız yaradan / admin) + hər öz sinfi üçün vaxt və suallar (tapşırıq redaktoru). */
+function EditExam({ x, onClose, onChange }: { x: Exam; onClose: () => void; onChange: () => void }) {
+  const [d, err] = useLoad<Res>(() => get(`/api/exams-online/${x.id}`), [x.id])
+  const [title, setTitle] = useState(x.title)
+  const [saveErr, setSaveErr] = useState<unknown>()
+  const [task, setTask] = useState<{ ta: number; id: number } | null>(null)
+  const full = d?.access === 'full'
+  const save = async () => {
+    try { await patch(`/api/exams-online/${x.id}`, { title }); toast('Sınağın adı dəyişdi'); onChange(); onClose() } catch (e) { setSaveErr(e) }
+  }
+  return (
+    <Drawer title={`Redaktə – ${x.title}`} onClose={onClose}
+      footer={<><button className="btn" onClick={onClose}>Bağla</button>{full && <button className="btn primary" disabled={!title.trim() || title.trim() === x.title} onClick={save}>Adı saxla</button>}</>}>
+      <ErrorBox error={err} />
+      {!d ? <Loading /> : (
+        <div className="stack">
+          <Field label="Sınağın adı" full hint={full ? 'bütün siniflərdə birdən dəyişir' : 'adı yalnız sınağı yaradan müəllim və ya admin dəyişə bilər'}>
+            <input value={title} maxLength={200} disabled={!full} onChange={e => setTitle(e.target.value)} /></Field>
+          <ErrorBox error={saveErr} />
+          <fieldset><legend>Vaxt və suallar – sinif üzrə</legend>
+            <div className="jlist">
+              {d.classes.filter(c => c.own).map(c => (
+                <div key={c.task_id} className="jrow" style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}>
+                  <span><b>{c.class_name}</b> <span className="small muted">{dt(c.opens_at)} – {dt(c.closes_at)}</span></span>
+                  <button className="btn sm" onClick={() => setTask({ ta: c.ta_id, id: c.task_id })}>Vaxt və suallar →</button>
+                </div>))}
+              {!d.classes.some(c => c.own) && <div className="empty">Bu sınaqda sizin sinfiniz yoxdur.</div>}
+            </div>
+          </fieldset>
+        </div>)}
+      {task && <TaskEditor ta={task.ta} taskId={task.id} fromBank={false} onClose={() => setTask(null)} onDone={() => { setTask(null); onChange() }} />}
+    </Drawer>
   )
 }
 

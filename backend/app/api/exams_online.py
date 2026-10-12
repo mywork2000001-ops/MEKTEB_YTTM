@@ -561,6 +561,33 @@ def set_manual(batch_id: int, task_id: int, student_id: int, body: ManualIn, use
     return {'correct': a.correct, 'total': a.total}
 
 
+class ExamRename(BaseModel):
+    title: str = Field(max_length=200)
+
+    @model_validator(mode='after')
+    def _strip(self):
+        self.title = self.title.strip()
+        if not self.title:
+            raise ValueError('Sınağın adı boş ola bilməz')
+        return self
+
+
+@router.patch('/{batch_id}')
+def rename_exam(batch_id: int, data: ExamRename, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Sınağın adı bütün siniflərdə birdən dəyişir (paket + tapşırıqlar) – yalnız yaradan və ya admin
+    (docs/test-sinaq-siyahi-promtu.md §2). Vaxt və suallar – hər sinif üçün tapşırıq redaktoru ilə."""
+    b, access = _batch(db, user, batch_id)
+    if access != 'full':
+        raise HTTPException(403, 'Sınağın adını yalnız onu yaradan müəllim və ya admin dəyişə bilər')
+    old = b.title
+    b.title = data.title
+    for t in db.scalars(select(OnlineTask).where(OnlineTask.batch_id == b.id)):
+        t.title = data.title
+    audit(db, user, 'update', 'test_batch', batch_id, title=[old, data.title])
+    db.commit()
+    return {'id': b.id, 'title': b.title}
+
+
 @router.delete('/{batch_id}')
 def delete_exam(batch_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Sınaq sistemdən tam silinir (cəhdlər və nəticələr də – müəllim və şagird üçün). Tam icazəli – bütün siniflər üzrə;
