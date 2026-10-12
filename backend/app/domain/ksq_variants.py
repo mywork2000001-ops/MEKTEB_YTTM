@@ -144,7 +144,8 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
     plan = slots(n)
     n = len(plan)
     others = others or set()
-    reuse_left = int(REUSE * n * len(students))
+    # siniflərarası ≤ 20 % qaydası yalnız hamıya fərqli sual mümkün olanda; təkrar onsuz da lazımdırsa (share > 1) – limit yoxdur
+    reuse_left = int(REUSE * n * len(students)) if share == 1 else 10 ** 9
     nt = max(1, len(topics))
     # slotlara mövzu: plan dərslərinin ardıcıllığı ilə dövri (saat payına mütənasib — eyni mövzu bir neçə dərsdirsə çox düşür)
     for i, s in enumerate(plan):
@@ -271,17 +272,18 @@ def generate_auto(students: list[int], topics, cands, history, seed: int, n: int
                         for k in info['need'] if info['have'][k] < info['need'][k]])
     k0 = max(1, *(math.ceil(len(students) * info['need'][k] / max(1, info['have'][k])) for k in info['need']))
     top = max(1, max_share or len(students))
-    last = None
-    for k in range(min(k0, top), min(k0 + 3, top) + 1):
+    lo, hi, best, last = min(k0, top), top, None, None
+    # ən kiçik işləyən k – ikili axtarış (hər generasiya ~0,1 s)
+    while lo <= hi:
+        mid = (lo + hi) // 2
         try:
-            return generate(students, topics, cands, history, seed=seed, n=n, others=others, share=k), k
+            best = (generate(students, topics, cands, history, seed=seed, n=n, others=others, share=mid), mid)
+            hi = mid - 1
         except Shortage as sh:
             last = sh
-    if top > k0 + 3:                                        # son cəhd – maksimal paylaşma
-        try:
-            return generate(students, topics, cands, history, seed=seed, n=n, others=others, share=top), top
-        except Shortage as sh:
-            last = sh
+            lo = mid + 1
+    if best:
+        return best
     raise last or Shortage([])
 
 
