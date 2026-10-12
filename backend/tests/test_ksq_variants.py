@@ -286,3 +286,5 @@ def test_shared_file_goes_to_best_topic(world):
         cs = bank_candidates(db, [('Toplama', None), ('Qalıqlı bölmə', None)], 'p003', {0: [a.id, b.id], 1: [b.id]})
         tops = {c.q['lesson']: c.topic for c in cs if c.kind == 'mcq'}
         assert tops == {'Natural — Toplama': 0, 'Natural — Qalıqlı bölmə': 1}
+        qb = next(c for c in cs if c.q['lesson'] == 'Natural — Qalıqlı bölmə')
+        assert qb.on(0) and qb.on(1)                                       # ortaq fayl – hər iki mövzuda sayılır və istifadə olunur

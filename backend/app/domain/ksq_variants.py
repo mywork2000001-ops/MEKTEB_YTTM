@@ -77,8 +77,12 @@ class Cand:
     key: str
     kind: str
     level: str
-    topic: int                    # aralıqdakı mövzunun indeksi (-1 — şablon)
+    topic: int                    # aralıqdakı mövzunun indeksi (-1 — şablon / seçilmiş test)
     q: dict
+    topics: frozenset = frozenset()   # sualın aid olduğu BÜTÜN mövzular (ortaq fayl bir neçə mövzuya bağlana bilər)
+
+    def on(self, ti: int) -> bool:
+        return ti == self.topic or ti in self.topics
 
 
 @dataclass
@@ -109,6 +113,11 @@ def bank_candidates(db, topics: list[tuple[str, str | None]], source: str = 'p00
             key = (ti == -1, rank, len(fids))
             if cur is None or key < (cur == -1, plan[cur].index(fid), len(plan[cur])):
                 home[fid] = ti
+    of_file: dict[int, frozenset] = {}
+    for ti, fids in plan.items():
+        for fid in fids:
+            if ti >= 0:
+                of_file[fid] = of_file.get(fid, frozenset()) | {ti}
     for ti, fids in plan.items():
         for f in (db.get(BankFile, i) for i in fids if home.get(i) == ti):
             if f is None or not f.active:
@@ -128,7 +137,7 @@ def bank_candidates(db, topics: list[tuple[str, str | None]], source: str = 'p00
                 else:
                     continue
                 seen.add(key)
-                out.append(Cand(key, q.kind, level, ti, {
+                out.append(Cand(key, q.kind, level, ti, topics=of_file.get(f.id, frozenset()), q={
                     'bank_id': q.id, 'source': f.source_key, 'lesson': f.label, 'kind': q.kind, 'text': q.text,
                     'options': q.options, 'correct': q.correct, 'answer': q.answer, 'image': q.image,
                     'card_answer': card_answer(q.answer) if q.kind == 'open' else None}))
@@ -138,7 +147,7 @@ def bank_candidates(db, topics: list[tuple[str, str | None]], source: str = 'p00
                     opt = q.options[q.correct]
                     ans = card_answer(opt.get('az') if isinstance(opt, dict) else str(opt))
                     if ans and not re.search(r'[a-zA-Zəğıöüşç]', (opt.get('az') if isinstance(opt, dict) else str(opt)) or ''):
-                        out.append(Cand(key + ':o', 'open', 'orta' if level == 'asan' else level, ti, {
+                        out.append(Cand(key + ':o', 'open', 'orta' if level == 'asan' else level, ti, topics=of_file.get(f.id, frozenset()), q={
                             'bank_id': q.id, 'source': f.source_key, 'lesson': f.label, 'kind': 'open', 'text': q.text,
                             'options': None, 'correct': None, 'answer': ans, 'image': q.image, 'card_answer': ans, 'from_mcq': True}))
     return out
@@ -158,7 +167,7 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
     nt = max(1, len(topics))
     # slotlara mövzu: plan dərslərinin ardıcıllığı ilə dövri (saat payına mütənasib — eyni mövzu bir neçə dərsdirsə çox düşür)
     # slotlar yalnız SUALI OLAN mövzulara dövri paylanır (faylı qonşu mövzu ilə ortaq olan mövzu boş qalırdı – slot başqa yerə gedirdi)
-    live = sorted({c.topic for c in cands if 0 <= c.topic < nt}) or list(range(nt))
+    live = sorted({t for c in cands for t in ({c.topic} | set(c.topics)) if 0 <= t < nt}) or list(range(nt))
     for i, s in enumerate(plan):
         s['topic'] = live[i % len(live)]
     # şablonlar YALNIZ aralığın mövzularına uyğun (docs/ksq-movzu-dizayn-promtu.md B2) – ümumi ehtiyat yoxdur
@@ -196,7 +205,7 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
                 if not fresh and reuse_left <= 0:
                     continue
                 pool = fresh or pool
-                same = [c for c in pool if c.topic == s['topic']]
+                same = [c for c in pool if c.on(s['topic'])]
                 if same or pool:
                     pick = (same or pool)[0]
                     break

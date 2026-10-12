@@ -663,7 +663,7 @@ def readiness(ta_id: int, exam_id: int, body: 'VariantsIn', user: User = Depends
     students, topics, cands, hist, others, files = _prepare(db, ta, e, body)
     rows = []
     for ti, (t, sec) in enumerate(topics):
-        cs = [c for c in cands if c.topic == ti]
+        cs = [c for c in cands if c.on(ti)]                 # ortaq faylın sualları onun bütün mövzularında sayılır
         rows.append({'topic': t, 'files': len(files.get(ti, [])), 'mcq': sum(c.kind == 'mcq' for c in cs), 'open': sum(c.kind == 'open' for c in cs),
                      'templates': 0})
     extra = [c for c in cands if c.topic == -1]
