@@ -375,9 +375,9 @@ def print_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Se
                        'qr': qr_payload(e.id, v.student_id, v.code),
                        'questions': [{'slot': q['slot'], 'kind': q['kind'], 'points': q['points'], 'text': pick_lang(q.get('text'), lang),
                                       'options': [pick_lang(o, lang) for o in q.get('options') or []] if q['kind'] == 'mcq' else None,
-                                      'image': q.get('image')} for q in qs]})
+                                      'image': q.get('image'), 'topic': q.get('topic_actual') or q.get('topic')} for q in qs]})
         key.append({'code': v.code, 'full_name': st.full_name if st else '—',
-                    'answers': [{'slot': q['slot'], 'value': key_value(q), 'points': q['points']} for q in qs]})
+                    'answers': [{'slot': q['slot'], 'value': key_value(q), 'points': q['points'], 'topic': q.get('topic_actual') or q.get('topic')} for q in qs]})
     return {'exam': {**exam_out(e), 'class_name': cls.name if cls else '', 'subject': ta.subject, 'school': header_school(user),
                      'teacher': user.full_name},
             'sheets': sheets, 'key': key}
@@ -385,7 +385,51 @@ def print_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Se
 
 class VariantsIn(BaseModel):
     n: int = Field(30, ge=10, le=30)                 # sual sayı – müəllim seçir
-    file_ids: list[int] | None = Field(None, max_length=60)    # müəllimin özü seçdiyi testlər; boş – perspektiv plandan
+    file_ids: list[int] | None = Field(None, max_length=60)    # müəllimin seçdiyi testlər – plana ƏLAVƏ olunur
+    only_mine: bool = False                                   # True – yalnız seçilən testlər (plan nəzərə alınmır)
+    share: int = Field(1, ge=1, le=2)                          # bir sual sinifdə ən çox neçə şagirdə (çatışmazlıqda 2)
+
+
+def _prepare(db: Session, ta, e: Exam, body: 'VariantsIn') -> tuple:
+    """Generator üçün hər şey: şagirdlər, mövzular, namizədlər, tarixçə, başqa siniflərin sualları."""
+    from ..domain.ksq_variants import bank_candidates
+    students = [s.id for s in roster(db, ta)]
+    topics = _range_topics(db, ta, e)
+    src = _source(db, ta)
+    _, files = _plan_files(db, ta, e, src)
+    if body.file_ids:
+        files = {-1: list(dict.fromkeys(body.file_ids))} if body.only_mine else {**files, -1: list(dict.fromkeys(body.file_ids))}
+    same = select(Exam.id).join(TeachingAssignment, TeachingAssignment.id == Exam.assignment_id).where(
+        TeachingAssignment.teacher_id == ta.teacher_id, Exam.kind == e.kind, Exam.no == e.no, Exam.semester == e.semester, Exam.id != e.id)
+    others = {q.get('key') for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id.in_(same))) for q in v.questions if q.get('key')}
+    return students, topics, bank_candidates(db, topics, src, files), _history(db, ta, e, students), others, files
+
+
+@router.post('/{ta_id}/{exam_id}/readiness')
+def readiness(ta_id: int, exam_id: int, body: 'VariantsIn', user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Hazırlıq paneli: mövzular üzrə hovuz (bank test/açıq, şablon), seçilən n üçün sınaq generasiyası, maksimal mümkün n."""
+    from ..domain import templates as T
+    from ..domain.ksq_variants import N_MIN, Shortage, generate, stems
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    students, topics, cands, hist, others, files = _prepare(db, ta, e, body)
+    rows = []
+    for ti, (t, sec) in enumerate(topics):
+        cs = [c for c in cands if c.topic == ti]
+        rows.append({'topic': t, 'files': len(files.get(ti, [])), 'mcq': sum(c.kind == 'mcq' for c in cs), 'open': sum(c.kind == 'open' for c in cs),
+                     'templates': len(T.matching(stems(t) | stems(sec or '')))})
+    extra = [c for c in cands if c.topic == -1]
+    def ok(n: int) -> list | None:
+        try:
+            generate(students, topics, cands, hist, seed=e.id * 7919, n=n, others=others, share=body.share)
+            return None
+        except Shortage as sh:
+            return sh.items
+    short = ok(body.n) if students and topics else [{'missing': 1}]
+    max_n = body.n if not short else next((k for k in range(body.n - 1, N_MIN - 1, -1) if not ok(k)), None) if students and topics else None
+    return {'students': len(students), 'n': body.n, 'need': len(students) * body.n, 'topics': rows,
+            'selected': {'mcq': sum(c.kind == 'mcq' for c in extra), 'open': sum(c.kind == 'open' for c in extra)},
+            'ok': not short, 'shortage': short or [], 'max_n': max_n}
 
 
 @router.get('/{ta_id}/{exam_id}/sources')
@@ -418,16 +462,10 @@ def make_variants(ta_id: int, exam_id: int, body: VariantsIn | None = None, user
     if not topics:
         raise HTTPException(400, 'Perspektiv planda bu imtahanın aralığında mövzu tapılmadı')
     try:
-        n = body.n if body else 30
-        # başqa siniflərin (eyni müəllim, eyni KSQ/BSQ nömrəsi və yarımil) variantlarındakı suallar
-        same = select(Exam.id).join(TeachingAssignment, TeachingAssignment.id == Exam.assignment_id).where(
-            TeachingAssignment.teacher_id == ta.teacher_id, Exam.kind == e.kind, Exam.no == e.no, Exam.semester == e.semester, Exam.id != e.id)
-        others = {q.get('key') for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id.in_(same))) for q in v.questions if q.get('key')}
-        src = _source(db, ta)
-        _, files = _plan_files(db, ta, e, src)
-        if body and body.file_ids:                          # müəllim testləri özü seçib – hamısı istənilən mövzu slotuna
-            files = {-1: list(dict.fromkeys(body.file_ids))}
-        res = generate(students, topics, bank_candidates(db, topics, src, files), _history(db, ta, e, students), seed=e.id * 7919, n=n, others=others)
+        body = body or VariantsIn()
+        n = body.n
+        students, topics, cands, hist, others, _ = _prepare(db, ta, e, body)
+        res = generate(students, topics, cands, hist, seed=e.id * 7919, n=n, others=others, share=body.share)
     except Shortage as sh:
         raise HTTPException(409, {'message': 'Hər şagirdə fərqli sual üçün bazada sual çatmır: ' + sh.message(),
                                   'shortage': sh.items, 'topics': [t for t, _ in topics]})

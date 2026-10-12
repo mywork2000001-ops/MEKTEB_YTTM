@@ -184,3 +184,27 @@ def test_variant_sources_plan_and_own(world):
     v = admin.post(f'/api/exams/{ta}/{e["id"]}/variants', json={'n': 10, 'file_ids': [fid]}).json()
     bank = [q for x in v['variants'] for q in x['questions'] if q.get('bank_id')]
     assert bank and all(q['lesson'] == 'Başqa test — Xüsusi' for q in bank) and len(v['variants'][0]['questions']) == 10
+
+
+def test_readiness_and_share(world):
+    """Hazırlıq: mövzular üzrə hovuz, kiçik hovuzda ok=false və maksimal n; «2 şagirdə» rejimi çatışmazlığı aradan qaldırır."""
+    admin, ta, e, pr = ksq(world)
+    r = admin.post(f'/api/exams/{ta}/{e["id"]}/readiness', json={'n': 30}).json()
+    faiz = next(t for t in r['topics'] if t['topic'] == 'Faiz')
+    assert r['students'] == 3 and r['need'] == 90 and faiz['mcq'] == 40 and faiz['open'] > 0 and faiz['templates'] >= 1
+    assert r['ok'] is True and r['max_n'] == 30
+    # yalnız bir kiçik test seçilsə (plan nəzərə alınmır) – hovuz çatmır, maksimal n azalır və ya yoxdur
+    from app.models import BankFile, BankQuestion
+    with world[1]() as db:
+        f = BankFile(source_key='p003', lesson='t/kicik.html', label='Kiçik test', url='http://x', kind='movzu', question_count=3)
+        db.add(f); db.flush()
+        for i in range(3):
+            db.add(BankQuestion(file_id=f.id, n=i + 1, kind='mcq', text={'az': f'K{i}'}, content_hash=f'k{i}', options=[{'az': '1'}, {'az': '2'}], correct=0, diff_auto='asan'))
+        db.commit()
+        fid = f.id
+    r2 = admin.post(f'/api/exams/{ta}/{e["id"]}/readiness', json={'n': 30, 'file_ids': [fid], 'only_mine': True}).json()
+    assert r2['selected']['mcq'] == 3 and (r2['ok'] is False or r2['max_n'] == 30)
+    v = admin.post(f'/api/exams/{ta}/{e["id"]}/variants', json={'n': 10, 'share': 2}).json()
+    keys = [q['key'] for x in v['variants'] for q in x['questions']]
+    from collections import Counter
+    assert max(Counter(keys).values()) <= 2 and all(len({q['key'] for q in x['questions']}) == 10 for x in v['variants'])

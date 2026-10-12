@@ -772,6 +772,20 @@ label.f textarea{min-height:84px;padding:10px 12px;resize:vertical}
 .calc{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:var(--r-sm);background:var(--surface-2);font-size:13.5px;flex-wrap:wrap}
 .check{display:flex;align-items:center;gap:10px;font-size:14px;min-height:40px}
 .check input{width:20px;height:20px;accent-color:var(--accent)}
+/* KSQ «Kağız variantlar»: 4 addım kartı */
+.ksteps{display:flex;flex-direction:column;gap:12px}
+.kstep{border:1px solid var(--line);border-radius:14px;background:var(--surface);overflow:hidden}
+.kstep>header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--sunk)}
+.kstep.on>header{background:var(--accent-soft,#e0e7ff)}
+.kno{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;background:var(--ink-3,#64748b);color:#fff;flex:none}
+.kstep.on .kno{background:var(--accent,#3346d3)}
+.kstate{margin-left:auto;font-size:12px;font-weight:700;color:var(--ink-2)}
+.kbody{padding:12px 14px}
+.kpick{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 8px;margin-top:8px}
+.kpick label{display:flex;gap:6px;align-items:flex-start;padding:2px 0}
+.ktbl td,.ktbl th{padding:5px 8px}.ktbl tr.bad td{color:var(--bad)}
+.kverdict{margin:8px 0;padding:8px 10px;border-radius:10px}.kverdict.ok{background:var(--ok-soft,#dcfce7)}.kverdict.warn{background:var(--warn-soft,#fef3c7)}
+.kvars{columns:2 200px;margin:0;padding-left:22px}
 /* jurnal «Gündəlik»: köçürmə zolağı, köçürülmüş (hələ saxlanmamış) davamiyyət, yığılan bölmə */
 .jcopy{background:var(--info-soft,#e0f2fe);color:var(--ink,#0f172a);border-radius:10px;padding:8px 12px;font-size:13px;margin:4px 0 8px}
 .att-btns.copied button[aria-pressed="true"]{outline:2px dashed currentColor;outline-offset:1px}

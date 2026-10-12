@@ -191,51 +191,102 @@ type Sources = { source: string; plan: { seq: number; topic: string; files: { fi
   all: { file_id: number; label: string; questions: number }[] }
 type VarRes = { exam: Exam; variants: { student_id: number; full_name: string | null; code: string }[]
   report: { open_pct: number; [k: string]: unknown } | null }
+type Ready = { students: number; n: number; need: number; ok: boolean; max_n: number | null
+  topics: { topic: string; files: number; mcq: number; open: number; templates: number }[]; selected: { mcq: number; open: number }
+  shortage: { slot?: number; kind?: string; level?: string; missing: number }[] }
 
-/** KSQ/BSQ kağız variantları: 30 sual / 100 bal, hər şagirdə tam fərqli suallar; çap – bir A4 (iki üz) + cavab kartı. */
+/** Addım kartı: nömrəli dairə + başlıq + vəziyyət; aktiv addım vurğulanır (docs/ksq-movzu-dizayn-promtu.md D). */
+function Step({ no, title, state, active, children }: { no: number; title: string; state?: string; active?: boolean; children?: React.ReactNode }) {
+  return (
+    <section className={'kstep' + (active ? ' on' : '')}>
+      <header><span className="kno">{no}</span><b>{title}</b>{state && <span className="kstate">{state}</span>}</header>
+      {children && <div className="kbody">{children}</div>}
+    </section>
+  )
+}
+
+/** KSQ/BSQ kağız variantları: 1 Hazırlıq (yalnız keçilmiş mövzular) → 2 Variantlar → 3 Çap → 4 Skan. */
 function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => void }) {
   const [d, err, , reload] = useLoad<VarRes>(() => get(`/api/exams/${ta.id}/${e.id}/variants`), [e.id])
   const [fail, setFail] = useState<string | null>(null)
   const [n, setN] = useState(30)
+  const [share, setShare] = useState(1)
   const [src, setSrc] = useState<Sources | null>(null)
-  const [own, setOwn] = useState(false)
+  const [mode, setMode] = useState<'plan' | 'add' | 'only'>('plan')
   const [pickd, setPickd] = useState<number[]>([])
+  const [ready, setReady] = useState<Ready | null>(null)
+  const [checking, setChecking] = useState(false)
   useEffect(() => { get<Sources>(`/api/exams/${ta.id}/${e.id}/sources`).then(setSrc, () => setSrc(null)) }, [e.id])   // eslint-disable-line react-hooks/exhaustive-deps
+  const body = () => ({ n, share, file_ids: mode === 'plan' ? null : pickd, only_mine: mode === 'only' })
+  // hazırlıq: seçim dəyişəndə hovuz yenidən yoxlanır (kiçik gecikmə ilə)
+  useEffect(() => {
+    if (mode !== 'plan' && !pickd.length) { setReady(null); return }
+    setChecking(true)
+    const t = setTimeout(() => { post<Ready>(`/api/exams/${ta.id}/${e.id}/readiness`, body()).then(setReady, () => setReady(null)).finally(() => setChecking(false)) }, 350)
+    return () => clearTimeout(t)
+  }, [n, share, mode, pickd.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
   const make = async () => {
     setFail(null)
-    if (own && !pickd.length) { setFail(tt('Ən azı bir test seçin')); return }
-    try { await post(`/api/exams/${ta.id}/${e.id}/variants`, { n, file_ids: own ? pickd : null }); toast(tt('Variantlar hazırdır')); reload() } catch (x) { setFail((x as Error).message); throw x }
+    try { await post(`/api/exams/${ta.id}/${e.id}/variants`, body()); toast(tt('Variantlar hazırdır')); reload() } catch (x) { setFail((x as Error).message); throw x }
   }
   const load = () => get<KsqPrint>(`/api/exams/${ta.id}/${e.id}/variants/print`)
   const has = !!d?.variants.length
+  const ok = !!ready?.ok
   return (
-    <Drawer title={`${e.kind}-${e.no} · ${tt('Kağız variantlar')}`} onClose={onClose}
-      footer={<>{has && <><AsyncBtn className="btn" onClick={async () => printKey(await load())}>🔑 {tt('Müəllim açarı')}</AsyncBtn>
-        <AsyncBtn className="btn primary" onClick={async () => printSheets(await load())}>🖨 {tt('Vərəqləri çap et (A4)')}</AsyncBtn></>}</>}>
+    <Drawer title={`${e.kind}-${e.no} · ${tt('Kağız variantlar')}`} onClose={onClose}>
       <ErrorBox error={err} />
-      <p className="small muted" style={{ marginTop: 0 }}>{tt('Sual sayını seçin (cəmi 100 bal; ~30 % test, ~70 % açıq). Sinifdə hər şagirdin sualları fərqlidir, əvvəl verilən suallar təkrarlanmır. Bankda çatmayanda suallar parametrli şablonlardan yaranır. Hər şagirdə bir A4 vərəq (iki üz) + cavab kartı.')}</p>
-      {fail && <div className="empty" style={{ color: 'var(--bad)', textAlign: 'left' }}>{fail}</div>}
-      <label className="lsel" style={{ marginBottom: 10 }}><span>{tt('Sual sayı')}</span>
-        <select className="sel" value={n} onChange={x => setN(Number(x.target.value))}>{[10, 12, 15, 18, 20, 24, 25, 30].map(k => <option key={k} value={k}>{tt('{n} sual · 100 bal', { n: k })}</option>)}</select></label>
-      {src && <section style={{ marginBottom: 10 }}>
-        <label className="lsel" style={{ maxWidth: 420 }}><span>{tt('Testlər')}</span>
-          <select className="sel" value={own ? 'own' : 'plan'} onChange={x => setOwn(x.target.value === 'own')}>
-            <option value="plan">{tt('Perspektiv plandan (hər mövzunun öz testləri)')}</option><option value="own">{tt('Özüm seçirəm')}</option></select></label>
-        {!own ? <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{src.plan.map(p => <li key={p.seq}><b>№{p.seq} {p.topic}</b>: {p.files.length ? p.files.map(f => `${f.label} (${f.questions})`).join('; ') : <span className="muted">{tt('test yoxdur – şablonlar')}</span>}</li>)}
-          {src.plan.length === 0 && <li className="muted">{tt('Perspektiv planda bu imtahanın aralığında mövzu yoxdur')}</li>}</ul>
-        : <div style={{ maxHeight: 260, overflow: 'auto', border: '1px solid var(--line)', borderRadius: 8, padding: 6, marginTop: 6 }}>
-          {src.all.map(f => <label key={f.file_id} className="check small" style={{ display: 'flex', gap: 6 }}><input type="checkbox" checked={pickd.includes(f.file_id)}
-            onChange={x => setPickd(p => x.target.checked ? [...p, f.file_id] : p.filter(i => i !== f.file_id))} />{f.label} <span className="muted">({f.questions})</span></label>)}
-          <p className="small muted" style={{ margin: '4px 0 0' }}>{tt('Seçildi: {n}', { n: pickd.length })}</p></div>}
-      </section>}
-      {!d ? null : !has ? (
-        <AsyncBtn className="btn primary" onClick={make}>{tt('Variantları yarat')}</AsyncBtn>
-      ) : <>
-        <p className="small">{tt('{n} şagird üçün variant hazırdır', { n: d.variants.length })}{d.report ? ` · ${tt('açıq sual')}: ${d.report.open_pct}%` : ''}</p>
-        <ol className="small" style={{ columns: '2 220px', paddingLeft: 22 }}>{d.variants.map(v => <li key={v.student_id}>{v.full_name || '—'} <span className="muted">{v.code}</span></li>)}</ol>
-        <AsyncBtn className="btn sm ghost" onClick={make} title={tt('Nəticə yazılmayıbsa variantlar yenidən seçilir')}>↻ {tt('Yenidən yarat')}</AsyncBtn>
-        <Scans ta={ta.id} examId={e.id} />
-      </>}
+      <div className="ksteps">
+        <Step no={1} title={tt('Hazırlıq: mövzular və testlər')} active={!has} state={checking ? '…' : ready ? (ok ? '✓ ' + tt('hazırdır') : '⚠ ' + tt('sual çatmır')) : undefined}>
+          <p className="small muted" style={{ margin: '0 0 8px' }}>{tt('Suallar yalnız bu imtahana qədər keçilmiş mövzulardan seçilir (perspektiv plan). Sinifdə hər şagirdin sualları fərqlidir.')}</p>
+          <div className="lsel-bar">
+            <label className="lsel"><span>{tt('Sual sayı')}</span>
+              <select className="sel" value={n} onChange={x => setN(Number(x.target.value))}>{[10, 12, 15, 18, 20, 24, 25, 30].map(k => <option key={k} value={k}>{tt('{n} sual · 100 bal', { n: k })}</option>)}</select></label>
+            <label className="lsel"><span>{tt('Testlər')}</span>
+              <select className="sel" value={mode} onChange={x => setMode(x.target.value as typeof mode)}>
+                <option value="plan">{tt('Perspektiv plandan (hər mövzunun öz testləri)')}</option>
+                <option value="add">{tt('Plan + özüm əlavə edirəm')}</option>
+                <option value="only">{tt('Yalnız özüm seçdiklərim')}</option></select></label>
+            <label className="lsel"><span>{tt('Təkrar')}</span>
+              <select className="sel" value={share} onChange={x => setShare(Number(x.target.value))}>
+                <option value={1}>{tt('Hər şagirdə fərqli sual')}</option><option value={2}>{tt('Bir sual ən çox 2 şagirdə')}</option></select></label>
+          </div>
+          {mode !== 'plan' && src && <div className="kpick">
+            {src.all.map(f => <label key={f.file_id} className="check small"><input type="checkbox" checked={pickd.includes(f.file_id)}
+              onChange={x => setPickd(p => x.target.checked ? [...p, f.file_id] : p.filter(i => i !== f.file_id))} />{f.label} <span className="muted">({f.questions})</span></label>)}
+            <p className="small muted" style={{ margin: '4px 0 0' }}>{tt('Seçildi: {n}', { n: pickd.length })}</p></div>}
+          {ready && <>
+            <div className="tbl-wrap" style={{ marginTop: 8 }}><table className="ktbl">
+              <thead><tr><th>{tt('Mövzu')}</th><th className="r">{tt('Fayl')}</th><th className="r">{tt('Test')}</th><th className="r">{tt('Açıq')}</th><th className="r">{tt('Şablon')}</th></tr></thead>
+              <tbody>{ready.topics.map((t, i) => <tr key={i} className={t.mcq + t.open + t.templates === 0 ? 'bad' : ''}><td>{t.topic}</td>
+                <td className="r num">{t.files}</td><td className="r num">{t.mcq}</td><td className="r num">{t.open}</td><td className="r num">{t.templates}</td></tr>)}
+                {(ready.selected.mcq + ready.selected.open > 0) && <tr><td><i>{tt('Seçdiyim testlər')}</i></td><td /><td className="r num">{ready.selected.mcq}</td><td className="r num">{ready.selected.open}</td><td /></tr>}</tbody></table></div>
+            <p className={'small kverdict ' + (ok ? 'ok' : 'warn')}>{tt('{s} şagird × {n} sual = {need} sual lazımdır.', { s: ready.students, n: ready.n, need: ready.need })}{' '}
+              {ok ? tt('Hovuz kifayətdir.') : ready.max_n ? tt('Bu seçimlə ən çox {m} sual mümkündür.', { m: ready.max_n }) : tt('Bu seçimlə variant yaratmaq olmur.')}</p>
+            {!ok && <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+              {ready.max_n && <button className="btn sm" onClick={() => setN([10, 12, 15, 18, 20, 24, 25, 30].filter(k => k <= ready.max_n!).pop() || 10)}>↓ {tt('Sual sayını azalt ({m})', { m: ready.max_n })}</button>}
+              {share === 1 && <button className="btn sm" onClick={() => setShare(2)}>👥 {tt('Bir sual 2 şagirdə')}</button>}
+              {mode === 'plan' && <button className="btn sm" onClick={() => setMode('add')}>＋ {tt('Test əlavə et')}</button>}
+            </div>}
+          </>}
+          {fail && <div className="small" style={{ color: 'var(--bad)', marginTop: 6 }}>{fail}</div>}
+          <div className="row" style={{ marginTop: 10, gap: 6 }}>
+            <AsyncBtn className={'btn ' + (has ? 'ghost sm' : 'primary')} disabled={!ok} onClick={make}>{has ? '↻ ' + tt('Yenidən yarat') : tt('Variantları yarat')}</AsyncBtn></div>
+        </Step>
+        <Step no={2} title={tt('Variantlar')} active={has} state={has ? tt('{n} şagird', { n: d!.variants.length }) : undefined}>
+          {has ? <ol className="small kvars">{d!.variants.map(v => <li key={v.student_id}>{v.full_name || '—'} <span className="muted">{v.code}</span></li>)}</ol>
+            : <p className="small muted" style={{ margin: 0 }}>{tt('Əvvəl 1-ci addım.')}</p>}
+        </Step>
+        <Step no={3} title={tt('Çap')} active={has}>
+          {has ? <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            <AsyncBtn className="btn primary" onClick={async () => printSheets(await load())}>🖨 {tt('Vərəqləri çap et (A4)')}</AsyncBtn>
+            <AsyncBtn className="btn" onClick={async () => printKey(await load())}>🔑 {tt('Müəllim açarı')}</AsyncBtn>
+            <span className="small muted">{tt('İki üzlü çap edin: hər şagirdə bir vərəq + cavab kartı.')}</span></div>
+            : <p className="small muted" style={{ margin: 0 }}>{tt('Variantlar hazır olanda.')}</p>}
+        </Step>
+        <Step no={4} title={tt('Skan və nəticə')} active={has}>
+          {has ? <Scans ta={ta.id} examId={e.id} /> : <p className="small muted" style={{ margin: 0 }}>{tt('Yazıdan sonra kartları skan edin – bal jurnala özü yazılır.')}</p>}
+        </Step>
+      </div>
     </Drawer>
   )
 }
@@ -266,8 +317,7 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
   // oxunuş gedir – siyahı özü yenilənir (Claude adətən 10–30 saniyəyə oxuyur)
   useEffect(() => { if (!c?.pending || !d?.claude) return; const id = setTimeout(reload, 8000); return () => clearTimeout(id) }, [d])
   return (
-    <section style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
-      <h3 style={{ margin: '0 0 6px' }}>📷 {tt('Cavab kartlarını skan et')}</h3>
+    <section>
       <p className="small muted" style={{ marginTop: 0 }}>{tt('Kartların şəklini çəkin və ya skan PDF yükləyin – bir şəkildə bir neçə kart ola bilər. Şagird QR koddan tanınır, bal və qiymət jurnala özü yazılır.')}</p>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
         <button type="button" className="btn sm primary" onClick={() => setCam(true)} title={tt('Kamera açıq qalır, kartları bir-bir çəkin')}>📷 {tt('Ardıcıl skan')}</button>

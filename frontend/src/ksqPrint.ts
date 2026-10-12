@@ -5,11 +5,11 @@ import QRCode from 'qrcode'
 import { esc, fmtD, mathHtml } from './print'
 import { toast } from './ui'
 
-export type KsqQ = { slot: number; kind: 'mcq' | 'open'; points: number; text: string; options: string[] | null; image?: string | null }
+export type KsqQ = { slot: number; kind: 'mcq' | 'open'; points: number; text: string; options: string[] | null; image?: string | null; topic?: string | null }
 export type KsqSheet = { student_id: number; full_name: string; code: string; lang: string; qr: string; questions: KsqQ[] }
 export type KsqPrint = {
   exam: { id: number; kind: string; no: number; semester: number; date: string; class_name: string; subject: string; school: string; teacher: string }
-  sheets: KsqSheet[]; key: { code: string; full_name: string; answers: { slot: number; value: string; points: number }[] }[]
+  sheets: KsqSheet[]; key: { code: string; full_name: string; answers: { slot: number; value: string; points: number; topic?: string | null }[] }[]
 }
 
 const L = 'ABCDE'
@@ -28,12 +28,17 @@ body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#000;-webkit-print-co
 .side{width:194mm;height:280mm;overflow:hidden;position:relative;display:flex;flex-direction:column;page-break-after:always;break-after:page}
 .side:last-child{page-break-after:auto;break-after:auto}
 @media screen{body{background:#e5e7eb;padding:8px}.side{background:#fff;margin:0 auto 10px;padding:0;box-shadow:0 0 0 1px #bbb}}
-.hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1.5px solid #000;padding-bottom:2mm;margin-bottom:2mm;font-size:9pt;gap:4mm}
-.hd b.t{font-size:13pt}
-.hd .nm{font-size:11pt;font-weight:700}
+.band{display:flex;justify-content:space-between;align-items:center;background:#1f2937;color:#fff;border-radius:2.5mm;padding:2mm 4mm;font-size:9pt;margin-bottom:2mm}
+.band b.t{font-size:14pt;letter-spacing:.04em}
+.who{display:flex;gap:3mm;align-items:stretch;margin-bottom:2.5mm;font-size:9pt}
+.who .nm{flex:1;border:1px solid #000;border-radius:2mm;padding:1.5mm 3mm}.who .nm b{font-size:11.5pt}
+.who .sc{display:flex;gap:2mm}.who .sc div{border:1.2px solid #000;border-radius:2mm;padding:1mm 3mm;min-width:20mm;text-align:center;font-size:8pt}
+.who .sc div b{display:block;font-size:12pt;line-height:6mm;color:#bbb}
+.hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1.5px solid #000;padding-bottom:1.5mm;margin-bottom:2mm;font-size:8.5pt;gap:4mm}
 .qs{flex:1 1 0;min-height:0;column-count:2;column-gap:6mm;column-fill:balance;column-rule:.5px solid #bbb;font-size:10pt;line-height:1.28;overflow:hidden}
 .q{break-inside:avoid;margin:0 0 2.2mm}
-.q .n{font-weight:700}
+.q .n{display:inline-flex;align-items:center;justify-content:center;min-width:5.2mm;height:5.2mm;border-radius:50%;background:#1f2937;color:#fff;font-weight:700;font-size:.8em;margin-right:1.2mm;padding:0 .8mm}
+.q .tp{display:block;font-size:.7em;color:#6b7280;margin:.3mm 0 0 6.4mm;text-transform:uppercase;letter-spacing:.03em}
 .q .p{float:right;font-size:.8em;border:1px solid #000;border-radius:2mm;padding:0 1.2mm;margin-left:1.5mm}
 .q ol{margin:.6mm 0 0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:.4mm 4mm}
 .q img{max-width:100%;max-height:30mm;display:block;margin:1mm 0}
@@ -61,7 +66,7 @@ function question(q: KsqQ): string {
   const opts = q.kind === 'mcq' && q.options?.length
     ? `<ol>${q.options.map((o, i) => `<li><b>${L[i]})</b> ${mathHtml(o)}</li>`).join('')}</ol>` : ''
   const pts = String(q.points).replace('.', ',')
-  return `<div class="q"><span class="p">${pts} b</span><span class="n">${q.slot}.</span> ${mathHtml(q.text)}${q.image ? `<img src="${esc(q.image)}" alt="">` : ''}${opts}</div>`
+  return `<div class="q"><span class="p">${pts} b</span><span class="n">${q.slot}</span>${mathHtml(q.text)}${q.image ? `<img src="${esc(q.image)}" alt="">` : ''}${opts}${q.topic ? `<span class="tp">${esc(q.topic)}</span>` : ''}</div>`
 }
 
 function card(s: KsqSheet, ex: KsqPrint['exam'], qr: string): string {
@@ -78,8 +83,9 @@ function card(s: KsqSheet, ex: KsqPrint['exam'], qr: string): string {
 }
 
 function sheet(s: KsqSheet, ex: KsqPrint['exam'], qr: string): string {
-  const head = `<div class="hd"><div><b class="t">${ex.kind}-${ex.no}</b> · ${esc(ex.subject)} · ${esc(ex.class_name)} · ${fmtD(ex.date)}<br>${esc(ex.school)}</div>
-    <div style="text-align:right"><span class="nm">${esc(s.full_name)}</span><br>variant <b>${esc(s.code)}</b> · ${s.questions.length} sual · 100 bal</div></div>`
+  const head = `<div class="band"><span><b class="t">${ex.kind}-${ex.no}</b> · ${esc(ex.subject)} · ${esc(ex.class_name)}</span><span>${esc(ex.school)} · ${fmtD(ex.date)}</span></div>
+    <div class="who"><div class="nm">${esc(s.full_name)}<br><b>variant ${esc(s.code)}</b> · ${s.questions.length} sual · 100 bal</div>
+      <div class="sc"><div>Bal<b>____</b>/100</div><div>Qiymət<b>__</b></div></div></div>`
   const F = front(s.questions.length)
   const fr = s.questions.filter(q => q.slot <= F), back = s.questions.filter(q => q.slot > F)
   return `<section class="side">${head}<div class="qs">${fr.map(question).join('')}</div></section>
@@ -125,7 +131,7 @@ export async function printSheets(d: KsqPrint) {
 export function printKey(d: KsqPrint) {
   const ex = d.exam
   const body = `<div class="key" style="padding:4mm"><h2 style="margin:0 0 3mm">${ex.kind}-${ex.no} · ${esc(ex.class_name)} · ${fmtD(ex.date)} — müəllim açarı</h2>
-    ${d.key.map(k => `<table><tr><th colspan="15" style="text-align:left">${esc(k.code)} · ${esc(k.full_name)}</th></tr>
+    ${d.key.map(k => `<table><tr><th colspan="15" style="text-align:left">${esc(k.code)} · ${esc(k.full_name)}<span style="font-weight:400;color:#555"> — ${esc([...new Set(k.answers.map(a => a.topic).filter(Boolean))].join(' · '))}</span></th></tr>
       ${[0, 15].map(o => `<tr>${k.answers.slice(o, o + 15).map(a => `<th>${a.slot}</th>`).join('')}</tr><tr>${k.answers.slice(o, o + 15).map(a => `<td><b>${esc(a.value)}</b></td>`).join('')}</tr>`).join('')}
     </table>`).join('')}</div>`
   open(`${ex.class_name} – ${ex.kind}-${ex.no} açar`, body)

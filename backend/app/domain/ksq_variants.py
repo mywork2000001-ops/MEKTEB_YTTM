@@ -126,7 +126,8 @@ def bank_candidates(db, topics: list[tuple[str, str | None]], source: str = 'p00
 
 
 def generate(students: list[int], topics: list[tuple[str, str | None]], cands: list[Cand],
-             history: dict[int, set[str]], seed: int, n: int = 30, others: set[str] | None = None) -> dict[int, list[dict]]:
+             history: dict[int, set[str]], seed: int, n: int = 30, others: set[str] | None = None,
+             share: int = 1) -> dict[int, list[dict]]:
     """students × n slot → {student_id: [sual surəti]}. others – başqa siniflərin eyni imtahanında işlənmiş suallar:
     əvvəl təzələri seçilir, çatmasa ən çox REUSE (20%) qədəri təkrar ola bilər. Çatışmazlıq olarsa Shortage."""
     rng = random.Random(seed)
@@ -138,9 +139,12 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
     # slotlara mövzu: plan dərslərinin ardıcıllığı ilə dövri (saat payına mütənasib — eyni mövzu bir neçə dərsdirsə çox düşür)
     for i, s in enumerate(plan):
         s['topic'] = i % nt
-    tpls = T.matching(set().union(*(stems(t) | stems(sec or '') for t, sec in topics))) if topics else []
-    used: set[str] = set()
-    used_text: set[str] = set()
+    # şablonlar YALNIZ aralığın mövzularına uyğun (docs/ksq-movzu-dizayn-promtu.md B2) – ümumi ehtiyat yoxdur
+    tpl_topic = {ti: T.matching(stems(t) | stems(sec or '')) for ti, (t, sec) in enumerate(topics)}
+    # share – bir sual sinifdə ən çox neçə şagirdə düşə bilər (standart 1 – hamıda fərqli; müəllim seçimi ilə 2)
+    uses: dict[str, int] = {}
+    text_uses: dict[str, int] = {}
+    mine: dict[int, set[str]] = {sid: set() for sid in students}
     by = {}
     for c in cands:
         by.setdefault((c.kind, c.level), []).append(c)
@@ -157,7 +161,9 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
             hist = history.get(sid, set())
 
             def ok(c: Cand) -> bool:
-                return c.key not in used and c.key not in hist and norm_text(c.q['text']) not in used_text
+                t = norm_text(c.q['text'])
+                return (uses.get(c.key, 0) < share and c.key not in hist and c.key not in mine[sid] and t not in mine[sid]
+                        and text_uses.get(t, 0) < share)
 
             pick = None
             for lvl in (s['level'], *NEAR[s['level']]):
@@ -171,12 +177,16 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
                     pick = (same or pool)[0]
                     break
             if pick is None:
-                # bankda çatmır → parametrli şablon (açıq və ya test); mövzuya uyğun yoxdursa – ümumi şablonlar (son çarə)
-                for t in sorted(tpls or T.TEMPLATES, key=lambda t: (t.level != s['level'], rng.random())):
-                    for _ in range(60):
-                        q = T.instance(t, rng) if s['kind'] == 'open' else T.mcq_instance(t, rng)
-                        if q and q['key'] not in used and q['key'] not in hist and norm_text(q['text']) not in used_text:
-                            pick = Cand(q['key'], s['kind'], q['level'], -1, {**q, 'card_answer': q.get('answer')})
+                # bankda çatmır → slotun mövzusunun şablonu, sonra aralığın başqa mövzusunun şablonu (aralıqdan kənar – heç vaxt)
+                tops = [s['topic'], *[k for k in tpl_topic if k != s['topic']]]
+                for ti in tops:
+                    for t in sorted(tpl_topic.get(ti, []), key=lambda t: (t.level != s['level'], rng.random())):
+                        for _ in range(60):
+                            q = T.instance(t, rng) if s['kind'] == 'open' else T.mcq_instance(t, rng)
+                            if q and ok(Cand(q['key'], s['kind'], q['level'], ti, q)):
+                                pick = Cand(q['key'], s['kind'], q['level'], ti, {**q, 'card_answer': q.get('answer')})
+                                break
+                        if pick:
                             break
                     if pick:
                         break
@@ -185,12 +195,14 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
                 continue
             if pick.key in others:
                 reuse_left -= 1
-            used.add(pick.key)
-            used_text.add(norm_text(pick.q['text']))
+            uses[pick.key] = uses.get(pick.key, 0) + 1
+            tn = norm_text(pick.q['text'])
+            text_uses[tn] = text_uses.get(tn, 0) + 1
+            mine[sid] |= {pick.key, tn}
             res[sid][i] = {**{k: v for k, v in pick.q.items() if k != 'key'}, 'key': pick.key, 'slot': s['slot'],
                            'kind': s['kind'], 'level': s['level'], 'level_actual': pick.level, 'points': s['points'],
                            'topic': topics[s['topic']][0] if topics else None,
-                           'topic_actual': (topics[pick.topic][0] if 0 <= pick.topic < len(topics) else 'şablon') if topics else None}
+                           'topic_actual': (topics[pick.topic][0] if 0 <= pick.topic < len(topics) else 'seçilmiş test') if topics else None}
     if short:
         raise Shortage([{'slot': plan[i]['slot'], 'kind': plan[i]['kind'], 'level': plan[i]['level'], 'missing': n}
                         for i, n in sorted(short.items())])
