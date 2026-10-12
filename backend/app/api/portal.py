@@ -20,7 +20,7 @@ from ..models import (Attendance, Exam, ExamScore, GroupMember, HomeworkCheck, J
                       Role, SchoolClass, Student, TaskAttempt, TeachingAssignment, User, now)
 from ..services import SCHOOL_TZ, journal_entries, plan_ctx, roster, taught_lesson, today
 from .plan import WEEKDAYS, bell
-from .tasks import attempt_pct, aware, expire_due, finalize, is_ok, review_opens_at
+from .tasks import apct, attempt_pct, aware, expire_due, finalize, is_ok, review_opens_at
 
 router = APIRouter(prefix='/api/portal', tags=['portal'])
 SUBMIT_GRACE = dt.timedelta(seconds=10)     # vaxt bitən anda göndərilən son cavablar üçün (şəbəkə gecikməsi)
@@ -69,7 +69,7 @@ def me(user: User = Depends(student_only), db: Session = Depends(get_db)):
     last = db.scalar(select(TaskAttempt).where(TaskAttempt.student_id == s.id, TaskAttempt.submitted_at.is_not(None))
                      .order_by(TaskAttempt.submitted_at.desc()))
     if last and last.total:
-        pct = round(last.correct * 100 / last.total)
+        pct = round(apct(last))
         personal = f'Son tapşırıqda nəticən {pct}% oldu – ' + ('əla, belə davam et!' if pct >= 81 else
                                                                'yaxşıdır, bir az da səy!' if pct >= 61 else
                                                                'səhvlərinə bax, növbəti dəfə daha yaxşı olacaq.')
@@ -315,7 +315,8 @@ def _task_for(db: Session, s: Student, task_id: int) -> OnlineTask:
 
 def _public_q(q: dict, i: int) -> dict:
     """Şagirdə düzgün cavab və izah GÖNDƏRİLMİR."""
-    return {'index': i, 'kind': q['kind'], 'text': q['text'], 'options': q.get('options'), 'image': q.get('image')}
+    return {'index': i, 'kind': q['kind'], 'text': q['text'], 'options': q.get('options'), 'image': q.get('image'),
+            'points': q.get('points')}                    # 100 ballıq sistem – sualın balı (köhnə testdə yoxdur)
 
 
 @router.post('/tasks/{task_id}/start')
@@ -398,7 +399,7 @@ def submit(task_id: int, body: AnswersIn | None = None, user: User = Depends(stu
     cert = for_attempt(db, t, a)                             # mövzu testi ≥ hədd – sertifikat dərhal
     db.commit()
     return {'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a), 'auto_submitted': a.auto_submitted,
-            'can_review': _can_review(db, t, a, at), 'pct': attempt_pct(db, t, a),
+            'can_review': _can_review(db, t, a, at), 'pct': attempt_pct(db, t, a), 'points': attempt_pct(db, t, a),
             'certificate': {'code': cert.code, 'title': cert.title} if cert else None}
 
 

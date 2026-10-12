@@ -26,7 +26,7 @@ from ..models import (LevelOverride, OnlineTask, PlanLesson, SchoolClass, TaskAt
 from ..services import SCHOOL_TZ, class_grade, own_assignment, plan_ctx, roster
 from .common import audit
 from .plan import bell
-from .tasks import CustomQ, TestMinutes, _snapshot, aware, custom_snapshot, task_out
+from .tasks import CustomQ, TestMinutes, _snapshot, apct, aware, custom_snapshot, task_out
 
 router = APIRouter(prefix='/api', tags=['topic-tests'])
 TZ = ZoneInfo(SCHOOL_TZ)
@@ -231,7 +231,7 @@ def topic_tests(db: Session, ta: TeachingAssignment, pl_ids: set[int]) -> dict[i
             'state': 'gözlənilir' if t0 < o else 'açıqdır' if t0 < c else 'bitib',
             'questions': len(task.questions), 'submitted': len(done),
             'total': len(task.student_ids) if task.student_ids is not None else n_roster,
-            'avg_pct': round(sum(a.correct * 100 / a.total for a in done if a.total) / len(done), 1) if done else None,
+            'avg_pct': round(sum(apct(a) for a in done if a.total) / len(done), 1) if done else None,
             'journal': 'yazılıb' if task.journal_done_at else 'gözləyir' if task.journal_auto else 'yox'})
     return out
 
@@ -280,7 +280,7 @@ def previous_tests(ta_id: int, pl_id: int, user: User = Depends(staff), db: Sess
                                                                 TaskAttempt.submitted_at.is_not(None))) if a.total]
         out.append({'task_id': t.id, 'title': t.title, 'class_name': db.get(SchoolClass, tta.class_id).name,
                     'opens_at': aware(t.opens_at), 'questions': t.questions, 'count': len(t.questions),
-                    'avg_pct': round(sum(a.correct * 100 / a.total for a in done) / len(done), 1) if done else None})
+                    'avg_pct': round(sum(apct(a) for a in done) / len(done), 1) if done else None})
         if len(out) >= 20:
             break
     return out

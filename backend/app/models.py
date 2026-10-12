@@ -10,7 +10,7 @@ import datetime as dt
 import enum
 
 from sqlalchemy import (JSON, Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, LargeBinary, String, Text,
-                        UniqueConstraint, false, func, text)
+                        UniqueConstraint, event, false, func, text)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -256,6 +256,9 @@ class BankQuestion(Base):
     content_hash: Mapped[str] = mapped_column(String(64))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    diff_auto: Mapped[str | None] = mapped_column(String(6))           # statistikaya görə çətinlik: asan | orta | çətin
+    stat_n: Mapped[int | None] = mapped_column(Integer)                # cavab sayı (təhvil verilmiş testlərdən)
+    stat_ok: Mapped[int | None] = mapped_column(Integer)               # düz cavab sayı
     __table_args__ = (UniqueConstraint('file_id', 'n'),)
 
 
@@ -546,6 +549,7 @@ class TaskAttempt(Base):
     correct: Mapped[int | None] = mapped_column(Integer)
     total: Mapped[int | None] = mapped_column(Integer)
     grade: Mapped[int | None] = mapped_column(Integer)
+    points: Mapped[float | None] = mapped_column(Float)                 # 100 ballıq bal (çətinlik balları ilə) – docs/yuz-balliq-sistem-promtu.md
     manual: Mapped[dict | None] = mapped_column(JSON)                   # müəllimin açıq sual düzəlişi {"sual indeksi": true/false}
     solution_key: Mapped[str | None] = mapped_column(String(200))       # həllin şəkilləri – bir PDF (storage açarı)
     solution_size: Mapped[int | None] = mapped_column(Integer)
@@ -881,3 +885,25 @@ class SurveyDedup(Base):
     __tablename__ = 'survey_dedup'
     survey_id: Mapped[int] = mapped_column(ForeignKey('surveys.id', ondelete='CASCADE'), primary_key=True)
     hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+
+
+# ---------------------------------------------------------------- 100 ballıq sistem: test yaradılanda ballar dondurulur
+def prepare_points(conn, qs: list) -> list:
+    """Suallara çətinlik (statistika – bankdan) və bal yazır (cəmi 100). Müəllimin seçdiyi çətinlik üstündür."""
+    from sqlalchemy import select
+    from .domain.scoring import assign_points
+    qs = [dict(q) for q in qs if isinstance(q, dict)]
+    ids = [q['bank_id'] for q in qs if q.get('bank_id') and q.get('difficulty') is None]
+    if ids:
+        auto = dict(conn.execute(select(BankQuestion.id, BankQuestion.diff_auto).where(BankQuestion.id.in_(ids))).all())
+        for q in qs:
+            if auto.get(q.get('bank_id')):
+                q['difficulty_auto'] = auto[q['bank_id']]
+    return assign_points(qs)
+
+
+@event.listens_for(OnlineTask, 'before_insert')
+def _points_on_insert(mapper, conn, t):
+    from .domain.scoring import has_points
+    if t.questions and not has_points(t.questions):
+        t.questions = prepare_points(conn, t.questions)

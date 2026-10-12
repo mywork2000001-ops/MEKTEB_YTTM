@@ -40,9 +40,9 @@ def test_live_watch_for_exam_matches_journal(world, clock, monkeypatch):
     clock.t = dt.datetime(2026, 9, 29, 11, 30, tzinfo=UTC)
     _answer(st[0], tid[ta], {**ALL_OK, 'x²=9, x>0': '4'})                      # 2 düz, 1 səhv → 58,3%
     w = next(r for r in admin.get(f'/api/tasks/{ta}/{tid[ta]}').json()['rows'] if r['student_id'] == st[0]['id'])
-    assert (w['pct'], w['grade']) == (58.3, None)
+    assert (w['pct'], w['grade']) == (33.8, None)
     ex = admin.get('/api/exams-online').json()
-    assert [(x['id'], x['classes'], x['wrote'], x['avg_pct'], x['state']) for x in ex] == [(bid, ['X e', 'X c'], 1, 58.3, 'açıqdır')]
+    assert [(x['id'], x['classes'], x['wrote'], x['avg_pct'], x['state']) for x in ex] == [(bid, ['X e', 'X c'], 1, 33.8, 'açıqdır')]
     assert ex[0]['ta_ids'] == sorted([ta, ta_c])
     assert world[0]('yad').get('/api/exams-online').json() == []
 

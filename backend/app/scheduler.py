@@ -59,6 +59,15 @@ def _certificates_job():
             log.info('sertifikat: %s', n)
 
 
+def _difficulty_job():
+    """Bank suallarının faktiki çətinliyi (100 ballıq sistem – app/difficulty.py), gecə bir dəfə."""
+    from .difficulty import update_difficulty
+    with SessionLocal() as db:
+        n = update_difficulty(db)
+        if n:
+            log.info('çətinlik statistikası: %s sual', n)
+
+
 def awake_now(hours: str, now: dt.datetime | None = None) -> bool:
     """«7-23» – Bakı vaxtı ilə 07:00 ≤ saat < 23:00; «22-6» – gecədən keçir. Boş – həmişə."""
     from zoneinfo import ZoneInfo
@@ -142,6 +151,7 @@ def start():
                    next_run_time=dt.datetime.now() + dt.timedelta(minutes=3))
     _sched.add_job(_auto_tests_job, 'interval', minutes=15, id='auto_tests', max_instances=1, coalesce=True,
                    next_run_time=dt.datetime.now() + dt.timedelta(minutes=2))
+    _sched.add_job(_difficulty_job, 'cron', hour=3, minute=30, id='difficulty', max_instances=1, coalesce=True)
     if keep:
         _sched.add_job(_keepalive_job, 'interval', minutes=10, id='keepalive', max_instances=1, coalesce=True)
     if minutes <= 0:

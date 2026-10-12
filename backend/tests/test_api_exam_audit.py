@@ -48,7 +48,7 @@ def test_answers_hidden_until_whole_exam_closes(world, clock, monkeypatch):
 
 
 def test_penalty_pct_same_everywhere_and_no_grade(world, clock, monkeypatch):
-    """Cərimə (4 səhv = −1): 2 düz, 1 səhv → 1,75 bal → 58,3%. Şagird və müəllim hər yerdə eyni faizi görür; sınaqda qiymət yoxdur."""
+    """Cərimə (4 səhv = −1): 2 qapalı düz (47 bal), açıq səhv (53 ÷ 4) → 33,75 → 33,8. Şagird və müəllim hər yerdə eyni faizi görür; sınaqda qiymət yoxdur."""
     admin, ta, ta_c, st, xs, bid, tid = _two_classes(world, clock, monkeypatch, penalty=4)
     clock.t = dt.datetime(2026, 9, 29, 11, 30, tzinfo=UTC)
     c = student_client(st[0]['portal_code'], st[0]['initial_pin'])
@@ -56,17 +56,17 @@ def test_penalty_pct_same_everywhere_and_no_grade(world, clock, monkeypatch):
     idx = {x['text']['az']: x['index'] for x in q['questions']}
     ans = {**ALL_OK, 'x²=9, x>0': '4'}
     sub = c.post(f'/api/portal/tasks/{tid[ta]}/submit', json={'answers': {str(idx[k]): v for k, v in ans.items()}}).json()
-    assert sub['grade'] is None and sub['pct'] == 58.3
+    assert sub['grade'] is None and sub['pct'] == 33.8
     assert next(x for x in c.get('/api/portal/tasks').json() if x['id'] == tid[ta])['result']['grade'] is None
-    assert c.get('/api/portal/exams').json()['items'][0]['my_pct'] == 58.3            # hələ açıq – öz faizi
+    assert c.get('/api/portal/exams').json()['items'][0]['my_pct'] == 33.8            # hələ açıq – öz faizi
     row = c.get('/api/portal/results').json()['tasks'][0]
-    assert (row['pct'], row['grade']) == (58.3, None)
-    assert admin.get('/api/exams-online').json()[0]['avg_pct'] == 58.3
+    assert (row['pct'], row['grade']) == (33.8, None)
+    assert admin.get('/api/exams-online').json()[0]['avg_pct'] == 33.8
     rows = admin.get(f'/api/exams-online/{bid}').json()['rows']
     assert {r['status'] for r in rows if r['class_name'] == 'X c'} == {'gözlənilir'}     # X c hələ yaza bilər
     clock.t = dt.datetime(2026, 9, 29, 15, 1, tzinfo=UTC)
-    assert c.get('/api/portal/exams').json()['items'][0]['pct'] == 58.3
-    assert admin.get(f'/api/exams-online/{bid}').json()['summary']['avg_pct'] == 58.3
+    assert c.get('/api/portal/exams').json()['items'][0]['pct'] == 33.8
+    assert admin.get(f'/api/exams-online/{bid}').json()['summary']['avg_pct'] == 33.8
 
 
 def test_exam_questions_change_in_all_classes_together(world, clock, monkeypatch):
@@ -114,8 +114,8 @@ def test_closed_exam_cache_refreshes_after_manual_check(world, clock, monkeypatc
     clock.t = dt.datetime(2026, 9, 29, 11, 30, tzinfo=UTC)
     c = _answer(st[0], tid[ta], {**ALL_OK, 'x²=9, x>0': 'üç'})                  # 2/3
     clock.t = dt.datetime(2026, 9, 29, 15, 1, tzinfo=UTC)
-    assert c.get('/api/portal/exams').json()['items'][0]['pct'] == 66.7
-    assert c.get('/api/portal/exams').json()['items'][0]['pct'] == 66.7          # keşdən
+    assert c.get('/api/portal/exams').json()['items'][0]['pct'] == 47.0
+    assert c.get('/api/portal/exams').json()['items'][0]['pct'] == 47.0          # keşdən
     full = admin.get(f'/api/tasks/{ta}/{tid[ta]}/full').json()['questions_full']
     oi = next(i for i, q in enumerate(full) if q['kind'] == 'open')
     admin.put(f'/api/exams-online/{bid}/attempt/{tid[ta]}/{st[0]["id"]}', json={'index': oi, 'ok': True})

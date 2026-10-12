@@ -73,8 +73,8 @@ def test_online_exam_journal_rating_privacy(world, clock, monkeypatch):
     res = admin.get(f'/api/exams-online/{bid}').json()
     assert res['access'] == 'full' and res['summary']['wrote'] == 5 and res['summary']['students'] == 6
     got = [(r['full_name'], r['points'], r['place_all'], r['place_class']) for r in res['rows'] if r['status'] == 'yazıb']
-    assert got[0] == (st[0]['full_name'], 3.0, 1, 1) and got[1] == (xs[0]['full_name'], 2.0, 2, 1)
-    assert {g[2] for g in got[2:4]} == {3} and got[4] == (ds[0]['full_name'], 0.5, 5, 1)    # bərabər bal – eyni yer
+    assert got[0] == (st[0]['full_name'], 100.0, 1, 1) and got[1] == (xs[0]['full_name'], 47.0, 2, 1)   # 100 ballıq
+    assert {g[2] for g in got[2:4]} == {3} and got[4] == (ds[0]['full_name'], 4.38, 5, 1)    # bərabər bal – eyni yer
     x0 = next(r for r in res['rows'] if r['student_id'] == xs[0]['id'])
     assert (x0['correct'], x0['wrong'], x0['blank']) == (2, 0, 1)
     assert [(c['class_name'], c['place']) for c in res['classes']] == [('X e', 1), ('X c', 2), ('X d', 3)]
@@ -111,7 +111,7 @@ def test_online_exam_journal_rating_privacy(world, clock, monkeypatch):
     rt = admin.get('/api/exams-online/rating', params={'subject': 'Riyaziyyat'}).json()
     assert len(rt['batches']) == 2
     r1 = next(r for r in rt['rows'] if r['student_id'] == st[1]['id'])
-    assert r1['count'] == 2 and r1['delta'] == round(100 - 58.3, 1) and rt['improved'][0]['student_id'] == st[1]['id']
+    assert r1['count'] == 2 and r1['delta'] == round(100 - 33.8, 1) and rt['improved'][0]['student_id'] == st[1]['id']
     assert all(r['class_name'] == 'X d' for r in ilqar.get('/api/exams-online/rating').json()['rows'])
 
     # şagird portalı: öz yeri və ümumi statistika, başqasının adı yoxdur
@@ -119,7 +119,7 @@ def test_online_exam_journal_rating_privacy(world, clock, monkeypatch):
     first = next(x for x in me['items'] if x['batch_id'] == bid)
     assert (first['place_class'], first['class_count'], first['place_all'], first['all_count']) == (1, 2, 1, 5)
     assert first['max_pct'] == 100.0 and 'rows' not in first
-    assert me['delta'] == round(33.3 - 100, 1)
+    assert me['delta'] == round(23.5 - 100, 1)
 
     # formativ jurnal: sınaq keçirildiyi günün ayrıca sütunundadır, formativ ortaya daxil deyil; yekunda ayrıca
     monkeypatch.setattr('app.api.journal.today', lambda: dt.date(2026, 10, 7))

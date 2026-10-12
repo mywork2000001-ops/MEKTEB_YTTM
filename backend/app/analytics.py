@@ -29,6 +29,12 @@ class Period:
     b: dt.date
 
 
+
+def _apct(a) -> float | None:
+    """Cəhdin 100 ballıq balı (app/api/tasks.py::apct – dövri importdan qaçmaq üçün)."""
+    from .api.tasks import apct
+    return apct(a)
+
 def _avg(v):
     v = [x for x in v if x is not None]
     return round(sum(v) / len(v), 2) if v else None
@@ -70,7 +76,7 @@ def _metrics(sid: int, entries, marks, att, hw, exams, scores, attempts) -> dict
                   if s.student_id == sid and ex_by[s.exam_id].kind == 'KSQ' and s.points is not None and not s.absent),
                  key=lambda x: x[0].date)
     ksq_pct = [round(s.points * 100 / e.max_points, 1) for e, s in ksq]
-    online = [round(x.correct * 100 / x.total, 1) for x in attempts if x.student_id == sid and x.total]
+    online = [round(_apct(x), 1) for x in attempts if x.student_id == sid and x.total]
     homework_pct = round(sum(h) * 100 / len(h), 1) if h else None
     attendance_pct = round((len(a) - missed) * 100 / len(a), 1) if a else None
     avg_grade = _avg(grades)

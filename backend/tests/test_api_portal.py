@@ -104,7 +104,7 @@ def test_timed_task_flow(world, clock):
     rr = s.put(f'/api/portal/tasks/{t["id"]}/answers', json={'answers': {str(by_text['5·2=?']): 0}})
     assert rr.status_code == 409                                              # vaxt bitdi – avtomatik təhvil
     res = s.get('/api/portal/tasks').json()[0]
-    assert res['status'] == 'təhvil verilib' and res['result'] == {'correct': 2, 'total': 3, 'grade': None, 'pct': 66.7}   # plandan kənar – sınaq, qiymətsiz
+    assert res['status'] == 'təhvil verilib' and res['result'] == {'correct': 2, 'total': 3, 'grade': None, 'pct': 76.5}   # plandan kənar – sınaq, qiymətsiz
     rev = s.get(f'/api/portal/tasks/{t["id"]}/review').json()               # bağlandıqdan sonra açılır
     assert sum(q['ok'] for q in rev['questions']) == 2
     teacher = admin.get(f'/api/tasks/{ta}/{t["id"]}').json()
@@ -228,7 +228,8 @@ def test_task_edit_and_multi_source(world, clock):
              'correct': q['correct'], 'answer': q['answer'], 'raw': q} for q in qs[:2]]
     r = admin.patch(f'/api/tasks/{ta}/{tid}', json={'title': 'Yeni ad', 'closes_at': '2026-09-29T17:00:00Z', 'questions': keep})
     assert r.status_code == 200 and r.json()['title'] == 'Yeni ad' and r.json()['questions'] == 2
-    assert admin.get(f'/api/tasks/{ta}/{tid}/full').json()['questions_full'][0] == qs[0]
+    strip = lambda q: {k: v for k, v in q.items() if k not in ('points', 'level', 'level_src', 'difficulty_auto')}
+    assert strip(admin.get(f'/api/tasks/{ta}/{tid}/full').json()['questions_full'][0]) == strip(qs[0])   # bal yenidən paylanır
     assert admin.patch(f'/api/tasks/{ta}/{tid}', json={'duration_min': 500}).status_code == 422
     # şagird başlayandan sonra suallar dəyişmir, ad dəyişir
     clock.t = dt.datetime(2026, 9, 29, 15, 10, tzinfo=UTC)

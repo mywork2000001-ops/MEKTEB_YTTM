@@ -48,7 +48,7 @@ def test_results_center(world, clock, monkeypatch):
     mv = admin.get('/api/results-center/rating', params={'kind': 'movzu'}).json()
     sq = admin.get('/api/results-center/rating', params={'kind': 'sinaq'}).json()
     assert [(x['full_name'], x['avg_pct'], x['place_all']) for x in mv['rows']] == \
-        [(st[0]['full_name'], 100.0, 1), (st[1]['full_name'], 66.7, 2), (st[2]['full_name'], None, None)]
+        [(st[0]['full_name'], 100.0, 1), (st[1]['full_name'], 47.0, 2), (st[2]['full_name'], None, None)]
     assert mv['rows'][2]['given'] == 1 and mv['rows'][2]['wrote'] == 0
     assert [(x['full_name'], x['avg_pct']) for x in sq['rows'] if x['avg_pct'] is not None] == [(st[2]['full_name'], 100.0)]
     assert mv['classes'][0]['participation'] == 66.7 and sq['classes'][0]['participation'] == 33.3
@@ -74,28 +74,28 @@ def test_results_center(world, clock, monkeypatch):
     _answer(st[2], copy.id, {'2+2=?': 1})
     clock.t = dt.datetime(2026, 9, 30, 13, 0, tzinfo=UTC)
     mv = admin.get('/api/results-center/rating', params={'kind': 'movzu'}).json()
-    assert len(mv['tests']) == 1 and next(x for x in mv['rows'] if x['full_name'] == st[2]['full_name'])['avg_pct'] == 33.3
+    assert len(mv['tests']) == 1 and next(x for x in mv['rows'] if x['full_name'] == st[2]['full_name'])['avg_pct'] == 23.5   # bir qapalı düz
     assert st[2]['full_name'] not in {x['full_name'] for x in
                                       admin.get('/api/results-center/missing', params={'kind': 'movzu'}).json()['students']}
 
     # şagird portalı: mövzu testləri üzrə öz yeri (adsız)
     me0 = student_client(st[0]['portal_code'], st[0]['initial_pin']).get('/api/portal/topic-rating').json()
     assert me0 == [{'subject': 'Riyaziyyat', 'class_name': 'X e', 'tests': 1, 'avg_pct': 100.0, 'last_pct': 100.0, 'delta': None,
-                    'given': 1, 'wrote': 1, 'missed': 0, 'place_class': 1, 'class_count': 3, 'class_avg': 66.7}]
+                    'given': 1, 'wrote': 1, 'missed': 0, 'place_class': 1, 'class_count': 3, 'class_avg': 56.8}]
 
     # şagird profili, sinif/qrup, ümumi
     p = admin.get(f'/api/results-center/student/{st[0]["id"]}').json()
-    assert p['parts']['movzu']['summary']['avg_pct'] == 100.0 and p['parts']['movzu']['items'][0]['class_avg'] == 66.7
+    assert p['parts']['movzu']['summary']['avg_pct'] == 100.0 and p['parts']['movzu']['items'][0]['class_avg'] == 56.8
     assert p['parts']['sinaq']['items'][0]['status'] == 'yazmayıb'
     assert as_('yad').get(f'/api/results-center/student/{st[0]["id"]}').status_code == 404
     c = admin.get(f'/api/results-center/class/{ta}').json()
-    assert c['parts']['movzu']['summary']['avg_pct'] == 66.7 and c['parts']['movzu']['distribution']['5'] == 1
+    assert c['parts']['movzu']['summary']['avg_pct'] == 56.8 and c['parts']['movzu']['distribution']['5'] == 1
     admin.put(f'/api/analytics/{ta}/levels/{st[0]["id"]}', json={'level': 'Güclü'})
     g = admin.get(f'/api/results-center/class/{ta}', params={'level': 'Güclü'}).json()
     assert g['parts']['movzu']['summary']['students'] == 1
     al = admin.get('/api/results-center/class', params={'level': 'Güclü'}).json()          # «Hamısı» – bütün siniflərim
     assert al['ta_id'] is None and al['class_name'] == 'Bütün siniflərim' and al['parts']['movzu']['summary']['students'] == 1
-    assert admin.get('/api/results-center/class').json()['parts']['movzu']['summary']['avg_pct'] == 66.7
+    assert admin.get('/api/results-center/class').json()['parts']['movzu']['summary']['avg_pct'] == 56.8
     o = admin.get('/api/results-center/overview').json()
     assert o['classes'][0]['class_name'] == 'X e' and o['summary']['sinaq']['tests'] == 1
     assert {x['full_name'] for x in admin.get('/api/results-center/students').json()} == {s['full_name'] for s in st}

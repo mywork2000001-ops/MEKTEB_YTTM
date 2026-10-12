@@ -30,7 +30,7 @@ def test_task_to_journal(world, clock, monkeypatch):
     assert res['skipped'] == [{'full_name': st[1]['full_name'], 'reason': 'həmin dərsdə olmayıb'}]
     day = admin.get(f'/api/journal/{ta}/day', params={'date': '2026-09-29'}).json()['lessons'][0]['entry']
     m = day['marks'][0]
-    assert (m['kind'], m['test_correct'], m['test_total'], m['grade']) == ('test', 2, 3, 4)
+    assert (m['kind'], m['test_correct'], m['test_total'], m['grade']) == ('test', 2, 3, 3)   # 47 bal (iki qapalı düz) → 3
     assert m['comment'].startswith('Onlayn test')
     again = admin.post(f'/api/tasks/{ta}/{t["id"]}/to-journal', json={'date': '2026-09-29', 'period': 1}).json()
     assert again['copied'] == 0 and again['updated'] == 1                     # təkrar – yenilənir, dublikat yox

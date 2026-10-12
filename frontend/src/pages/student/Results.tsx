@@ -100,7 +100,7 @@ export default function Results() {
               <span className="sub small muted"><br />{x.kind === 'sinaq' ? 'sınaq' : x.kind === 'movzu' ? 'mövzu testi' : 'tapşırıq'}{x.subject ? ' · ' + x.subject : ''} · {fmtDate(x.submitted_at)}
                 {x.auto_submitted && ' · vaxt bitdi'}{x.solution && ' · 📷 həll göndərilib'}</span></span>
             <span className="row" style={{ gap: 4 }}>
-              <Pill tone={x.grade ? gradeTone(x.grade) : x.pct >= 70 ? 'ok' : x.pct >= 40 ? 'warn' : 'bad'}>{x.correct}/{x.total} · {fmt(x.pct, 0)}%{x.grade ? ` → ${x.grade}` : ''}</Pill>
+              <Pill tone={x.grade ? gradeTone(x.grade) : x.pct >= 70 ? 'ok' : x.pct >= 40 ? 'warn' : 'bad'}>{fmt(x.pct)} bal <span className="muted">({x.correct}/{x.total} düz)</span>{x.grade ? ` → ${x.grade}` : ''}</Pill>
               {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>Cavablar</button>}</span></div>))}
         {d.tasks.some((x: any) => x.kind === 'sinaq') && <p className="small muted" style={{ margin: '6px 0 0' }}>Sınaq formativ qiymətə təsir etmir – yalnız faiz və yer.</p>}
       </section>

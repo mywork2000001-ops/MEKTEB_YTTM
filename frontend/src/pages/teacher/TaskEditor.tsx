@@ -5,6 +5,7 @@ import { get, patch, post } from '../../api'
 import { MathText } from '../../MathText'
 import { Drawer, ErrorBox, Field, Pill, toast } from '../../ui'
 import { TargetPicker } from './common'
+import { PointsSummary, previewPoints, QPoints, type Level } from '../../scoring'
 import { heldLabel, useExamDates } from './examDates'
 
 type ML = string | { az?: string; ru?: string; en?: string } | null | undefined
@@ -13,11 +14,12 @@ const ml = (x: ML) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || 
 export type Q = {
   key: string; kind: 'mcq' | 'open'; text: string; options: string[]; correct: number; answer: string; explanation: string
   image: string | null; bank_id: number | null; source: string | null; lesson: string | null; raw: any | null
+  difficulty?: Level | null                       // müəllimin seçimi (boş – avto): 100 ballıq sistem
 }
 export const fromSnapshot = (s: any, key: string): Q => ({
   key, kind: s.kind, text: ml(s.text), options: (s.options || []).map((o: ML) => ml(o)), correct: s.correct ?? 0,
   answer: s.answer || '', explanation: ml(s.explanation), image: s.image || null, bank_id: s.bank_id ?? null,
-  source: s.source ?? null, lesson: s.lesson ?? null, raw: s,
+  source: s.source ?? null, lesson: s.lesson ?? null, raw: s, difficulty: s.difficulty ?? null,
 })
 const fromBank = (q: any, source: string, lesson: string): Q => fromSnapshot({
   bank_id: q.id, source, lesson, kind: q.kind, text: q.text, options: q.options, correct: q.correct, answer: q.answer,
@@ -25,7 +27,7 @@ const fromBank = (q: any, source: string, lesson: string): Q => fromSnapshot({
 export const toCustom = (q: Q) => ({
   kind: q.kind, text: q.text, options: q.kind === 'mcq' ? q.options : null, correct: q.kind === 'mcq' ? q.correct : null,
   answer: q.kind === 'open' ? q.answer : null, explanation: q.explanation || null, image: q.image, bank_id: q.bank_id,
-  source: q.source, lesson: q.lesson, raw: q.raw,
+  source: q.source, lesson: q.lesson, raw: q.raw, difficulty: q.difficulty || null,
 })
 export const iso = (d: string, t: string) => new Date(`${d}T${t}:00`).toISOString()
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -103,6 +105,7 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
         <fieldset><legend>Seçilmiş suallar ({qs.length})</legend>
           {qs.length === 0 ? <p className="small muted">Hələ sual yoxdur – yuxarıdan seçin və ya öz sualınızı yazın.</p> : (
             <div className="jlist">
+              <PointsSummary qs={qs} />
               {qs.map((q, i) => editing === q.key && !locked ? (
                 <QEdit key={q.key} q={q} onCancel={() => setEditing(null)} onSave={nq => { setQs(qs.map(x => x.key === q.key ? nq : x)); setEditing(null) }} />
               ) : (
@@ -111,6 +114,7 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
                   <span className="small"><span className="clamp2"><MathText text={q.text} /></span>
                     <span className="muted">{q.raw ? `${q.source || ''}${q.lesson ? ' · ' + q.lesson : ''}` : 'redaktə olunub / öz sualım'}{q.image ? ' · 🖼' : ''}</span></span>
                   {!locked && <span className="row" style={{ flexWrap: 'nowrap' }}>
+                    <QPoints q={q} pts={previewPoints(qs)[i]} onLevel={l => setQs(cur => cur.map(x => (x.key === q.key ? { ...x, difficulty: l } : x)))} />
                     <button className="btn sm" onClick={() => setEditing(q.key)}>Redaktə</button>
                     <button className="btn sm ghost" onClick={() => remove(q.key)} aria-label="Sil">✕</button></span>}
                 </div>))}

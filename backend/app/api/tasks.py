@@ -15,6 +15,7 @@ from ..db import get_db
 from ..deps import staff
 from ..domain.answers import check
 from ..domain.rules import summative_grade
+from ..models import prepare_points
 from ..models import (BankFile, BankQuestion, BankSource, Mark, OnlineTask, PlanLesson, Student, TaskAttempt, TeachingAssignment,
                       TestBatch, User, now)
 from ..services import class_grade, own_assignment, roster
@@ -38,10 +39,19 @@ def is_ok(task: OnlineTask, a: TaskAttempt, i: int) -> bool:
 
 
 def score(task: OnlineTask, a: TaskAttempt):
-    """Düzgün cavab sayı, faiz və qiymət yenidən hesablanır (düzəlişdən sonra da)."""
-    ok = sum(is_ok(task, a, i) for i in range(len(task.questions)))
-    a.correct, a.total = ok, len(task.questions)
-    a.grade = summative_grade(ok * 100 / a.total) if a.total else None
+    """Düzgün cavab sayı, 100 ballıq bal (sualın çətinlik balı ilə) və qiymət – düzəlişdən sonra da yenidən."""
+    from ..domain.scoring import question_points
+    ok = [is_ok(task, a, i) for i in range(len(task.questions))]
+    a.correct, a.total = sum(ok), len(task.questions)
+    a.points = round(sum(p for p, k in zip(question_points(task.questions), ok) if k), 1) if a.total else None
+    a.grade = summative_grade(a.points) if a.total else None
+
+
+def apct(a: TaskAttempt) -> float | None:
+    """Cəhdin balı (0–100): 100 ballıq sistemdə – sualların çətinlik balı ilə; köhnə cəhd – düz ÷ ümumi."""
+    if not a.total:
+        return None
+    return a.points if a.points is not None else a.correct * 100 / a.total
 
 
 def _forget(*batch_ids):
@@ -55,14 +65,17 @@ def _forget(*batch_ids):
 def exam_score(task: OnlineTask, a: TaskAttempt, penalty: int = 0) -> dict:
     """Sınaq balı – hər yerdə eyni (jurnal, reytinq, şagird, sertifikat): bal = düz − səhv ÷ N, faiz = max(0, bal) ÷ sual.
     Boş cavab səhv sayılmır; müəllimin «düz say»ı boş cavaba verilibsə – düz sayılır, boş yox."""
+    from ..domain.scoring import question_points
     n = len(task.questions)
     ok = [is_ok(task, a, i) for i in range(n)]
-    blank = sum(1 for i in range(n) if not ok[i] and (a.answers or {}).get(str(i)) in (None, ''))
-    c = sum(ok)
-    wrong = n - c - blank
-    pts = round(c - (wrong / penalty if penalty else 0), 2)
-    return {'correct': c, 'wrong': wrong, 'blank': blank, 'points': pts,
-            'pct': round(max(0.0, pts) * 100 / n, 1) if n else None}
+    empty = [not ok[i] and (a.answers or {}).get(str(i)) in (None, '') for i in range(n)]
+    qp = question_points(task.questions)                 # 100 ballıq: hər sualın öz balı (köhnə test – bərabər)
+    earned = sum(p for p, k in zip(qp, ok) if k)
+    lost = sum(p for i, p in enumerate(qp) if not ok[i] and not empty[i])     # cərimə: səhvin öz balının 1/N-i
+    pts = round(earned - (lost / penalty if penalty else 0), 2)
+    c, blank = sum(ok), sum(empty)
+    return {'correct': c, 'wrong': n - c - blank, 'blank': blank, 'points': pts,
+            'pct': round(max(0.0, pts), 1) if n else None}
 
 
 def penalty_of(db: Session, task: OnlineTask) -> int:
@@ -78,7 +91,7 @@ def attempt_pct(db: Session, task: OnlineTask, a: TaskAttempt) -> float | None:
         return None
     if task.kind == 'sinaq':
         return exam_score(task, a, penalty_of(db, task))['pct']
-    return round(a.correct * 100 / a.total, 1)
+    return round(apct(a), 1)
 
 
 def review_opens_at(db: Session, task: OnlineTask) -> dt.datetime:
@@ -126,6 +139,7 @@ class CustomQ(BaseModel):
     source: str | None = Field(None, max_length=40)
     lesson: str | None = Field(None, max_length=400)
     raw: dict | None = None                     # dəyişdirilməmiş sualın orijinal surəti (AZ/RU/EN tərcümələri qalsın)
+    difficulty: Literal['asan', 'orta', 'çətin'] | None = None   # müəllimin seçimi (boş – avtomatik: statistika / növ)
 
     @model_validator(mode='after')
     def _v(self):
@@ -179,6 +193,14 @@ RAW_KEYS = ('bank_id', 'source', 'lesson', 'kind', 'text', 'options', 'correct',
 
 
 def custom_snapshot(q: 'CustomQ') -> dict:
+    d = _custom_snapshot(q)
+    d.pop('points', None)                       # bal yenidən hesablanır (çətinlik dəyişə bilər)
+    if q.difficulty:
+        d['difficulty'] = q.difficulty
+    return d
+
+
+def _custom_snapshot(q: 'CustomQ') -> dict:
     if q.raw and q.raw.get('kind') in ('mcq', 'open') and isinstance(q.raw.get('text'), dict):
         return {k: q.raw[k] for k in RAW_KEYS if k in q.raw}
     return {'bank_id': q.bank_id, 'source': q.source or 'müəllim', 'lesson': q.lesson, 'kind': q.kind,
@@ -259,7 +281,7 @@ def my_tasks(archived: bool = False, kind: str = 'movzu', user: User = Depends(s
     for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id.in_([t.id for t in tasks] or [-1]),
                                                   TaskAttempt.submitted_at.is_not(None))):
         if a.total:
-            stats.setdefault(a.task_id, []).append(a.correct * 100 / a.total)
+            stats.setdefault(a.task_id, []).append(apct(a))
     pls = {p.id: p for p in db.scalars(select(PlanLesson).where(
         PlanLesson.id.in_({t.plan_lesson_id for t in tasks if t.plan_lesson_id} or {-1})))}
     out = []
@@ -284,7 +306,7 @@ def list_tasks(ta_id: int, archived: bool = False, user: User = Depends(staff), 
                 if a.total]                           # sualsız (boş) tapşırıq ortanı sıfıra bölməsin
         pl = db.get(PlanLesson, t.plan_lesson_id) if t.plan_lesson_id else None
         out.append({**task_out(t), 'submitted': len(done), 'topic': pl and {'seq': pl.seq, 'topic': pl.topic},
-                    'avg_pct': round(sum(a.correct * 100 / a.total for a in done) / len(done), 1) if done else None})
+                    'avg_pct': round(sum(apct(a) for a in done) / len(done), 1) if done else None})
     return out
 
 
@@ -309,7 +331,7 @@ def task_results(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
                      'submitted_at': aware(a.submitted_at) if a and a.submitted_at else None,
                      'auto_submitted': bool(a and a.auto_submitted), 'correct': a.correct if a else None,
                      'total': a.total if a else None, 'grade': None if sinaq or not a else a.grade,
-                     'pct': (exam_score(t, a, pen)['pct'] if sinaq else round(a.correct * 100 / a.total, 1))
+                     'pct': (exam_score(t, a, pen)['pct'] if sinaq else round(apct(a), 1))
                      if a and a.submitted_at and a.total else None,
                      'solution_at': aware(a.solution_at) if a and a.solution_key and a.solution_at else None})
     done = [a for a in atts.values() if a.submitted_at]
@@ -554,7 +576,7 @@ def to_journal(ta_id: int, task_id: int, body: ToJournalIn, user: User = Depends
             db.add(m)
             copied += 1
         m.test_correct, m.test_total = a.correct, a.total
-        m.grade = summative_grade(a.correct * 100 / a.total)
+        m.grade = summative_grade(apct(a))
         m.comment, m.task_id = f'Onlayn test: {t.title}'[:300], t.id
     audit(db, user, 'update', 'journal', e.id, from_task=t.id, copied=copied, updated=updated)
     db.commit()
@@ -606,7 +628,7 @@ def update_task(ta_id: int, task_id: int, body: TaskPatch, user: User = Depends(
             raise HTTPException(400, '1–100 sual olmalıdır')
         qs = [custom_snapshot(q) for q in body.questions]
         for x in same:
-            x.questions = copy.deepcopy(qs)
+            x.questions = prepare_points(db.connection(), copy.deepcopy(qs))   # 100 bal yenidən
     if body.all_students:
         t.student_ids = None
     elif 'student_ids' in data and body.student_ids is not None:

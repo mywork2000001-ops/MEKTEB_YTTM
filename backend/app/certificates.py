@@ -41,7 +41,8 @@ def _aware(t: dt.datetime | None) -> dt.datetime | None:
 
 
 def _pct(a: TaskAttempt) -> float | None:
-    return round(100 * a.correct / a.total, 1) if a.submitted_at and a.total else None
+    from .api.tasks import apct
+    return round(apct(a), 1) if a.submitted_at and a.total else None
 
 
 def _context(db: Session, ta: TeachingAssignment, s: Student) -> dict:

@@ -93,7 +93,7 @@ def test_topic_test_peers_create_and_journal(world, clock, monkeypatch):
         assert run_due(db) == 1                              # X c testi hələ açılmayıb
     e = admin.get(f'/api/journal/{ta}/day', params={'date': '2026-09-29'}).json()['lessons'][0]['entry']
     assert [(m['student_id'], m['test_correct'], m['test_total'], m['grade'], m['task_id']) for m in e['marks']] == \
-        [(st[0]['id'], 2, 3, 4, t1['id'])]
+        [(st[0]['id'], 2, 3, 3, t1['id'])]   # 100 ballıq: iki qapalı düz – 47 bal → 3
     lt = lesson()['tests'][0]
     assert (lt['state'], lt['submitted'], lt['total'], lt['journal']) == ('bitib', 2, 3, 'yazılıb')
     with S() as db:

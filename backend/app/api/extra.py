@@ -28,7 +28,7 @@ from ..models import (ExtraAttendance, ExtraCourse, ExtraSession, Holiday, Level
 from ..services import SCHOOL_TZ, own_assignment, roster
 from .common import audit, current_year, need_school
 from .plan import bell
-from .tasks import CustomQ, _snapshot, aware, custom_snapshot
+from .tasks import CustomQ, _snapshot, apct, aware, custom_snapshot
 
 router = APIRouter(prefix='/api/extra', tags=['extra'])
 TZ = ZoneInfo(SCHOOL_TZ)
@@ -582,7 +582,7 @@ def suggest_topics(cid: int, user: User = Depends(staff), db: Session = Depends(
                                                      OnlineTask.plan_lesson_id.is_not(None), OnlineTask.archived_at.is_(None))):
             done = [a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id,
                                                                     TaskAttempt.submitted_at.is_not(None))) if a.total]
-            avg = sum(a.correct * 100 / a.total for a in done) / len(done) if done else None
+            avg = sum(apct(a) for a in done) / len(done) if done else None
             if avg is not None and avg < 60:
                 pl = db.get(PlanLesson, t.plan_lesson_id)
                 out.append({'plan_lesson_id': pl.id, 'seq': pl.seq, 'topic': pl.topic, 'reason': f'mövzu testi {avg:.0f}%'})
@@ -648,7 +648,7 @@ def _pcts(db: Session, task_ids: list[int]) -> dict[int, list[tuple[dt.datetime,
         return out
     for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id.in_(task_ids), TaskAttempt.submitted_at.is_not(None))):
         if a.total:
-            out.setdefault(a.student_id, []).append((aware(a.submitted_at), a.correct * 100 / a.total))
+            out.setdefault(a.student_id, []).append((aware(a.submitted_at), apct(a)))
     return out
 
 
@@ -754,7 +754,7 @@ def student_courses(db: Session, s: Student) -> list[dict]:
                 tids = [k.id for k in db.scalars(select(OnlineTask).where(OnlineTask.batch_id == x.batch_id))]
                 at = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id.in_(tids), TaskAttempt.student_id == s.id,
                                                          TaskAttempt.submitted_at.is_not(None)))
-                test = {'title': task.title if task else '', 'pct': round(at.correct * 100 / at.total, 1) if at and at.total else None}
+                test = {'title': task.title if task else '', 'pct': round(apct(at), 1) if at and at.total else None}
             rows.append({'id': x.id, 'date': x.date, 'weekday': DAYS[x.date.weekday()], 'start': x.start, 'end': x.end,
                          'format': x.format, 'room': x.room, 'status': x.status, 'note': x.note,
                          'topics': [y['text'] for y in _topics_text(db, x)], 'goals': x.goals, 'resources': x.resources,

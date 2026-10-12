@@ -25,6 +25,12 @@ HYSTERESIS = 5.0
 MIN_GROUP = 3
 
 
+
+def _apct(a) -> float | None:
+    """Cəhdin 100 ballıq balı (app/api/tasks.py::apct – dövri importdan qaçmaq üçün)."""
+    from .api.tasks import apct
+    return apct(a)
+
 def _task_pcts(db: Session, tasks: list[OnlineTask]) -> dict[int, list[float]]:
     out: dict[int, list[float]] = {}
     if not tasks:
@@ -32,7 +38,7 @@ def _task_pcts(db: Session, tasks: list[OnlineTask]) -> dict[int, list[float]]:
     for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id.in_([t.id for t in tasks]),
                                                   TaskAttempt.submitted_at.is_not(None))):
         if a.total:
-            out.setdefault(a.student_id, []).append(a.correct * 100 / a.total)
+            out.setdefault(a.student_id, []).append(_apct(a))
     return out
 
 

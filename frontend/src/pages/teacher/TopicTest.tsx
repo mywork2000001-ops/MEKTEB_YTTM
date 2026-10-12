@@ -8,6 +8,7 @@ import { Drawer, ErrorBox, Field, fmtDate, Loading, Pill, toast } from '../../ui
 import { sectionText } from './Plan'
 import { BankPicker, fromSnapshot, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
 import { StudentPicker } from './common'
+import { PointsSummary, previewPoints, QPoints } from '../../scoring'
 
 type Peer = {
   ta_id: number; class_name: string; kind: string; current: boolean; students: number
@@ -235,12 +236,15 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
           <fieldset><legend>{variants ? `«${vk}» variantının sualları` : 'Seçilmiş suallar'} ({qs.length})</legend>
             {qs.length === 0 ? <p className="small muted">Yuxarıdan test bazasından seçin və ya öz sualınızı yazın.</p> : (
               <div className="jlist">
+                <PointsSummary qs={qs} />
                 {qs.map((q, i) => (
                   <div key={q.key} className="jrow cols" style={{ ['--cols' as any]: '28px minmax(0,1fr) auto', ['--mcols' as any]: '28px minmax(0,1fr)' }}>
                     <span className="num muted">{i + 1}.</span>
                     <span className="small"><span className="clamp2"><MathText text={q.text} /></span>
                       <span className="muted">{q.raw ? `${q.source || ''}${q.lesson ? ' · ' + q.lesson : ''}` : 'öz sualım'}</span></span>
-                    <button className="btn sm ghost" onClick={() => remove(q.key)} aria-label="Sil">✕</button>
+                    <span className="row" style={{ flexWrap: 'nowrap' }}>
+                      <QPoints q={q} pts={previewPoints(qs)[i]} onLevel={l => setQs(cur => cur.map(x => (x.key === q.key ? { ...x, difficulty: l } : x)))} />
+                      <button className="btn sm ghost" onClick={() => remove(q.key)} aria-label="Sil">✕</button></span>
                   </div>))}
               </div>)}
             <OwnQuestion onAdd={q => add([q])} />

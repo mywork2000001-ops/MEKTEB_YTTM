@@ -19,6 +19,12 @@ from .models import JournalEntry, Mark, OnlineTask, PlanLesson, TaskAttempt, Tea
 from .services import plan_ctx, roster, today
 
 
+
+def _apct(a) -> float | None:
+    """Cəhdin 100 ballıq balı (app/api/tasks.py::apct – dövri importdan qaçmaq üçün)."""
+    from .api.tasks import apct
+    return apct(a)
+
 def topic_lesson(db: Session, ta: TeachingAssignment, pl_id: int) -> tuple[dt.date, int, JournalEntry | None] | None:
     """Mövzunun (sonuncu) dərsi: (tarix, saat, jurnal yazısı)."""
     e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.plan_lesson_id == pl_id)
@@ -87,7 +93,7 @@ def write_topic_marks(db: Session, task: OnlineTask, by: int | None = None) -> d
         else:
             out['updated'] += 1
         m.test_correct, m.test_total = a.correct, a.total
-        m.grade = summative_grade(a.correct * 100 / a.total)
+        m.grade = summative_grade(_apct(a))
         m.comment = f'Onlayn test: {task.title}'[:300]
     # əvvəl bu testdən yazılıb, indi cəhdi yoxdur (sıfırlanıb) – qiymət silinir
     for m in db.scalars(select(Mark).where(Mark.task_id == task.id)):
