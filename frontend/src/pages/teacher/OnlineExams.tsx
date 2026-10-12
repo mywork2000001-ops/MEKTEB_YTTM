@@ -103,7 +103,7 @@ function ExamRow({ x, repeat, expanded, onToggle, onJournal, onEdit, onChange }:
       {delAsk && <ConfirmName name={x.title} action="Birdəfəlik sil" onCancel={() => setDelAsk(false)}
         onConfirm={async () => { await apiDel(`/api/exams-online/${x.id}`); toast(x.mine ? 'Sınaq bütün siniflərdən silindi' : 'Sınaq sinfinizdən silindi'); setDelAsk(false); onChange() }} />}
       {delAsk && <span className="small muted">Nəticələr və şagird cəhdləri də silinir – geri qaytarmaq olmur.</span>}
-      {expanded && <ExamStudents id={x.id} />}
+      {expanded && <ExamStudents id={x.id} onChange={onChange} />}
     </div>
   )
 }
@@ -111,7 +111,7 @@ function ExamRow({ x, repeat, expanded, onToggle, onJournal, onEdit, onChange }:
 const STATUS_TONE: Record<Row['status'], 'ok' | 'bad' | 'info' | undefined> = { 'yazıb': 'ok', 'yazmayıb': 'bad', 'yazır': 'info', 'gözlənilir': undefined }
 
 /** Sınağı alan siniflərin şagirdləri (əlifba ilə) və vəziyyəti; başqa müəllimin sinfində adlar gizlidir (access: own). */
-function ExamStudents({ id }: { id: number }) {
+function ExamStudents({ id, onChange }: { id: number; onChange?: () => void }) {
   const [d, err, , reload] = useLoad<Res>(() => get(`/api/exams-online/${id}`), [id])
   const [rs, setRs] = useState<{ ta: number; task: number; ids: number[] } | null>(null)
   if (err) return <ErrorBox error={err} />
@@ -125,7 +125,8 @@ function ExamStudents({ id }: { id: number }) {
         return (
           <div key={c.task_id} className="subrow" style={{ alignItems: 'stretch' }}>
             <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}><b>{c.class_name}</b><Pill tone={stateTone(c.state)}>{c.state}</Pill>
-              <span className="small muted grow">{c.wrote}/{c.students} yazıb{c.avg_pct != null ? ` · orta ${fmt(c.avg_pct)}%` : ''}</span></div>
+              <span className="small muted grow">{c.wrote}/{c.students} yazıb{c.avg_pct != null ? ` · orta ${fmt(c.avg_pct)}%` : ''}</span>
+              {c.own && <ResumeClass ta={c.ta_id} task={c.task_id} onDone={() => { reload(); onChange?.() }} />}</div>
             {hidden ? <span className="small muted">Başqa müəllimin sinfi – şagird adları göstərilmir.</span>
               : rows.length === 0 ? <span className="small muted">Bu sinifdə şagird yoxdur.</span>
               : <ol className="small" style={{ margin: '4px 0 0', paddingLeft: 22, columns: '2 260px', columnGap: 24 }}>
@@ -137,13 +138,20 @@ function ExamStudents({ id }: { id: number }) {
                       title="Bu şagirdə sınağı yenidən göndər (yeni vaxtla)" onClick={() => setRs({ ta: c.ta_id, task: r.task_id, ids: [r.student_id!] })}>↻ Yenidən göndər</button>}
                     {c.own && r.student_id && (r.status === 'yazıb' || r.status === 'yazır' || r.status === 'yazmayıb') && <AsyncBtn className="btn sm ghost" style={{ padding: '0 6px', minHeight: 24, marginLeft: 4 }}
                       ok={tt('Şagird sınağı davam etdirə bilər')} title={tt('Təsadüfən çıxıbsa: cavablar saxlanır, qalan vaxt yenidən verilir')}
-                      onClick={async () => { try { await post(`/api/tasks/${c.ta_id}/${r.task_id}/attempts/${r.student_id}/resume`); reload() } catch (e) { toast((e as Error).message); throw e } }}>▶ {tt('Davam etsin')}</AsyncBtn>}</li>))}
+                      onClick={async () => { try { await post(`/api/tasks/${c.ta_id}/${r.task_id}/attempts/${r.student_id}/resume`); reload(); onChange?.() } catch (e) { toast((e as Error).message); throw e } }}>▶ {tt('Davam etsin')}</AsyncBtn>}</li>))}
               </ol>}
           </div>)
       })}
-      {rs && <ResendToStudents ta={rs.ta} taskId={rs.task} ids={rs.ids} onClose={() => setRs(null)} onDone={() => { setRs(null); reload() }} />}
+      {rs && <ResendToStudents ta={rs.ta} taskId={rs.task} ids={rs.ids} onClose={() => setRs(null)} onDone={() => { setRs(null); reload(); onChange?.() }} />}
     </div>
   )
+}
+
+/** Bütün sinif üçün «Davam etsin» — başlamış hər şagirdin cəhdi açılır (hərəyə öz qalan vaxtı). */
+function ResumeClass({ ta, task, onDone }: { ta: number; task: number; onDone: () => void }) {
+  return <AsyncBtn className="btn sm ghost" title={tt('Sinifdə başlamış hər şagirdin cəhdi açılır, cavablar saxlanır')}
+    onClick={async () => { try { const r = await post<{ resumed: number }>(`/api/tasks/${ta}/${task}/resume-all`); toast(tt('Davam edə bilən şagird: {n}', { n: r.resumed })); onDone() } catch (e) { toast((e as Error).message); throw e } }}>
+    ▶ {tt('Sinif davam etsin')}</AsyncBtn>
 }
 
 /** Redaktə: sınağın adı (bütün siniflərdə birdən; yalnız yaradan / admin) + hər öz sinfi üçün vaxt və suallar (tapşırıq redaktoru). */
@@ -366,7 +374,10 @@ function Results({ id, onClose, onChange }: { id: number; onClose: () => void; o
                   <td>{r.full_name ? <b>{r.full_name}</b> : <span className="muted">{name(r)}</span>}<span className="sub">{r.class_name}{r.retake ? ' · təkrar cəhd' : ''}{r.late ? ' · sonradan yazıb' : ''}</span>
                     {r.student_id && (() => { const c = d.classes.find(k => k.task_id === r.task_id) || d.classes.find(k => k.class_name === r.class_name)
                       return c?.own ? <button className="btn sm ghost" style={{ padding: '0 6px', minHeight: 24 }} title="Bu şagirdə sınağı yenidən göndər"
-                        onClick={e => { e.stopPropagation(); setRs({ ta: c.ta_id, task: c.task_id, ids: [r.student_id!] }) }}>↻ Yenidən göndər</button> : null })()}</td>
+                        onClick={e => { e.stopPropagation(); setRs({ ta: c.ta_id, task: c.task_id, ids: [r.student_id!] }) }}>↻ Yenidən göndər</button> : null })()}
+                    {r.student_id && ['yazıb', 'yazır', 'yazmayıb'].includes(r.status) && (() => { const c = d.classes.find(k => k.task_id === r.task_id) || d.classes.find(k => k.class_name === r.class_name)
+                      return c?.own ? <span onClick={e => e.stopPropagation()}><AsyncBtn className="btn sm ghost" style={{ padding: '0 6px', minHeight: 24 }} title={tt('Təsadüfən çıxıbsa: cavablar saxlanır, qalan vaxt yenidən verilir')}
+                        onClick={async () => { await post(`/api/tasks/${c.ta_id}/${c.task_id}/attempts/${r.student_id}/resume`); reload(); onChange() }}>▶ {tt('Davam etsin')}</AsyncBtn></span> : null })()}</td>
                   {r.status === 'yazıb' ? <>
                     <td className="r num">{r.correct}</td><td className="r num">{r.wrong}</td><td className="r num">{r.blank}</td>
                     <td className="r num">{fmt(r.points, r.points != null && r.points % 1 ? 2 : 0)}</td><td className="r num"><b>{fmt(r.pct)}</b></td></>
@@ -385,7 +396,8 @@ function Results({ id, onClose, onChange }: { id: number; onClose: () => void; o
             <section className="panel"><h2>Sinfin testini idarə et <small>canlı izlə, link, yenidən göndər, kağız variant, redaktə</small></h2>
               <div className="jlist">{d.classes.filter(c => c.own).map(c => (
                 <div key={c.task_id} className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 6 }}>
-                  <div className="row"><b className="grow">{c.class_name}</b><Pill tone={stateTone(c.state)}>{c.state}</Pill></div>
+                  <div className="row"><b className="grow">{c.class_name}</b><Pill tone={stateTone(c.state)}>{c.state}</Pill>
+                    <ResumeClass ta={c.ta_id} task={c.task_id} onDone={() => { reload(); onChange() }} /></div>
                   <TaskActions ta={c.ta_id} id={c.task_id} cls={c.class_name} onChange={() => { reload(); onChange() }} />
                 </div>))}</div>
             </section>)}

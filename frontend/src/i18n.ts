@@ -398,6 +398,9 @@ const D: Record<string, [string, string]> = {
   "{n}-ci yer": ["place {n}", "{n}-е место"],
   "Avtomatik: test və sınaqda 30 baldan yuxarı — 31–60 Mis, 61–80 Gümüş, 81–90 Qızıl, 91–100 Platin (≤ 30 – verilmir, əvvəl verilibsə ləğv olunur);": ["Automatic: above 30 points in a test or exam — 31–60 Bronze, 61–80 Silver, 81–90 Gold, 91–100 Platinum (≤ 30 — none; earlier ones are revoked);", "Автоматически: в тесте и пробном экзамене выше 30 баллов — 31–60 медный, 61–80 серебряный, 81–90 золотой, 91–100 платиновый (≤ 30 — не выдаётся, ранее выданный отзывается);"],
   "sınaq seriyasında ≥ {n}% iştirak.": ["≥ {n}% participation in an exam series.", "участие в серии пробных экзаменов ≥ {n}%."],
+  "Sinifdə başlamış hər şagirdin cəhdi açılır, cavablar saxlanır": ["Every student in the class who started gets their attempt reopened; answers are kept", "Попытка каждого начавшего ученика класса открывается заново, ответы сохраняются"],
+  "Davam edə bilən şagird: {n}": ["Students who can continue: {n}", "Могут продолжить учеников: {n}"],
+  "Sinif davam etsin": ["Class may continue", "Продолжить всему классу"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

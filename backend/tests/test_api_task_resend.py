@@ -71,3 +71,8 @@ def test_resume_attempt_keeps_answers(world, clock):
     res = s.post(f'/api/portal/tasks/{t["id"]}/submit', json={'answers': {}}).json()
     assert res['total'] == 3
     assert admin.post(f'/api/tasks/{ta}/{t["id"]}/attempts/{st[0]["id"]}/resume', json={'minutes': 15}).json()['minutes'] == 15
+    # bütün sinif: başlamış hər kəs açılır, başlamayan toxunulmur
+    s.post(f'/api/portal/tasks/{t["id"]}/submit', json={'answers': {}})
+    r = admin.post(f'/api/tasks/{ta}/{t["id"]}/resume-all').json()
+    assert r['resumed'] == 1
+    assert next(x for x in s.get('/api/portal/tasks').json() if x['id'] == t['id'])['status'] == 'həll edilir'

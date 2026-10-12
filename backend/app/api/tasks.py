@@ -508,6 +508,35 @@ class ResumeIn(BaseModel):
     minutes: int | None = Field(None, ge=5, le=300)        # boş – testin istifadə olunmamış vaxtı (ən azı 10 dəq)
 
 
+def _resume(db: Session, t: OnlineTask, a: TaskAttempt, minutes: int | None = None) -> int:
+    """Cəhdi yenidən açır: cavablar saxlanır, qalan vaxt (və ya verilən dəqiqə), jurnal qiyməti silinir (təhvildə yenidən)."""
+    at = now()
+    used = ((aware(a.submitted_at) if a.submitted_at else min(at, aware(a.deadline))) - aware(a.started_at)).total_seconds() / 60
+    minutes = minutes or max(10, round(t.duration_min - used))
+    a.submitted_at, a.auto_submitted = None, False
+    a.correct = a.total = a.grade = a.points = None
+    a.deadline = at + dt.timedelta(minutes=minutes)
+    _forget(t.batch_id)
+    for m in db.scalars(select(Mark).where(Mark.task_id == t.id, Mark.student_id == a.student_id)):
+        db.delete(m)
+    return minutes
+
+
+@router.post('/{ta_id}/{task_id}/resume-all')
+def resume_all(ta_id: int, task_id: int, body: ResumeIn | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Bütün sinif üçün «Davam etsin»: başlamış hər şagirdin cəhdi açılır (hərəyə öz qalan vaxtı), cavablar saxlanır."""
+    t = _own_task(db, user, ta_id, task_id)
+    at = now()
+    n = 0
+    for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id)):
+        if a.submitted_at or at >= aware(a.deadline):
+            _resume(db, t, a, body.minutes if body else None)
+            n += 1
+    audit(db, user, 'update', 'online_task', t.id, resume_all=n)
+    db.commit()
+    return {'ok': True, 'resumed': n}
+
+
 @router.post('/{ta_id}/{task_id}/attempts/{student_id}/resume')
 def resume_attempt(ta_id: int, task_id: int, student_id: int, body: ResumeIn | None = None, user: User = Depends(staff),
                    db: Session = Depends(get_db)):
@@ -517,15 +546,7 @@ def resume_attempt(ta_id: int, task_id: int, student_id: int, body: ResumeIn | N
     a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == student_id))
     if not a:
         raise HTTPException(404, 'Şagird bu testə başlamayıb – «Yenidən göndər» istifadə edin')
-    at = now()
-    used = ((aware(a.submitted_at) if a.submitted_at else min(at, aware(a.deadline))) - aware(a.started_at)).total_seconds() / 60
-    minutes = (body.minutes if body and body.minutes else None) or max(10, round(t.duration_min - used))
-    a.submitted_at, a.auto_submitted = None, False
-    a.correct = a.total = a.grade = a.points = None
-    a.deadline = at + dt.timedelta(minutes=minutes)
-    _forget(t.batch_id)
-    for m in db.scalars(select(Mark).where(Mark.task_id == t.id, Mark.student_id == student_id)):
-        db.delete(m)                                  # jurnala yazılmış qiymət – təhvildən sonra yenidən yazılacaq
+    minutes = _resume(db, t, a, body.minutes if body else None)
     audit(db, user, 'update', 'task_attempt', t.id, student_id=student_id, resume_minutes=minutes)
     db.commit()
     return {'ok': True, 'deadline': aware(a.deadline), 'minutes': minutes, 'answers': len(a.answers or {})}
