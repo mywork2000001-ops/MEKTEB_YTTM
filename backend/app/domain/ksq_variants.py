@@ -155,6 +155,7 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
     # share – bir sual sinifdə ən çox neçə şagirdə düşə bilər (standart 1 – hamıda fərqli; müəllim seçimi ilə 2)
     uses: dict[str, int] = {}
     text_uses: dict[str, int] = {}
+    ntext: dict[str, str] = {}
     mine: dict[int, set[str]] = {sid: set() for sid in students}
     by = {}
     for c in cands:
@@ -172,7 +173,7 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
             hist = history.get(sid, set())
 
             def ok(c: Cand) -> bool:
-                t = norm_text(c.q['text'])
+                t = ntext.get(c.key) or ntext.setdefault(c.key, norm_text(c.q['text']))      # mətn bir dəfə normallaşdırılır
                 return (uses.get(c.key, 0) < share and c.key not in hist and c.key not in mine[sid] and t not in mine[sid]
                         and text_uses.get(t, 0) < share)
 
@@ -245,15 +246,40 @@ def pick_one(slot: dict, topics: list[tuple[str, str | None]], cands: list[Cand]
     return None
 
 
+def capacity(cands: list[Cand], n: int) -> tuple[bool, dict]:
+    """Bir şagirdin variantı ümumiyyətlə dolurmu (növ üzrə fərqli sual sayı ≥ slot sayı)? Tez yoxlama – generasiyasız."""
+    plan = slots(n)
+    need = {k: sum(s['kind'] == k for s in plan) for k in ('mcq', 'open')}
+    have = {k: len({c.key for c in cands if c.kind == k}) for k in ('mcq', 'open')}
+    return all(have[k] >= need[k] for k in need), {'need': need, 'have': have}
+
+
+def max_n(cands: list[Cand], upto: int) -> int | None:
+    """Hovuzun imkan verdiyi ən böyük sual sayı (generasiyasız)."""
+    return next((k for k in range(min(upto, N_MAX), N_MIN - 1, -1) if capacity(cands, k)[0]), None)
+
+
 def generate_auto(students: list[int], topics, cands, history, seed: int, n: int = 30, others: set[str] | None = None,
                   max_share: int | None = None) -> tuple[dict[int, list[dict]], int]:
     """Ən az təkrarla variantlar (istifadəçi qaydası 13.10): əvvəl hər şagirdə fərqli; bank çatmırsa sistem özü
-    «bir sual ən çox k şagirdə» həddini 2, 3, … qaldırır (ən kiçik mümkün k). Şagirdin öz variantında təkrar heç vaxt yoxdur.
-    Şablon sualı yoxdur – yalnız layihənin (X–XI: P0010) sualları."""
+    «bir sual ən çox k şagirdə» həddini seçir (ən kiçik mümkün k). Şagirdin öz variantında təkrar heç vaxt yoxdur.
+    Şablon sualı yoxdur. k hovuzun ölçüsündən hesablanır, sonra cəmi bir neçə generasiya (pulsuz server zəifdir)."""
+    import math
+    fits, info = capacity(cands, n)
+    if not fits:
+        raise Shortage([{'slot': 0, 'kind': k, 'level': '—', 'missing': info['need'][k] - info['have'][k]}
+                        for k in info['need'] if info['have'][k] < info['need'][k]])
+    k0 = max(1, *(math.ceil(len(students) * info['need'][k] / max(1, info['have'][k])) for k in info['need']))
+    top = max(1, max_share or len(students))
     last = None
-    for k in range(1, max(1, max_share or len(students)) + 1):
+    for k in range(min(k0, top), min(k0 + 3, top) + 1):
         try:
             return generate(students, topics, cands, history, seed=seed, n=n, others=others, share=k), k
+        except Shortage as sh:
+            last = sh
+    if top > k0 + 3:                                        # son cəhd – maksimal paylaşma
+        try:
+            return generate(students, topics, cands, history, seed=seed, n=n, others=others, share=top), top
         except Shortage as sh:
             last = sh
     raise last or Shortage([])

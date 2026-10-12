@@ -667,18 +667,16 @@ def readiness(ta_id: int, exam_id: int, body: 'VariantsIn', user: User = Depends
         rows.append({'topic': t, 'files': len(files.get(ti, [])), 'mcq': sum(c.kind == 'mcq' for c in cs), 'open': sum(c.kind == 'open' for c in cs),
                      'templates': 0})
     extra = [c for c in cands if c.topic == -1]
-    from ..domain.ksq_variants import generate_auto
-    def ok(n: int) -> tuple[list | None, int | None]:
-        try:
-            _, k = generate_auto(students, topics, cands, hist, seed=e.id * 7919, n=n, others=others)
-            return None, k
-        except Shortage as sh:
-            return sh.items or [{'missing': 1}], None
+    from ..domain.ksq_variants import generate_auto, max_n as cap_n
+    short, share, mx = [{'missing': 1}], None, None
     if students and topics:
-        short, share = ok(body.n)
-        max_n = body.n if not short else next((k for k in range(body.n - 1, N_MIN - 1, -1) if not ok(k)[0]), None)
-    else:
-        short, share, max_n = [{'missing': 1}], None, None
+        mx = cap_n(cands, body.n)                          # generasiyasız – hovuzun ölçüsündən
+        try:
+            _, share = generate_auto(students, topics, cands, hist, seed=e.id * 7919, n=body.n, others=others)
+            short = None
+        except Shortage as sh:
+            short = sh.items or [{'missing': 1}]
+    max_n = body.n if not short else mx
     return {'students': len(students), 'n': body.n, 'need': len(students) * body.n, 'topics': rows,
             'selected': {'mcq': sum(c.kind == 'mcq' for c in extra), 'open': sum(c.kind == 'open' for c in extra)},
             'ok': not short, 'shortage': short or [], 'max_n': max_n, 'share': share}
