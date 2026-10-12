@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { get, post, put } from '../../api'
+import { api, get, post, put } from '../../api'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Pill, toast, useLoad } from '../../ui'
 import type { MyLesson } from './common'
 import { head, printDoc, SIGN, table } from '../../print'
@@ -31,7 +31,15 @@ export default function Exams({ ta }: { ta: MyLesson }) {
                 <button className="btn sm primary" onClick={() => setOpen(e.id)}>Nəticələr</button></span> : <button className="btn sm" onClick={() => setCreate(p)}>Hazırla</button>}
             </div>)
         })}
-        {d && !d.planned.length && <div className="empty">Planda KSQ/BSQ yoxdur (plan yüklənməyib?).</div>}
+        {/* yaradılmış, amma planda olmayan imtahanlar da görünsün (plan dəyişib və ya plansız yaradılıb) */}
+        {(d?.exams || []).filter(e => !(d?.planned || []).some(p => p.kind === e.kind && p.semester === e.semester && p.no === e.no)).map(e => (
+          <div className="jrow cols" key={'x' + e.id} style={{ ['--cols' as any]: 'minmax(0,1fr) auto auto', ['--mcols' as any]: 'minmax(0,1fr) auto' }}>
+            <span><b>{e.kind}-{e.no}</b> <span className="muted small">({e.semester}-ci yarımil) · {fmtDate(e.date)}</span><span className="sub small muted"><br />{tt('planda yoxdur')}</span></span>
+            <Pill tone="ok">{e.max_points} bal{e.items ? ` · ${e.items.length} tapşırıq` : ''}</Pill>
+            <span className="row" style={{ gap: 4 }}><button className="btn sm" onClick={() => setVars(e)}>🖨 {tt('Kağız variantlar')}</button>
+              <button className="btn sm primary" onClick={() => setOpen(e.id)}>Nəticələr</button></span>
+          </div>))}
+        {d && !d.planned.length && !d.exams.length && <div className="empty">Planda KSQ/BSQ yoxdur (plan yüklənməyib?).</div>}
       </div>
       {create && <CreateExam ta={ta} p={create} prev={(d?.planned || []).filter(x => x.semester === create.semester && x.date < create.date).map(x => x.date).sort().pop() || null} onClose={() => setCreate(null)} onDone={id => { setCreate(null); reload(); setOpen(id) }} />}
       {open && <Scores ta={ta} examId={open} onClose={() => { setOpen(null); reload() }} />}
@@ -188,7 +196,87 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
         <p className="small">{tt('{n} şagird üçün variant hazırdır', { n: d.variants.length })}{d.report ? ` · ${tt('açıq sual')}: ${d.report.open_pct}%` : ''}</p>
         <ol className="small" style={{ columns: '2 220px', paddingLeft: 22 }}>{d.variants.map(v => <li key={v.student_id}>{v.full_name || '—'} <span className="muted">{v.code}</span></li>)}</ol>
         <AsyncBtn className="btn sm ghost" onClick={make} title={tt('Nəticə yazılmayıbsa variantlar yenidən seçilir')}>↻ {tt('Yenidən yarat')}</AsyncBtn>
+        <Scans ta={ta.id} examId={e.id} />
       </>}
     </Drawer>
+  )
+}
+
+type Scan = { id: number; student_id: number; full_name: string | null; code: string; status: 'pending' | 'graded' | 'error'; points: number | null
+  flagged: number[]; reading: { slot: number; value: string | null; confidence: number | null }[] | null; marks: number[] | null; error: string | null; rescans: number }
+type ScanList = { scans: Scan[]; missing: string[]; counts: { variants: number; scanned: number; graded: number; pending: number; flagged: number } }
+const SCAN_TONE: Record<string, 'ok' | 'warn' | 'bad'> = { graded: 'ok', pending: 'warn', error: 'bad' }
+
+/** Cavab kartlarının skanı: şəkil / PDF yüklə → QR ilə şagird → oxunuş → bal jurnala özü yazılır; şübhəli xana – sarı, müəllim düzəldir. */
+function Scans({ ta, examId }: { ta: number; examId: number }) {
+  const [d, err, , reload] = useLoad<ScanList>(() => get(`/api/exam-scans/${ta}/${examId}`), [examId])
+  const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState<number | null>(null)
+  const send = async (files: FileList | null) => {
+    if (!files?.length) return
+    const form = new FormData()
+    Array.from(files).forEach(f => form.append('files', f))
+    setBusy(true)
+    try {
+      const r = await api<{ found: { full_name: string | null }[]; problems: { file: string; error: string }[] }>(`/api/exam-scans/${ta}/${examId}/upload`, { method: 'POST', form })
+      toast(tt('Tapılan kart: {n}', { n: r.found.length }) + (r.problems.length ? ' · ' + r.problems.map(p => `${p.file}: ${p.error}`).join('; ') : ''))
+      reload()
+    } catch (x) { toast((x as Error).message) } finally { setBusy(false) }
+  }
+  const c = d?.counts
+  return (
+    <section style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+      <h3 style={{ margin: '0 0 6px' }}>📷 {tt('Cavab kartlarını skan et')}</h3>
+      <p className="small muted" style={{ marginTop: 0 }}>{tt('Kartların şəklini çəkin və ya skan PDF yükləyin – bir şəkildə bir neçə kart ola bilər. Şagird QR koddan tanınır, bal və qiymət jurnala özü yazılır.')}</p>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <label className="btn sm primary">📷 {tt('Kamera')}
+          <input type="file" accept="image/*" capture="environment" hidden disabled={busy} onChange={e => { send(e.target.files); e.target.value = '' }} /></label>
+        <label className="btn sm">🖼 {tt('Şəkil / PDF seç')}
+          <input type="file" accept="image/*,application/pdf" multiple hidden disabled={busy} onChange={e => { send(e.target.files); e.target.value = '' }} /></label>
+        {d && d.scans.length > 0 && <AsyncBtn className="btn sm ghost" onClick={async () => { await post(`/api/exam-scans/${ta}/${examId}/regrade`); reload() }}
+          title={tt('Bütün kartlar mövcud açarla yenidən hesablanır')}>🔄 {tt('Yenilə')}</AsyncBtn>}
+        {busy && <span className="small muted">{tt('Yüklənir…')}</span>}
+      </div>
+      <ErrorBox error={err} />
+      {c && <p className="small" style={{ margin: '8px 0 4px' }}>{tt('Skan: {a}/{b} · yoxlanılıb: {c} · oxunmağı gözləyir: {p}', { a: c.scanned, b: c.variants, c: c.graded, p: c.pending })}
+        {c.flagged > 0 && <> · <b style={{ color: 'var(--warn)' }}>{tt('baxılmalı: {n}', { n: c.flagged })}</b></>}</p>}
+      {d && d.missing.length > 0 && <p className="small muted" style={{ margin: '0 0 6px' }}>{tt('Kartı yoxdur')}: {d.missing.join(', ')}</p>}
+      <div className="jlist">
+        {d?.scans.map(s => (
+          <div key={s.id} className="jrow" style={{ display: 'block' }}>
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap', cursor: 'pointer' }} onClick={() => setOpen(o => (o === s.id ? null : s.id))}>
+              <b className="grow">{s.full_name || '—'} <span className="small muted">{s.code}</span></b>
+              <Pill tone={SCAN_TONE[s.status]}>{s.status === 'graded' ? `${fmt(s.points)} ${tt('bal')}` : tt(s.status === 'pending' ? 'oxunmağı gözləyir' : 'xəta')}</Pill>
+              {s.flagged.length > 0 && <Pill tone="warn">⚠ {s.flagged.length}</Pill>}
+            </div>
+            {s.error && <div className="small" style={{ color: 'var(--bad)' }}>{s.error}</div>}
+            {open === s.id && <ScanDetail s={s} onChange={reload} />}
+          </div>))}
+      </div>
+    </section>
+  )
+}
+
+function ScanDetail({ s, onChange }: { s: Scan; onChange: () => void }) {
+  const val = (slot: number) => s.reading?.find(r => r.slot === slot)?.value ?? ''
+  const fix = async (slot: number, value: string) => {
+    try { await put(`/api/exam-scans/${s.id}/slot`, { slot, value: value.trim() || null }); onChange() } catch (x) { toast((x as Error).message) }
+  }
+  return (
+    <div style={{ marginTop: 8 }}>
+      <img src={`/api/exam-scans/image/${s.id}`} alt="" style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 6 }} />
+      {s.reading ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(92px,1fr))', gap: 4, marginTop: 6 }}>
+          {Array.from({ length: 30 }, (_, i) => i + 1).map(slot => {
+            const ok = s.marks?.[slot - 1] === 1, flag = s.flagged.includes(slot)
+            return (
+              <label key={slot} className="small" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 4px', borderRadius: 6,
+                background: flag ? '#fef3c7' : ok ? '#dcfce7' : '#fee2e2', color: '#111' }}>
+                <b style={{ minWidth: 18 }}>{slot}</b>
+                <input defaultValue={val(slot)} maxLength={8} style={{ width: '100%', minWidth: 0, padding: '2px 4px' }}
+                  onBlur={e => { if (e.target.value !== val(slot)) fix(slot, e.target.value) }} /></label>)
+          })}
+        </div>) : <p className="small muted">{tt('Kart hələ oxunmayıb.')}</p>}
+    </div>
   )
 }

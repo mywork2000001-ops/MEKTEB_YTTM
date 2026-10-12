@@ -101,7 +101,7 @@ Bütün müəllimlər üçün işləyir. «Bağlantını yoxla» düyməsi; ayl�
 ## 6. Mərhələlər
 1. Slot planı (30 slot / 100 bal) + `exam_variants` + təkrarsız generator + parametrli şablon mühərriki + testlər.
 2. A4 iki üzlü çap + cavab kartı (QR, markerlər). ✅ 12.10.2026: `GET …/variants/print`, `domain/ksq_card.py` (HMAC QR), `frontend/src/ksqPrint.ts`, «🖨 Kağız variantlar».
-3. Yükləmə, QR, kəsik, qiymətləndirmə, `scan-import` (ehtiyat yol dərhal işləyir).
+3. Yükləmə, QR, kəsik, qiymətləndirmə, `scan-import` (ehtiyat yol dərhal işləyir). ✅ 12.10.2026: `api/exam_scans.py`, `domain/ksq_scan.py` (zxing-cpp + Pillow, QR künclərinə görə afin kəsik), `exam_scans` cədvəli, «📷 Cavab kartlarını skan et».
 4. Claude API (admin bağlantısı, fon işi, ikinci oxunuş, yenidən yoxlama, xərc sayğacı).
 5. Telefon skan rejimi (ardıcıl çəkiliş, bulanıq/qaranlıq — «yenidən çək»).
 

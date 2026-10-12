@@ -450,6 +450,28 @@ class ExamVariant(Base):
     __table_args__ = (UniqueConstraint('exam_id', 'code'),)
 
 
+class ExamScan(Base):
+    """KSQ/BSQ cavab kartının skanı (docs/ksq-bsq-kagiz-promtu.md §4): QR ilə tapılan şagird, kartın yalnız cavab zonası (adsız
+    kəsik), oxunuş (Claude API / idxal / müəllim) və serverdə qiymətləndirmə. Təkrar yükləmə – köhnə oxunuş history-yə."""
+    __tablename__ = 'exam_scans'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    exam_id: Mapped[int] = mapped_column(ForeignKey('exams.id', ondelete='CASCADE'), index=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'))
+    code: Mapped[str] = mapped_column(String(16))
+    crop_key: Mapped[str | None] = mapped_column(String(200))          # cavab zonasının şəkli (JPEG, storage açarı)
+    status: Mapped[str] = mapped_column(String(10), default='pending')  # pending | graded | error
+    reading: Mapped[list | None] = mapped_column(JSON)                 # [{slot, value, confidence}]
+    read_by: Mapped[str | None] = mapped_column(String(20))            # claude | import | teacher
+    marks: Mapped[list | None] = mapped_column(JSON)                   # slot üzrə 1/0
+    points: Mapped[float | None] = mapped_column(Float)
+    flagged: Mapped[list | None] = mapped_column(JSON)                 # yoxlanılmalı slotlar
+    history: Mapped[list | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+    __table_args__ = (UniqueConstraint('exam_id', 'student_id'),)
+
+
 class ExamScore(Base):
     __tablename__ = 'exam_scores'
     exam_id: Mapped[int] = mapped_column(ForeignKey('exams.id', ondelete='CASCADE'), primary_key=True)

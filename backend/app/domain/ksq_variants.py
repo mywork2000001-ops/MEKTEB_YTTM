@@ -165,8 +165,8 @@ def fairness(variants: dict[int, list[dict]]) -> dict:
     """Ədalət hesabatı: slotun hədəf çətinliyinə dəqiq uyğun sualların payı, mövzu əvəzlənməsi, şablon sayı."""
     qs = [q for v in variants.values() for q in v]
     n = len(qs) or 1
-    return {'questions': len(qs), 'unique': len({q['key'] for q in qs}),
-            'exact_level_pct': round(100 * sum(q['level_actual'] == q['level'] for q in qs) / n, 1),
+    return {'questions': len(qs), 'unique': len({q.get('key') or id(q) for q in qs}),
+            'exact_level_pct': round(100 * sum(q.get('level_actual', q.get('level')) == q.get('level') for q in qs) / n, 1),
             'same_topic_pct': round(100 * sum(q.get('topic_actual') == q.get('topic') for q in qs) / n, 1),
             'templates': sum(q.get('template') is not None for q in qs),
             'open_pct': round(100 * sum(q['kind'] == 'open' for q in qs) / n, 1)}

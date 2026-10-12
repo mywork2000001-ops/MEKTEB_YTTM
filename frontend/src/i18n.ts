@@ -432,6 +432,21 @@ const D: Record<string, [string, string]> = {
   "yarımil": ["half-year", "полугодие"],
   "tədris ili": ["school year", "учебный год"],
   "sertifikat": ["certificates", "сертификаты"],
+  // KSQ/BSQ skan (12.10.2026)
+  "Tapılan kart: {n}": ["Cards found: {n}", "Найдено бланков: {n}"],
+  "Cavab kartlarını skan et": ["Scan answer cards", "Сканировать бланки ответов"],
+  "Kartların şəklini çəkin və ya skan PDF yükləyin – bir şəkildə bir neçə kart ola bilər. Şagird QR koddan tanınır, bal və qiymət jurnala özü yazılır.": ["Photograph the cards or upload a scanned PDF — one photo may contain several cards. The student is recognised by the QR code; points and grade go to the journal automatically.", "Сфотографируйте бланки или загрузите скан PDF — на одном фото может быть несколько бланков. Ученик определяется по QR-коду, баллы и оценка сами записываются в журнал."],
+  "Şəkil / PDF seç": ["Choose photo / PDF", "Выбрать фото / PDF"],
+  "Bütün kartlar mövcud açarla yenidən hesablanır": ["All cards are recalculated with the current key", "Все бланки пересчитываются по текущему ключу"],
+  "Yenilə": ["Refresh", "Обновить"],
+  "Yüklənir…": ["Uploading…", "Загрузка…"],
+  "Skan: {a}/{b} · yoxlanılıb: {c} · oxunmağı gözləyir: {p}": ["Scanned: {a}/{b} · checked: {c} · waiting to be read: {p}", "Отсканировано: {a}/{b} · проверено: {c} · ждут распознавания: {p}"],
+  "baxılmalı: {n}": ["to review: {n}", "проверить: {n}"],
+  "Kartı yoxdur": ["No card", "Нет бланка"],
+  "oxunmağı gözləyir": ["waiting to be read", "ждёт распознавания"],
+  "xəta": ["error", "ошибка"],
+  "Kart hələ oxunmayıb.": ["The card has not been read yet.", "Бланк ещё не распознан."],
+  "planda yoxdur": ["not in the plan", "нет в плане"],
 }
 
 export const I18nCtx = createContext<Lang>('az')
