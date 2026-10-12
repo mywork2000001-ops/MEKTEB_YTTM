@@ -472,7 +472,7 @@ def fix_offtopic(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sess
     if not vs:
         raise HTTPException(404, 'Variant yoxdur')
     _, topics, cands, hist, _, files = _prepare(db, ta, e, VariantsIn(n=len(vs[0].questions)))
-    ok_tpl = {t.id for top, sec in topics for t in T.matching(stems(top) | stems(sec or ''))}
+    ok_tpl: set[str] = set()                      # şablonlar standart olaraq qadağandır – hamısı P0010 sualı ilə əvəz olunur
     ok_files = {f for lst in files.values() for f in lst}
     file_of = {q.id: q.file_id for q in db.scalars(select(BankQuestion).where(BankQuestion.id.in_(
         [x.get('bank_id') for v in vs for x in v.questions if x.get('bank_id')] or [0])))}
@@ -602,6 +602,7 @@ class VariantsIn(BaseModel):
     only_mine: bool = False                                   # True – yalnız seçilən testlər (plan nəzərə alınmır)
     share: int = Field(1, ge=1, le=2)                          # bir sual sinifdə ən çox neçə şagirdə (çatışmazlıqda 2)
     sources: list[str] | None = Field(None, max_length=20)     # test layihələri (bank mənbələri); boş – sinfin əsas layihəsi
+    templates: bool = False                                    # parametrli şablon suallar – yalnız müəllim açsa (standart: yalnız bank)
 
 
 def _prepare(db: Session, ta, e: Exam, body: 'VariantsIn') -> tuple:
@@ -631,11 +632,11 @@ def readiness(ta_id: int, exam_id: int, body: 'VariantsIn', user: User = Depends
     for ti, (t, sec) in enumerate(topics):
         cs = [c for c in cands if c.topic == ti]
         rows.append({'topic': t, 'files': len(files.get(ti, [])), 'mcq': sum(c.kind == 'mcq' for c in cs), 'open': sum(c.kind == 'open' for c in cs),
-                     'templates': len(T.matching(stems(t) | stems(sec or '')))})
+                     'templates': len(T.matching(stems(t) | stems(sec or ''))) if body.templates else 0})
     extra = [c for c in cands if c.topic == -1]
     def ok(n: int) -> list | None:
         try:
-            generate(students, topics, cands, hist, seed=e.id * 7919, n=n, others=others, share=body.share)
+            generate(students, topics, cands, hist, seed=e.id * 7919, n=n, others=others, share=body.share, templates=body.templates)
             return None
         except Shortage as sh:
             return sh.items
@@ -679,7 +680,7 @@ def _make(db: Session, user: User, ta, e: Exam, body: 'VariantsIn') -> None:
     if not topics:
         raise HTTPException(400, 'Perspektiv planda bu imtahanın aralığında mövzu tapılmadı')
     try:
-        res = generate(students, topics, cands, hist, seed=e.id * 7919, n=body.n, others=others, share=body.share)
+        res = generate(students, topics, cands, hist, seed=e.id * 7919, n=body.n, others=others, share=body.share, templates=body.templates)
     except Shortage as sh:
         raise HTTPException(409, {'message': 'Hər şagirdə fərqli sual üçün bazada sual çatmır: ' + sh.message(),
                                   'shortage': sh.items, 'topics': [t for t, _ in topics]})

@@ -45,3 +45,12 @@
 - «Özüm seçirəm» planı əvəz etmir; «yalnız seçdiklərim» əvəz edir.
 - Hazırlıq: kiçik hovuzda `ok=false`, `max_n` düzgün; «2 şagirdə» rejimində eyni şagirdə təkrar yoxdur, hər sual ≤ 2 dəfə.
 - Vərəqdə mövzu nişanı; açarda mövzu.
+
+## F. MƏNBƏ QAYDASI (istifadəçi, 13.10.2026 – dəyişməz)
+- **X–XI sinif KSQ/BSQ sualları YALNIZ P0010 «Blok İmtahan» fayllarındandır** – perspektiv planda dərslərə təyin olunan həmin fayllar
+  (planda ✎ ilə seçilən fayl üstündür). IX sinif – DİM 9 (P007).
+- Parametrli şablon suallar **standart olaraq söndürülüb**; yalnız müəllim «Parametrli şablon suallar da» qutusunu işarələsə.
+- P0010 çatmasa: «bir sual ən çox 2 şagirdə» və ya sual sayını azaltmaq (hazırlıq paneli göstərir); səssiz əvəzetmə yoxdur.
+- Gələcək üçün başqa platformalar (layihələr) seçimi saxlanılır: «Test layihələri» sətrində qoşulur.
+- Audit 13.10 (X-b, X-c, X-e, XI-a): «ədədi silsilə» KSQ-1-ə şablondan düşürdü (açar «ədədi» ← «ədədin») – düzəldildi; köhnə variantlar üçün
+  «🧹 Uyğunsuz sualları düzəlt» – bütün şablon sualları və planın fayllarından kənar sualları P0010 sualları ilə əvəz edir.

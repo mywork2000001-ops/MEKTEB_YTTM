@@ -211,6 +211,7 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   const [fail, setFail] = useState<string | null>(null)
   const [n, setN] = useState(30)
   const [share, setShare] = useState(1)
+  const [tpl, setTpl] = useState(false)          // parametrli şablonlar – standart söndürülü (yalnız P0010)
   const [src, setSrc] = useState<Sources | null>(null)
   const [mode, setMode] = useState<'plan' | 'add' | 'only'>('plan')
   const [pickd, setPickd] = useState<number[]>([])
@@ -222,14 +223,14 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   const [also, setAlso] = useState<number[]>([])
   useEffect(() => { get<typeof sibs>(`/api/exams/${ta.id}/${e.id}/siblings`).then(setSibs, () => setSibs([])) }, [e.id])   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { get<Sources>(`/api/exams/${ta.id}/${e.id}/sources`, projs.length ? { sources: projs.join(',') } : undefined).then(setSrc, () => setSrc(null)) }, [e.id, projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
-  const body = () => ({ n, share, file_ids: mode === 'plan' ? null : pickd, only_mine: mode === 'only', sources: projs.length ? projs : null })
+  const body = () => ({ n, share, templates: tpl, file_ids: mode === 'plan' ? null : pickd, only_mine: mode === 'only', sources: projs.length ? projs : null })
   // hazırlıq: seçim dəyişəndə hovuz yenidən yoxlanır (kiçik gecikmə ilə)
   useEffect(() => {
     if (mode !== 'plan' && !pickd.length) { setReady(null); return }
     setChecking(true)
     const t = setTimeout(() => { post<Ready>(`/api/exams/${ta.id}/${e.id}/readiness`, body()).then(setReady, () => setReady(null)).finally(() => setChecking(false)) }, 350)
     return () => clearTimeout(t)
-  }, [n, share, mode, pickd.join(','), projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [n, share, tpl, mode, pickd.join(','), projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
   const make = async () => {
     setFail(null)
     try {
@@ -271,6 +272,8 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
               return <button key={p.key} className="chip" aria-pressed={on} title={tt('{n} fayl', { n: p.files })} style={{ margin: '2px 4px 2px 0' }}
                 onClick={() => { const cur = projs.length ? projs : src.projects!.filter(x => x.default).map(x => x.key); const nx = on ? cur.filter(k => k !== p.key) : [...cur, p.key]; setProjs(nx.length ? nx : []) }}>{p.label}</button> })}
             <p className="small muted" style={{ margin: '2px 0 0' }}>{tt('Mövzuya uyğun testlər seçilmiş layihələrdən avtomatik götürülür; başqa layihəni qoşmaq üçün üzərinə toxunun.')}</p></div>}
+          <label className="check small" style={{ marginTop: 8 }}><input type="checkbox" checked={tpl} onChange={x => setTpl(x.target.checked)} />
+            {tt('Parametrli şablon suallar da (bank çatmayanda)')} <span className="muted">— {tt('standart: yalnız layihə testləri (X–XI: P0010 Blok İmtahan)')}</span></label>
           {mode !== 'plan' && src && <div className="kpick">
             {src.all.map(f => <label key={f.file_id} className="check small"><input type="checkbox" checked={pickd.includes(f.file_id)}
               onChange={x => setPickd(p => x.target.checked ? [...p, f.file_id] : p.filter(i => i !== f.file_id))} />{f.label} <span className="muted">({f.questions})</span></label>)}

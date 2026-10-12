@@ -576,6 +576,8 @@ const D: Record<string, [string, string]> = {
   "Bu variantlar köhnə qaydalarla yaradılıb – mövzuya uyğun olmayan sual ola bilər. 1-ci addımda «Yenidən yarat» basın (nəticə yazılıbsa – sualları 2-ci addımda tək-tək əvəz edin).": ["These variants were created with the old rules — they may contain off-topic questions. Press «Recreate» in step 1 (if results are recorded, replace questions one by one in step 2).", "Эти варианты созданы по старым правилам — в них могут быть вопросы не по теме. Нажмите «Создать заново» в шаге 1 (если результаты внесены — заменяйте вопросы по одному в шаге 2)."],
   "Əvəz olundu: {n} sual ({s} şagird)": ["Replaced: {n} questions ({s} students)", "Заменено: {n} вопросов (учеников: {s})"],
   "Uyğunsuz sualları avtomatik düzəlt": ["Fix off-topic questions automatically", "Исправить неподходящие вопросы автоматически"],
+  "Parametrli şablon suallar da (bank çatmayanda)": ["Also parametric template questions (when the bank runs short)", "Также параметрические шаблонные вопросы (если банка не хватает)"],
+  "standart: yalnız layihə testləri (X–XI: P0010 Blok İmtahan)": ["default: project tests only (X–XI: P0010 Block Exam)", "по умолчанию: только тесты проекта (X–XI: P0010 Blok İmtahan)"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

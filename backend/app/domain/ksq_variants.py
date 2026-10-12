@@ -128,7 +128,7 @@ def bank_candidates(db, topics: list[tuple[str, str | None]], source: str = 'p00
 
 def generate(students: list[int], topics: list[tuple[str, str | None]], cands: list[Cand],
              history: dict[int, set[str]], seed: int, n: int = 30, others: set[str] | None = None,
-             share: int = 1) -> dict[int, list[dict]]:
+             share: int = 1, templates: bool = False) -> dict[int, list[dict]]:
     """students × n slot → {student_id: [sual surəti]}. others – başqa siniflərin eyni imtahanında işlənmiş suallar:
     əvvəl təzələri seçilir, çatmasa ən çox REUSE (20%) qədəri təkrar ola bilər. Çatışmazlıq olarsa Shortage."""
     rng = random.Random(seed)
@@ -141,7 +141,8 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
     for i, s in enumerate(plan):
         s['topic'] = i % nt
     # şablonlar YALNIZ aralığın mövzularına uyğun (docs/ksq-movzu-dizayn-promtu.md B2) – ümumi ehtiyat yoxdur
-    tpl_topic = {ti: T.matching(stems(t) | stems(sec or '')) for ti, (t, sec) in enumerate(topics)}
+    # şablonlar standart olaraq SÖNÜKDÜR: suallar yalnız layihənin (X–XI – P0010 Blok İmtahan) fayllarından (istifadəçi qaydası 13.10)
+    tpl_topic = {ti: T.matching(stems(t) | stems(sec or '')) for ti, (t, sec) in enumerate(topics)} if templates else {}
     # share – bir sual sinifdə ən çox neçə şagirdə düşə bilər (standart 1 – hamıda fərqli; müəllim seçimi ilə 2)
     uses: dict[str, int] = {}
     text_uses: dict[str, int] = {}
@@ -210,7 +211,8 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
     return res
 
 
-def pick_one(slot: dict, topics: list[tuple[str, str | None]], cands: list[Cand], exclude: set[str], seed: int) -> dict | None:
+def pick_one(slot: dict, topics: list[tuple[str, str | None]], cands: list[Cand], exclude: set[str], seed: int,
+             templates: bool = False) -> dict | None:
     """Bir slot üçün yeni sual (əvəzetmə): eyni növ; çətinlik – eyni, sonra qonşu; mövzu – slotunku, sonra aralığın başqası;
     bankda yoxdursa – həmin mövzuların şablonu. exclude – sinifdə işlənmiş açarlar və mətnlər."""
     rng = random.Random(seed)
@@ -224,7 +226,7 @@ def pick_one(slot: dict, topics: list[tuple[str, str | None]], cands: list[Cand]
             c = pool[0]
             return {**{k: v for k, v in c.q.items() if k != 'key'}, 'key': c.key, 'level_actual': c.level, 'v': RULES_V,
                     'topic_actual': topics[c.topic][0] if 0 <= c.topic < len(topics) else 'seçilmiş test'}
-    for k in [ti, *[x for x in range(len(topics)) if x != ti]]:
+    for k in ([ti, *[x for x in range(len(topics)) if x != ti]] if templates else []):
         t_, sec = topics[k]
         for t in sorted(T.matching(stems(t_) | stems(sec or '')), key=lambda t: (t.level != slot['level'], rng.random())):
             for _ in range(60):

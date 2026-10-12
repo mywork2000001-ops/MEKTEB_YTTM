@@ -27,11 +27,11 @@ def ksq(world):
     with S() as db:
         db.add(BankSource(key='p003', label='P0010'))
         db.flush()
-        f = BankFile(source_key='p003', lesson='t/faiz.html', label='Nisbət. Tənasüb. Faiz — Faiz', url='http://x', kind='movzu', question_count=80)
+        f = BankFile(source_key='p003', lesson='t/faiz.html', label='Nisbət. Tənasüb. Faiz — Faiz', url='http://x', kind='movzu', question_count=210)
         db.add(f)
         db.flush()
-        for i in range(80):
-            kind = 'mcq' if i < 40 else 'open'
+        for i in range(210):                                       # P0010 faylı kimi – şablonsuz kifayət etsin
+            kind = 'mcq' if i < 60 else 'open'
             db.add(BankQuestion(file_id=f.id, n=i + 1, kind=kind, text={'az': f'Faiz sualı {i}'}, content_hash=f'h{i}',
                                 options=[{'az': '1'}, {'az': '2'}] if kind == 'mcq' else None, correct=0 if kind == 'mcq' else None,
                                 answer=None if kind == 'mcq' else str(i), diff_auto=['asan', 'orta', 'çətin'][i % 3] if kind == 'open' else ['asan', 'orta'][i % 2]))
@@ -191,7 +191,7 @@ def test_readiness_and_share(world):
     admin, ta, e, pr = ksq(world)
     r = admin.post(f'/api/exams/{ta}/{e["id"]}/readiness', json={'n': 30}).json()
     faiz = next(t for t in r['topics'] if t['topic'] == 'Faiz')
-    assert r['students'] == 3 and r['need'] == 90 and faiz['mcq'] == 40 and faiz['open'] > 0 and faiz['templates'] >= 1
+    assert r['students'] == 3 and r['need'] == 90 and faiz['mcq'] == 60 and faiz['open'] > 0 and faiz['templates'] == 0     # şablon standart söndürülü
     assert r['ok'] is True and r['max_n'] == 30
     # yalnız bir kiçik test seçilsə (plan nəzərə alınmır) – hovuz çatmır, maksimal n azalır və ya yoxdur
     from app.models import BankFile, BankQuestion

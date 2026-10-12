@@ -126,7 +126,7 @@ def test_generate_shortage_is_strict(monkeypatch):
 def test_templates_fill_gaps():
     # bankda açıq sual yoxdur, amma mövzu «Faiz» — şablonlar doldurur, yenə təkrarsız
     only_mcq = [c for c in _cands(40) if c.kind == 'mcq']
-    res = generate(list(range(1, 11)), [('Faiz', None), ('Xətti tənliklər', None)], only_mcq, {}, seed=3)
+    res = generate(list(range(1, 11)), [('Faiz', None), ('Xətti tənliklər', None)], only_mcq, {}, seed=3, templates=True)
     keys = [q['key'] for v in res.values() for q in v]
     assert len(set(keys)) == len(keys) == 300
     assert sum(q.get('template') is not None for v in res.values() for q in v) == 210
@@ -139,11 +139,11 @@ def test_api_variants(world):
     with S() as db:
         db.add(BankSource(key='p003', label='P0010'))
         db.flush()
-        f = BankFile(source_key='p003', lesson='t/faiz.html', label='Nisbət. Tənasüb. Faiz — Faiz', url='http://x', kind='movzu', question_count=80)
+        f = BankFile(source_key='p003', lesson='t/faiz.html', label='Nisbət. Tənasüb. Faiz — Faiz', url='http://x', kind='movzu', question_count=210)
         db.add(f)
         db.flush()
-        for i in range(80):
-            kind = 'mcq' if i < 40 else 'open'
+        for i in range(210):
+            kind = 'mcq' if i < 60 else 'open'
             db.add(BankQuestion(file_id=f.id, n=i + 1, kind=kind, text={'az': f'Faiz sualı {i}'}, content_hash=f'h{i}',
                                 options=[{'az': '1'}, {'az': '2'}] if kind == 'mcq' else None, correct=0 if kind == 'mcq' else None,
                                 answer=None if kind == 'mcq' else str(i), diff_auto=['asan', 'orta', 'çətin'][i % 3] if kind == 'open' else ['asan', 'orta'][i % 2]))
@@ -225,7 +225,7 @@ def test_mcq_shortage_filled_by_templates():
     """İstifadəçi halı (12.10.2026): 25 şagird, 20 sual, bankda test sualı az → test slotları şablondan (A–E), çatışmazlıq yoxdur."""
     cands = [Cand(f'b{i}', 'mcq', 'asan', 0, {'text': {'az': f'q{i}'}, 'kind': 'mcq', 'options': [{'az': '1'}, {'az': '2'}], 'correct': 0})
              for i in range(8)]
-    res = generate(list(range(25)), [('Faiz', None)], cands, {}, seed=5, n=20)
+    res = generate(list(range(25)), [('Faiz', None)], cands, {}, seed=5, n=20, templates=True)
     qs = [q for v in res.values() for q in v]
     assert len(qs) == 500 and len({q['key'] for q in qs}) == 500
     mcq = [q for q in qs if q['kind'] == 'mcq']
@@ -241,3 +241,12 @@ def test_distractors_distinct():
     for ans in ('12', '-4', '2,5', '3/7', '0', '1;4'):
         d = T.distractors(ans, rng)
         assert d and len(set(d)) == 4 and ans not in d
+
+
+
+def test_bank_only_by_default():
+    """Qayda (13.10): X–XI KSQ sualları yalnız layihə (P0010) fayllarından – şablon standart söndürülü; çatmasa Shortage."""
+    cands = [Cand(f'b{i}', 'mcq', 'asan', 0, {'text': {'az': f'q{i}'}, 'kind': 'mcq', 'options': [{'az': '1'}, {'az': '2'}], 'correct': 0})
+             for i in range(8)]
+    with pytest.raises(Shortage):
+        generate(list(range(25)), [('Faiz', None)], cands, {}, seed=5, n=20)
