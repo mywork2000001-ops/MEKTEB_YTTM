@@ -248,7 +248,8 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   return (
     <Drawer title={`${e.kind}-${e.no} · ${tt('Kağız variantlar')}`} onClose={onClose}>
       <ErrorBox error={err} />
-      {d?.stale && <div className="kverdict warn" style={{ marginTop: 0 }}>⚠ {tt('Bu variantlar köhnə qaydalarla yaradılıb – mövzuya uyğun olmayan sual ola bilər. 1-ci addımda «Yenidən yarat» basın (nəticə yazılıbsa – sualları 2-ci addımda tək-tək əvəz edin).')}</div>}
+      {d?.stale && <div className="kverdict warn" style={{ marginTop: 0 }}>⚠ {tt('Bu variantlar köhnə qaydalarla yaradılıb – mövzuya uyğun olmayan sual ola bilər. 1-ci addımda «Yenidən yarat» basın (nəticə yazılıbsa – sualları 2-ci addımda tək-tək əvəz edin).')}
+        <div style={{ marginTop: 6 }}><AsyncBtn className="btn sm primary" onClick={async () => { const r = await post<{ fixed: number; failed: number; students: number }>(`/api/exams/${ta.id}/${e.id}/fix-offtopic`); toast(tt('Əvəz olundu: {n} sual ({s} şagird)', { n: r.fixed, s: r.students }) + (r.failed ? ' · ⚠ ' + r.failed : '') + ' · ' + tt('çap olunubsa – vərəqi yenidən çap edin')); reload() }}>🧹 {tt('Uyğunsuz sualları avtomatik düzəlt')}</AsyncBtn></div></div>}
       <div className="ksteps">
         <Step no={1} title={tt('Hazırlıq: mövzular və testlər')} active={!has} state={checking ? '…' : ready ? (ok ? '✓ ' + tt('hazırdır') : '⚠ ' + tt('sual çatmır')) : undefined}>
           <p className="small muted" style={{ margin: '0 0 8px' }}>{tt('Suallar yalnız bu imtahana qədər keçilmiş mövzulardan seçilir (perspektiv plan). Sinifdə hər şagirdin sualları fərqlidir.')}</p>

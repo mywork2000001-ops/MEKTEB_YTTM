@@ -332,3 +332,30 @@ def test_projects_selection(world):
     assert mcq(two) == mcq(one) + 30
     src2 = admin.get(f'/api/exams/{ta}/{e["id"]}/sources', params={'sources': 'p003,sinaqlar'}).json()
     assert any(x['source'] == 'sinaqlar' for x in src2['all'])
+
+
+def test_fix_offtopic(world):
+    """Köhnə variantda «ədədi silsilə» (mövzudan kənar) – avtomatik əvəz olunur, qalan suallar dəyişmir, xəbərdarlıq itir."""
+    import random
+    from app.domain import templates as T
+    from app.models import ExamVariant
+    admin, ta, e, pr = ksq(world)
+    S = world[1]
+    with S() as db:
+        v = db.query(ExamVariant).filter_by(exam_id=e['id']).first()
+        sid = v.student_id
+        qs = [dict(q) for q in v.questions]
+        i = next(k for k, q in enumerate(qs) if q['kind'] == 'open')
+        ap = T.instance(next(t for t in T.TEMPLATES if t.id == 'ap'), random.Random(1))
+        qs[i] = {**qs[i], **ap, 'kind': 'open'}
+        for q in qs:
+            q.pop('v', None)                                          # köhnə qaydalarla yaradılıb
+        v.questions = qs
+        db.commit()
+        keep = [q['key'] for k, q in enumerate(qs) if k != i]
+    assert admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()['stale'] is True
+    r = admin.post(f'/api/exams/{ta}/{e["id"]}/fix-offtopic').json()
+    assert r['fixed'] == 1 and r['failed'] == 0
+    d = admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()
+    mine = next(x for x in d['variants'] if x['student_id'] == sid)['questions']
+    assert mine[i].get('template') != 'ap' and [q['key'] for k, q in enumerate(mine) if k != i] == keep and d['stale'] is False

@@ -55,6 +55,7 @@ CHECK = {
     'part': lambda p: Fraction(p[2]) / p[1] * p[0],
     'part_back': lambda p: p[2],
     'remainder': lambda p: p[0] - (p[0] // p[1]) * p[1],
+    'segment': lambda p: (p[0] + p[1]) - p[0],
 }
 
 
@@ -68,6 +69,9 @@ def test_template_topic_audit():
     assert {'sets', 'sets_word'} <= ids('Çoxluq anlayışı. Çoxluqların birləşməsi')
     assert {'part', 'part_back'} <= ids('Ədədin hissəsinin və hissəsinə görə ədədin tapılması')
     assert 'sys' in ids('Xətti tənliklər sistemi') and 'ap' in ids('Ədədi silsilə')
+    assert not ids('Nöqtə və düz xətt. Parça, şüa') & {'lin', 'lin2'} and 'segment' in ids('Nöqtə və düz xətt. Parça, şüa')
+    assert 'divcount' not in ids('Faizə aid məsələlər: bank faizi (sadə və mürəkkəb faiz)')
+    assert not ids('Nisbət. Tənasüb. Ədədin verilmiş nisbətdə bölünməsi') & {'gcd', 'lcm'}
 
 
 @pytest.mark.parametrize('t', T.TEMPLATES, ids=lambda t: t.id)

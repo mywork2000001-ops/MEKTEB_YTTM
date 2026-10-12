@@ -85,6 +85,13 @@ def _remainder(r):
                f'What is the remainder when ${a}$ is divided by ${b}$?'), a % b, (a, b))
 
 
+def _segment(r):
+    ab, bc = r.randint(3, 40), r.randint(3, 40)
+    return (_t(f'$A$, $B$, $C$ nöqtələri bir düz xətt üzərində bu ardıcıllıqla yerləşir. $AC = {ab + bc}$ sm, $AB = {ab}$ sm. $BC$ parçasının uzunluğunu tapın (sm).',
+               f'Точки $A$, $B$, $C$ лежат на одной прямой в этом порядке. $AC = {ab + bc}$ см, $AB = {ab}$ см. Найди длину отрезка $BC$ (см).',
+               f'Points $A$, $B$, $C$ lie on a line in this order. $AC = {ab + bc}$ cm, $AB = {ab}$ cm. Find $BC$ (cm).'), bc, (ab, bc))
+
+
 def _pct(r):
     p, n = r.choice([5, 10, 15, 20, 25, 30, 40, 45, 60, 75]), r.randrange(20, 400, 20)
     return _t(f'${n}$ ədədinin ${p}\\%$-ni tapın.', f'Найди ${p}\\%$ от числа ${n}$.', f'Find ${p}\\%$ of ${n}$.'), Fraction(n * p, 100), (p, n)
@@ -245,11 +252,11 @@ def _dec(r):
 TEMPLATES: list[Template] = [
     Template('pct', ('faiz', 'nisbe', 'tenas'), 'asan', _pct),
     Template('pct_back', ('faiz',), 'orta', _pct_back),
-    Template('lin', ('tenli', 'birme', 'xetti'), 'asan', _lin),
-    Template('lin2', ('tenli', 'birme', 'xetti'), 'orta', _lin2),
-    Template('gcd', ('natur', 'eboba', 'bolen', 'bolun', 'ortaq'), 'asan', _gcd),
-    Template('lcm', ('natur', 'ekoba', 'bolun', 'ortaq'), 'orta', _lcm),
-    Template('divcount', ('natur', 'bolen', 'sadev', 'vuruq'), 'çətin', _divcount),
+    Template('lin', ('tenli', 'birme', 'xetti'), 'asan', _lin, ('tenli',)),     # «xətt» (həndəsə) deyil – tənlik
+    Template('lin2', ('tenli', 'birme', 'xetti'), 'orta', _lin2, ('tenli',)),
+    Template('gcd', ('natur', 'eboba', 'bolen', 'ortaq'), 'asan', _gcd),        # «bölünməsi» (nisbətdə) – yox
+    Template('lcm', ('natur', 'ekoba', 'ortaq'), 'orta', _lcm),
+    Template('divcount', ('natur', 'bolen', 'vuruq'), 'çətin', _divcount),     # «sadə faiz» – yox
     Template('frac_add', ('kesrl', 'adike', 'kesr'), 'orta', _frac_add),
     Template('frac_mul', ('kesrl', 'adike', 'kesr'), 'asan', _frac_mul),
     Template('dec', ('onluq', 'kesrl'), 'asan', _dec, ('kesr',)),
@@ -268,6 +275,7 @@ TEMPLATES: list[Template] = [
     Template('part', ('hisse',), 'asan', _part),
     Template('part_back', ('hisse',), 'orta', _part_back),
     Template('remainder', ('qaliq',), 'asan', _remainder),
+    Template('segment', ('parca',), 'asan', _segment),
 ]
 BY_ID = {t.id: t for t in TEMPLATES}
 

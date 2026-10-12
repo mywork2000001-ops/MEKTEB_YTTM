@@ -459,6 +459,53 @@ def replace_slot_all(ta_id: int, exam_id: int, slot: int, body: ReplaceAllIn | N
     return {'ok': failed == 0, 'replaced': done, 'failed': failed}
 
 
+@router.post('/{ta_id}/{exam_id}/fix-offtopic')
+def fix_offtopic(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Köhnə qaydalarla yaradılmış variantlarda MÖVZUDAN KƏNAR sualları tapıb əvəz edir (qalanlara toxunmur):
+    şablon – aralıq mövzularına uyğun deyilsə (məs. «ədədi silsilə» KSQ-1-də); bank sualı – faylı indiki mövzu fayllarında deyilsə."""
+    import random
+    from ..domain import templates as T
+    from ..domain.ksq_variants import RULES_V, norm_text, pick_one, stems
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
+    if not vs:
+        raise HTTPException(404, 'Variant yoxdur')
+    _, topics, cands, hist, _, files = _prepare(db, ta, e, VariantsIn(n=len(vs[0].questions)))
+    ok_tpl = {t.id for top, sec in topics for t in T.matching(stems(top) | stems(sec or ''))}
+    ok_files = {f for lst in files.values() for f in lst}
+    file_of = {q.id: q.file_id for q in db.scalars(select(BankQuestion).where(BankQuestion.id.in_(
+        [x.get('bank_id') for v in vs for x in v.questions if x.get('bank_id')] or [0])))}
+    bad = lambda q: (q.get('template') and q['template'] not in ok_tpl) or (q.get('bank_id') and file_of.get(q['bank_id']) not in ok_files)  # noqa: E731
+    taken = {q.get('key') for v in vs for q in v.questions}
+    texts = {norm_text(q.get('text')) for v in vs for q in v.questions}
+    rng = random.Random()
+    fixed, failed, touched = 0, 0, []
+    for v in vs:
+        qs, changed = list(v.questions), False
+        for i, q in enumerate(qs):
+            if q.get('edited') or not bad(q):
+                continue
+            got = pick_one(q, topics, cands, taken | texts | hist.get(v.student_id, set()), rng.randrange(10 ** 9))
+            if got is None:
+                failed += 1
+                continue
+            taken.add(got.get('key'))
+            texts.add(norm_text(got.get('text')))
+            qs[i] = {**got, 'slot': q['slot'], 'kind': q['kind'], 'level': q['level'], 'topic': q.get('topic'), 'points': q['points'], 'replaced': True}
+            changed = True
+            fixed += 1
+        # yoxlanılmış (uyğun) suallar da yeni qayda versiyasını alır – xəbərdarlıq itsin
+        qs = [{**q, 'v': max(q.get('v', 0), RULES_V)} for q in qs]
+        v.questions = qs
+        if changed:
+            touched.append(v.student_id)
+    _rescore(db, e, touched)
+    audit(db, user, 'update', 'exam_variant', e.id, op='fix_offtopic', fixed=fixed, failed=failed)
+    db.commit()
+    return {'ok': failed == 0, 'fixed': fixed, 'failed': failed, 'students': len(touched)}
+
+
 class QuestionEditIn(BaseModel):
     text: str = Field(min_length=1, max_length=3000)
     options: list[str] | None = Field(None, max_length=5)
