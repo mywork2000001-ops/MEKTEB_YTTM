@@ -54,13 +54,22 @@ def day(ta_id: int, date: dt.date | None = None, user: User = Depends(staff), db
     ctx = plan_ctx(db, ta)
     d = date or today()
     lessons = []
-    for s in (x for x in ctx.slots if x.date == d):
+    prev = None                      # həmin gün əvvəlki YAZILMIŞ dərs: {period, attendance} (docs/jurnal-gundelik-promtu.md)
+    for s in sorted((x for x in ctx.slots if x.date == d), key=lambda x: x.period):
         e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == d,
                                                  JournalEntry.period == s.period))
+        ent = _entry_payload(db, e)
+        written = ent['exists'] and not ent.get('auto')
         lessons.append({'period': s.period, 'time': bell(db, ctx.cls, s.period, ctx.ta, s.date), 'held': s.held, 'shift': s.shift,
-                        'plan': lesson_out(taught_lesson(ctx, s, e)), 'entry': _entry_payload(db, e),
-                        'homework_to_check': _prev_homework(db, ta.id, d, s.period)})
+                        'plan': lesson_out(taught_lesson(ctx, s, e)), 'entry': ent,
+                        'homework_to_check': _prev_homework(db, ta.id, d, s.period),
+                        # davamiyyət yalnız YAZILMAMIŞ dərsə təklif olunur (müəllim saxlamasa – heç nə yazılmır); qiymət köçmür
+                        'prev_attendance': None if written or not prev else prev})
+        if written and ent['attendance']:
+            prev = {'period': s.period, 'attendance': ent['attendance']}
+    days = sorted({x.date for x in ctx.slots})
     return {'date': d, 'weekday': WEEKDAYS[d.weekday()],
+            'prev_day': max((x for x in days if x < d), default=None), 'next_day': min((x for x in days if x > d), default=None),
             'class_name': ctx.cls.name, 'subject': ta.subject, 'lessons': lessons,
             'students': [{'id': s.id, 'full_name': s.full_name, 'portal_code': s.portal_code}
                          for s in roster(db, ta)]}

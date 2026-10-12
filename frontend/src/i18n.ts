@@ -467,6 +467,20 @@ const D: Record<string, [string, string]> = {
   "Yazmayanlar": ["Not written", "Не написавшие"],
   "Sinif və qrup": ["Class and group", "Класс и группа"],
   "Ümumi": ["Overall", "Общее"],
+  // jurnal gündəlik (12.10.2026)
+  "Saxlanmamış dəyişikliklər itəcək. Davam edilsin?": ["Unsaved changes will be lost. Continue?", "Несохранённые изменения будут потеряны. Продолжить?"],
+  "Əvvəlki dərs günü": ["Previous lesson day", "Предыдущий учебный день"],
+  "Əvvəlki dərs": ["Previous lesson", "Предыдущий урок"],
+  "Növbəti dərs günü": ["Next lesson day", "Следующий учебный день"],
+  "Növbəti dərs": ["Next lesson", "Следующий урок"],
+  "yazılıb": ["written", "записан"],
+  "yazılmayıb": ["not written", "не записан"],
+  "Mövzu və ev tapşırığı": ["Topic and homework", "Тема и домашнее задание"],
+  "Davamiyyət {n}-ci saatdan köçürüldü – yalnız dəyişəni düzəldin: dərsdə yoxdursa «Q», sonradan gəlibsə «V» və ya «G». Saxlayana qədər yazılmır.": ["Attendance copied from period {n} — fix only what changed: absent now → «Q», came later → «V» or «G». Nothing is saved until you press Save.", "Посещаемость скопирована с {n}-го урока — исправьте только изменения: нет на уроке → «Q», пришёл позже → «V» или «G». Ничего не записывается, пока не нажмёте «Сохранить»."],
+  "Sinifdə {n}": ["In class {n}", "В классе {n}"],
+  "gəlib": ["present", "пришли"],
+  "gecikib": ["late", "опоздали"],
+  "Hamısını «var» et": ["Mark everyone present", "Отметить всех присутствующими"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

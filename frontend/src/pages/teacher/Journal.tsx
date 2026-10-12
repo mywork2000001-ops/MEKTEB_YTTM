@@ -8,7 +8,8 @@ import JournalPrint from './JournalPrint'
 
 const sg = () => [{ role: 'Fənn müəllimi' }, SIGN.deputy()]
 import { useNavigate } from 'react-router-dom'
-import { useT } from '../../i18n'
+import { tt, useT } from '../../i18n'
+import { useSearchParams } from 'react-router-dom'
 import LevelGroups from './LevelGroups'
 
 type Stud = { id: number; full_name: string; portal_code: string }
@@ -17,8 +18,10 @@ type Lesson = {
   period: number; time: string | null; held: boolean; shift: number; homework_to_check: string | null
   plan: { topic: string; assessment_type: string; section: string | null; resources: string | null; seq: number; standards: string[] | null; tasks: { kind: string; label: string; start: number; end: number }[] | null } | null
   entry: { exists: boolean; auto?: boolean; topic?: string | null; homework?: string | null; note?: string | null; attendance: Record<string, string>; marks: MarkRow[]; homework_checks: Record<string, string> }
+  prev_attendance: { period: number; attendance: Record<string, string> } | null      // həmin gün əvvəlki yazılmış dərsdən (təklif)
 }
-type Day = { date: string; weekday: string | null; class_name: string; lessons: Lesson[]; students: Stud[] }
+type Day = { date: string; weekday: string | null; class_name: string; lessons: Lesson[]; students: Stud[]; prev_day: string | null; next_day: string | null }
+const written = (l: Lesson) => l.entry.exists && !l.entry.auto
 
 const TABS = [['day', 'Gündəlik'], ['grid', 'Jurnal səhifəsi'], ['students', 'Şagirdlər'], ['levels', 'Səviyyə qrupları'], ['exams', 'KSQ / BSQ'], ['semester', 'Yarımil'], ['topics', 'Mövzular və irəliləyiş'], ['summary', 'Xülasə']] as const
 
@@ -62,37 +65,63 @@ export default function Journal() {
   )
 }
 
-function shiftDate(d: string, n: number) { const x = new Date(d + 'T00:00'); x.setDate(x.getDate() + n); return isoDate(x) }
 
 function DayView({ ta, date, setDate }: { ta: MyLesson; date: string; setDate: (d: string) => void }) {
   const [day, err, loading, reload] = useLoad<Day>(() => get(`/api/journal/${ta.id}/day`, { date }), [ta.id, date])
+  const [sp, setSp] = useSearchParams()
+  const [dirty, setDirty] = useState(false)
+  // saxlanmamış dəyişiklik varsa – başqa dərsə / günə keçməzdən əvvəl soruşulur
+  const guard = (go: () => void) => { if (!dirty || window.confirm(tt('Saxlanmamış dəyişikliklər itəcək. Davam edilsin?'))) { setDirty(false); go() } }
+  const ls = day?.lessons || []
+  // standart dərs: URL-dəki (?p=5), yoxdursa ilk yazılmamış, hamısı yazılıbsa – sonuncu
+  const want = Number(sp.get('p'))
+  const cur = ls.find(l => l.period === want) || ls.find(l => !written(l)) || ls[ls.length - 1]
+  const pick = (p: number) => guard(() => setSp(prev => { const n = new URLSearchParams(prev); n.set('p', String(p)); return n }, { replace: true }))
+  const goDay = (d: string | null) => d && guard(() => { setDate(d); setSp(prev => { const n = new URLSearchParams(prev); n.delete('p'); return n }, { replace: true }) })
   return (
     <>
-      <div className="row no-print" style={{ marginBottom: 12 }}>
-        <button className="btn sm" onClick={() => setDate(shiftDate(date, -1))}>‹ Əvvəlki gün</button>
+      <div className="row no-print" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+        <button className="btn sm" disabled={!day?.prev_day} onClick={() => goDay(day?.prev_day ?? null)} title={tt('Əvvəlki dərs günü')}>‹ {tt('Əvvəlki dərs')}</button>
         <b>{day?.weekday ? `${day.weekday} · ` : ''}{fmtDate(date)}</b>
-        <button className="btn sm" onClick={() => setDate(shiftDate(date, 1))}>Növbəti gün ›</button>
-        <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>Bu gün</button>
+        <button className="btn sm" disabled={!day?.next_day} onClick={() => goDay(day?.next_day ?? null)} title={tt('Növbəti dərs günü')}>{tt('Növbəti dərs')} ›</button>
+        <button className="btn sm ghost" onClick={() => goDay(isoDate(new Date()))}>{tt('Bu gün')}</button>
       </div>
       <ErrorBox error={err} />
-      {loading && !day ? <Loading /> : day && (day.lessons.length === 0
+      {loading && !day ? <Loading /> : day && (ls.length === 0
         ? <div className="empty">Bu gün {ta.class_name} üçün dərs yoxdur (cədvəl, bayram və ya tətil).</div>
-        : day.lessons.map(l => <LessonCard key={l.period} ta={ta} date={date} lesson={l} students={day.students} onSaved={reload} />))}
+        : <>
+          {ls.length > 1 && (
+            <div className="toolbar lsel-bar no-print" style={{ marginBottom: 10 }}>
+              <label className="lsel" style={{ maxWidth: 420 }}><span>{tt('Dərs')} ({ls.length})</span>
+                <select className="sel" value={cur?.period} onChange={e => pick(Number(e.target.value))}>
+                  {ls.map((l, i) => <option key={l.period} value={l.period}>
+                    {`${i + 1}. ${lessonWhen(l.period, l.time)}${l.time && lessonWhen(l.period, l.time) !== l.time ? ` (${l.time})` : ''} – ${(l.plan?.topic || l.entry.topic || '').slice(0, 50)} · ${written(l) ? '✓ ' + tt('yazılıb') : '● ' + tt('yazılmayıb')}`}</option>)}
+                </select></label>
+            </div>)}
+          {cur && <LessonCard key={`${date}-${cur.period}`} ta={ta} date={date} lesson={cur} students={day.students}
+            onSaved={() => { setDirty(false); reload() }} onDirty={setDirty} />}
+        </>)}
     </>
   )
 }
 
-function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; date: string; lesson: Lesson; students: Stud[]; onSaved: () => void }) {
+function LessonCard({ ta, date, lesson, students, onSaved, onDirty }: { ta: MyLesson; date: string; lesson: Lesson; students: Stud[]; onSaved: () => void; onDirty?: (v: boolean) => void }) {
   const nav = useNavigate()
   const e = lesson.entry
   const [topic, setTopic] = useState(e.topic || '')
   const [homework, setHomework] = useState(e.homework || '')
   const [note, setNote] = useState(e.note || '')
-  const [att, setAtt] = useState<Record<string, string>>(() => e.exists && !e.auto ? e.attendance : Object.fromEntries(students.map(s => [s.id, 'var'])))
+  // davamiyyət: yazılıbsa – özününkü; yazılmayıbsa – həmin gün əvvəlki dərsdən köçürülür (yalnız təklif, «Yadda saxla» ilə yazılır)
+  const copied = !written(lesson) && lesson.prev_attendance ? lesson.prev_attendance : null
+  const [att, setAtt] = useState<Record<string, string>>(() => written(lesson) ? e.attendance
+    : Object.fromEntries(students.map(s => [s.id, copied?.attendance[s.id] || 'var'])))
+  const [touched, setTouched] = useState<Set<number>>(() => new Set())
   const [marks, setMarks] = useState<Record<string, MarkRow>>(() => Object.fromEntries(e.marks.map(m => [m.student_id, m])))
   const [hw, setHw] = useState<Record<string, string>>(e.homework_checks)
   const [testTotal, setTestTotal] = useState<number>(() => e.marks.find(m => m.kind === 'test')?.test_total || 10)
   useEffect(() => { setTopic(e.topic || ''); setHomework(e.homework || ''); setNote(e.note || '') }, [e.topic, e.homework, e.note])
+  const first = useMemo(() => JSON.stringify([topic, homework, note, att, marks, hw]), [])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onDirty?.(JSON.stringify([topic, homework, note, att, marks, hw]) !== first) }, [topic, homework, note, att, marks, hw])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const setMark = (sid: number, m: Partial<MarkRow> | null) => setMarks(prev => {
     const n = { ...prev }
@@ -117,6 +146,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
     .map(t => `${t.label ? t.label + ' ' : ''}${t.start === t.end ? '№' + t.start : t.start + '–' + t.end}`).join('; ')
   const out = (v?: string) => v === 'yox' || v === 'üzrlü'          // dərsdə yoxdur – qiymət və ev tapşırığı yoxlanmır
   const present = students.filter(s => !out(att[s.id])).length
+  const cnt = (v: string) => students.filter(s => att[s.id] === v).length
   const future = date > isoDate(new Date())
   const isExam = lesson.plan && ['KSQ', 'BSQ'].includes(lesson.plan.assessment_type)
 
@@ -128,7 +158,9 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
         {e.exists && !e.auto && <Pill tone="ok">yazılıb</Pill>}
         {e.auto && <Pill tone="info">onlayn test qiymətləri var · dərs hələ yazılmayıb</Pill>}
       </h2>
-      <div className="fg" style={{ marginBottom: 12 }}>
+      <details className="jsec" open={!written(lesson)}>
+        <summary><b>{tt('Mövzu və ev tapşırığı')}</b> <span className="small muted">{(topic || lesson.plan?.topic || '').slice(0, 70)}</span></summary>
+      <div className="fg" style={{ margin: '10px 0 12px' }}>
         <label className="f full">Mövzu <span className="hint">perspektiv plandan avtomatik{lesson.plan ? ` (№${lesson.plan.seq})` : ''}</span>
           <textarea value={topic || lesson.plan?.topic || ''} onChange={x => setTopic(x.target.value)} rows={2} />
         </label>
@@ -142,7 +174,10 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
         <label className="f full">Dərs qeydi <span className="hint">istəyə görə: dərsin gedişi, fərdi iş, tədbir</span>
           <input value={note} onChange={x => setNote(x.target.value)} maxLength={2000} placeholder="məs. Qrup işi; 3 şagirdlə əlavə iş" /></label>
       </div>
+      </details>
       {future ? <p className="small muted">Gələcək dərs: indi yalnız mövzu və ev tapşırığı yazılır. Davamiyyət və qiymət dərs günü qeyd olunur.</p> : <>
+      {copied && <div className="jcopy">↪ {tt('Davamiyyət {n}-ci saatdan köçürüldü – yalnız dəyişəni düzəldin: dərsdə yoxdursa «Q», sonradan gəlibsə «V» və ya «G». Saxlayana qədər yazılmır.', { n: copied.period })}</div>}
+      <p className="small" style={{ margin: '4px 0 8px' }}>{tt('Sinifdə {n}', { n: students.length })} · {tt('gəlib')} <b>{present}</b> · {tt('qayıb')} <b>{cnt('yox')}</b> · {tt('üzrlü')} <b>{cnt('üzrlü')}</b> · {tt('gecikib')} <b>{cnt('gecikdi')}</b></p>
       <div className="row" style={{ marginBottom: 10 }}>
         <span className="small muted">İştirak: {present}/{students.length}</span>
         <label className="small row">Testdə sual sayı
@@ -150,7 +185,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
             {Array.from({ length: 30 }, (_, i) => i + 1).map(n => <option key={n}>{n}</option>)}
           </select></label>
         {lesson.homework_to_check && <span className="small">Yoxlanılacaq: <b>{lesson.homework_to_check}</b></span>}
-        <button className="btn sm ghost right" onClick={() => setAtt(Object.fromEntries(students.map(s => [s.id, 'var'])))}>Hamı var</button>
+        <button className="btn sm ghost right" onClick={() => { setAtt(Object.fromEntries(students.map(s => [s.id, 'var']))); setTouched(new Set(students.map(s => s.id))) }}>{tt('Hamısını «var» et')}</button>
       </div>
       <div className="jlist">
         {students.map(s => {
@@ -159,8 +194,8 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
           return (
             <div className="jrow cols jmark" key={s.id} style={{ ['--cols' as any]: 'minmax(160px,1fr) auto auto auto' }}>
               <span><b>{s.full_name}</b><span className="sub small muted"> {s.portal_code}</span></span>
-              <div className="att-btns" role="group" aria-label="Davamiyyət">
-                {ATT.map(([v, short, cls]) => <button key={v} className={cls} title={v} aria-pressed={att[s.id] === v} onClick={() => { setAtt({ ...att, [s.id]: v }); if (out(v)) { setMark(s.id, null); if (hw[s.id]) { const n = { ...hw }; delete n[s.id]; setHw(n) } } }}>{short}</button>)}
+              <div className={'att-btns' + (copied && !touched.has(s.id) && att[s.id] !== 'var' ? ' copied' : '')} role="group" aria-label="Davamiyyət">
+                {ATT.map(([v, short, cls]) => <button key={v} className={cls} title={v} aria-pressed={att[s.id] === v} onClick={() => { setAtt({ ...att, [s.id]: v }); setTouched(t => new Set(t).add(s.id)); if (out(v)) { setMark(s.id, null); if (hw[s.id]) { const n = { ...hw }; delete n[s.id]; setHw(n) } } }}>{short}</button>)}
               </div>
               <div className="row" aria-label="Qiymət">
                 <select className="grade-sel" disabled={absent || !!isExam} value={m?.kind || 'şifahi'} onChange={x => setMark(s.id, { kind: x.target.value as MarkRow['kind'] })}>
