@@ -137,6 +137,19 @@ def test_api_variants(world):
     assert len(keys) == 90 and len(set(keys)) == 90
     assert d['report']['open_pct'] == 70.0
     assert admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()['variants'][0]['code'] == 'KSQ1-01'
+    # çap: hər şagirdə 30 sual, imzalı QR, cavab vərəqdə yoxdur, açarda var
+    from app.domain.ksq_card import parse_qr
+    pr = admin.get(f'/api/exams/{ta}/{e["id"]}/variants/print').json()
+    sh = pr['sheets'][0]
+    assert len(pr['sheets']) == 3 and len(sh['questions']) == 30 and [q['slot'] for q in sh['questions']] == list(range(1, 31))
+    assert all('answer' not in q and 'correct' not in q for q in sh['questions'])
+    info = parse_qr(sh['qr'])
+    assert info == {'exam_id': e['id'], 'student_id': sh['student_id'], 'code': sh['code']}
+    assert parse_qr(sh['qr'][:-1] + ('A' if sh['qr'][-1] != 'A' else 'B')) is None          # saxta imza
+    assert parse_qr(sh['qr'].replace(sh['code'], 'KSQ1-99')) is None
+    k = pr['key'][0]['answers']
+    assert len(k) == 30 and all(x['value'] for x in k) and k[0]['value'] in 'ABCDE'
+    assert sum(x['points'] for x in k) == 100
     # nəticə yazılıbsa — yenidən yaratmaq olmaz
     admin.put(f'/api/exams/{ta}/{e["id"]}/scores', json=[{'student_id': st[0]['id'], 'points': 50}])
     assert admin.post(f'/api/exams/{ta}/{e["id"]}/variants').status_code == 409

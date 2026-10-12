@@ -401,6 +401,18 @@ const D: Record<string, [string, string]> = {
   "Sinifdə başlamış hər şagirdin cəhdi açılır, cavablar saxlanır": ["Every student in the class who started gets their attempt reopened; answers are kept", "Попытка каждого начавшего ученика класса открывается заново, ответы сохраняются"],
   "Davam edə bilən şagird: {n}": ["Students who can continue: {n}", "Могут продолжить учеников: {n}"],
   "Sinif davam etsin": ["Class may continue", "Продолжить всему классу"],
+  // KSQ/BSQ kağız variantları (12.10.2026)
+  "Hər şagirdə fərqli 30 sual · bir A4 + cavab kartı": ["30 different questions per student · one A4 + answer card", "30 разных вопросов каждому ученику · один лист A4 + бланк ответов"],
+  "Kağız variantlar": ["Paper variants", "Бумажные варианты"],
+  "Variantlar hazırdır": ["Variants are ready", "Варианты готовы"],
+  "Müəllim açarı": ["Teacher key", "Ключ учителя"],
+  "Vərəqləri çap et (A4)": ["Print sheets (A4)", "Печать листов (A4)"],
+  "30 sual · 100 bal (9 test, 21 açıq). Hər şagirdin sualları fərqlidir, əvvəl verilən suallar təkrarlanmır. Hər şagirdə bir A4 vərəq: ön üzdə 1–16, arxada 17–30 və cavab kartı. İki üzlü çap edin.": ["30 questions · 100 points (9 multiple choice, 21 open). Every student gets different questions; earlier questions are not repeated. One A4 sheet per student: 1–16 on the front, 17–30 and the answer card on the back. Print double-sided.", "30 вопросов · 100 баллов (9 тестовых, 21 открытый). У каждого ученика свои вопросы, ранее выданные не повторяются. Один лист A4 на ученика: спереди 1–16, сзади 17–30 и бланк ответов. Печатайте с двух сторон."],
+  "Variantları yarat": ["Create variants", "Создать варианты"],
+  "{n} şagird üçün variant hazırdır": ["Variants ready for {n} students", "Варианты готовы для учеников: {n}"],
+  "açıq sual": ["open questions", "открытые вопросы"],
+  "Nəticə yazılmayıbsa variantlar yenidən seçilir": ["If no results are recorded, variants are chosen again", "Если результаты не внесены, варианты подбираются заново"],
+  "Yenidən yarat": ["Recreate", "Создать заново"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

@@ -3,6 +3,8 @@ import { get, post, put } from '../../api'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Pill, toast, useLoad } from '../../ui'
 import type { MyLesson } from './common'
 import { head, printDoc, SIGN, table } from '../../print'
+import { tt } from '../../i18n'
+import { printKey, printSheets, type KsqPrint } from '../../ksqPrint'
 
 type Exam = { id: number; kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; max_points: number; items: { n: number; points: number; standard?: string }[] | null }
 type Planned = { kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; topic: string; created: boolean }
@@ -11,6 +13,7 @@ export default function Exams({ ta }: { ta: MyLesson }) {
   const [d, err, , reload] = useLoad<{ has_summative: boolean; exams: Exam[]; planned: Planned[] }>(() => get(`/api/exams/${ta.id}`), [ta.id])
   const [create, setCreate] = useState<Planned | null>(null)
   const [open, setOpen] = useState<number | null>(null)
+  const [vars, setVars] = useState<Exam | null>(null)
   if (d && !d.has_summative) return <div className="empty">Bu qrupda KSQ/BSQ keçirilmir – bütöv sinifdə keçirilir.</div>
   const byKey = new Map((d?.exams || []).map(e => [`${e.kind}-${e.semester}-${e.no}`, e]))
   return (
@@ -24,13 +27,15 @@ export default function Exams({ ta }: { ta: MyLesson }) {
             <div className="jrow cols" key={`${p.kind}${p.semester}${p.no}`} style={{ ['--cols' as any]: 'minmax(0,1fr) auto auto', ['--mcols' as any]: 'minmax(0,1fr) auto' }}>
               <span><b>{p.kind}-{p.no}</b> <span className="muted small">({p.semester}-ci yarımil) · {fmtDate(p.date)}</span><span className="sub small muted"><br />{p.topic}</span></span>
               {e ? <Pill tone="ok">{e.max_points} bal{e.items ? ` · ${e.items.length} tapşırıq` : ''}</Pill> : <Pill>yaradılmayıb</Pill>}
-              {e ? <button className="btn sm primary" onClick={() => setOpen(e.id)}>Nəticələr</button> : <button className="btn sm" onClick={() => setCreate(p)}>Hazırla</button>}
+              {e ? <span className="row" style={{ gap: 4 }}><button className="btn sm" onClick={() => setVars(e)} title={tt('Hər şagirdə fərqli 30 sual · bir A4 + cavab kartı')}>🖨 {tt('Kağız variantlar')}</button>
+                <button className="btn sm primary" onClick={() => setOpen(e.id)}>Nəticələr</button></span> : <button className="btn sm" onClick={() => setCreate(p)}>Hazırla</button>}
             </div>)
         })}
         {d && !d.planned.length && <div className="empty">Planda KSQ/BSQ yoxdur (plan yüklənməyib?).</div>}
       </div>
       {create && <CreateExam ta={ta} p={create} prev={(d?.planned || []).filter(x => x.semester === create.semester && x.date < create.date).map(x => x.date).sort().pop() || null} onClose={() => setCreate(null)} onDone={id => { setCreate(null); reload(); setOpen(id) }} />}
       {open && <Scores ta={ta} examId={open} onClose={() => { setOpen(null); reload() }} />}
+      {vars && <Variants ta={ta} e={vars} onClose={() => { setVars(null); reload() }} />}
     </>
   )
 }
@@ -153,6 +158,37 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
             </section>)}
         </>
       )}
+    </Drawer>
+  )
+}
+
+type VarRes = { exam: Exam; variants: { student_id: number; full_name: string | null; code: string }[]
+  report: { open_pct: number; [k: string]: unknown } | null }
+
+/** KSQ/BSQ kağız variantları: 30 sual / 100 bal, hər şagirdə tam fərqli suallar; çap – bir A4 (iki üz) + cavab kartı. */
+function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => void }) {
+  const [d, err, , reload] = useLoad<VarRes>(() => get(`/api/exams/${ta.id}/${e.id}/variants`), [e.id])
+  const [fail, setFail] = useState<string | null>(null)
+  const make = async () => {
+    setFail(null)
+    try { await post(`/api/exams/${ta.id}/${e.id}/variants`); toast(tt('Variantlar hazırdır')); reload() } catch (x) { setFail((x as Error).message); throw x }
+  }
+  const load = () => get<KsqPrint>(`/api/exams/${ta.id}/${e.id}/variants/print`)
+  const has = !!d?.variants.length
+  return (
+    <Drawer title={`${e.kind}-${e.no} · ${tt('Kağız variantlar')}`} onClose={onClose}
+      footer={<>{has && <><AsyncBtn className="btn" onClick={async () => printKey(await load())}>🔑 {tt('Müəllim açarı')}</AsyncBtn>
+        <AsyncBtn className="btn primary" onClick={async () => printSheets(await load())}>🖨 {tt('Vərəqləri çap et (A4)')}</AsyncBtn></>}</>}>
+      <ErrorBox error={err} />
+      <p className="small muted" style={{ marginTop: 0 }}>{tt('30 sual · 100 bal (9 test, 21 açıq). Hər şagirdin sualları fərqlidir, əvvəl verilən suallar təkrarlanmır. Hər şagirdə bir A4 vərəq: ön üzdə 1–16, arxada 17–30 və cavab kartı. İki üzlü çap edin.')}</p>
+      {fail && <div className="empty" style={{ color: 'var(--bad)', textAlign: 'left' }}>{fail}</div>}
+      {!d ? null : !has ? (
+        <AsyncBtn className="btn primary" onClick={make}>{tt('Variantları yarat')}</AsyncBtn>
+      ) : <>
+        <p className="small">{tt('{n} şagird üçün variant hazırdır', { n: d.variants.length })}{d.report ? ` · ${tt('açıq sual')}: ${d.report.open_pct}%` : ''}</p>
+        <ol className="small" style={{ columns: '2 220px', paddingLeft: 22 }}>{d.variants.map(v => <li key={v.student_id}>{v.full_name || '—'} <span className="muted">{v.code}</span></li>)}</ol>
+        <AsyncBtn className="btn sm ghost" onClick={make} title={tt('Nəticə yazılmayıbsa variantlar yenidən seçilir')}>↻ {tt('Yenidən yarat')}</AsyncBtn>
+      </>}
     </Drawer>
   )
 }

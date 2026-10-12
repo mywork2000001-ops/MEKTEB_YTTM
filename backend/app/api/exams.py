@@ -289,6 +289,39 @@ def get_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sess
     return _variants_out(db, ta, _exam(db, ta_id, exam_id))
 
 
+@router.get('/{ta_id}/{exam_id}/variants/print')
+def print_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Çap üçün: hər şagirdə bir A4 (iki üz) – suallar şagirdin dilində (yoxdursa AZ), cavab kartı üçün imzalı QR; müəllim açarı.
+    Düzgün cavablar yalnız açarda (vərəqdə yox)."""
+    from ..domain.ksq_card import key_value, pick_lang, qr_payload
+    from ..models import SchoolClass, Student
+    from .lessonplans import header_school
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
+    if not vs:
+        raise HTTPException(409, 'Əvvəl variantları yaradın')
+    vs.sort(key=lambda v: v.code)
+    studs = {s.id: s for s in db.scalars(select(Student).where(Student.id.in_([v.student_id for v in vs])))}
+    langs = {u.id: u.language for u in db.scalars(select(User).where(User.id.in_([s.user_id for s in studs.values() if s.user_id] or [0])))}
+    cls = db.get(SchoolClass, ta.class_id)
+    sheets, key = [], []
+    for v in vs:
+        st = studs.get(v.student_id)
+        lang = langs.get(st.user_id, 'az') if st and st.user_id else 'az'
+        qs = sorted(v.questions, key=lambda q: q['slot'])
+        sheets.append({'student_id': v.student_id, 'full_name': st.full_name if st else '—', 'code': v.code, 'lang': lang,
+                       'qr': qr_payload(e.id, v.student_id, v.code),
+                       'questions': [{'slot': q['slot'], 'kind': q['kind'], 'points': q['points'], 'text': pick_lang(q.get('text'), lang),
+                                      'options': [pick_lang(o, lang) for o in q.get('options') or []] if q['kind'] == 'mcq' else None,
+                                      'image': q.get('image')} for q in qs]})
+        key.append({'code': v.code, 'full_name': st.full_name if st else '—',
+                    'answers': [{'slot': q['slot'], 'value': key_value(q), 'points': q['points']} for q in qs]})
+    return {'exam': {**exam_out(e), 'class_name': cls.name if cls else '', 'subject': ta.subject, 'school': header_school(user),
+                     'teacher': user.full_name},
+            'sheets': sheets, 'key': key}
+
+
 @router.post('/{ta_id}/{exam_id}/variants')
 def make_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     """30 sual / 100 bal; hər şagirdə tam fərqli suallar. Nəticə yazılıbsa – yenidən yaratmaq olmaz."""
