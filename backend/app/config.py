@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     gdrive_client_id: str | None = None
     gdrive_client_secret: str | None = None
     gdrive_refresh_token: str | None = None
+    anthropic_api_key: str | None = None                 # KSQ/BSQ kartlarının oxunması (Claude); boş – admin/müəllimin açarı
 
 
 @lru_cache

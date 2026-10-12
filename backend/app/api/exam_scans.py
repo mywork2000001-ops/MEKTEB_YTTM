@@ -8,7 +8,7 @@ from __future__ import annotations
 import base64
 import io
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -139,7 +139,7 @@ def fix_slot(scan_id: int, body: FixIn, user: User = Depends(staff), db: Session
 
 # ---------------------------------------------------------------- yükləmə, siyahı, yenilə
 @router.post('/{ta_id}/{exam_id}/upload')
-async def upload(ta_id: int, exam_id: int, files: list[UploadFile] = File(...), user: User = Depends(staff),
+async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[UploadFile] = File(...), user: User = Depends(staff),
                  db: Session = Depends(get_db)):
     """Kart şəkilləri və ya skan PDF: QR → şagird; cavab zonası saxlanır. Eyni şagirdin kartı təkrar gəlsə – köhnə oxunuş arxivə."""
     from ..domain.ksq_scan import find_cards, images_from_upload
@@ -184,12 +184,42 @@ async def upload(ta_id: int, exam_id: int, files: list[UploadFile] = File(...), 
             found.append({'student_id': c['student_id'], 'code': c['code']})
     audit(db, user, 'create', 'exam_scans', e.id, cards=len(found), problems=len(problems))
     db.commit()
+    if found:
+        bg.add_task(_read_now, db.get_bind(), e.id)                     # Claude açarı varsa – dərhal oxunur (fon işi də hər 2 dəq yoxlayır)
     names = {s.id: s.full_name for s in roster(db, ta)}
     return {'found': [{**x, 'full_name': names.get(x['student_id'])} for x in found], 'problems': problems}
 
 
+def _read_now(bind, exam_id: int) -> None:
+    """Fon: sorğunun bazası ilə (testdə də eyni) oxunmamış kartları oxuyur; xəta – loqa, kart gözləməyə qalır."""
+    import logging
+    from ..domain.ksq_reader import read_pending
+    try:
+        with Session(bind=bind, expire_on_commit=False) as db:
+            read_pending(db, exam_id, limit=60)
+    except Exception:                                          # noqa: BLE001
+        logging.getLogger(__name__).exception('kart oxunuşu')
+
+
+@router.post('/{ta_id}/{exam_id}/reread')
+def reread(ta_id: int, exam_id: int, bg: BackgroundTasks, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«Yenidən oxu»: bütün kartlar Claude-a təzədən göndərilir (müəllimin əl düzəlişləri də silinir)."""
+    _, e = _exam(db, user, ta_id, exam_id)
+    n = 0
+    for sc in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.crop_key.is_not(None))):
+        sc.history = [*(sc.history or []), {'at': now().isoformat(), 'reading': sc.reading, 'points': sc.points,
+                                            'read_by': sc.read_by}][-5:]
+        sc.reading, sc.read_by, sc.status, sc.error = None, None, 'pending', None
+        n += 1
+    audit(db, user, 'update', 'exam_scans', e.id, reread=n)
+    db.commit()
+    bg.add_task(_read_now, db.get_bind(), e.id)
+    return {'ok': True, 'pending': n}
+
+
 @router.get('/{ta_id}/{exam_id}')
 def list_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    from ..domain.ksq_reader import api_key_for
     ta, e = _exam(db, user, ta_id, exam_id)
     names = {s.id: s.full_name for s in roster(db, ta)}
     scans = list(db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id)))
@@ -198,7 +228,8 @@ def list_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sessio
     return {'scans': sorted((_out(sc, names.get(sc.student_id)) for sc in scans), key=lambda x: x['full_name'] or ''),
             'missing': sorted((names.get(sid) or '—') for sid in variants if sid not in have),
             'counts': {'variants': len(variants), 'scanned': len(scans), 'graded': sum(sc.status == 'graded' for sc in scans),
-                       'pending': sum(sc.status == 'pending' for sc in scans), 'flagged': sum(bool(sc.flagged) for sc in scans)}}
+                       'pending': sum(sc.status == 'pending' for sc in scans), 'flagged': sum(bool(sc.flagged) for sc in scans)},
+            'claude': bool(api_key_for(db, ta.teacher_id))}
 
 
 @router.post('/{ta_id}/{exam_id}/regrade')

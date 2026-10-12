@@ -204,7 +204,7 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
 
 type Scan = { id: number; student_id: number; full_name: string | null; code: string; status: 'pending' | 'graded' | 'error'; points: number | null
   flagged: number[]; reading: { slot: number; value: string | null; confidence: number | null }[] | null; marks: number[] | null; error: string | null; rescans: number }
-type ScanList = { scans: Scan[]; missing: string[]; counts: { variants: number; scanned: number; graded: number; pending: number; flagged: number } }
+type ScanList = { scans: Scan[]; missing: string[]; claude: boolean; counts: { variants: number; scanned: number; graded: number; pending: number; flagged: number } }
 const SCAN_TONE: Record<string, 'ok' | 'warn' | 'bad'> = { graded: 'ok', pending: 'warn', error: 'bad' }
 
 /** Cavab kartlarının skanı: şəkil / PDF yüklə → QR ilə şagird → oxunuş → bal jurnala özü yazılır; şübhəli xana – sarı, müəllim düzəldir. */
@@ -224,6 +224,8 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
     } catch (x) { toast((x as Error).message) } finally { setBusy(false) }
   }
   const c = d?.counts
+  // oxunuş gedir – siyahı özü yenilənir (Claude adətən 10–30 saniyəyə oxuyur)
+  useEffect(() => { if (!c?.pending || !d?.claude) return; const id = setTimeout(reload, 8000); return () => clearTimeout(id) }, [d])
   return (
     <section style={{ marginTop: 14, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
       <h3 style={{ margin: '0 0 6px' }}>📷 {tt('Cavab kartlarını skan et')}</h3>
@@ -235,9 +237,12 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
           <input type="file" accept="image/*,application/pdf" multiple hidden disabled={busy} onChange={e => { send(e.target.files); e.target.value = '' }} /></label>
         {d && d.scans.length > 0 && <AsyncBtn className="btn sm ghost" onClick={async () => { await post(`/api/exam-scans/${ta}/${examId}/regrade`); reload() }}
           title={tt('Bütün kartlar mövcud açarla yenidən hesablanır')}>🔄 {tt('Yenilə')}</AsyncBtn>}
+        {d && d.scans.length > 0 && d.claude && <AsyncBtn className="btn sm ghost" onClick={async () => { await post(`/api/exam-scans/${ta}/${examId}/reread`); reload() }}
+          title={tt('Kartlar Claude-a təzədən göndərilir (əl düzəlişləri də silinir)')}>👁 {tt('Yenidən oxu')}</AsyncBtn>}
         {busy && <span className="small muted">{tt('Yüklənir…')}</span>}
       </div>
       <ErrorBox error={err} />
+      {d && !d.claude && <p className="small" style={{ margin: '8px 0 0', color: 'var(--warn)' }}>{tt('Claude bağlantısı yoxdur: kartlar oxunmağı gözləyəcək. Tənzimləmələr → «Süni intellekt» → Anthropic (Claude) açarını daxil edin (admin bir dəfə daxil etsə, bütün müəllimlər üçün işləyir).')}</p>}
       {c && <p className="small" style={{ margin: '8px 0 4px' }}>{tt('Skan: {a}/{b} · yoxlanılıb: {c} · oxunmağı gözləyir: {p}', { a: c.scanned, b: c.variants, c: c.graded, p: c.pending })}
         {c.flagged > 0 && <> · <b style={{ color: 'var(--warn)' }}>{tt('baxılmalı: {n}', { n: c.flagged })}</b></>}</p>}
       {d && d.missing.length > 0 && <p className="small muted" style={{ margin: '0 0 6px' }}>{tt('Kartı yoxdur')}: {d.missing.join(', ')}</p>}

@@ -447,6 +447,10 @@ const D: Record<string, [string, string]> = {
   "xəta": ["error", "ошибка"],
   "Kart hələ oxunmayıb.": ["The card has not been read yet.", "Бланк ещё не распознан."],
   "planda yoxdur": ["not in the plan", "нет в плане"],
+  // KSQ/BSQ Claude oxunuşu (12.10.2026)
+  "Kartlar Claude-a təzədən göndərilir (əl düzəlişləri də silinir)": ["Cards are sent to Claude again (manual corrections are cleared)", "Бланки снова отправляются Claude (ручные исправления сбрасываются)"],
+  "Yenidən oxu": ["Read again", "Распознать заново"],
+  "Claude bağlantısı yoxdur: kartlar oxunmağı gözləyəcək. Tənzimləmələr → «Süni intellekt» → Anthropic (Claude) açarını daxil edin (admin bir dəfə daxil etsə, bütün müəllimlər üçün işləyir).": ["No Claude connection: cards will wait to be read. Settings → «AI» → enter an Anthropic (Claude) key (if the admin enters it once, it works for all teachers).", "Нет подключения Claude: бланки будут ждать распознавания. Настройки → «Искусственный интеллект» → введите ключ Anthropic (Claude) (если администратор введёт его один раз, он работает для всех учителей)."],
 }
 
 export const I18nCtx = createContext<Lang>('az')

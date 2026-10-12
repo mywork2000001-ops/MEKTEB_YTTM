@@ -98,3 +98,64 @@ def test_scan_flow(world):
     admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p2.jpg', photo([a['qr']], -4), 'image/jpeg'))])
     again = next(x for x in admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'] if x['student_id'] == a['student_id'])
     assert again['status'] == 'pending' and again['rescans'] == 1
+
+
+def test_claude_reader_flow(world, monkeypatch):
+    """Mərhələ 4: yükləmə → fonda Claude oxuyur (saxta) → şübhəli xanalar güclü modellə ikinci dəfə → bal jurnalda."""
+    from app.domain import ksq_reader as R
+    admin, ta, e, pr = ksq(world)
+    a = pr['sheets'][0]
+    key = {x['slot']: x['value'] for x in next(k for k in pr['key'] if k['code'] == a['code'])['answers']}
+    calls = []
+
+    def fake_call(api_key, model, jpeg, slots, only=None):
+        calls.append((model, only))
+        assert api_key == 'sk-test' and jpeg[:2] == b'\xff\xd8'               # yalnız JPEG kəsik göndərilir
+        if model == R.MODEL:                                                  # birinci: 5-ci xana şübhəli, 7-ci yoxdur
+            return [{'slot': s, 'value': key[s] if s != 5 else '?', 'confidence': 0.4 if s == 5 else 0.95}
+                    for s in key if s != 7]
+        return [{'slot': s, 'value': key[s], 'confidence': 0.93} for s in only]
+    monkeypatch.setattr(R, 'call', fake_call)
+    monkeypatch.setattr(R, 'api_key_for', lambda db, tid: 'sk-test')
+    r = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([a['qr']], 3), 'image/jpeg'))])
+    assert r.status_code == 200 and len(r.json()['found']) == 1
+    assert calls == [(R.MODEL, None), (R.MODEL_2, [5, 7])]
+    sc = admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()
+    s = sc['scans'][0]
+    assert s['status'] == 'graded' and s['points'] == 100 and s['flagged'] == [] and s['read_by'] == 'claude+2' and sc['claude'] is True
+    # «Yenidən oxu» – hamısı yenidən Claude-a
+    calls.clear()
+    assert admin.post(f'/api/exam-scans/{ta}/{e["id"]}/reread').json()['pending'] == 1
+    assert calls and admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'][0]['status'] == 'graded'
+
+
+def test_claude_call_parsing(monkeypatch):
+    """API cavabının təhlili: alət çağırışı, yad slotlar atılır, etibar 0–1 aralığına salınır; xəta mesajı."""
+    import httpx
+    from app.domain import ksq_reader as R
+    sent = {}
+
+    class Resp:
+        def __init__(self, code, js):
+            self.status_code, self._js, self.text = code, js, str(js)
+
+        def json(self):
+            return self._js
+    out = {'content': [{'type': 'text', 'text': 'x'}, {'type': 'tool_use', 'name': 'submit_card', 'input': {'answers': [
+        {'slot': 1, 'value': 'B', 'confidence': 1.4}, {'slot': 99, 'value': '1', 'confidence': 0.9}, {'slot': 2, 'value': '3/7', 'confidence': 0.8}]}}]}
+
+    def post(self, url, json=None, headers=None):
+        sent.update(url=url, body=json, headers=headers)
+        return Resp(200, out)
+    monkeypatch.setattr(httpx.Client, 'post', post)
+    got = R.call('sk-x', R.MODEL, b'\xff\xd8jpeg', [{'slot': 1, 'kind': 'mcq'}, {'slot': 2, 'kind': 'open'}])
+    assert got == [{'slot': 1, 'value': 'B', 'confidence': 1.0}, {'slot': 2, 'value': '3/7', 'confidence': 0.8}]
+    b = sent['body']
+    assert b['model'] == 'claude-sonnet-5-5' and b['tool_choice'] == {'type': 'tool', 'name': 'submit_card'}
+    assert b['messages'][0]['content'][0]['type'] == 'image' and sent['headers']['x-api-key'] == 'sk-x'
+    monkeypatch.setattr(httpx.Client, 'post', lambda self, url, json=None, headers=None: Resp(429, {'error': {'message': 'rate limit'}}))
+    try:
+        R.call('sk-x', R.MODEL, b'\xff\xd8', [{'slot': 1, 'kind': 'mcq'}])
+        raise AssertionError
+    except RuntimeError as ex:
+        assert '429' in str(ex) and 'rate limit' in str(ex)
