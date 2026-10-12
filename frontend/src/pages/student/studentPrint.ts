@@ -1,8 +1,8 @@
 // Şagird portalının çapları (A4, ağ-qara): hər sənəddə şagirdin adı, sinfi, giriş kodu; sinif ortası adsızdır,
 // başqa şagirdin adı heç yerdə yoxdur. Riyazi mətn MathML ilə (çapda və server PDF-də düzgün).
 import { esc, fmtD, fmtN, head, kpis, mathHtml, printDoc, table } from '../../print'
+import { ml } from '../../i18n'
 
-const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 const L = 'ABCDE'
 const NOTE = (t: string) => `<p class="note">${esc(t)}</p>`
 

@@ -1,6 +1,7 @@
 // Sınaq imtahanları (onlayn): planla əlaqəsiz, bir neçə sinfə eyni anda. Nəticə – «Sınaq jurnalı» (bal, faiz, sinifdə və
 // ümumi yer), siniflərin reytinqi, sual analizi, açıq sualın əl ilə yoxlanması, kumulyativ reytinq. Formativ jurnala düşmür.
 import { StudentPicker } from './common'
+import { ml } from '../../i18n'
 import { useEffect, useMemo, useState } from 'react'
 import { ApiError, del as apiDel, get, patch, post, put } from '../../api'
 import { MathText } from '../../MathText'
@@ -28,7 +29,6 @@ type Res = { batch: { id: number; title: string; subject: string; grade: number 
   classes: { task_id: number; ta_id: number; own: boolean; class_name: string; students: number; wrote: number; avg_pct: number | null; max_pct: number | null; place: number | null; state: string; opens_at: string; closes_at: string }[]
   rows: Row[]; questions: { index: number; text: any; kind: string; correct: number; of: number; pct: number | null }[]; access: 'full' | 'own' }
 
-const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 const dt = (s: string | null) => (s ? azDT(new Date(s), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—')
 const stateTone = (s: string) => (s === 'açıqdır' ? 'ok' : s === 'bitib' ? 'info' : undefined)
 const PENALTY: [string, string][] = [['0', 'cərimə yoxdur'], ['4', '4 səhv 1 düzü aparır'], ['3', '3 səhv 1 düzü aparır']]

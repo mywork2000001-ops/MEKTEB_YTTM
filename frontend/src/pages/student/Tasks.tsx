@@ -1,17 +1,17 @@
 // Şagird: vaxtlı tapşırıqlar. Taymer serverin vaxtına görə; cavablar avtomatik saxlanılır; vaxt bitəndə avtomatik təhvil.
 import { useEffect, useRef, useState } from 'react'
+import { ml } from '../../i18n'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError, get, post, put } from '../../api'
 import { imagesToPdf } from '../../imagesToPdf'
 import { confetti } from '../../certificate'
-import { useT } from '../../i18n'
+import { tt, useT } from '../../i18n'
 import { azRange, azDT, AsyncBtn, fmt, Drawer, ErrorBox, gradeTone, Loading, Pill, Seg, toast, Top, useLoad } from '../../ui'
 import { MathText } from '../../MathText'
 import { printReview } from './studentPrint'
 import { useAuth } from '../../auth'
 import { PeriodBar, usePeriod } from '../../periods'
 
-const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 // Test rejimi: tam ekran (çıxanda xəbərdarlıq) və mətnin seçilməsi / kopyalanması / uzun basma menyusu bağlıdır.
 // Qeyd: telefonun sistem funksiyalarını (ekran şəkli, Circle to Search) veb səhifə söndürə bilmir; iPhone-da tam ekran yoxdur.
 // Tətbiqdaxili brauzerlər (WhatsApp, Telegram, Instagram, Facebook – Android WebView): tam ekran sorğusu «uğurlu» görünür,
@@ -35,9 +35,9 @@ export default function Tasks() {
   useEffect(() => {
     if (!linkId || !list) return
     const x = list.find(q => q.id === Number(linkId))
-    if (!x) toast('Bu test sizin üçün deyil və ya silinib')
+    if (!x) toast(tt('Bu test sizin üçün deyil və ya silinib'))
     else if (x.status === 'açıq' || x.status === 'həll edilir') setSolving(x.id)
-    else toast(x.status === 'gözlənilir' ? `Test hələ açılmayıb: ${azDT(new Date(x.opens_at), undefined, 'all')}` : `Test: ${x.status}`)
+    else toast(x.status === 'gözlənilir' ? tt('Test hələ açılmayıb: {t}', { t: azDT(new Date(x.opens_at), undefined, 'all') }) : `${tt('Test')}: ${tt(x.status)}`)
     nav('/tasks', { replace: true })
   }, [linkId, list])
   const [review, setReview] = useState<number | null>(null)
@@ -53,22 +53,22 @@ export default function Tasks() {
   if (solving) return <Solver id={solving} onDone={() => { setSolving(null); reload() }} />
   return (
     <>
-      <Top title={t('Tapşırıqlar')} sub="Vaxtlı testlər – açılma və bağlanma vaxtına diqqət edin" />
+      <Top title={t('Tapşırıqlar')} sub={t('Vaxtlı testlər – açılma və bağlanma vaxtına diqqət edin')} />
       <ErrorBox error={err} />
-      <div className="toolbar"><Seg label="Bölmə" value={tab} onChange={setTab}
-        options={[['movzu', `Mövzu testləri${count('movzu') ? ` · ${count('movzu')} açıq` : ''}`], ['sinaq', `Sınaqlar${count('sinaq') ? ` · ${count('sinaq')} açıq` : ''}`]]} /></div>
-      {tab === 'sinaq' && <p className="small muted" style={{ marginTop: 0 }}>Sınaqda yeriniz və balınız test bağlanandan sonra «Nəticələrim»dədir.</p>}
+      <div className="toolbar"><Seg label={t('Bölmə')} value={tab} onChange={setTab}
+        options={[['movzu', `${t('Mövzu testləri')}${count('movzu') ? ` · ${t('{n} açıq', { n: count('movzu') })}` : ''}`], ['sinaq', `${t('Sınaqlar')}${count('sinaq') ? ` · ${t('{n} açıq', { n: count('sinaq') })}` : ''}`]]} /></div>
+      {tab === 'sinaq' && <p className="small muted" style={{ marginTop: 0 }}>{t('Sınaqda yeriniz və balınız test bağlanandan sonra «Nəticələrim»dədir.')}</p>}
       {loading && !list ? <Loading /> : (<>
-        {mine.length > 0 && <PeriodBar f={f} count={shown.length} total={mine.length} topicLabel={tab === 'movzu' ? 'Mövzu üzrə' : 'Ad üzrə'} />}
+        {mine.length > 0 && <PeriodBar f={f} count={shown.length} total={mine.length} topicLabel={tab === 'movzu' ? t('Mövzu üzrə') : t('Ad üzrə')} />}
         <div className="jlist">
-          {list && mine.length === 0 && <div className="empty">{tab === 'movzu' ? 'Mövzu testi yoxdur.' : 'Sınaq yoxdur.'}</div>}
-          {mine.length > 0 && shown.length === 0 && <div className="empty">Bu dövrdə test yoxdur – «‹ ›» ilə başqa dövrə keçin və ya «Hamısı»nı seçin.</div>}
+          {list && mine.length === 0 && <div className="empty">{tab === 'movzu' ? t('Mövzu testi yoxdur.') : t('Sınaq yoxdur.')}</div>}
+          {mine.length > 0 && shown.length === 0 && <div className="empty">{t('Bu dövrdə test yoxdur – «‹ ›» ilə başqa dövrə keçin və ya «Hamısı»nı seçin.')}</div>}
           {shown.map(x => (
             <div key={x.id} className="jrow">
-              <span><b>{x.title}</b><span className="sub small muted"><br />{x.subject}{x.topic_seq ? ` · mövzu №${x.topic_seq}` : ''} · {x.teacher} · {azRange(x.opens_at, x.closes_at)} · {x.duration_min} dəq · {x.questions} sual</span></span>
-              <span className="row">{x.result ? <Pill tone={x.result.grade ? gradeTone(x.result.grade) : x.result.pct >= 70 ? 'ok' : x.result.pct >= 40 ? 'warn' : 'bad'}>{fmt(x.result.pct)} bal{x.result.grade ? ` → ${x.result.grade}` : ''}</Pill> : <Pill tone={x.status === 'açıq' || x.status === 'həll edilir' ? 'ok' : x.status === 'buraxılıb' ? 'bad' : undefined}>{x.status}</Pill>}</span>
-              <span>{(x.status === 'açıq' || x.status === 'həll edilir') && <button className="btn primary sm" onClick={() => { enterFs(); setSolving(x.id) }}>{x.status === 'açıq' ? t('Başla') : 'Davam et'}</button>}
-                {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>Cavablara bax</button>}
+              <span><b>{x.title}</b><span className="sub small muted"><br />{x.subject}{x.topic_seq ? ` · ${t('mövzu №{n}', { n: x.topic_seq })}` : ''} · {x.teacher} · {azRange(x.opens_at, x.closes_at)} · {t('{n} dəq', { n: x.duration_min })} · {t('{n} sual', { n: x.questions })}</span></span>
+              <span className="row">{x.result ? <Pill tone={x.result.grade ? gradeTone(x.result.grade) : x.result.pct >= 70 ? 'ok' : x.result.pct >= 40 ? 'warn' : 'bad'}>{fmt(x.result.pct)} {t('bal')}{x.result.grade ? ` → ${x.result.grade}` : ''}</Pill> : <Pill tone={x.status === 'açıq' || x.status === 'həll edilir' ? 'ok' : x.status === 'buraxılıb' ? 'bad' : undefined}>{t(x.status)}</Pill>}</span>
+              <span>{(x.status === 'açıq' || x.status === 'həll edilir') && <button className="btn primary sm" onClick={() => { enterFs(); setSolving(x.id) }}>{x.status === 'açıq' ? t('Başla') : t('Davam et')}</button>}
+                {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>{t('Cavablara bax')}</button>}
                 {(x.status === 'həll edilir' || x.status === 'təhvil verilib') && new Date(x.closes_at) > new Date() &&
                   <SolutionUpload id={x.id} at={x.solution_at} compact onDone={reload} />}</span>
             </div>))}
@@ -89,21 +89,21 @@ export function SolutionUpload({ id, at, compact, onDone }: { id: number; at?: s
     setBusy(true)
     try {
       const pdf = await imagesToPdf(files)
-      if (pdf.size > 25 * 1024 ** 2) throw new Error('PDF 25 MB-dan böyükdür – şəkillərin sayını azaldın')
+      if (pdf.size > 25 * 1024 ** 2) throw new Error(tt('PDF 25 MB-dan böyükdür – şəkillərin sayını azaldın'))
       const fd = new FormData()
       fd.append('file', pdf, `hell-${id}.pdf`)
       const r = await api<any>(`/api/portal/tasks/${id}/solution`, { method: 'POST', form: fd })
-      setSent(r.solution_at); setFiles([]); toast(`Həll göndərildi (${files.length} şəkil, bir PDF)`); onDone?.()
-    } catch (e) { toast('Xəta: ' + (e as Error).message) } finally { setBusy(false) }
+      setSent(r.solution_at); setFiles([]); toast(tt('Həll göndərildi ({n} şəkil, bir PDF)', { n: files.length })); onDone?.()
+    } catch (e) { toast(tt('Xəta') + ': ' + (e as Error).message) } finally { setBusy(false) }
   }
   return (
     <div className={compact ? 'row' : 'stack'} style={{ gap: 6, marginTop: compact ? 0 : 12 }}>
-      {!compact && <b className="small">📷 Həllin şəkilləri (müəllimə bir PDF kimi gedir)</b>}
-      <label className="btn sm">{files.length ? `${files.length} şəkil seçilib` : sent ? 'Yenidən şəkil seç' : '📷 Həlli göndər'}
+      {!compact && <b className="small">{tt('📷 Həllin şəkilləri (müəllimə bir PDF kimi gedir)')}</b>}
+      <label className="btn sm">{files.length ? tt('{n} şəkil seçilib', { n: files.length }) : sent ? tt('Yenidən şəkil seç') : tt('📷 Həlli göndər')}
         <input type="file" accept="image/*" multiple hidden onChange={e => setFiles(f => [...f, ...Array.from(e.target.files || [])])} /></label>
-      {files.length > 0 && <><button type="button" className="btn primary sm" disabled={busy} onClick={send}>{busy ? 'Göndərilir…' : 'PDF kimi göndər'}</button>
-        <button type="button" className="btn sm ghost" disabled={busy} onClick={() => setFiles([])}>Təmizlə</button></>}
-      {sent && <a className="small" href={`/api/portal/tasks/${id}/solution`} target="_blank" rel="noreferrer">✓ göndərilib – bax</a>}
+      {files.length > 0 && <><button type="button" className="btn primary sm" disabled={busy} onClick={send}>{busy ? tt('Göndərilir…') : tt('PDF kimi göndər')}</button>
+        <button type="button" className="btn sm ghost" disabled={busy} onClick={() => setFiles([])}>{tt('Təmizlə')}</button></>}
+      {sent && <a className="small" href={`/api/portal/tasks/${id}/solution`} target="_blank" rel="noreferrer">{tt('✓ göndərilib – bax')}</a>}
     </div>
   )
 }
@@ -178,10 +178,10 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
     try {
       // vaxt bitəndə də son cavablar göndərilir (server 10 san. gecikməni qəbul edir)
       const r = await post(`/api/portal/tasks/${id}/submit`, { answers: { ...ansRef.current } })
-      toast(`${auto ? 'Vaxt bitdi – təhvil verildi' : 'Təhvil verildi'}: ${r.pct != null ? `${fmt(r.pct)} bal / 100` : `${r.correct}/${r.total}`}${r.grade ? ` → ${r.grade}` : ''}`)
+      toast(`${auto ? tt('Vaxt bitdi – təhvil verildi') : tt('Təhvil verildi')}: ${r.pct != null ? `${fmt(r.pct)} ${tt('bal')} / 100` : `${r.correct}/${r.total}`}${r.grade ? ` → ${r.grade}` : ''}`)
       if (r.certificate || (r.pct ?? 0) >= 80) confetti()                           // təbrik
-      if (r.certificate) toast(`🏆 Yeni sertifikat: ${r.certificate.title} – «Uğurlarım»da`)
-    } catch (e) { if (!(e instanceof ApiError && e.status === 409)) toast('Xəta: ' + (e as Error).message) }
+      if (r.certificate) toast(tt('🏆 Yeni sertifikat: {t} – «Uğurlarım»da', { t: r.certificate.title }))
+    } catch (e) { if (!(e instanceof ApiError && e.status === 409)) toast(tt('Xəta') + ': ' + (e as Error).message) }
     onDone()
   }
   const debounce = useRef<number>(0)
@@ -191,7 +191,7 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
     clearTimeout(debounce.current)
     debounce.current = window.setTimeout(flush, 800)          // son cavablar vaxt bitməzdən əvvəl serverə çatsın
   }
-  if (err) return <><ErrorBox error={err} /><button className="btn" onClick={onDone}>‹ Geri</button></>
+  if (err) return <><ErrorBox error={err} /><button className="btn" onClick={onDone}>‹ {t('Geri')}</button></>
   if (!d) return <Loading />
   const q = d.questions[i]
   const mm = String(Math.floor(left / 60)).padStart(2, '0'), ss = String(left % 60).padStart(2, '0')
@@ -200,10 +200,10 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
       {fsOk() && !full && !fsFailed && (
         <div className="fs-guard" role="alertdialog" aria-modal="true" aria-labelledby="fs-guard-t">
           <div className="panel" style={{ maxWidth: 420 }}>
-            <h2 id="fs-guard-t">{exits ? '⚠ Tam ekrandan çıxdınız' : 'Test tam ekranda yazılır'}</h2>
-            <p>{exits ? 'Testə qayıtmaq üçün tam ekrana keçin. Vaxt dayanmır – qalan vaxt: ' : 'Başlamaq üçün tam ekrana keçin. Qalan vaxt: '}<b>{mm}:{ss}</b></p>
-            {exits > 0 && <p className="small muted">Tam ekrandan çıxma: {exits} dəfə.</p>}
-            <button className="btn primary w100" onClick={backToFs}>Tam ekrana keç</button>
+            <h2 id="fs-guard-t">{exits ? t('⚠ Tam ekrandan çıxdınız') : t('Test tam ekranda yazılır')}</h2>
+            <p>{exits ? t('Testə qayıtmaq üçün tam ekrana keçin. Vaxt dayanmır – qalan vaxt: ') : t('Başlamaq üçün tam ekrana keçin. Qalan vaxt: ')}<b>{mm}:{ss}</b></p>
+            {exits > 0 && <p className="small muted">{t('Tam ekrandan çıxma: {n} dəfə.', { n: exits })}</p>}
+            <button className="btn primary w100" onClick={backToFs}>{t('Tam ekrana keç')}</button>
           </div>
         </div>)}
       <div className="row" style={{ marginBottom: 12, position: 'sticky', top: 0, background: 'var(--bg)', padding: '8px 0', zIndex: 5 }}>
@@ -212,10 +212,10 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
       <div className="row" style={{ marginBottom: 12, gap: 4 }}>
         {d.questions.map((x: any, k: number) => (
           <button key={k} className="chip" style={{ minWidth: 38, padding: 0 }} aria-pressed={k === i} onClick={() => setI(k)}
-            title={ans[x.index] != null && ans[x.index] !== '' ? 'cavablanıb' : 'cavabsız'}>{k + 1}{ans[x.index] != null && ans[x.index] !== '' ? '•' : ''}</button>))}
+            title={ans[x.index] != null && ans[x.index] !== '' ? t('cavablanıb') : t('cavabsız')}>{k + 1}{ans[x.index] != null && ans[x.index] !== '' ? '•' : ''}</button>))}
       </div>
       <section className="panel">
-        <p className="small muted">Sual {i + 1} / {d.questions.length}{q.points != null ? <> · <b>{String(q.points).replace('.', ',')} bal</b> <span className="muted">(cəmi 100)</span></> : ''}</p>
+        <p className="small muted">{t('Sual')} {i + 1} / {d.questions.length}{q.points != null ? <> · <b>{String(q.points).replace('.', ',')} {t('bal')}</b> <span className="muted">({t('cəmi 100')})</span></> : ''}</p>
         <MathText as="p" style={{ fontSize: 17, whiteSpace: 'pre-wrap' }} text={ml(q.text)} />
         {q.image && <img className="q-img" src={q.image} alt="" draggable={false} />}
         {q.kind === 'mcq' ? (
@@ -223,11 +223,11 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
             <div key={k} className="q-opt" role="radio" tabIndex={0} aria-checked={ans[q.index] === k} onClick={() => set(q.index, k)} onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') set(q.index, k) }}>
               <b>{'ABCDE'[k]})</b><MathText text={ml(o)} /></div>))}</div>
         ) : (
-          <input className="sel w100" style={{ fontSize: 16 }} placeholder="Cavabınızı yazın" value={ans[q.index] ?? ''} onChange={e => set(q.index, e.target.value)} />
+          <input className="sel w100" style={{ fontSize: 16 }} placeholder={t('Cavabınızı yazın')} value={ans[q.index] ?? ''} onChange={e => set(q.index, e.target.value)} />
         )}
         <div className="row exam-nav" style={{ marginTop: 16 }}>
-          <button className="btn" disabled={i === 0} onClick={() => setI(i - 1)}>‹ Əvvəlki</button>
-          {i < d.questions.length - 1 ? <button className="btn primary" onClick={() => { flush(); setI(i + 1) }}>Növbəti ›</button> : null}
+          <button className="btn" disabled={i === 0} onClick={() => setI(i - 1)}>‹ {t('Əvvəlki')}</button>
+          {i < d.questions.length - 1 ? <button className="btn primary" onClick={() => { flush(); setI(i + 1) }}>{t('Növbəti')} ›</button> : null}
           <AsyncBtn className="btn primary right" onClick={() => finish(false)}>{t('Təhvil ver')}</AsyncBtn>
         </div>
       </section>
@@ -239,17 +239,17 @@ export function Review({ id, onClose }: { id: number; onClose: () => void }) {
   const { me } = useAuth()
   const [d, err] = useLoad<any>(() => get(`/api/portal/tasks/${id}/review`), [id])
   return (
-    <Drawer title={d ? `${d.title} · ${d.correct}/${d.total}` : 'Cavablar'} onClose={onClose}
-      footer={d ? <button className="btn" onClick={() => printReview(d, me)}>Çap / PDF</button> : undefined}>
+    <Drawer title={d ? `${d.title} · ${d.correct}/${d.total}` : tt('Cavablar')} onClose={onClose}
+      footer={d ? <button className="btn" onClick={() => printReview(d, me)}>{tt('Çap / PDF')}</button> : undefined}>
       <ErrorBox error={err} />
       {d?.questions.map((q: any, k: number) => (
         <section key={k} className="panel" style={{ marginBottom: 10, borderColor: q.ok ? 'var(--ok)' : 'var(--bad)' }}>
           <p><b>{k + 1}.</b> <MathText text={ml(q.text)} /></p>
           {q.image && <img className="q-img" src={q.image} alt="" />}
           {q.kind === 'mcq' ? q.options.map((o: any, j: number) => (
-            <div key={j} className="small" style={{ color: j === q.correct ? 'var(--ok)' : j === q.given ? 'var(--bad)' : undefined, fontWeight: j === q.correct ? 600 : 400 }}>{'ABCDE'[j]}) <MathText text={ml(o)} />{j === q.given ? ' ← sizin cavab' : ''}</div>))
-            : <p className="small">Sizin cavab: <b>{q.given || '—'}</b> · Düzgün: <b style={{ color: 'var(--ok)' }}>{String(q.answer).split('|')[0]}</b></p>}
-          {q.explanation && <p className="small muted" style={{ whiteSpace: 'pre-wrap' }}>İzah: <MathText text={ml(q.explanation)} /></p>}
+            <div key={j} className="small" style={{ color: j === q.correct ? 'var(--ok)' : j === q.given ? 'var(--bad)' : undefined, fontWeight: j === q.correct ? 600 : 400 }}>{'ABCDE'[j]}) <MathText text={ml(o)} />{j === q.given ? ` ← ${tt('sizin cavab')}` : ''}</div>))
+            : <p className="small">{tt('Sizin cavab')}: <b>{q.given || '—'}</b> · {tt('Düzgün')}: <b style={{ color: 'var(--ok)' }}>{String(q.answer).split('|')[0]}</b></p>}
+          {q.explanation && <p className="small muted" style={{ whiteSpace: 'pre-wrap' }}>{tt('İzah')}: <MathText text={ml(q.explanation)} /></p>}
         </section>))}
     </Drawer>
   )

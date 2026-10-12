@@ -1,7 +1,7 @@
 import { Component, lazy as reactLazy, Suspense, useState, type ComponentType, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './auth'
-import { I18nCtx, type Lang } from './i18n'
+import { I18nCtx, setCurrentLang, type Lang } from './i18n'
 import { Layout } from './Layout'
 import Login from './pages/Login'
 import Join from './pages/Join'
@@ -77,6 +77,7 @@ export default function App() {
   const { me, ready } = useAuth()
   const [guestLang, setGuestLang] = useState<Lang>(() => (localStorage.getItem('mk-lang') as Lang) || 'az')
   const lang: Lang = me?.language || guestLang
+  setCurrentLang(lang)                                  // sual mətnləri (ml) istifadəçinin dilində
   const join = location.pathname.match(/^\/join\/([\w-]+)$/)
   if (join) return <I18nCtx.Provider value={lang}><Join token={join[1]} /><ToastHost /></I18nCtx.Provider>
   const qr = location.pathname.match(/^\/q\/([\w.-]+)$/)          // giriş vərəqəsindəki QR – avtomatik giriş

@@ -1,6 +1,7 @@
 // Onlayn tapşırıq redaktoru: yaratma və redaktə. Viktorina bazasından bir neçə mənbə və bir neçə bölmə (alt mövzu),
 // seçilmiş sualların redaktəsi (mətn, variantlar, düzgün cavab, izah), öz sualım, vaxt, kimə.
 import { useEffect, useMemo, useState } from 'react'
+import { ml } from '../../i18n'
 import { get, patch, post } from '../../api'
 import { MathText } from '../../MathText'
 import { Drawer, ErrorBox, Field, Pill, toast } from '../../ui'
@@ -9,7 +10,6 @@ import { PointsSummary, previewPoints, QPoints, type Level } from '../../scoring
 import { heldLabel, useExamDates } from './examDates'
 
 type ML = string | { az?: string; ru?: string; en?: string } | null | undefined
-const ml = (x: ML) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 
 export type Q = {
   key: string; kind: 'mcq' | 'open'; text: string; options: string[]; correct: number; answer: string; explanation: string

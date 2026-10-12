@@ -1,5 +1,6 @@
 // Onlayn tapşırıqlar (müəllim): yaratma / viktorinadan test / redaktə / link kimi göndərmə / silmə / canlı izləmə.
 import { useEffect, useState } from 'react'
+import { ml } from '../../i18n'
 import { del as apiDel, get, post } from '../../api'
 import { MathText } from '../../MathText'
 import { AsyncBtn, Chips, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, Loading, More, Pill, toast, Top, useLoad, ord } from '../../ui'
@@ -13,7 +14,6 @@ import { azDT } from '../../ui'
 type Task = { id: number; title: string; created_at?: string | null; opens_at: string; closes_at: string; duration_min: number; questions: number; submitted: number; avg_pct: number | null; student_ids: number[] | null
   kind?: string | null; topic?: { seq: number; topic: string } | null; journal_auto?: boolean; journal_done_at?: string | null
   ta_id?: number; class_name?: string | null; batch_id?: number | null }
-const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 const dt = (s: string) => azDT(new Date(s), { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const hm = (s: string) => azDT(new Date(s), { hour: '2-digit', minute: '2-digit' })
 export const taskLink = (id: number) => `${location.origin}/t/${id}`

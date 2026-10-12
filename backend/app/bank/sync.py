@@ -200,6 +200,44 @@ def _apply_questions(db: Session, f: BankFile, qs: list[dict], res: SyncResult):
     f.question_count = len(qs)
 
 
+def _az(v):
+    return v.get('az') if isinstance(v, dict) else v
+
+
+def fill_task_translations(db: Session) -> int:
+    """Verilmiş testlərin sual surətlərinə bankda sonradan yaranmış tərcümələri (ru/en) əlavə edir — yalnız AZ mətni eyni
+    olan sual (eyni sual), cavab/açar toxunulmur. Rusdilli şagird köhnə testi də öz dilində görür (12.10.2026)."""
+    from ..models import OnlineTask
+    import copy
+    changed = 0
+    for t in db.scalars(select(OnlineTask)):
+        qs = t.questions or []
+        ids = [q.get('bank_id') for q in qs if isinstance(q, dict) and q.get('bank_id')]
+        if not ids:
+            continue
+        bank = {b.id: b for b in db.scalars(select(BankQuestion).where(BankQuestion.id.in_(ids)))}
+        new, dirty = copy.deepcopy(qs), False
+        for q in new:
+            b = bank.get(q.get('bank_id')) if isinstance(q, dict) else None
+            if not b or not isinstance(b.text, dict) or q.get('edited'):
+                continue
+            have = set(q['text']) if isinstance(q.get('text'), dict) else {'az'}
+            if not {k for k, v in b.text.items() if v} - have:         # bankda yeni dil yoxdur
+                continue
+            if (_az(q.get('text')) or '').strip() != (b.text.get('az') or '').strip():
+                continue
+            q['text'] = b.text
+            if b.options and q.get('options') and len(b.options) == len(q['options']) and                     all((_az(x) or '').strip() == (_az(y) or '').strip() for x, y in zip(b.options, q['options'])):
+                q['options'] = b.options
+            if isinstance(b.explanation, dict) and len(b.explanation) > 1:
+                q['explanation'] = b.explanation
+            dirty = True
+        if dirty:
+            t.questions = new
+            changed += 1
+    return changed
+
+
 def run_sync(db: Session, trigger: str = 'manual', force: bool = False,
              browser_factory=Browser, fetcher=fetch_all) -> SyncResult:
     """Bir sinxronizasiya. Eyni anda yalnız biri işləyir (qalanları dərhal «busy» qaytarır)."""
@@ -273,7 +311,9 @@ def run_sync(db: Session, trigger: str = 'manual', force: bool = False,
                     res.errors.append(f'{url}: {body}')
                     continue
                 h = sha(body)
-                if not force and f.sha256 == h and f.question_count:
+                # viktorina.html dəyişibsə (idxal funksiyaları yenilənə bilər — məs. 12.10.2026 P007 dil bağlamaları)
+                # fayl dəyişməsə də yenidən oxunur, yoxsa köhnə «donmuş» mətn bazada qalır
+                if not force and not page_changed and f.sha256 == h and f.question_count:
                     continue
                 try:
                     qs = br.extract(f.source_key, f.lesson, url, body.decode('utf-8', errors='replace'))
@@ -290,6 +330,8 @@ def run_sync(db: Session, trigger: str = 'manual', force: bool = False,
                                                                    BankQuestion.active.is_(True))):
                         q.active = False
                         res.deactivated += 1
+        if res.updated:
+            fill_task_translations(db)
         _set_state(db, 'viktorina_sha', page_hash)
         res.files_checked = len(todo)
         res.status = 'updated' if (res.added or res.updated or res.deactivated) else 'unchanged'

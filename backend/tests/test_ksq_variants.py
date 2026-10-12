@@ -140,3 +140,24 @@ def test_api_variants(world):
     # nəticə yazılıbsa — yenidən yaratmaq olmaz
     admin.put(f'/api/exams/{ta}/{e["id"]}/scores', json=[{'student_id': st[0]['id'], 'points': 50}])
     assert admin.post(f'/api/exams/{ta}/{e["id"]}/variants').status_code == 409
+
+
+def test_fill_task_translations(world):
+    """Bankda sonradan yaranan rus tərcüməsi verilmiş testin sual surətinə əlavə olunur (açar toxunulmur)."""
+    from app.bank.sync import fill_task_translations
+    from app.models import OnlineTask
+    from .test_api_portal import mk_task, setup
+    as_, S = world
+    admin, ta, cid, st, ids = setup(world)
+    tid = mk_task(admin, ta, ids).json()['id']
+    with S() as db:
+        q = db.get(BankQuestion, ids[0])
+        q.text = {'az': '2+2=?', 'ru': '2+2=? (ru)'}
+        q.options = [{'az': '3', 'ru': 'три'}, {'az': '4', 'ru': 'четыре'}]
+        db.commit()
+        assert fill_task_translations(db) == 1
+        db.commit()
+        t = db.get(OnlineTask, tid)
+        q0 = next(x for x in t.questions if x['bank_id'] == ids[0])
+        assert q0['text']['ru'] == '2+2=? (ru)' and q0['options'][1]['ru'] == 'четыре' and q0['correct'] == 1
+        assert fill_task_translations(db) == 0                       # ikinci dəfə — dəyişiklik yoxdur

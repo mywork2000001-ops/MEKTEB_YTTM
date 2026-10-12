@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ml } from '../../i18n'
 import { get } from '../../api'
 import { useT } from '../../i18n'
 import { ErrorBox, fmt, fmtDate, gradeTone, Loading, Pill, Stat, Top, useLoad } from '../../ui'
@@ -10,7 +11,6 @@ import { Review } from './Tasks'
 import { Bar } from './Achievements'
 import { azDT } from '../../ui'
 
-const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 
 export default function Results() {
   const t = useT()
