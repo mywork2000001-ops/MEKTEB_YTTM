@@ -389,6 +389,15 @@ const D: Record<string, [string, string]> = {
   "Təsadüfən çıxıbsa: cavablar saxlanır, qalan vaxt yenidən verilir": ["If the student left by accident: answers are kept, remaining time is given again", "Если ученик вышел случайно: ответы сохраняются, оставшееся время даётся заново"],
   "Kamera": ["Camera", "Камера"],
   "🖼 Qalereyadan seç": ["🖼 Choose from gallery", "🖼 Выбрать из галереи"],
+  // sertifikat dərəcələri (12.10.2026)
+  "30 baldan yuxarı nəticə sertifikat gətirir: 31–60 Mis, 61–80 Gümüş, 81–90 Qızıl, 91–100 Platin.": ["A result above 30 points earns a certificate: 31–60 Bronze, 61–80 Silver, 81–90 Gold, 91–100 Platinum.", "Результат выше 30 баллов даёт сертификат: 31–60 медный, 61–80 серебряный, 81–90 золотой, 91–100 платиновый."],
+  "Mis": ["Bronze", "Медный"],
+  "Gümüş": ["Silver", "Серебряный"],
+  "Qızıl": ["Gold", "Золотой"],
+  "Platin": ["Platinum", "Платиновый"],
+  "{n}-ci yer": ["place {n}", "{n}-е место"],
+  "Avtomatik: test və sınaqda 30 baldan yuxarı — 31–60 Mis, 61–80 Gümüş, 81–90 Qızıl, 91–100 Platin (≤ 30 – verilmir, əvvəl verilibsə ləğv olunur);": ["Automatic: above 30 points in a test or exam — 31–60 Bronze, 61–80 Silver, 81–90 Gold, 91–100 Platinum (≤ 30 — none; earlier ones are revoked);", "Автоматически: в тесте и пробном экзамене выше 30 баллов — 31–60 медный, 61–80 серебряный, 81–90 золотой, 91–100 платиновый (≤ 30 — не выдаётся, ранее выданный отзывается);"],
+  "sınaq seriyasında ≥ {n}% iştirak.": ["≥ {n}% participation in an exam series.", "участие в серии пробных экзаменов ≥ {n}%."],
 }
 
 export const I18nCtx = createContext<Lang>('az')

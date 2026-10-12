@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { tt } from '../../i18n'
 import { get, post } from '../../api'
-import { CertView, confetti, printCert, shareCert, type Cert } from '../../certificate'
+import { CertView, confetti, printCert, shareCert, TIER, type Cert } from '../../certificate'
 import { Drawer, ErrorBox, fmt, fmtDate, Loading, prettySection, Top, useLoad } from '../../ui'
 
 type Ach = {
@@ -65,12 +65,12 @@ export default function Achievements() {
               </div>))}
           </section>}
           <section className="panel"><h2>{tt('Sertifikatlarım')}<small>{certs?.length ?? 0}</small></h2>
-            {!certs ? <Loading /> : certs.length === 0 ? <p className="small muted" style={{ margin: 0 }}>{tt('Mövzu testində 90%-dən, sınaqda 80%-dən yuxarı nəticə və ya sinifdə ilk yerlər – sertifikat gətirir.')}</p> : (
+            {!certs ? <Loading /> : certs.length === 0 ? <p className="small muted" style={{ margin: 0 }}>{tt('30 baldan yuxarı nəticə sertifikat gətirir: 31–60 Mis, 61–80 Gümüş, 81–90 Qızıl, 91–100 Platin.')}</p> : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 10 }}>
                 {certs.map(c => (
                   <button key={c.id} className="panel click" style={{ textAlign: 'left', margin: 0 }} onClick={() => setOpen(c)}>
-                    <div style={{ fontSize: 24 }}>🏆</div><b>{c.title}</b>
-                    <div className="small muted">{fmtDate(c.issued_at)}{c.details.pct != null ? ` · ${Math.round(c.details.pct)}%` : ''}{c.details.place ? ` · ${c.details.place}-ci yer` : ''}</div>
+                    <div style={{ fontSize: 24 }}>{c.details.tier ? TIER[c.details.tier]?.[3] : '🏆'}</div>{c.details.tier && TIER[c.details.tier] && <div className="small" style={{ fontWeight: 800, color: TIER[c.details.tier][1] }}>{tt(TIER[c.details.tier][2])}</div>}<b>{c.title}</b>
+                    <div className="small muted">{fmtDate(c.issued_at)}{c.details.pct != null ? ` · ${Math.round(c.details.pct)}%` : ''}{c.details.place ? ` · ${tt('{n}-ci yer', { n: c.details.place })}` : ''}</div>
                   </button>))}
               </div>)}
           </section>

@@ -107,8 +107,8 @@ def revoke(cid: int, user: User = Depends(staff), db: Session = Depends(get_db))
 
 class RulesIn(BaseModel):
     enabled: bool = True
-    movzu: int = Field(90, ge=50, le=100)
-    sinaq_pct: int = Field(80, ge=50, le=100)
+    movzu: int = Field(90, ge=0, le=100)
+    sinaq_pct: int = Field(80, ge=0, le=100)
     sinaq_top: int = Field(3, ge=0, le=10)
     seriya: int = Field(80, ge=50, le=100)
 

@@ -7,7 +7,12 @@ import { esc, printDoc } from './print'
 export type Cert = {
   id: number; code: string; kind: string; title: string; issued_at: string; revoked?: boolean; new?: boolean; student: string | null
   details: { pct?: number; correct?: number; total?: number; place?: number; of?: number; subject?: string; class_name?: string
-    teacher?: string; school?: string; note?: string; taken?: number }
+    teacher?: string; school?: string; note?: string; taken?: number; tier?: string }
+}
+// Dərəcə (bal / 100): 31–60 Mis · 61–80 Gümüş · 81–90 Qızıl · 91–100 Platin (≤ 30 – sertifikat verilmir)
+export const TIER: Record<string, [string, string, string, string]> = {
+  mis: ['#c47a3d', '#7c4a1e', 'Mis', '🥉'], gumus: ['#9ca3af', '#4b5563', 'Gümüş', '🥈'],
+  qizil: ['#f5b301', '#a16207', 'Qızıl', '🥇'], platin: ['#67e8f9', '#0e7490', 'Platin', '💎'],
 }
 const THEME: Record<string, [string, string, string]> = {
   movzu: ['#10b981', '#047857', 'Mövzu ustası'], sinaq: ['#8b5cf6', '#6d28d9', 'Sınaq imtahanı'],
@@ -21,8 +26,10 @@ export async function qrData(code: string) {
 }
 
 export function certHtml(c: Cert, qr: string): string {
-  const [c1, c2, label] = THEME[c.kind] || THEME.manual
   const d = c.details || {}
+  const tr = d.tier ? TIER[d.tier] : undefined
+  const [c1, c2, label0] = tr ? [tr[0], tr[1], (THEME[c.kind] || THEME.manual)[2]] : THEME[c.kind] || THEME.manual
+  const label = tr ? `${tr[3]} ${tr[2]} · ${label0}` : label0
   const what = c.title.replace(/^[^:]+:\s*/, '')
   const score = d.pct != null ? `<div style="display:flex;align-items:center;gap:22px;justify-content:center">
       <div style="width:92px;height:92px;border-radius:50%;background:linear-gradient(135deg,${c1},${c2});color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 4px 16px ${c1}55">
@@ -41,7 +48,7 @@ export function certHtml(c: Cert, qr: string): string {
       <div style="font-size:12px;font-weight:700;color:#475569;text-align:left;max-width:60%">${esc(d.school || '')}</div>
       <div style="padding:6px 14px;border-radius:999px;background:linear-gradient(135deg,${c1},${c2});color:#fff;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase">${label}</div>
     </div>
-    <div style="font-family:Georgia,'Times New Roman',serif;font-size:44px;font-weight:900;letter-spacing:.16em">SERTİFİKAT</div>
+    <div style="font-family:Georgia,'Times New Roman',serif;font-size:44px;font-weight:900;letter-spacing:.16em">${tr ? tr[2].toLocaleUpperCase('az') + ' ' : ''}SERTİFİKAT</div>
     <div style="width:64px;height:3px;border-radius:9px;background:linear-gradient(90deg,${c1},${c2});margin-top:-6px"></div>
     <div style="font-size:13px;color:#64748b">Bu sertifikat təqdim olunur</div>
     <div style="font-family:Georgia,'Times New Roman',serif;font-size:36px;font-weight:700;color:${c2};padding:2px 28px 6px;border-bottom:2px solid ${c1}44;min-width:320px">${esc(c.student || '—')}</div>

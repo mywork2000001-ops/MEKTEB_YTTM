@@ -1,4 +1,5 @@
 // Müəllim: sinfin sertifikatları – avtomatik verilənlər, əl ilə vermək, ləğv, hədlər (docs/sertifikat-ve-motivasiya-promtu.md).
+import { tt } from '../../i18n'
 import { useState } from 'react'
 import { get, post, put } from '../../api'
 import { printCert, type Cert } from '../../certificate'
@@ -18,8 +19,8 @@ export default function CertificatesPanel({ ta }: { ta: number }) {
   return (
     <section className="panel" style={{ marginTop: 12 }}>
       <h2>Sertifikatlar<small>{d.items.filter(c => !c.revoked).length}</small></h2>
-      <p className="small muted" style={{ marginTop: 0 }}>Avtomatik: mövzu testi ≥ {d.rules.movzu}%, sınaq ≥ {d.rules.sinaq_pct}% və ya sinifdə ilk {d.rules.sinaq_top} yer,
-        sınaq seriyasında ≥ {d.rules.seriya}% iştirak.{!d.rules.enabled && <b style={{ color: 'var(--warn)' }}> Avtomatik vermə söndürülüb.</b>} Şagird sertifikatı öz tətbiqində dərhal görür.</p>
+      <p className="small muted" style={{ marginTop: 0 }}>{tt('Avtomatik: test və sınaqda 30 baldan yuxarı — 31–60 Mis, 61–80 Gümüş, 81–90 Qızıl, 91–100 Platin (≤ 30 – verilmir, əvvəl verilibsə ləğv olunur);')}
+        {tt('sınaq seriyasında ≥ {n}% iştirak.', { n: d.rules.seriya })}{!d.rules.enabled && <b style={{ color: 'var(--warn)' }}> Avtomatik vermə söndürülüb.</b>} Şagird sertifikatı öz tətbiqində dərhal görür.</p>
       <div className="row" style={{ gap: 6, marginBottom: 8 }}>
         <button className="btn sm primary" onClick={() => setGive(x => !x)}>+ Sertifikat ver</button>
         <button className="btn sm" onClick={() => setRulesOpen(x => !x)}>Hədlər</button>
@@ -70,7 +71,7 @@ function RulesForm({ ta, r, onDone }: { ta: number; r: Rules; onDone: () => void
   return (
     <div className="fg" style={{ border: '1px solid var(--line)', borderRadius: 10, padding: 10, marginBottom: 10 }}>
       <label className="check full"><input type="checkbox" checked={f.enabled} onChange={e => setF({ ...f, enabled: e.target.checked })} /> Sertifikatlar avtomatik verilsin</label>
-      {num('movzu', 'Mövzu testi, %', 50, 100)}{num('sinaq_pct', 'Sınaq, %', 50, 100)}{num('sinaq_top', 'Sınaqda ilk neçə yer', 0, 10)}{num('seriya', 'Seriyada iştirak, %', 50, 100)}
+      {num('seriya', 'Seriyada iştirak, %', 50, 100)}
       <button className="btn primary sm" onClick={() => put(`/api/certificates/rules/${ta}`, f).then(() => { toast('Saxlandı'); onDone() }, e => toast(e.message))}>Saxla</button>
     </div>
   )

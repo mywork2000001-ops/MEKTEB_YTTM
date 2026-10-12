@@ -1,8 +1,9 @@
 """Sertifikatlar və şagird motivasiyası (docs/sertifikat-ve-motivasiya-promtu.md).
 
 Sertifikat yalnız serverdəki faktiki nəticədən verilir (şagird ad/bal dəyişə bilməz), hər birinin açıq yoxlanılan kodu var:
-- movzu  – mövzu testi ≥ hədd (default 90 %), təhvil veriləndə dərhal;
-- sinaq  – sınaq bağlanandan sonra: ≥ hədd (80 %) və ya sinifdə ilk N yer (3);
+- movzu  – mövzu testi, təhvil veriləndə dərhal; sinaq – sınaq bağlanandan sonra.
+  Yalnız 30 baldan (%) YUXARI nəticəyə, dərəcə ilə (istifadəçi qaydası, 12.10.2026):
+  31–60 Mis · 61–80 Gümüş · 81–90 Qızıl · 91–100 Platin. ≤ 30 – sertifikat yoxdur, əvvəl verilibsə ləğv edilir (tidy);
 - seriya – sınaq seriyasında ≥ 4 sınaq göndərilib və şagird ≥ hədd (80 %) qədərində iştirak edib;
 - manual – müəllim əl ilə.
 Nişanlar, XP, səviyyə, seriya (streak), həftəlik hədəf və bölmə proqresi saxlanılmır – nəticələrdən hesablanır."""
@@ -27,6 +28,16 @@ TZ = ZoneInfo(SCHOOL_TZ)
 
 def rules(ta: TeachingAssignment | None) -> dict:
     return {**DEFAULT_RULES, **((ta.cert_rules or {}) if ta else {})}
+
+
+TIERS = [(91, 'platin'), (81, 'qizil'), (61, 'gumus'), (31, 'mis')]     # bal (100 üzərindən = %) ≥ alt hədd
+
+
+def tier(p: float | None) -> str | None:
+    if p is None:
+        return None
+    b = round(p)
+    return next((k for lo, k in TIERS if b >= lo), None)
 
 
 def new_code(db: Session) -> str:
@@ -56,8 +67,12 @@ def _context(db: Session, ta: TeachingAssignment, s: Student) -> dict:
 def give(db: Session, s: Student, ta: TeachingAssignment | None, kind: str, source: str, title: str, details: dict,
          by: int | None = None) -> Certificate | None:
     """Sertifikat verir; eyni (şagird, növ, mənbə) artıq varsa – None (təkrar verilmir)."""
-    if db.scalar(select(Certificate.id).where(Certificate.student_id == s.id, Certificate.kind == kind,
-                                              Certificate.source == source)):
+    old = db.scalar(select(Certificate).where(Certificate.student_id == s.id, Certificate.kind == kind,
+                                              Certificate.source == source))
+    if old:                                                  # «Davam etsin»dən sonra nəticə dəyişə bilər – dərəcə yenilənir
+        if 'tier' in details and (old.details or {}).get('tier') != details['tier']:
+            old.details = {**(old.details or {}), **details}
+            old.revoked_at = None
         return None
     c = Certificate(code=new_code(db), student_id=s.id, assignment_id=ta.id if ta else None, kind=kind, source=source,
                     title=title[:300], details={**(_context(db, ta, s) if ta else {'student_code': s.portal_code}), **details},
@@ -77,12 +92,38 @@ def for_attempt(db: Session, t: OnlineTask, a: TaskAttempt) -> Certificate | Non
     ta = db.get(TeachingAssignment, t.assignment_id)
     r = rules(ta)
     p = _pct(a)
-    if not r['enabled'] or p is None or p < r['movzu']:
+    if not r['enabled']:
+        return None
+    tr = tier(p)
+    if tr is None:
+        _revoke(db, a.student_id, 'movzu', f'task:{t.id}')
         return None
     pl = db.get(PlanLesson, t.plan_lesson_id) if t.plan_lesson_id else None
     topic = pl.topic if pl else t.title
     return give(db, db.get(Student, a.student_id), ta, 'movzu', f'task:{t.id}', f'Mövzu ustası: {topic}',
-                {'pct': p, 'correct': a.correct, 'total': a.total, 'test': t.title})
+                {'pct': p, 'correct': a.correct, 'total': a.total, 'test': t.title, 'tier': tr})
+
+
+def _revoke(db: Session, sid: int, kind: str, source: str):
+    c = db.scalar(select(Certificate).where(Certificate.student_id == sid, Certificate.kind == kind, Certificate.source == source))
+    if c and not c.revoked_at:
+        c.revoked_at = now()
+
+
+def tidy(db: Session) -> int:
+    """Köhnə sertifikatları yeni qaydaya gətirir: ≤ 30 % – ləğv, qalanlarına dərəcə (mis/gümüş/qızıl/platin). İdempotent."""
+    n = 0
+    for c in db.scalars(select(Certificate).where(Certificate.kind.in_(('movzu', 'sinaq')), Certificate.revoked_at.is_(None))):
+        if (c.details or {}).get('pct') is None:
+            continue
+        tr = tier(c.details['pct'])
+        if tr is None:
+            c.revoked_at = now()
+            n += 1
+        elif (c.details or {}).get('tier') != tr:
+            c.details = {**(c.details or {}), 'tier': tr}
+            n += 1
+    return n
 
 
 def _sinaq_closed(db: Session, t: OnlineTask) -> int:
@@ -99,9 +140,13 @@ def _sinaq_closed(db: Session, t: OnlineTask) -> int:
     for a in atts:
         p = sc[a.id]['pct']
         place = 1 + sum(1 for b in atts if sc[b.id]['points'] > sc[a.id]['points'])
-        if p >= r['sinaq_pct'] or place <= r['sinaq_top']:
+        tr = tier(p)
+        if tr is None:
+            _revoke(db, a.student_id, 'sinaq', f'task:{t.id}')
+        else:
             c = give(db, db.get(Student, a.student_id), ta, 'sinaq', f'task:{t.id}', f'Sınaq imtahanı: {t.title}',
-                     {'pct': p, 'correct': a.correct, 'total': a.total, 'place': place, 'of': len(atts), 'test': t.title})
+                     {'pct': p, 'correct': a.correct, 'total': a.total, 'place': place, 'of': len(atts), 'test': t.title,
+                      'tier': tr})
             n += bool(c)
     return n
 
@@ -134,7 +179,7 @@ def issue_due(db: Session, at: dt.datetime | None = None) -> int:
     """Fon işi: son 3 gündə təhvil verilmiş mövzu testləri, bağlanmış sınaqlar, seriyalar."""
     at = at or now()
     since = at - dt.timedelta(days=3)
-    n = 0
+    n = tidy(db)
     for a, t in db.execute(select(TaskAttempt, OnlineTask).join(OnlineTask, OnlineTask.id == TaskAttempt.task_id).where(
             OnlineTask.kind == 'movzu', TaskAttempt.submitted_at >= since)):
         n += bool(for_attempt(db, t, a))
