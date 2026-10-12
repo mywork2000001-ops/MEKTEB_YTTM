@@ -1,6 +1,7 @@
 // Test nəticələri mərkəzi (docs/test-neticeleri-promtu.md): iki hissəli reytinq (mövzu testləri | sınaqlar), testi
 // yazmayanlar (yenidən göndər, valideynlə əlaqə qeydi), şagird profili, sinif/qrup, ümumi və süni intellektin pedaqoji rəyi.
 // Hər bölmədə «Çap / PDF».
+import { tt } from '../../i18n'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { get, post } from '../../api'
@@ -51,19 +52,23 @@ function usePeriodParams() {
 }
 type PP = ReturnType<typeof usePeriodParams>
 
-/** Görünən adlı seçim (iki «Hamısı» yan-yana qarışmasın). */
-function LSeg<T extends string>({ label, ...p }: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void }) {
-  return <span className="row" style={{ gap: 6, alignItems: 'center' }}><span className="small muted">{label}</span><Seg label={label} {...p} /></span>
+/** Adlı açılan siyahı (düymə zolaqları əvəzinə – səliqəli, telefonda da bir sətir; iki «Hamısı» qarışmır). */
+function LSeg<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly (readonly [T, string])[]; onChange: (v: T) => void }) {
+  return (
+    <label className="lsel"><span>{tt(label)}</span>
+      <select className="sel" value={value} onChange={e => onChange(e.target.value as T)}>{options.map(([k, l]) => <option key={k} value={k}>{tt(l)}</option>)}</select>
+    </label>)
 }
 
 function PeriodPick({ f }: { f: PP }) {
   return (
-    <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+    <>
       <LSeg label="Dövr" value={f.p} onChange={f.set} options={PERIODS} />
-      {f.has && <button className="btn sm" aria-label="Əvvəlki dövr" onClick={() => f.shift(-1)}>‹</button>}
-      <b className="small">{f.label}</b>
-      {f.has && <button className="btn sm" aria-label="Növbəti dövr" onClick={() => f.shift(1)}>›</button>}
-    </div>
+      <span className="row" style={{ gap: 6, alignItems: 'center', alignSelf: 'end', minHeight: 38 }}>
+        {f.has && <button className="btn sm" aria-label={tt('Əvvəlki dövr')} onClick={() => f.shift(-1)}>‹</button>}
+        <b className="small">{f.label === 'bütün dövr' ? tt('bütün dövr') : f.label}</b>
+        {f.has && <button className="btn sm" aria-label={tt('Növbəti dövr')} onClick={() => f.shift(1)}>›</button>}</span>
+    </>
   )
 }
 
@@ -106,11 +111,11 @@ export default function ResultsCenter({ embedded, ta, tab: tabProp, onTab }: { e
   return (
     <>
       {!embedded && <><Top title="Test nəticələri" sub="Bütün analitika bir yerdə: mövzu testləri və sınaqlar ayrıca – reytinq, yazmayanlar, şagird, sinif və qrup, ümumi, süni intellektin rəyi." />
-      <div className="tabs rtabs no-print">{TABS.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{l}
-        {k === 'missing' && chronic > 0 && <span className="pill bad" style={{ marginLeft: 6 }} title="xroniki yazmayanlar">{chronic}</span>}</button>)}</div></>}
+      <div className="toolbar no-print lsel-bar"><LSeg label="Bölmə" value={tab} onChange={setTab}
+        options={TABS.map(([k, l]) => [k, k === 'missing' && chronic > 0 ? `${tt(l)} (${chronic})` : l] as const)} /></div></>}
       {embedded && tab !== 'missing' && chronic > 0 && <p className="small no-print" style={{ margin: '0 0 8px' }}><button className="btn sm ghost" onClick={() => setTab('missing')}>
         <span className="pill bad">{chronic}</span> xroniki yazmayan – «Yazmayanlar»a bax ›</button></p>}
-      <div className="toolbar no-print" style={{ flexWrap: 'wrap' }}><LSeg label="Növ" value={kf} onChange={setKf} options={KF_OPTS} /><PeriodPick f={f} />
+      <div className="toolbar no-print lsel-bar"><LSeg label="Növ" value={kf} onChange={setKf} options={KF_OPTS} /><PeriodPick f={f} />
         {tab === 'rating' && <>{!embedded && <ClassSelect lessons={lessons} value={rta} onChange={setRta} />}<LSeg label="Sıralama" value={sort} onChange={setSort} options={SORTS} /></>}</div>
       {tab === 'rating' && kinds.map(k => <div key={k} style={{ marginBottom: 18 }}><RatingPanel f={f} lessons={lessons} onStudent={openStudent} kind={k} ta={rta} sort={sort} /></div>)}
       {tab === 'missing' && <Missing key={embedded ? `m${ta ?? ''}` : 'm'} f={f} lessons={lessons} onStudent={openStudent} kind={kf} fixedTa={embedded ? ta ?? null : undefined} />}

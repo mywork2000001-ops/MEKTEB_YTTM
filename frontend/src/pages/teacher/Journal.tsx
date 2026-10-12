@@ -42,8 +42,11 @@ export default function Journal() {
       {print && cur && <JournalPrint ta={cur} all={lessons || []} date={date} onClose={() => setPrint(false)} />}
       {!ta || !cur ? <PickFirst /> : (
         <>
-          <div className="tabs" role="tablist">
-            {TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{t(l)}</button>)}
+          {/* bölmələr – açılan siyahı (8 tab bir sətrə sığmırdı) */}
+          <div className="toolbar lsel-bar no-print" style={{ marginBottom: 12 }}>
+            <label className="lsel"><span>{t('Bölmə')}</span>
+              <select className="sel" value={tab} onChange={e => setTab(e.target.value as typeof tab)}>
+                {TABS.map(([k, l]) => <option key={k} value={k}>{t(l)}</option>)}</select></label>
           </div>
           {tab === 'day' && <DayView ta={cur} date={date} setDate={setDate} />}
           {tab === 'grid' && <Grid ta={cur} />}

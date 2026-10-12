@@ -362,8 +362,10 @@ function Results({ id, onClose, onChange }: { id: number; onClose: () => void; o
           </div>
           {d.access === 'own' && <p className="small muted" style={{ margin: 0 }}>Başqa müəllimlərin siniflərindəki şagirdlərin adı göstərilmir – yalnız yer və bal.</p>}
           <div className="row">
-            <Seg value={tab} onChange={setTab} options={[['rows', 'Jurnal'], ['classes', d.classes.some(c => c.own) ? 'Siniflər və idarə' : 'Siniflər'], ['questions', 'Suallar']]} />
-            {tab === 'rows' && <select className="sel" value={cls} onChange={e => setCls(e.target.value)}><option value="">Bütün siniflər</option>{d.classes.map(c => <option key={c.task_id}>{c.class_name}</option>)}</select>}
+            <label className="lsel"><span>{tt('Görünüş')}</span><select className="sel" value={tab} onChange={e => setTab(e.target.value as typeof tab)}>
+              <option value="rows">{tt('Nəticələr və reytinq')}</option><option value="classes">{tt(d.classes.some(c => c.own) ? 'Siniflər və idarə' : 'Siniflər')}</option>
+              <option value="questions">{tt('Suallar üzrə təhlil')}</option></select></label>
+            {tab === 'rows' && <label className="lsel"><span>{tt('Sinif')}</span><select className="sel" value={cls} onChange={e => setCls(e.target.value)}><option value="">{tt('Bütün siniflər')}</option>{d.classes.map(c => <option key={c.task_id}>{c.class_name}</option>)}</select></label>}
           </div>
           {tab === 'rows' && (
             <div className="tbl-wrap"><table>

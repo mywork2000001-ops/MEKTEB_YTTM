@@ -772,6 +772,12 @@ label.f textarea{min-height:84px;padding:10px 12px;resize:vertical}
 .calc{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:var(--r-sm);background:var(--surface-2);font-size:13.5px;flex-wrap:wrap}
 .check{display:flex;align-items:center;gap:10px;font-size:14px;min-height:40px}
 .check input{width:20px;height:20px;accent-color:var(--accent)}
+/* adlı açılan siyahı (Nəticələr, reytinq, sınaq jurnalı): ad üstdə, siyahı altda; panel grid ilə düzülür */
+.lsel{display:flex;flex-direction:column;gap:3px;min-width:150px;flex:1 1 170px;max-width:280px}
+.lsel>span{font-size:12px;font-weight:600;color:var(--ink-3,#6b7280);text-transform:uppercase;letter-spacing:.04em}
+.lsel .sel{width:100%}
+.lsel-bar{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-end}
+@media (max-width:640px){.lsel{max-width:none;flex-basis:calc(50% - 6px)}}
 .seg{display:flex;flex-wrap:wrap;background:var(--sunk);border-radius:var(--r-sm);padding:3px;gap:3px}   /* dar ekranda düymələr növbəti sətrə keçir – kəsilmir */
 .seg button{all:unset;cursor:pointer;flex:1;text-align:center;min-height:38px;line-height:38px;border-radius:8px;font-size:14px;font-weight:500;color:var(--ink-2)}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}

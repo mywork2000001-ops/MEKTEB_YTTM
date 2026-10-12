@@ -457,6 +457,16 @@ const D: Record<string, [string, string]> = {
   "Çək": ["Shoot", "Снять"],
   "Kamera açıq qalır, kartları bir-bir çəkin": ["The camera stays open — shoot the cards one by one", "Камера остаётся открытой — снимайте бланки по одному"],
   "Ardıcıl skan": ["Batch scan", "Скан подряд"],
+  // nəticələr – açılan siyahılar (12.10.2026)
+  "Növ": ["Type", "Тип"],
+  "bütün dövr": ["whole period", "весь период"],
+  "Nəticələr və reytinq": ["Results and rating", "Результаты и рейтинг"],
+  "Siniflər və idarə": ["Classes and management", "Классы и управление"],
+  "Suallar üzrə təhlil": ["Question analysis", "Анализ по вопросам"],
+  "Bütün siniflər": ["All classes", "Все классы"],
+  "Yazmayanlar": ["Not written", "Не написавшие"],
+  "Sinif və qrup": ["Class and group", "Класс и группа"],
+  "Ümumi": ["Overall", "Общее"],
 }
 
 export const I18nCtx = createContext<Lang>('az')
