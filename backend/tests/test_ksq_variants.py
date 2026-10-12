@@ -268,3 +268,21 @@ def test_auto_minimal_share_no_templates():
     assert all(len({q['key'] for q in v}) == 10 for v in res.values())
     with pytest.raises(Shortage):                                     # bir şagirdə də çatmırsa – Shortage (sual sayını azaltmaq)
         generate_auto([1], [('Faiz', None)], cands[:6], {}, seed=1, n=30)
+
+
+def test_shared_file_goes_to_best_topic(world):
+    """Fayl iki mövzuda: sualları faylın birinci durduğu mövzuya yazılır (canlı audit 13.10: «Qalıqlı bölmə» 0 göstərirdi)."""
+    from app.domain.ksq_variants import bank_candidates
+    _, S = world
+    with S() as db:
+        db.add(BankSource(key='p003', label='P0010')); db.flush()
+        a = BankFile(source_key='p003', lesson='a', label='Natural — Toplama', url='u', kind='movzu', question_count=2)
+        b = BankFile(source_key='p003', lesson='b', label='Natural — Qalıqlı bölmə', url='u', kind='movzu', question_count=2)
+        db.add_all([a, b]); db.flush()
+        for f, h in ((a, 'a'), (b, 'b')):
+            for i in range(2):
+                db.add(BankQuestion(file_id=f.id, n=i + 1, kind='mcq', text={'az': f'{h}{i}'}, content_hash=f'{h}{i}', options=[{'az': '1'}, {'az': '2'}], correct=0))
+        db.commit()
+        cs = bank_candidates(db, [('Toplama', None), ('Qalıqlı bölmə', None)], 'p003', {0: [a.id, b.id], 1: [b.id]})
+        tops = {c.q['lesson']: c.topic for c in cs if c.kind == 'mcq'}
+        assert tops == {'Natural — Toplama': 0, 'Natural — Qalıqlı bölmə': 1}

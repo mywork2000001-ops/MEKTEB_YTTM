@@ -100,8 +100,17 @@ def bank_candidates(db, topics: list[tuple[str, str | None]], source: str = 'p00
     out, seen = [], set()
     # files: {mövzu indeksi: [fayl id]} – perspektiv plandakı seçim və ya müəllimin seçdiyi testlər (-1 – istənilən mövzu)
     plan = files if files is not None else {ti: [f.id for f, _ in m.matches(t, sec, limit=4, rel=0.45)] for ti, (t, sec) in enumerate(topics)}
+    # bir fayl bir neçə mövzuda ola bilər: sualları faylın ƏN UYĞUN mövzusuna yazılır – mövzu siyahısında birinci olduğu (və ya
+    # ən yuxarıda durduğu), bərabərlikdə faylı az olan mövzu (məs. «Qalıqlı bölmə» → «Ədədin bölünəni», əvvəlki mövzuya yox)
+    home: dict[int, int] = {}
     for ti, fids in plan.items():
-        for f in (db.get(BankFile, i) for i in fids):
+        for rank, fid in enumerate(fids):
+            cur = home.get(fid)
+            key = (ti == -1, rank, len(fids))
+            if cur is None or key < (cur == -1, plan[cur].index(fid), len(plan[cur])):
+                home[fid] = ti
+    for ti, fids in plan.items():
+        for f in (db.get(BankFile, i) for i in fids if home.get(i) == ti):
             if f is None or not f.active:
                 continue
             for q in db.scalars(select(BankQuestion).where(BankQuestion.file_id == f.id, BankQuestion.active.is_(True))):
