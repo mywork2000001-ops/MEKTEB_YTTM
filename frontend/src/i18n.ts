@@ -381,6 +381,14 @@ const D: Record<string, [string, string]> = {
   "Son 5 testin ortası ilk 5-dən ≥ 15 % yüksək": ["Last 5 tests average ≥ 15 % above the first 5", "Среднее последних 5 тестов на ≥ 15 % выше первых 5"],
   "Sertifikatlı": ["Certified", "С сертификатом"],
   "İlk sertifikatını qazan": ["Earn your first certificate", "Получи первый сертификат"],
+  // davam etsin, kamera (12.10.2026)
+  "Şagird testi davam etdirə bilər": ["The student can continue the test", "Ученик может продолжить тест"],
+  "Cavablar saxlanır, qalan vaxt yenidən verilir (test bağlansa da)": ["Answers are kept and the remaining time is given again (even if the test is closed)", "Ответы сохраняются, оставшееся время даётся заново (даже если тест закрыт)"],
+  "Davam etsin": ["Let continue", "Продолжить"],
+  "Şagird sınağı davam etdirə bilər": ["The student can continue the exam", "Ученик может продолжить экзамен"],
+  "Təsadüfən çıxıbsa: cavablar saxlanır, qalan vaxt yenidən verilir": ["If the student left by accident: answers are kept, remaining time is given again", "Если ученик вышел случайно: ответы сохраняются, оставшееся время даётся заново"],
+  "Kamera": ["Camera", "Камера"],
+  "🖼 Qalereyadan seç": ["🖼 Choose from gallery", "🖼 Выбрать из галереи"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

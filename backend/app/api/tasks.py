@@ -504,6 +504,33 @@ def reset_attempt(ta_id: int, task_id: int, student_id: int, user: User = Depend
     return {'ok': True}
 
 
+class ResumeIn(BaseModel):
+    minutes: int | None = Field(None, ge=5, le=300)        # boş – testin istifadə olunmamış vaxtı (ən azı 10 dəq)
+
+
+@router.post('/{ta_id}/{task_id}/attempts/{student_id}/resume')
+def resume_attempt(ta_id: int, task_id: int, student_id: int, body: ResumeIn | None = None, user: User = Depends(staff),
+                   db: Session = Depends(get_db)):
+    """«Davam etsin»: şagird testdən təsadüfən çıxıb (vaxt bitdi / təhvil getdi) — cəhd yenidən açılır, CAVABLARI SAXLANIR,
+    yeni müddət verilir; test bağlanıbsa da yalnız bu şagird üçün işləyir. Nəticə təhvildə yenidən hesablanır."""
+    t = _own_task(db, user, ta_id, task_id)
+    a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == student_id))
+    if not a:
+        raise HTTPException(404, 'Şagird bu testə başlamayıb – «Yenidən göndər» istifadə edin')
+    at = now()
+    used = ((aware(a.submitted_at) if a.submitted_at else min(at, aware(a.deadline))) - aware(a.started_at)).total_seconds() / 60
+    minutes = (body.minutes if body and body.minutes else None) or max(10, round(t.duration_min - used))
+    a.submitted_at, a.auto_submitted = None, False
+    a.correct = a.total = a.grade = a.points = None
+    a.deadline = at + dt.timedelta(minutes=minutes)
+    _forget(t.batch_id)
+    for m in db.scalars(select(Mark).where(Mark.task_id == t.id, Mark.student_id == student_id)):
+        db.delete(m)                                  # jurnala yazılmış qiymət – təhvildən sonra yenidən yazılacaq
+    audit(db, user, 'update', 'task_attempt', t.id, student_id=student_id, resume_minutes=minutes)
+    db.commit()
+    return {'ok': True, 'deadline': aware(a.deadline), 'minutes': minutes, 'answers': len(a.answers or {})}
+
+
 def _own_task(db: Session, user: User, ta_id: int, task_id: int) -> OnlineTask:
     ta = own_assignment(db, user, ta_id)
     t = get_or_404(db, OnlineTask, task_id, 'Tapşırıq')

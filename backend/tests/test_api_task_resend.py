@@ -48,3 +48,26 @@ def test_copy_restore_and_retake(world, clock):
     # bağlanmış testə təkrar icazə olmaz
     clock.t = dt.datetime(2026, 9, 29, 17, 0, tzinfo=UTC)
     assert admin.delete(f'/api/tasks/{ta}/{t["id"]}/attempts/{st[0]["id"]}').status_code == 409
+
+
+def test_resume_attempt_keeps_answers(world, clock):
+    """«Davam etsin»: şagird təsadüfən çıxıb (vaxt bitdi / təhvil getdi) — test bağlansa da cəhd açılır, cavablar saxlanır."""
+    admin, ta, cid, st, ids = setup(world)
+    t = mk_task(admin, ta, ids).json()                              # 15:00–16:00, 40 dəq
+    s = student_client(st[0]['portal_code'], st[0]['initial_pin'])
+    clock.t = dt.datetime(2026, 9, 29, 15, 10, tzinfo=UTC)
+    q = s.post(f'/api/portal/tasks/{t["id"]}/start').json()
+    first = q['questions'][0]['index']
+    s.put(f'/api/portal/tasks/{t["id"]}/answers', json={'answers': {str(first): 1}})
+    clock.t = dt.datetime(2026, 9, 29, 15, 20, tzinfo=UTC)
+    s.post(f'/api/portal/tasks/{t["id"]}/submit', json={'answers': {}})       # təsadüfən təhvil (10 dəq işlədib)
+    clock.t = dt.datetime(2026, 9, 29, 17, 0, tzinfo=UTC)                     # test artıq bağlanıb
+    assert admin.post(f'/api/tasks/{ta}/{t["id"]}/attempts/{st[1]["id"]}/resume').status_code == 404   # başlamayıb
+    r = admin.post(f'/api/tasks/{ta}/{t["id"]}/attempts/{st[0]["id"]}/resume').json()
+    assert r['minutes'] == 35 and r['answers'] == 1                           # qalan vaxt: 45 (ən azı) − 10
+    again = s.post(f'/api/portal/tasks/{t["id"]}/start')
+    assert again.status_code == 200 and again.json()['answers'] == {str(first): 1}
+    assert next(x for x in s.get('/api/portal/tasks').json() if x['id'] == t['id'])['status'] == 'həll edilir'
+    res = s.post(f'/api/portal/tasks/{t["id"]}/submit', json={'answers': {}}).json()
+    assert res['total'] == 3
+    assert admin.post(f'/api/tasks/{ta}/{t["id"]}/attempts/{st[0]["id"]}/resume', json={'minutes': 15}).json()['minutes'] == 15

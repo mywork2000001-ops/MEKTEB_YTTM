@@ -99,8 +99,10 @@ export function SolutionUpload({ id, at, compact, onDone }: { id: number; at?: s
   return (
     <div className={compact ? 'row' : 'stack'} style={{ gap: 6, marginTop: compact ? 0 : 12 }}>
       {!compact && <b className="small">{tt('📷 Həllin şəkilləri (müəllimə bir PDF kimi gedir)')}</b>}
-      <label className="btn sm">{files.length ? tt('{n} şəkil seçilib', { n: files.length }) : sent ? tt('Yenidən şəkil seç') : tt('📷 Həlli göndər')}
-        <input type="file" accept="image/*" multiple hidden onChange={e => setFiles(f => [...f, ...Array.from(e.target.files || [])])} /></label>
+      <label className="btn sm">📷 {tt('Kamera')}
+        <input type="file" accept="image/*" capture="environment" hidden onChange={e => { setFiles(f => [...f, ...Array.from(e.target.files || [])]); e.target.value = '' }} /></label>
+      <label className="btn sm">{files.length ? tt('{n} şəkil seçilib', { n: files.length }) : sent ? tt('Yenidən şəkil seç') : tt('🖼 Qalereyadan seç')}
+        <input type="file" accept="image/*" multiple hidden onChange={e => { setFiles(f => [...f, ...Array.from(e.target.files || [])]); e.target.value = '' }} /></label>
       {files.length > 0 && <><button type="button" className="btn primary sm" disabled={busy} onClick={send}>{busy ? tt('Göndərilir…') : tt('PDF kimi göndər')}</button>
         <button type="button" className="btn sm ghost" disabled={busy} onClick={() => setFiles([])}>{tt('Təmizlə')}</button></>}
       {sent && <a className="small" href={`/api/portal/tasks/${id}/solution`} target="_blank" rel="noreferrer">{tt('✓ göndərilib – bax')}</a>}

@@ -1,11 +1,11 @@
 // Sınaq imtahanları (onlayn): planla əlaqəsiz, bir neçə sinfə eyni anda. Nəticə – «Sınaq jurnalı» (bal, faiz, sinifdə və
 // ümumi yer), siniflərin reytinqi, sual analizi, açıq sualın əl ilə yoxlanması, kumulyativ reytinq. Formativ jurnala düşmür.
 import { StudentPicker } from './common'
-import { ml } from '../../i18n'
+import { ml, tt } from '../../i18n'
 import { useEffect, useMemo, useState } from 'react'
 import { ApiError, del as apiDel, get, patch, post, put } from '../../api'
 import { MathText } from '../../MathText'
-import { Chips, ConfirmName, Drawer, ErrorBox, Field, fmt, Loading, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
+import { AsyncBtn, Chips, ConfirmName, Drawer, ErrorBox, Field, fmt, Loading, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
 import { Link } from 'react-router-dom'
 import { esc, head, printDoc, table } from '../../print'
 import TaskEditor, { BankPicker, iso, localParts, OwnQuestion, toCustom, type Given, type Q } from './TaskEditor'
@@ -134,7 +134,10 @@ function ExamStudents({ id }: { id: number }) {
                     {r.full_name || 'şagird'} <Pill tone={STATUS_TONE[r.status]}>{r.status === 'yazıb' ? `${fmt(r.pct)}%` : r.status}</Pill>
                     {r.retake && <span className="muted"> · təkrar</span>}
                     {c.own && r.student_id && <button className="btn sm ghost" style={{ padding: '0 6px', minHeight: 24, marginLeft: 4 }}
-                      title="Bu şagirdə sınağı yenidən göndər (yeni vaxtla)" onClick={() => setRs({ ta: c.ta_id, task: r.task_id, ids: [r.student_id!] })}>↻ Yenidən göndər</button>}</li>))}
+                      title="Bu şagirdə sınağı yenidən göndər (yeni vaxtla)" onClick={() => setRs({ ta: c.ta_id, task: r.task_id, ids: [r.student_id!] })}>↻ Yenidən göndər</button>}
+                    {c.own && r.student_id && (r.status === 'yazıb' || r.status === 'yazır' || r.status === 'yazmayıb') && <AsyncBtn className="btn sm ghost" style={{ padding: '0 6px', minHeight: 24, marginLeft: 4 }}
+                      ok={tt('Şagird sınağı davam etdirə bilər')} title={tt('Təsadüfən çıxıbsa: cavablar saxlanır, qalan vaxt yenidən verilir')}
+                      onClick={async () => { try { await post(`/api/tasks/${c.ta_id}/${r.task_id}/attempts/${r.student_id}/resume`); reload() } catch (e) { toast((e as Error).message); throw e } }}>▶ {tt('Davam etsin')}</AsyncBtn>}</li>))}
               </ol>}
           </div>)
       })}

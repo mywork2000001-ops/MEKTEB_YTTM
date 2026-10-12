@@ -1,6 +1,6 @@
 // Onlayn tapşırıqlar (müəllim): yaratma / viktorinadan test / redaktə / link kimi göndərmə / silmə / canlı izləmə.
 import { useEffect, useState } from 'react'
-import { ml } from '../../i18n'
+import { ml, tt } from '../../i18n'
 import { del as apiDel, get, post } from '../../api'
 import { MathText } from '../../MathText'
 import { AsyncBtn, Chips, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, Loading, More, Pill, toast, Top, useLoad, ord } from '../../ui'
@@ -359,6 +359,8 @@ function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; on
               <span className="row">{r.status === 'təhvil verib'
                 ? <><span className="small">{r.correct}/{r.total}</span><Pill tone={r.grade ? gradeTone(r.grade) : r.pct >= 70 ? 'ok' : r.pct >= 40 ? 'warn' : 'bad'}>{fmt(r.pct, r.grade ? 0 : 1)}%{r.grade ? ` → ${r.grade}` : ''}</Pill></>
                 : <Pill tone={r.status === 'həll edir' ? 'info' : undefined}>{r.status}</Pill>}
+                {r.status !== 'başlamayıb' && <AsyncBtn className="btn sm" ok={tt('Şagird testi davam etdirə bilər')} title={tt('Cavablar saxlanır, qalan vaxt yenidən verilir (test bağlansa da)')}
+                  onClick={async () => { await post(`/api/tasks/${ta}/${id}/attempts/${r.student_id}/resume`); reload() }}>▶ {tt('Davam etsin')}</AsyncBtn>}
                 {live && r.status !== 'başlamayıb' && <AsyncBtn className="btn sm ghost" ok="Təkrar icazə verildi"
                   onClick={async () => { await apiDel(`/api/tasks/${ta}/${id}/attempts/${r.student_id}`); reload() }}>Təkrar icazə</AsyncBtn>}</span>
             </div>))}
