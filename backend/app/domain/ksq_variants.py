@@ -157,8 +157,10 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
     reuse_left = int(REUSE * n * len(students)) if share == 1 else 10 ** 9
     nt = max(1, len(topics))
     # slotlara mövzu: plan dərslərinin ardıcıllığı ilə dövri (saat payına mütənasib — eyni mövzu bir neçə dərsdirsə çox düşür)
+    # slotlar yalnız SUALI OLAN mövzulara dövri paylanır (faylı qonşu mövzu ilə ortaq olan mövzu boş qalırdı – slot başqa yerə gedirdi)
+    live = sorted({c.topic for c in cands if 0 <= c.topic < nt}) or list(range(nt))
     for i, s in enumerate(plan):
-        s['topic'] = i % nt
+        s['topic'] = live[i % len(live)]
     # şablonlar YALNIZ aralığın mövzularına uyğun (docs/ksq-movzu-dizayn-promtu.md B2) – ümumi ehtiyat yoxdur
     # şablonlar standart olaraq SÖNÜKDÜR: suallar yalnız layihənin (X–XI – P0010 Blok İmtahan) fayllarından (istifadəçi qaydası 13.10)
     tpl_topic = {ti: T.matching(stems(t) | stems(sec or '')) for ti, (t, sec) in enumerate(topics)} if templates else {}
