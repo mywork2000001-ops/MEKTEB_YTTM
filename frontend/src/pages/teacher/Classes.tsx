@@ -4,6 +4,9 @@ import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, levelTone, Loading, Pi
 import { kindLabel, usePick } from './common'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import ExtraCourses, { StudentGroups } from './ExtraCourses'
+import { AddExisting, ClassMemberships, Duplicates } from './ClassMembers'
+import { useAuth } from '../../auth'
+import { del as apiDel } from '../../api'
 import { NewStudent } from './SettingsRoster'
 import ClassListPrint from './ClassListPrint'
 
@@ -18,7 +21,9 @@ export default function Classes() {
   const [sp, setSp] = useSearchParams()
   const view = sp.get('tab') === 'extra' ? 'extra' : 'classes'
   const setView = (v: 'classes' | 'extra') => setSp(prev => { const n = new URLSearchParams(prev); v === 'extra' ? n.set('tab', 'extra') : n.delete('tab'); return n })
-  const [classes, err] = useLoad<Cls[]>(() => get('/api/classes'), [])
+  const [classes, err, , reloadClasses] = useLoad<Cls[]>(() => get('/api/classes'), [])
+  const { me } = useAuth()
+  const [dups, setDups] = useState(false)
   const [sel, setSel] = usePick('classes')
   const [card, setCard] = useState<Stud | null>(null)
   const nav = useNavigate()
@@ -27,7 +32,9 @@ export default function Classes() {
   return (
     <>
       <Top title="Siniflər və qruplar" sub="Sinif, bölünmə qrupu, tədris qrupu və məşğələ qrupları"
-        actions={view === 'classes' && <button className="btn sm" onClick={() => nav('/settings?tab=classes')}>Yarat / redaktə et / şagird əlavə et</button>} />
+        actions={view === 'classes' && <>{me?.role === 'admin' && <button className="btn sm" onClick={() => setDups(true)}>Təkrar şagirdlər</button>}
+          <button className="btn sm" onClick={() => nav('/settings?tab=classes')}>Yarat / redaktə et / şagird əlavə et</button></>} />
+      {dups && <Duplicates onClose={() => setDups(false)} onDone={reloadClasses} />}
       <div className="toolbar"><Seg value={view} onChange={setView} options={[['classes', 'Siniflər'], ['extra', 'Məşğələ qrupları']]} /></div>
       {view === 'extra' ? <ExtraCourses embedded /> : <>
       <ErrorBox error={err} />
@@ -58,14 +65,18 @@ function StudentList({ cls, all, onOpen }: { cls: Cls; all: Cls[]; onOpen: (s: S
   const [q, setQ] = useState('')
   const [inv, setInv] = useState(false)
   const [add, setAdd] = useState(false)
+  const [other, setOther] = useState(false)
   const lc = (x: string) => x.toLocaleLowerCase('az')
+  // əlavə üzv: əsas sinfi başqadır (bir şagird bir neçə sinifdə) və ya qrup üzvü – buradan çıxarmaq olar
+  const extra = (s: Stud) => cls.kind === 'qrup' || s.class_name !== cls.name
   const list = (rows || []).filter(s => !q || lc(s.full_name).includes(lc(q)) || lc(s.portal_code).includes(lc(q)))
   // bütöv sinif – sinfə; bölünmə qrupu – ana sinfə yazılır və qrupa üzv olur; tədris qrupu – üzvlər «Tənzimləmələr»dən
   const canAdd = cls.kind !== 'qrup' || !!cls.parent_id
   return (
     <>
-      <h2 className="sec">{cls.name} <small>ID: {cls.code} · {rows?.length ?? ''} şagird</small><span className="row" style={{ marginLeft: 'auto' }}>{canAdd && <button className="btn sm primary" onClick={() => setAdd(true)}>+ Şagird</button>}<button className="btn sm" onClick={() => setPrint(true)}>Çap / PDF</button>{cls.kind !== 'qrup' && <button className="btn sm" onClick={() => setInv(true)}>Qeydiyyat linki</button>}</span></h2>
+      <h2 className="sec">{cls.name} <small>ID: {cls.code} · {rows?.length ?? ''} şagird</small><span className="row" style={{ marginLeft: 'auto' }}>{canAdd && <button className="btn sm primary" onClick={() => setAdd(true)}>+ Şagird</button>}<button className="btn sm" onClick={() => setOther(true)} title="Mövcud şagird – əsas sinfi dəyişmədən">+ Başqa sinifdən</button><button className="btn sm" onClick={() => setPrint(true)}>Çap / PDF</button>{cls.kind !== 'qrup' && <button className="btn sm" onClick={() => setInv(true)}>Qeydiyyat linki</button>}</span></h2>
       {inv && <Invites cls={cls} onClose={() => setInv(false)} />}
+      {other && <AddExisting cls={cls} have={(rows || []).map(s => s.id)} onClose={() => setOther(false)} onDone={reload} />}
       {print && <ClassListPrint cls={cls} all={all} onClose={() => setPrint(false)} />}
       {add && <Drawer title={`${cls.name} (ID: ${cls.code}) – yeni şagird`} onClose={() => setAdd(false)}>
         {cls.parent_id && <p className="small muted">Şagird ana sinfə yazılır və dərhal bu bölünmə qrupuna üzv olur.</p>}
@@ -76,7 +87,9 @@ function StudentList({ cls, all, onOpen }: { cls: Cls; all: Cls[]; onOpen: (s: S
         <thead><tr><th>Şagird</th><th>ID (giriş kodu)</th><th className="r">IX riyaziyyat</th><th className="r">Yekun bal</th><th>Səviyyə (IX)</th></tr></thead>
         <tbody>{list.map(s => (
           <tr key={s.id} className="click" onClick={() => onOpen(s)}>
-            <td><b>{s.full_name}</b><span className="sub">{fmtDate(s.birth_date)} · {s.gender || ''}</span></td>
+            <td><b>{s.full_name}</b><span className="sub">{fmtDate(s.birth_date)} · {s.gender || ''}{s.class_name !== cls.name ? ` · əsas sinif: ${s.class_name}` : ''}</span>
+              {extra(s) && <span onClick={e => e.stopPropagation()}><AsyncBtn className="btn sm ghost" ok="Çıxarıldı"
+                onClick={async () => { await apiDel(`/api/classes/${cls.id}/members/${s.id}`); reload() }}>✕ {cls.kind === 'qrup' ? 'qrupdan' : 'bu sinifdən'} çıxar</AsyncBtn></span>}</td>
             <td className="mono">{s.portal_code}</td><td className="r num">{fmt(s.score_math)}</td><td className="r num">{fmt(s.score_total)}</td>
             <td>{s.level ? <Pill tone={levelTone(LV[s.level])}>{LV[s.level]}</Pill> : <span className="muted">bal yoxdur</span>}</td>
           </tr>))}</tbody>
@@ -91,7 +104,7 @@ function StudentCard({ s, onClose }: { s: Stud; onClose: () => void }) {
   const [tab, setTab] = useState<'info' | 'contacts' | 'plans' | 'groups'>('info')
   return (
     <Drawer title={s.full_name} onClose={onClose}>
-      <div className="tabs">{([['info', 'Məlumat'], ['contacts', 'Valideynlə əlaqə'], ['plans', 'Fərdi iş planı'], ['groups', 'Məşğələ qrupları']] as const).map(([k, l]) =>
+      <div className="tabs">{([['info', 'Məlumat'], ['contacts', 'Valideynlə əlaqə'], ['plans', 'Fərdi iş planı'], ['groups', 'Siniflər və qruplar']] as const).map(([k, l]) =>
         <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
       {tab === 'info' && (
         <>
@@ -109,7 +122,7 @@ function StudentCard({ s, onClose }: { s: Stud; onClose: () => void }) {
         </>)}
       {tab === 'contacts' && <Contacts sid={s.id} />}
       {tab === 'plans' && <IPlans sid={s.id} />}
-      {tab === 'groups' && <StudentGroups studentId={s.id} />}
+      {tab === 'groups' && <><ClassMemberships studentId={s.id} /><StudentGroups studentId={s.id} /></>}
     </Drawer>
   )
 }

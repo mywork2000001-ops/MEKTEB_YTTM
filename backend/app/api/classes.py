@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -62,8 +62,8 @@ def class_out(db: Session, c: SchoolClass, user: User, mine: set[int] | None):
                                                        TeachingAssignment.teacher_id == user.id,
                                                        TeachingAssignment.archived_at.is_(None)))
     visible = mine is None or c.id in mine
-    n = db.scalar(select(func.count()).select_from(Student).where(Student.class_id == c.id,
-                                                                  Student.archived_at.is_(None)))
+    n = db.scalar(select(func.count()).select_from(Student).where(Student.archived_at.is_(None), or_(
+        Student.class_id == c.id, Student.id.in_(select(GroupMember.student_id).where(GroupMember.group_id == c.id)))))
     if c.kind == 'qrup':
         n = db.scalar(select(func.count()).select_from(GroupMember).where(GroupMember.group_id == c.id))
     return {'id': c.id, 'name': c.name, 'code': c.code, 'kind': c.kind, 'parent_id': c.parent_id,
@@ -442,6 +442,80 @@ def set_members(cid: int, body: MembersIn, user: User = Depends(settings_unlocke
     audit(db, user, 'update', 'group_members', cid, count=len(ok))
     db.commit()
     return sorted(ok)
+
+
+def _member_query(c: SchoolClass, ids):
+    """Qrupa kim üzv ola bilər: bölünmə – yalnız ana sinifdən; tədris qrupu – məktəbin cari ilinin istənilən sinfindən."""
+    st = select(Student.id).where(Student.id.in_(list(ids)), Student.archived_at.is_(None))
+    if c.kind != 'qrup':                    # əlavə sinif: eyni məkan və ilin başqa sinfinin şagirdi (əsas sinfi bu deyil)
+        return st.join(SchoolClass, SchoolClass.id == Student.class_id).where(
+            SchoolClass.school_id == c.school_id, SchoolClass.year_id == c.year_id, Student.class_id != c.id)
+    if c.parent_id:
+        return st.where(Student.class_id == c.parent_id)
+    return st.join(SchoolClass, SchoolClass.id == Student.class_id).where(
+        SchoolClass.school_id == c.school_id, SchoolClass.year_id == c.year_id, SchoolClass.kind != 'qrup')
+
+
+class AddMembersIn(BaseModel):
+    student_ids: list[int] = Field(min_length=1, max_length=300)
+
+
+@router.post('/{cid}/members/add')
+def add_members(cid: int, body: AddMembersIn, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    """Qrupa və ya əlavə sinif kimi başqa sinfə şagird əlavə et (siyahını əvəz etmədən): şagird əsas sinfində qalır,
+    burada da olur – bir şagird bir neçə sinifdə/qrupda (məs. fərdi hazırlıqda IX və XI)."""
+    c = get_or_404(db, SchoolClass, cid, 'Sinif')
+    _editable(db, user, c)
+    ok = set(db.scalars(_member_query(c, body.student_ids)))
+    bad = set(body.student_ids) - ok
+    if bad:
+        raise HTTPException(400, 'Bu şagirdlər ' + ('ana sinifdə' if c.parent_id else 'bu məkanın başqa siniflərində') + f' deyil: {sorted(bad)}')
+    have = set(db.scalars(select(GroupMember.student_id).where(GroupMember.group_id == cid)))
+    new = ok - have
+    db.add_all(GroupMember(group_id=cid, student_id=s) for s in new)
+    audit(db, user, 'update', 'group_members', cid, added=sorted(new))
+    db.commit()
+    return {'added': len(new), 'members': len(have | new)}
+
+
+@router.delete('/{cid}/members/{sid}')
+def remove_member(cid: int, sid: int, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    """Şagirdi qrupdan / əlavə sinifdən çıxar – şagird silinmir, əsas sinfi və qiymətləri qalır."""
+    c = get_or_404(db, SchoolClass, cid, 'Sinif')
+    _editable(db, user, c)
+    m = db.get(GroupMember, (cid, sid))
+    if not m:
+        raise HTTPException(404, 'Şagird bu qrupda deyil')
+    db.delete(m)
+    audit(db, user, 'update', 'group_members', cid, removed=sid)
+    db.commit()
+    return {'ok': True}
+
+
+@router.get('/student/{sid}/groups')
+def student_groups(sid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Şagird kartı: əsas sinif, üzv olduğu qruplar və qoşula biləcəyi qruplar (redaktə edə bildiyim)."""
+    from .common import can_see_student
+    s = get_or_404(db, Student, sid, 'Şagird')
+    if not can_see_student(db, user, s):
+        raise HTTPException(404, 'Şagird tapılmadı')
+    cls = db.get(SchoolClass, s.class_id)
+    member = set(db.scalars(select(GroupMember.group_id).where(GroupMember.student_id == s.id)))
+    out = []
+    for g in db.scalars(select(SchoolClass).where(SchoolClass.school_id == cls.school_id, SchoolClass.year_id == cls.year_id,
+                                                  SchoolClass.archived_at.is_(None), SchoolClass.id != cls.id)
+                        .order_by(SchoolClass.kind == 'qrup', SchoolClass.name)):
+        if g.parent_id and g.parent_id != cls.id:
+            continue                                   # başqa sinfin bölünmə qrupu
+        try:
+            _editable(db, user, g)
+            can = True
+        except HTTPException:
+            can = False
+        if g.id in member or can:
+            out.append({'id': g.id, 'name': g.name, 'kind': 'əlavə sinif' if g.kind != 'qrup' else 'bölünmə qrupu' if g.parent_id else 'tədris qrupu',
+                        'member': g.id in member, 'can_edit': can})
+    return {'class': {'id': cls.id, 'name': cls.name}, 'groups': out}
 
 
 # ---------------------------------------------------------------- arxiv

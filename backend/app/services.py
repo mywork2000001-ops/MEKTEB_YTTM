@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from .domain.plan import Slot, working_plan
@@ -32,8 +32,9 @@ def roster(db: Session, ta: TeachingAssignment) -> list[Student]:
     st = select(Student).where(Student.archived_at.is_(None))
     if c.kind == 'qrup':
         st = st.join(GroupMember, GroupMember.student_id == Student.id).where(GroupMember.group_id == c.id)
-    else:
-        st = st.where(Student.class_id == c.id)
+    else:                                   # əsas sinfi bu olanlar + əlavə üzvlər (bir şagird bir neçə sinifdə – məs. IX və XI)
+        st = st.where(or_(Student.class_id == c.id,
+                          Student.id.in_(select(GroupMember.student_id).where(GroupMember.group_id == c.id))))
     return list(db.scalars(st.order_by(Student.full_name)))
 
 

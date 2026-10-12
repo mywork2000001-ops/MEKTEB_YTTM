@@ -17,4 +17,11 @@ def grade_of(*names: str | None) -> int | None:
         m = re.match(r'\s*([IVXivx]{1,4})(?=$|[\s\-–.(])', name)
         if m and m.group(1).upper() in ROMAN:
             return ROMAN[m.group(1).upper()]
+        # adın içində: «Buraxılış IX sinif», «Hazırlıq 9-cu sinif» (fərdi hazırlıq qrupları)
+        m = re.search(r'\b(\d{1,2})\s*-?\s*(?:cu|ci|cü|cı)?\s+sinif', name, re.I)
+        if m and 1 <= int(m.group(1)) <= 12:
+            return int(m.group(1))
+        m = re.search(r'\b([IVX]{1,4})\s+sinif', name)
+        if m and m.group(1) in ROMAN:
+            return ROMAN[m.group(1)]
     return None

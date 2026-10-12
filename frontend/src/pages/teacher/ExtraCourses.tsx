@@ -2,7 +2,7 @@
 // Dərs cədvəlindən və gündəlik plandan ayrıdır: jurnala qiymət yazmır, işçi planı sürüşdürmür. Şagird planı görür.
 import { useState } from 'react'
 import { del as apiDel, get, post, put } from '../../api'
-import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, Loading, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
+import { AsyncBtn, Chips, Drawer, ErrorBox, Field, fmt, fmtDate, levelTone, Loading, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
 import { head, printDoc, table } from '../../print'
 import { useMyLessons } from './common'
 import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
@@ -122,16 +122,21 @@ function NewCourse({ onClose, onDone }: { onClose: () => void; onDone: (id: numb
 }
 
 // ---------------------------------------------------------------- qrupun şagirdləri: çıxar / istənilən sinifdən əlavə et
-type Cand = { ta_id: number; class_name: string; students: { id: number; full_name: string; member: boolean }[] }
+type Cand = { ta_id: number; class_name: string; students: { id: number; full_name: string; member: boolean; level: 'Zəif' | 'Orta' | 'Güclü' | null }[] }
+type LvF = 'all' | 'Zəif' | 'Orta' | 'Güclü' | 'none'
 
 function Members({ id, c, archived, onChange }: { id: number; c: Course; archived: boolean; onChange: () => void }) {
   const [adding, setAdding] = useState(false)
   const [cand, , , reloadCand] = useLoad<Cand[]>(() => (adding ? get(`/api/extra/${id}/candidates`) : Promise.resolve([])), [id, adding])
   const [ta, setTa] = useState<number | ''>('')
   const [pick, setPick] = useState<number[]>([])
+  const [lvf, setLvf] = useState<LvF>('all')
   // defolt – əlavə ediləsi şagirdi olan ilk sinif (boş siyahı ilə açılmasın)
   const cls = (cand || []).find(x => x.ta_id === ta) || (cand || []).find(x => x.students.some(s => !s.member)) || (cand || [])[0]
-  const free = (cls?.students || []).filter(s => !s.member)
+  const freeAll = (cls?.students || []).filter(s => !s.member)
+  // səviyyə üzrə: Zəif / Orta / Güclü qrupları ayrıca (Jurnal → Səviyyə qrupları)
+  const free = freeAll.filter(s => lvf === 'all' || (lvf === 'none' ? !s.level : s.level === lvf))
+  const lvN = (k: LvF) => freeAll.filter(s => k === 'all' || (k === 'none' ? !s.level : s.level === k)).length
   const members = c.members || []
   return (
     <div className="stack">
@@ -141,20 +146,24 @@ function Members({ id, c, archived, onChange }: { id: number; c: Course; archive
         <section className="panel" style={{ padding: 12 }}>
           <div className="row" style={{ gap: 8, marginBottom: 8 }}>
             <label className="hub-pick" style={{ flex: '1 1 200px' }}><span>Sinif</span>
-              <select value={cls?.ta_id ?? ''} onChange={e => { setTa(Number(e.target.value)); setPick([]) }}>
+              <select value={cls?.ta_id ?? ''} onChange={e => { setTa(Number(e.target.value)); setPick([]); setLvf('all') }}>
                 {(cand || []).map(x => <option key={x.ta_id} value={x.ta_id}>{x.class_name} · {x.students.filter(s => !s.member).length} əlavə oluna bilər</option>)}
               </select></label>
           </div>
-          {!cand ? <Loading /> : free.length === 0 ? <p className="small muted" style={{ margin: 0 }}>Bu sinfin bütün şagirdləri artıq qrupdadır.</p> : <>
+          {cand && freeAll.length > 0 && <div style={{ marginBottom: 8 }}><Chips label="Səviyyə" value={lvf} onChange={v => { setLvf(v); setPick([]) }}
+            options={[['all', 'Hamısı', lvN('all')], ['Zəif', 'Zəif', lvN('Zəif')], ['Orta', 'Orta', lvN('Orta')], ['Güclü', 'Güclü', lvN('Güclü')], ['none', 'səviyyəsiz', lvN('none')]]} /></div>}
+          {!cand ? <Loading /> : free.length === 0 ? <p className="small muted" style={{ margin: 0 }}>{freeAll.length ? 'Bu səviyyədə əlavə ediləsi şagird yoxdur.' : 'Bu sinfin bütün şagirdləri artıq qrupdadır.'}</p> : <>
             <div className="row" style={{ gap: 6, marginBottom: 6 }}>
-              <button className="btn sm ghost" onClick={() => setPick(pick.length === free.length ? [] : free.map(s => s.id))}>{pick.length === free.length ? 'Heç biri' : 'Hamısını seç'}</button>
+              <button className="btn sm ghost" onClick={() => setPick(pick.length === free.length ? [] : free.map(s => s.id))}>{pick.length === free.length ? 'Heç biri' : lvf === 'all' ? 'Hamısını seç' : `Bütün «${lvf === 'none' ? 'səviyyəsiz' : lvf}» seç`}</button>
               <span className="small muted">seçilib {pick.length}</span></div>
             <div className="jlist" style={{ maxHeight: 260, overflow: 'auto' }}>{free.map(s => (
               <label key={s.id} className="check" style={{ padding: '0 12px', minHeight: 36 }}>
-                <input type="checkbox" checked={pick.includes(s.id)} onChange={e => setPick(p => e.target.checked ? [...p, s.id] : p.filter(x => x !== s.id))} /> {s.full_name}</label>))}</div>
+                <input type="checkbox" checked={pick.includes(s.id)} onChange={e => setPick(p => e.target.checked ? [...p, s.id] : p.filter(x => x !== s.id))} /> {s.full_name}
+                {s.level && <> <Pill tone={levelTone(s.level)}>{s.level}</Pill></>}</label>))}</div>
             <AsyncBtn className="btn primary" disabled={!pick.length} ok="Qrupa əlavə olundu"
               onClick={async () => { await post(`/api/extra/${id}/members`, { student_ids: pick }); setPick([]); reloadCand(); onChange() }}>Qrupa əlavə et ({pick.length})</AsyncBtn></>}
-          <p className="small muted" style={{ margin: '8px 0 0' }}>Yalnız seçdiyiniz şagirdlər qoşulur – sinfin qalanı yox. Siyahıda bu fəndən dərs dediyiniz siniflər var.</p>
+          <p className="small muted" style={{ margin: '8px 0 0' }}>Yalnız seçdiyiniz şagirdlər qoşulur – sinfin qalanı yox. Səviyyə (Zəif / Orta / Güclü) – Jurnal → «Səviyyə qrupları»ndan;
+            zəif və güclü qrupları ayrıca məşğələ qrupu kimi saxlamaq üçün hər qrupa öz səviyyəsini əlavə edin.</p>
         </section>)}
       <div className="jlist">{members.map(m => (
         <div key={m.student_id} className="row small" style={{ padding: '6px 12px' }}>

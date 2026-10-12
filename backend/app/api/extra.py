@@ -340,9 +340,13 @@ def candidates(cid: int, user: User = Depends(staff), db: Session = Depends(get_
     """Qrupa əlavə etmək üçün: müəllimin bu fəndən siniflərinin şagirdləri, sinif üzrə (üzvlər işarəli)."""
     c = _course(db, user, cid)
     inside = {s.id for s, _ in members(db, c)}
-    return [{'ta_id': ta.id, 'class_name': db.get(SchoolClass, ta.class_id).name,
-             'students': [{'id': s.id, 'full_name': s.full_name, 'member': s.id in inside} for s in roster(db, ta)]}
-            for ta in _my_tas(db, user, c.subject)]
+    out = []
+    for ta in _my_tas(db, user, c.subject):
+        lv = {o.student_id: o.level for o in db.scalars(select(LevelOverride).where(LevelOverride.assignment_id == ta.id))}
+        out.append({'ta_id': ta.id, 'class_name': db.get(SchoolClass, ta.class_id).name,     # səviyyə – Jurnal → Səviyyə qrupları
+                    'students': [{'id': s.id, 'full_name': s.full_name, 'member': s.id in inside, 'level': lv.get(s.id)}
+                                 for s in roster(db, ta)]})
+    return out
 
 
 class MembersIn(BaseModel):

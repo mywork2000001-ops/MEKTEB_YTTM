@@ -28,6 +28,12 @@ def test_group_members_from_classes(world, clock, monkeypatch):
     cand = admin.get(f'/api/extra/{gid}/candidates').json()
     assert [x['class_name'] for x in cand] == ['X c', 'X e']
     assert next(s for s in cand[1]['students'] if s['id'] == st[0]['id'])['member']
+    with S() as db:                                                            # səviyyə (Jurnal → Səviyyə qrupları)
+        from app.models import LevelOverride
+        db.add(LevelOverride(assignment_id=ta, student_id=st[1]['id'], level='Zəif'))
+        db.commit()
+    cand = admin.get(f'/api/extra/{gid}/candidates').json()
+    assert next(s for s in cand[1]['students'] if s['id'] == st[1]['id'])['level'] == 'Zəif'
 
     # başqa sinifdən tək şagird – sinfin qalanı gəlmir
     r = admin.post(f'/api/extra/{gid}/members', json={'student_ids': [xs[0]['id']]}).json()

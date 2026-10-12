@@ -8,7 +8,7 @@ import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -48,8 +48,9 @@ def list_students(class_id: int | None = None, archived: bool = False, q: str | 
             raise HTTPException(403, 'Bu sinif sizin siniflərinizdən deyil')
         if c.kind == 'qrup':
             st = st.join(GroupMember, GroupMember.student_id == Student.id).where(GroupMember.group_id == c.id)
-        else:
-            st = st.where(Student.class_id == class_id)
+        else:                                   # əsas sinif + əlavə üzvlər
+            st = st.where(or_(Student.class_id == class_id,
+                              Student.id.in_(select(GroupMember.student_id).where(GroupMember.group_id == class_id))))
     elif mine is not None:
         st = st.where(Student.class_id.in_(mine))
     if q:
@@ -172,7 +173,9 @@ def update_student(sid_: int, body: StudentPatch, user: User = Depends(settings_
         data['portal_code'] = code
     if 'class_id' in data and data['class_id'] != s.class_id:
         _class_for_write(db, user, data['class_id'])
-        db.query(GroupMember).filter(GroupMember.student_id == s.id).delete()   # köhnə sinfin qruplarından çıxır
+        old_split = select(SchoolClass.id).where(SchoolClass.parent_id == s.class_id)
+        db.query(GroupMember).filter(GroupMember.student_id == s.id, or_(GroupMember.group_id.in_(old_split),
+                                     GroupMember.group_id == data['class_id'])).delete(synchronize_session=False)   # köhnə sinfin bölünmə qrupları
     for k, v in data.items():
         setattr(s, k, v)
     if 'full_name' in data and s.user_id:
@@ -369,3 +372,182 @@ def login_sheet(cid: int, user: User = Depends(settings_unlocked), db: Session =
     audit(db, user, 'export', 'login_sheet', cid, count=len(rows))
     db.commit()
     return {'class_name': c.name, 'students': rows}
+
+
+# ---------------------------------------------------------------- təkrar şagirdlər (docs/sagird-coxlu-sinif-ve-birlesme-promtu.md §2)
+_PATRO = {'oğlu', 'qızı', 'oglu', 'qizi'}
+
+
+def name_tokens(name: str) -> frozenset[str]:
+    """Ad sözləri (ata adı və «oğlu/qızı» nəzərə alınmır, sıra fərq etmir): «Əliyev Murad Rəşid oğlu» → {əliyev, murad}."""
+    t = ' '.join(name.split()).casefold().split(' ')
+    if len(t) >= 3 and t[-1] in _PATRO:
+        t = t[:-2]
+    return frozenset(t)
+
+
+def _admin(user: User):
+    if user.role != Role.admin:
+        raise HTTPException(403, 'Yalnız admin')
+
+
+def _weight(db: Session, sid_: int) -> dict:
+    from ..models import Attendance, Mark, TaskAttempt
+    n = lambda m: db.scalar(select(func.count()).select_from(m).where(m.student_id == sid_)) or 0
+    return {'marks': n(Mark), 'attempts': n(TaskAttempt), 'attendance': n(Attendance)}
+
+
+@router.get('/duplicates')
+def duplicates(user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Ehtimal olunan təkrar şagirdlər (aktiv, eyni məkan): ad sözləri eyni və ya biri digərinin içində («Nihad» – «Nihad Əliyev»,
+    «Əhmədov Hüseyn» – «Hüseyn Əhmədov»); doğum tarixləri fərqlidirsə – təkrar deyil."""
+    _admin(user)
+    rows = list(db.execute(select(Student, SchoolClass.name).join(SchoolClass, SchoolClass.id == Student.class_id)
+                           .where(Student.school_id == need_school(user), Student.archived_at.is_(None))))
+    one = lambda s, c: {'id': s.id, 'full_name': s.full_name, 'class_name': c, 'portal_code': s.portal_code,
+                        'birth_date': s.birth_date, **_weight(db, s.id)}
+    toks = [name_tokens(s.full_name) for s, _ in rows]
+    out = []
+    for i in range(len(rows)):
+        for j in range(i + 1, len(rows)):
+            (a, ca), (b, cb), ta, tb = rows[i], rows[j], toks[i], toks[j]
+            if not (ta <= tb or tb <= ta):                # «Nihad» ⊂ «Nihad Əliyev»; «Əhmədov Hüseyn» = «Hüseyn Əhmədov»
+                continue
+            if a.birth_date and b.birth_date and a.birth_date != b.birth_date:
+                continue                                  # doğum tarixi fərqlidir – başqa uşaqdır
+            same = ' '.join(a.full_name.split()).casefold() == ' '.join(b.full_name.split()).casefold()
+            lvl = ('tam' if same and a.birth_date and a.birth_date == b.birth_date else 'eyni ad' if same
+                   else 'ad və soyad eyni' if ta == tb and len(ta) >= 2 else 'oxşar ad')
+            out.append({'level': lvl, 'a': one(a, ca), 'b': one(b, cb)})
+    rank = {'tam': 0, 'eyni ad': 1, 'ad və soyad eyni': 2, 'oxşar ad': 3}
+    return sorted(out, key=lambda x: (rank[x['level']], x['a']['full_name']))
+
+
+class MergeIn(BaseModel):
+    keep_id: int
+    drop_id: int
+    confirm: str                       # saxlanan şagirdin adı (geri qaytarılmır)
+
+
+def _replace_json_ids(db: Session, drop: int, keep: int) -> int:
+    """JSON-da saxlanan şagird siyahıları: tapşırıq, material, məşğələ qrupu, sınaq seriyası."""
+    from ..models import ExamSeries, ExtraCourse, Material, OnlineTask
+    fix = lambda ids: list(dict.fromkeys(keep if i == drop else i for i in ids))
+    n = 0
+    for m in (OnlineTask, Material):
+        for o in db.scalars(select(m).where(m.student_ids.is_not(None))):
+            if drop in (o.student_ids or []):
+                o.student_ids, n = fix(o.student_ids), n + 1
+    for c in db.scalars(select(ExtraCourse)):
+        a = dict(c.audience or {})
+        if drop in (a.get('student_ids') or []):
+            a['student_ids'] = fix(a['student_ids'])
+            c.audience, n = a, n + 1
+    for s in db.scalars(select(ExamSeries)):
+        if any(drop in (t.get('student_ids') or []) for t in s.targets or []):
+            s.targets = [{**t, 'student_ids': fix(t['student_ids']) if t.get('student_ids') else t.get('student_ids')}
+                         for t in s.targets]
+            n += 1
+    return n
+
+
+def merge_students(db: Session, keep: Student, drop: Student) -> dict:
+    """Bütün istinadlar drop → keep (cədvəllər metadata-dan – yeni cədvəl də düşmür). Toqquşmada (eyni dərsdə ikisinin də
+    qeydi) saxlananınkı qalır; test cəhdində – təhvil verilmiş olan qalır."""
+    import sqlalchemy as sa
+    from ..db import Base
+    from ..models import now
+    moved, dropped = 0, 0
+    db.flush()
+    for t in Base.metadata.sorted_tables:
+        if t.name == 'students':
+            continue
+        for col in [c for c in t.columns if any(fk.column.table.name == 'students' for fk in c.foreign_keys)]:
+            pk = list(t.primary_key.columns)
+            keys = [[c.name for c in pk]] if col in pk and len(pk) > 1 else []
+            keys += [[c.name for c in u.columns] for u in t.constraints
+                     if isinstance(u, sa.UniqueConstraint) and col.name in [c.name for c in u.columns]]
+            for key in keys:
+                other = [k for k in key if k != col.name]
+                for r in db.execute(sa.select(t).where(col == drop.id)).mappings().all():
+                    cond = [t.c[k] == r[k] for k in other]
+                    kr = db.execute(sa.select(t).where(col == keep.id, *cond)).mappings().first()
+                    if kr is None:
+                        continue
+                    if t.name == 'task_attempts' and r['submitted_at'] and not kr['submitted_at']:
+                        db.execute(sa.delete(t).where(col == keep.id, *cond))      # saxlananınki boşdur – təhvil verilmiş qalır
+                    else:
+                        db.execute(sa.delete(t).where(col == drop.id, *cond))
+                    dropped += 1
+            moved += db.execute(sa.update(t).where(col == drop.id).values({col.name: keep.id})).rowcount or 0
+    js = _replace_json_ids(db, drop.id, keep.id)
+    # silinənin əsas sinfi – saxlananın əlavə sinfi olur (Nihad: IX və XI – bir şagird, iki sinif)
+    if drop.class_id != keep.class_id and not db.get(GroupMember, (drop.class_id, keep.id)):
+        db.add(GroupMember(group_id=drop.class_id, student_id=keep.id))
+    db.query(GroupMember).filter(GroupMember.group_id == keep.class_id, GroupMember.student_id == keep.id).delete()
+    if drop.birth_date and not keep.birth_date:
+        b, drop.birth_date = drop.birth_date, None             # unikal (məktəb + ad + doğum tarixi) toqquşmasın
+        db.flush()
+        keep.birth_date = b
+    for f in ('gender', 'score_language', 'score_math', 'score_foreign', 'phone', 'guardians'):
+        if getattr(keep, f) in (None, '', []) and getattr(drop, f) not in (None, '', []):
+            setattr(keep, f, getattr(drop, f))
+    drop.archived_at, drop.left_on = now(), dt.date.today()
+    drop.left_reason = f'Birləşdirildi → {keep.portal_code} ({keep.full_name})'[:300]
+    if drop.user_id and (acc := db.get(User, drop.user_id)):
+        acc.archived_at = now()                                # portal hesabı bağlanır – şagird saxlanan ID ilə girir
+    db.flush()                                                 # əvvəl yaz – sonra köhnə ORM vəziyyətini at
+    db.expire_all()
+    return {'moved': moved, 'conflicts': dropped, 'json': js}
+
+
+@router.post('/merge')
+def merge(body: MergeIn, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    """Təkrar şagirdi birləşdir (yalnız admin; geri qaytarılmır – saxlanan şagirdin adını yazmaqla təsdiq)."""
+    _admin(user)
+    if body.keep_id == body.drop_id:
+        raise HTTPException(400, 'Eyni şagird')
+    keep, drop = get_or_404(db, Student, body.keep_id, 'Şagird'), get_or_404(db, Student, body.drop_id, 'Şagird')
+    if keep.school_id != user.school_id or drop.school_id != user.school_id:
+        raise HTTPException(404, 'Şagird tapılmadı')
+    if drop.archived_at or keep.archived_at:
+        raise HTTPException(400, 'Arxivdəki şagird birləşdirilmir')
+    check_confirm(keep.full_name, body.confirm)
+    code, name, dcode = keep.portal_code, keep.full_name, drop.portal_code
+    r = merge_students(db, keep, drop)
+    audit(db, user, 'merge', 'student', body.keep_id, dropped=body.drop_id, dropped_code=dcode, **r)
+    db.commit()
+    return {**r, 'keep': body.keep_id, 'portal_code': code, 'full_name': name}
+
+
+def merge_named(db: Session, rules: list[tuple[set[str], dict[int, bool]]]) -> list[str]:
+    """Konkret təkrarların birləşdirilməsi (miqrasiya b3c5d7e9f1a2 – istifadəçinin göstərişi ilə). Hər qayda: ad sözləri +
+    {sinif rəqəmi: saxlanılsın?}. Yalnız birmənalı halda: həmin məkanda hər sinif rəqəmində dəqiq bir uyğun aktiv şagird,
+    doğum tarixləri ziddiyyətsiz. Əks halda – heç nə edilmir (səbəb qaytarılır). Hesabat ASCII – yalnız id/ID kodu."""
+    from collections import defaultdict
+    from ..services import class_grade
+    log = []
+    rows = list(db.execute(select(Student, SchoolClass).join(SchoolClass, SchoolClass.id == Student.class_id)
+                           .where(Student.archived_at.is_(None))))
+    for words, want in rules:
+        per: dict[int, list] = defaultdict(list)
+        for st, c in rows:
+            if {w.casefold() for w in words} <= name_tokens(st.full_name):
+                per[st.school_id].append((st, class_grade(db, c)))
+        if not per:
+            log.append(f'grades {sorted(want)}: not found')
+        for school, got in per.items():
+            by_g = {g: [st for st, gg in got if gg == g] for g in want}
+            if any(len(v) != 1 for v in by_g.values()):
+                log.append(f'school {school} grades {sorted(want)}: ambiguous {[len(v) for v in by_g.values()]} - skipped')
+                continue
+            keep = next(by_g[g][0] for g, k in want.items() if k)
+            drops = [by_g[g][0] for g, k in want.items() if not k]
+            if any(d.birth_date and keep.birth_date and d.birth_date != keep.birth_date for d in drops):
+                log.append(f'school {school}: birth dates differ - skipped')
+                continue
+            for d in drops:
+                code = d.portal_code
+                merge_students(db, keep, d)
+                log.append(f'school {school}: merged student {d.id} ({ascii(code)}) into {keep.id} ({ascii(keep.portal_code)})')
+    return log
