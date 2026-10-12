@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { get, post, put } from '../../api'
-import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, levelTone, Loading, PickFirst, Pill, toast, Top, useLoad } from '../../ui'
+import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, levelTone, Loading, PickFirst, Pill, Seg, toast, Top, useLoad } from '../../ui'
 import { kindLabel, usePick } from './common'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import ExtraCourses, { StudentGroups } from './ExtraCourses'
 import { NewStudent } from './SettingsRoster'
 import ClassListPrint from './ClassListPrint'
 
@@ -13,6 +14,10 @@ type Stud = { id: number; full_name: string; birth_date: string | null; gender: 
 const LV: Record<string, string> = { 'Yüksək': 'Güclü', 'Orta': 'Orta', 'Zəif': 'Zəif' }
 
 export default function Classes() {
+  // Siniflər · Məşğələ qrupları (əvvəlki «Əlavə məşğələ» – docs/mesgele-qruplari-sinifler-promtu.md)
+  const [sp, setSp] = useSearchParams()
+  const view = sp.get('tab') === 'extra' ? 'extra' : 'classes'
+  const setView = (v: 'classes' | 'extra') => setSp(prev => { const n = new URLSearchParams(prev); v === 'extra' ? n.set('tab', 'extra') : n.delete('tab'); return n })
   const [classes, err] = useLoad<Cls[]>(() => get('/api/classes'), [])
   const [sel, setSel] = usePick('classes')
   const [card, setCard] = useState<Stud | null>(null)
@@ -21,8 +26,10 @@ export default function Classes() {
   const cur = mine.find(c => c.id === sel)
   return (
     <>
-      <Top title="Siniflər və qruplar" sub="Sinif, bölünmə qrupu, tədris qrupu"
-        actions={<button className="btn sm" onClick={() => nav('/settings?tab=classes')}>Yarat / redaktə et / şagird əlavə et</button>} />
+      <Top title="Siniflər və qruplar" sub="Sinif, bölünmə qrupu, tədris qrupu və məşğələ qrupları"
+        actions={view === 'classes' && <button className="btn sm" onClick={() => nav('/settings?tab=classes')}>Yarat / redaktə et / şagird əlavə et</button>} />
+      <div className="toolbar"><Seg value={view} onChange={setView} options={[['classes', 'Siniflər'], ['extra', 'Məşğələ qrupları']]} /></div>
+      {view === 'extra' ? <ExtraCourses embedded /> : <>
       <ErrorBox error={err} />
       {!classes ? <Loading /> : (
         <div className="grid g3" style={{ marginBottom: 20 }}>
@@ -40,7 +47,7 @@ export default function Classes() {
         </div>
       )}
       {!cur ? <PickFirst text="Şagirdləri görmək üçün sinif seçin" /> : <StudentList cls={cur} all={mine} onOpen={setCard} />}
-      {card && <StudentCard s={card} onClose={() => setCard(null)} />}
+      {card && <StudentCard s={card} onClose={() => setCard(null)} />}</>}
     </>
   )
 }
@@ -81,10 +88,10 @@ function StudentList({ cls, all, onOpen }: { cls: Cls; all: Cls[]; onOpen: (s: S
 
 function StudentCard({ s, onClose }: { s: Stud; onClose: () => void }) {
   const nav = useNavigate()
-  const [tab, setTab] = useState<'info' | 'contacts' | 'plans'>('info')
+  const [tab, setTab] = useState<'info' | 'contacts' | 'plans' | 'groups'>('info')
   return (
     <Drawer title={s.full_name} onClose={onClose}>
-      <div className="tabs">{([['info', 'Məlumat'], ['contacts', 'Valideynlə əlaqə'], ['plans', 'Fərdi iş planı']] as const).map(([k, l]) =>
+      <div className="tabs">{([['info', 'Məlumat'], ['contacts', 'Valideynlə əlaqə'], ['plans', 'Fərdi iş planı'], ['groups', 'Məşğələ qrupları']] as const).map(([k, l]) =>
         <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
       {tab === 'info' && (
         <>
@@ -102,6 +109,7 @@ function StudentCard({ s, onClose }: { s: Stud; onClose: () => void }) {
         </>)}
       {tab === 'contacts' && <Contacts sid={s.id} />}
       {tab === 'plans' && <IPlans sid={s.id} />}
+      {tab === 'groups' && <StudentGroups studentId={s.id} />}
     </Drawer>
   )
 }

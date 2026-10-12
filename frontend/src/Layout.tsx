@@ -20,7 +20,6 @@ export const TEACHER_NAV: NavItem[] = [
   { to: '/timetable', icon: 'topics', label: 'Həftəlik cədvəl', short: 'Cədvəl' },
   { to: '/tests', icon: 'online', label: 'Testlər və sınaqlar', short: 'Testlər' },   // mövzu testləri + sınaqlar + nəticələr
   { to: '/surveys', icon: 'star', label: 'Şagird sorğusu', short: 'Sorğu' },
-  { to: '/extra', icon: 'groups', label: 'Əlavə məşğələ', short: 'Məşğələ' },
   { to: '/materials', icon: 'clip', label: 'Materiallar' },
   { to: '/reports', icon: 'reports', label: 'Analitika və hesabat', short: 'Hesabat' },
   { to: '/homeroom', icon: 'classes', label: 'Sinif rəhbəri', short: 'Rəhbər' },

@@ -124,7 +124,7 @@ export default function App() {
                 <Route path="/exams-online" element={<ToTests s="sinaq" />} />
                 <Route path="/results-center" element={<ToTests s="netice" />} />
                 <Route path="/surveys" element={<T.Surveys />} />
-                <Route path="/extra" element={<T.ExtraCourses />} />
+                <Route path="/extra" element={<Navigate to="/classes?tab=extra" replace />} />
                 <Route path="/t/:id" element={<Navigate to="/tests" replace />} />
                 <Route path="/materials" element={<T.Materials />} />
                 <Route path="/reports" element={<T.Reports />} />

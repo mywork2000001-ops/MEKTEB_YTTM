@@ -19,15 +19,18 @@ type Course = { id: number; title: string; subject: string; format: string; clas
 const DAYS = ['Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə', 'Bazar']
 const ST: Record<string, [string, any]> = { planned: ['planlaşdırılıb', undefined], held: ['keçirildi', 'ok'], cancelled: ['ləğv edildi', 'bad'] }
 
-export default function ExtraCourses() {
+/** embedded – «Siniflər və qruplar → Məşğələ qrupları» içində (öz başlığı yoxdur). */
+export default function ExtraCourses({ embedded }: { embedded?: boolean } = {}) {
   const [view, setView] = useState<'active' | 'archived'>('active')
   const [list, err, loading, reload] = useLoad<Course[]>(() => get('/api/extra', view === 'archived' ? { archived: true } : {}), [view])
   const [creating, setCreating] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
   return (
     <>
-      <Top title="Əlavə məşğələ" sub="Əyani və onlayn məşğələ kursu – öz perspektiv planı, davamiyyət, statistika (jurnala qiymət yazmır)"
-        actions={<button className="btn primary" onClick={() => setCreating(true)}>+ Yeni kurs</button>} />
+      {embedded ? <div className="hub-head"><span className="small muted grow">Əyani və onlayn məşğələ qrupları – öz planı, davamiyyət, statistika (jurnala qiymət yazmır).
+        Qrupa istənilən sinfinizdən şagird əlavə edə və çıxara bilərsiniz.</span><button className="btn primary" onClick={() => setCreating(true)}>+ Yeni məşğələ qrupu</button></div>
+        : <Top title="Əlavə məşğələ" sub="Əyani və onlayn məşğələ kursu – öz perspektiv planı, davamiyyət, statistika (jurnala qiymət yazmır)"
+          actions={<button className="btn primary" onClick={() => setCreating(true)}>+ Yeni kurs</button>} />}
       <div className="toolbar"><Seg value={view} onChange={setView} options={[['active', 'Kurslar'], ['archived', 'Arxiv']]} /></div>
       <ErrorBox error={err} />
       {loading && !list ? <Loading /> : (
@@ -118,6 +121,75 @@ function NewCourse({ onClose, onDone }: { onClose: () => void; onDone: (id: numb
   )
 }
 
+// ---------------------------------------------------------------- qrupun şagirdləri: çıxar / istənilən sinifdən əlavə et
+type Cand = { ta_id: number; class_name: string; students: { id: number; full_name: string; member: boolean }[] }
+
+function Members({ id, c, archived, onChange }: { id: number; c: Course; archived: boolean; onChange: () => void }) {
+  const [adding, setAdding] = useState(false)
+  const [cand, , , reloadCand] = useLoad<Cand[]>(() => (adding ? get(`/api/extra/${id}/candidates`) : Promise.resolve([])), [id, adding])
+  const [ta, setTa] = useState<number | ''>('')
+  const [pick, setPick] = useState<number[]>([])
+  // defolt – əlavə ediləsi şagirdi olan ilk sinif (boş siyahı ilə açılmasın)
+  const cls = (cand || []).find(x => x.ta_id === ta) || (cand || []).find(x => x.students.some(s => !s.member)) || (cand || [])[0]
+  const free = (cls?.students || []).filter(s => !s.member)
+  const members = c.members || []
+  return (
+    <div className="stack">
+      <div className="row"><b className="grow">{members.length} şagird</b>
+        {!archived && <button className="btn sm primary" onClick={() => { setAdding(a => !a); setPick([]) }}>{adding ? 'Bağla' : '+ Şagird əlavə et'}</button>}</div>
+      {adding && (
+        <section className="panel" style={{ padding: 12 }}>
+          <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+            <label className="hub-pick" style={{ flex: '1 1 200px' }}><span>Sinif</span>
+              <select value={cls?.ta_id ?? ''} onChange={e => { setTa(Number(e.target.value)); setPick([]) }}>
+                {(cand || []).map(x => <option key={x.ta_id} value={x.ta_id}>{x.class_name} · {x.students.filter(s => !s.member).length} əlavə oluna bilər</option>)}
+              </select></label>
+          </div>
+          {!cand ? <Loading /> : free.length === 0 ? <p className="small muted" style={{ margin: 0 }}>Bu sinfin bütün şagirdləri artıq qrupdadır.</p> : <>
+            <div className="row" style={{ gap: 6, marginBottom: 6 }}>
+              <button className="btn sm ghost" onClick={() => setPick(pick.length === free.length ? [] : free.map(s => s.id))}>{pick.length === free.length ? 'Heç biri' : 'Hamısını seç'}</button>
+              <span className="small muted">seçilib {pick.length}</span></div>
+            <div className="jlist" style={{ maxHeight: 260, overflow: 'auto' }}>{free.map(s => (
+              <label key={s.id} className="check" style={{ padding: '0 12px', minHeight: 36 }}>
+                <input type="checkbox" checked={pick.includes(s.id)} onChange={e => setPick(p => e.target.checked ? [...p, s.id] : p.filter(x => x !== s.id))} /> {s.full_name}</label>))}</div>
+            <AsyncBtn className="btn primary" disabled={!pick.length} ok="Qrupa əlavə olundu"
+              onClick={async () => { await post(`/api/extra/${id}/members`, { student_ids: pick }); setPick([]); reloadCand(); onChange() }}>Qrupa əlavə et ({pick.length})</AsyncBtn></>}
+          <p className="small muted" style={{ margin: '8px 0 0' }}>Yalnız seçdiyiniz şagirdlər qoşulur – sinfin qalanı yox. Siyahıda bu fəndən dərs dediyiniz siniflər var.</p>
+        </section>)}
+      <div className="jlist">{members.map(m => (
+        <div key={m.student_id} className="row small" style={{ padding: '6px 12px' }}>
+          <b className="grow">{m.full_name}</b><Pill tone="info">{m.class_name}</Pill>
+          {!archived && members.length > 1 && <AsyncBtn className="btn sm ghost" ok="Qrupdan çıxarıldı"
+            onClick={async () => { await apiDel(`/api/extra/${id}/members/${m.student_id}`); onChange(); if (adding) reloadCand() }}>✕ çıxar</AsyncBtn>}
+        </div>))}</div>
+      {members.length > 0 && <p className="small muted" style={{ margin: 0 }}>Çıxarılan şagirdin keçmiş davamiyyəti qalır; növbəti məşğələləri artıq görmür.</p>}
+    </div>
+  )
+}
+
+/** Şagird kartı üçün: müəllimin məşğələ qrupları – işarələ: əlavə, götür: çıxar. */
+export function StudentGroups({ studentId }: { studentId: number }) {
+  const [list, err, , reload] = useLoad<{ id: number; title: string; subject: string; format: string; member: boolean }[]>(() => get(`/api/extra/student/${studentId}`), [studentId])
+  const [busy, setBusy] = useState<number | null>(null)
+  const toggle = async (g: { id: number; member: boolean }) => {
+    setBusy(g.id)
+    try {
+      if (g.member) await apiDel(`/api/extra/${g.id}/members/${studentId}`)
+      else await post(`/api/extra/${g.id}/members`, { student_ids: [studentId] })
+      toast(g.member ? 'Qrupdan çıxarıldı' : 'Qrupa əlavə olundu'); reload()
+    } catch (e) { toast('Xəta: ' + (e as Error).message) } finally { setBusy(null) }
+  }
+  return (
+    <section className="panel" style={{ marginTop: 12 }}>
+      <h2>Məşğələ qrupları</h2>
+      <ErrorBox error={err} />
+      {!list ? <Loading /> : list.length === 0 ? <p className="small muted" style={{ margin: 0 }}>Bu şagirdin fənnindən məşğələ qrupunuz yoxdur – «Siniflər və qruplar → Məşğələ qrupları».</p>
+        : list.map(g => <label key={g.id} className="check"><input type="checkbox" checked={g.member} disabled={busy === g.id} onChange={() => toggle(g)} />
+          {g.title} <span className="small muted">· {g.subject} · {g.format}</span></label>)}
+    </section>
+  )
+}
+
 // ---------------------------------------------------------------- kurs: Plan | Davamiyyət | Statistika
 function CourseView({ id, archived, onClose }: { id: number; archived: boolean; onClose: () => void }) {
   const [c, err, , reload] = useLoad<Course>(() => get(`/api/extra/${id}`), [id])
@@ -162,7 +234,7 @@ function CourseView({ id, archived, onClose }: { id: number; archived: boolean; 
                   </div>}
                 </div>))}
             </div></>}
-          {tab === 'att' && <div className="jlist">{(c.members || []).map(m => <div key={m.student_id} className="row small" style={{ padding: '6px 12px' }}><b className="grow">{m.full_name}</b><span className="muted">{m.class_name}</span></div>)}</div>}
+          {tab === 'att' && <Members id={id} c={c} archived={archived} onChange={reload} />}
           {tab === 'stats' && <Stats id={id} />}
         </div>)}
       {edit && c && <SessionEdit course={c} s={edit === 'new' ? null : edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}

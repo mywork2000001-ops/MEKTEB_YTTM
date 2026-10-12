@@ -319,6 +319,88 @@ def restore_course(cid: int, user: User = Depends(staff), db: Session = Depends(
     return {'ok': True}
 
 
+# ---------------------------------------------------------------- qrup üzvləri (Siniflər → Məşğələ qrupları, şagird kartı)
+def _my_tas(db: Session, user: User, subject: str) -> list[TeachingAssignment]:
+    """Müəllimin bu fəndən aktiv dərsləri – yalnız aktiv məkanın sinifləri (məktəb və fərdi hazırlıq qarışmır)."""
+    return [ta for ta, cls in db.execute(select(TeachingAssignment, SchoolClass).join(SchoolClass, SchoolClass.id == TeachingAssignment.class_id)
+                                         .where(TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None),
+                                                TeachingAssignment.subject == subject, SchoolClass.school_id == user.school_id,
+                                                SchoolClass.archived_at.is_(None)).order_by(SchoolClass.name))]
+
+
+def _open_course(db: Session, user: User, cid: int) -> ExtraCourse:
+    c = _course(db, user, cid)
+    if c.archived_at:
+        raise HTTPException(400, 'Arxivdəki qrup dəyişdirilmir – əvvəl geri qaytarın')
+    return c
+
+
+@router.get('/{cid}/candidates')
+def candidates(cid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Qrupa əlavə etmək üçün: müəllimin bu fəndən siniflərinin şagirdləri, sinif üzrə (üzvlər işarəli)."""
+    c = _course(db, user, cid)
+    inside = {s.id for s, _ in members(db, c)}
+    return [{'ta_id': ta.id, 'class_name': db.get(SchoolClass, ta.class_id).name,
+             'students': [{'id': s.id, 'full_name': s.full_name, 'member': s.id in inside} for s in roster(db, ta)]}
+            for ta in _my_tas(db, user, c.subject)]
+
+
+class MembersIn(BaseModel):
+    student_ids: list[int] = Field(min_length=1, max_length=200)
+
+
+@router.post('/{cid}/members')
+def add_members(cid: int, body: MembersIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Şagird(lər)i qrupa əlavə et – istənilən sinfimdən (eyni fənn). Auditoriya «seçilmiş şagirdlər»ə çevrilir:
+    yalnız əlavə olunan gəlir, onun sinfinin qalanı avtomatik qoşulmur."""
+    c = _open_course(db, user, cid)
+    where = {s.id: ta.id for ta in _my_tas(db, user, c.subject) for s in roster(db, ta)}
+    bad = [i for i in body.student_ids if i not in where]
+    if bad:
+        raise HTTPException(400, 'Şagird sizin bu fəndən dərs dediyiniz siniflərdən olmalıdır')
+    aud = dict(c.audience or {})
+    ids = [s.id for s, _ in members(db, c)]
+    new = [i for i in dict.fromkeys(body.student_ids) if i not in ids]
+    aud['ta_ids'] = list(dict.fromkeys([*(aud.get('ta_ids') or []), *(where[i] for i in new)]))
+    aud['student_ids'], aud['levels'] = ids + new, None
+    c.audience = aud
+    audit(db, user, 'update', 'extra_course', c.id, added=new)
+    db.commit()
+    return {'added': len(new), 'students': len(members(db, c))}
+
+
+@router.delete('/{cid}/members/{sid}')
+def remove_member(cid: int, sid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Şagirdi qrupdan çıxar (keçmiş davamiyyəti qalır). Sinfindən heç kim qalmırsa – sinif də qrupdan çıxır."""
+    c = _open_course(db, user, cid)
+    ms = members(db, c)
+    if sid not in {s.id for s, _ in ms}:
+        raise HTTPException(404, 'Şagird bu qrupda deyil')
+    left = [(s, ta) for s, ta in ms if s.id != sid]
+    if not left:
+        raise HTTPException(400, 'Qrupda ən azı bir şagird qalmalıdır – qrupu silmək üçün «Arxivə»')
+    aud = dict(c.audience or {})
+    aud['student_ids'], aud['levels'] = [s.id for s, _ in left], None
+    aud['ta_ids'] = [i for i in aud.get('ta_ids') or [] if any(ta == i for _, ta in left)]
+    c.audience = aud
+    audit(db, user, 'update', 'extra_course', c.id, removed=sid)
+    db.commit()
+    return {'students': len(left)}
+
+
+@router.get('/student/{sid}')
+def student_groups(sid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Şagird kartı üçün: müəllimin aktiv məşğələ qrupları – şagird üzvdürmü, əlavə oluna bilərmi (eyni fəndən dərsi var)."""
+    out = []
+    for c in db.scalars(select(ExtraCourse).where(ExtraCourse.owner_id == user.id, ExtraCourse.school_id == user.school_id,
+                                                   ExtraCourse.archived_at.is_(None)).order_by(ExtraCourse.title)):
+        member = sid in {s.id for s, _ in members(db, c)}
+        can = member or any(sid in {s.id for s in roster(db, ta)} for ta in _my_tas(db, user, c.subject))
+        if member or can:
+            out.append({'id': c.id, 'title': c.title, 'subject': c.subject, 'format': c.format, 'member': member})
+    return out
+
+
 # ---------------------------------------------------------------- məşğələlər (perspektiv plan)
 class TopicRef(BaseModel):
     plan_lesson_id: int | None = None
