@@ -58,7 +58,7 @@ def _workspace(p: PlanProgram) -> str | None:
 
 def _out(p: PlanProgram, used: dict[int, list[str]], grade: int | None = None, purpose: str | None = None) -> dict:
     tpl = p.data.get('template') if p.kind == 'adaptive' else None
-    return {'id': p.id, 'title': p.title, 'subject': p.subject, 'grade': p.grade, 'grade_roman': ROMAN.get(p.grade),
+    return {'id': p.id, 'key': p.key, 'title': p.title, 'subject': p.subject, 'grade': p.grade, 'grade_roman': ROMAN.get(p.grade),
             'kind': p.kind, 'source': p.source, 'description': p.description, 'weekly_hours': p.weekly_hours,
             'lessons': _count(p), 'topics': sum(len(s['topics']) for s in tpl_sections(tpl)) if tpl else None,
             'course': is_course(p) or is_toplu(p), 'toplu': is_toplu(p), 'purposes': purposes(p),

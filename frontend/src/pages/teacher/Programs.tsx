@@ -1,13 +1,13 @@
 // Perspektiv plan proqramları (docs/perspektiv-proqramlar-promtu.md): sinif/qrup üçün əsas proqram (jurnal ona görə)
 // və əlavə proqramlar (bütün sinif və ya səviyyə qrupu üçün; jurnala qarışmır). Proqramlar qarışdırılmır – hər biri ayrıca.
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { api, del, get, patch, post } from '../../api'
 import { useAuth } from '../../auth'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmtDate, Loading, PickFirst, Pill, toast, useLoad, ord } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { head, printDoc, SIGN, table } from '../../print'
 
-type Prog = { id: number; title: string; subject: string; grade: number | null; grade_roman: string | null; kind: 'fixed' | 'adaptive'
+type Prog = { id: number; key?: string | null; title: string; subject: string; grade: number | null; grade_roman: string | null; kind: 'fixed' | 'adaptive'
   source: string | null; description: string | null; weekly_hours: number | null; lessons: number | null; topics: number | null
   level: string | null; mine: boolean; builtin: boolean; used_by: string[]; fits: boolean; workspace: 'school' | 'private' | null
   course: boolean; toplu?: boolean; tasks?: number | null; purposes: string[] }
@@ -15,6 +15,45 @@ type For = { ta_id: number; class_name: string; subject: string; grade: number |
   main_sections: string[] | null; extra: { id: number; level: string | null; note: string | null; sections: string[] | null; program: Prog }[] }
 type Sec = { name: string; part: string | null; count: number }
 const LEVELS = ['Zəif', 'Orta', 'Güclü']
+const ROM: Record<number, string> = { 5: 'V', 6: 'VI', 7: 'VII', 8: 'VIII', 9: 'IX', 10: 'X', 11: 'XI' }
+
+// Kitabxana kateqoriyaları: DİM test bankı (buraxılış) – IX və XI ayrıca; DİM «Sinif testləri» – sinif-sinif; kurslar; planlarım
+type Cat = 'dim' | 'sinif' | 'kurs' | 'plan'
+const CATS: [Cat, string][] = [['dim', '📘 DİM test bankı – buraxılış hazırlığı'], ['sinif', '📗 Sinif testləri (DİM) – sinif dərsi'],
+  ['kurs', '🧩 Kurs proqramları'], ['plan', '📄 Planlarım (Word, saxlanmış)']]
+const catOf = (p: Prog): Cat => (p.builtin && (p.key || '').startsWith('dim-sinif-testleri') ? 'sinif'
+  : p.builtin || p.toplu || p.purposes.some(x => ['buraxilis9', 'buraxilis11', 'qebul'].includes(x)) ? 'dim' : p.course ? 'kurs' : 'plan')
+
+/** Kitabxana – kateqoriya və sinif üzrə (açılan siyahılar), hər qrup ayrıca başlıqla. */
+function Library({ lib, grade, row }: { lib: Prog[]; grade?: number | null; row: (p: Prog) => ReactNode }) {
+  const [cat, setCat] = useState<'' | Cat>('')
+  const [g, setG] = useState<string>(() => (grade ? String(grade) : ''))
+  const shown = lib.filter(p => (!cat || catOf(p) === cat) && (!g || p.grade === Number(g) || p.grade == null))
+  const groups: { key: string; title: string; items: Prog[] }[] = []
+  for (const [c, cl] of CATS) {
+    const inCat = shown.filter(p => catOf(p) === c)
+    if (!inCat.length) continue
+    const grades = [...new Set(inCat.map(p => p.grade ?? 0))].sort((a, b) => a - b)
+    for (const gr of grades) {
+      const items = inCat.filter(p => (p.grade ?? 0) === gr)
+      groups.push({ key: `${c}-${gr}`, title: `${cl}${gr ? ` · ${ROM[gr] || gr} sinif` : ''}`, items })
+    }
+  }
+  const grades = [...new Set(lib.map(p => p.grade).filter((x): x is number => !!x))].sort((a, b) => a - b)
+  return (<>
+    <div className="hub-bar" style={{ gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)' }}>
+      <label className="hub-pick"><span>Kateqoriya</span><select value={cat} onChange={e => setCat(e.target.value as Cat | '')}>
+        <option value="">Hamısı</option>{CATS.map(([k, l]) => <option key={k} value={k}>{l} ({lib.filter(p => catOf(p) === k).length})</option>)}</select></label>
+      <label className="hub-pick"><span>Sinif</span><select value={g} onChange={e => setG(e.target.value)}>
+        <option value="">Bütün siniflər</option>{grades.map(x => <option key={x} value={x}>{ROM[x] || x} sinif</option>)}</select></label>
+    </div>
+    {groups.length === 0 ? <div className="empty">Bu seçimdə proqram yoxdur.</div> : groups.map(gr => (
+      <div key={gr.key} style={{ marginBottom: 14 }}>
+        <h3 className="small" style={{ margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--muted)' }}>{gr.title} <span className="muted">({gr.items.length})</span></h3>
+        <div className="jlist">{gr.items.map(row)}</div>
+      </div>))}
+  </>)
+}
 /** Hazırlıq məqsədi (fərdi qrup və proqram təyinatı) – docs/repetitor-proqramlar-promtu.md §7. */
 export const PURPOSES: Record<string, string> = { sinif: 'Sinif dərsinə dəstək', buraxilis9: 'IX buraxılış', buraxilis11: 'XI buraxılış',
   qebul: 'Qəbul (blok)', olimpiada: 'Olimpiada', diger: 'Digər' }
@@ -49,8 +88,7 @@ export default function Programs() {
         <option value="">Bütün səviyyələr</option>{LEVELS.map(l => <option key={l}>{l}</option>)}</select>
         <button className="btn sm right" onClick={() => setCourse('new')}>+ Kurs proqramı</button>
         <button className="btn sm" onClick={() => setWord(true)}>Word planını yüklə</button></div>
-      {!lib ? <Loading /> : (
-        <div className="jlist">{lib.map(p => (
+      {!lib ? <Loading /> : <Library key={ta ?? 0} lib={lib} grade={f?.grade} row={p => (
           <div key={p.id} className="prog-row">
             <ProgLine p={p} />
             <div className="row" style={{ gap: 6 }}>
@@ -60,7 +98,7 @@ export default function Programs() {
               {p.mine && p.course && <button className="btn sm ghost" onClick={() => setCourse(p)}>Məzmun</button>}
               {p.mine && <button className="btn sm ghost" onClick={() => setEdit(p)}>Redaktə</button>}
             </div>
-          </div>))}</div>)}
+          </div>)} />}
       {view && <ViewProgram p={view} onClose={() => setView(null)} />}
       {apply && ta && <ApplyProgram p={apply} ta={ta} onClose={() => setApply(null)} onDone={() => { setApply(null); reload() }} />}
       {attach && ta && <AttachProgram p={attach} ta={ta} onClose={() => setAttach(null)} onDone={() => { setAttach(null); reload() }} />}
@@ -393,11 +431,11 @@ function PickProgram({ ta, mode, mainId, onClose, onPick }: { ta: number; mode: 
       <div className="toolbar"><select className="sel keep" value={lvl} onChange={e => setLvl(e.target.value)} aria-label="Səviyyə">
         <option value="">Bütün səviyyələr</option>{LEVELS.map(l => <option key={l}>{l}</option>)}</select></div>
       <ErrorBox error={err} />
-      {!lib ? <Loading /> : <div className="jlist">{lib.map(p => (
+      {!lib ? <Loading /> : <Library lib={lib} grade={lib.find(p => p.fits && p.grade)?.grade} row={p => (
         <div key={p.id} className="prog-row"><ProgLine p={p} />
           <div className="row" style={{ gap: 6 }}><button className="btn sm" onClick={() => setView(p)}>Bax</button>
             <button className="btn sm primary" disabled={mode === 'main' && p.id === mainId} onClick={() => onPick(p)}>{mode === 'main' && p.id === mainId ? 'Seçilib' : 'Seç'}</button></div>
-        </div>))}</div>}
+        </div>)} />}
       {view && <ViewProgram p={view} onClose={() => setView(null)} />}
     </Drawer>
   )
