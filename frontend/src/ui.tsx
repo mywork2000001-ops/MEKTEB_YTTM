@@ -1,5 +1,5 @@
 // Ümumi UI komponentləri – maketin CSS sinifləri ilə.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ICONS } from './icons-data'
 import { ApiError } from './api'
@@ -160,10 +160,11 @@ export function Stat({ value, label }: { value: ReactNode; label: string }) {
 }
 
 /** Async düymə: basılanda gözləyir, xətanı bildirişlə göstərir. */
-export function AsyncBtn({ onClick, children, className = 'btn', disabled, ok }: { onClick: () => Promise<unknown>; children: ReactNode; className?: string; disabled?: boolean; ok?: string }) {
+export function AsyncBtn({ onClick, children, className = 'btn', disabled, ok, title, style }: { onClick: () => Promise<unknown>; children: ReactNode; className?: string
+  disabled?: boolean; ok?: string; title?: string; style?: CSSProperties }) {
   const [busy, setBusy] = useState(false)
   return (
-    <button className={className} disabled={disabled || busy} onClick={async () => {
+    <button className={className} title={title} style={style} disabled={disabled || busy} onClick={async () => {
       setBusy(true)
       try { await onClick(); if (ok) toast(ok) } catch (e) { toast(e instanceof ApiError ? e.message : 'Xəta baş verdi') } finally { setBusy(false) }
     }}>{busy ? '…' : children}</button>

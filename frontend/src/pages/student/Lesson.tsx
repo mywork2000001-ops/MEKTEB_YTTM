@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { tt } from '../../i18n'
 import { get } from '../../api'
 import { useT } from '../../i18n'
 import { examLabel, PlanNotes } from './Plan'

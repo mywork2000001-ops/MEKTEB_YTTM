@@ -8,6 +8,6 @@ ayrıca xahiş gözlənilmir:
 - Sual / variant / izah mətni (`{az,ru,en}`) — `ml(x)` ilə (istifadəçinin dilində).
 - Server mesajları şagirdə görünürsə — EN/RU qarşılığı da (docs/rus-dili-promtu.md, mərhələ 4).
 - Rəsmi sənədlər (jurnal, perspektiv plan, rəsmi çap formaları) — yalnız Azərbaycan dilində.
-- Yoxlama: `npx tsc --noEmit` (lüğətdə təkrar açar xəta verir).
+- Yoxlama: **`npm run build`** (frontend qovluğunda; `tsc -b` – Render də məhz bunu işlədir). `npx tsc --noEmit -p .` HEÇ NƏ YOXLAMIR (kök tsconfig yalnız istinadlardır) – 12.10.2026-da buna görə 11 deploy uğursuz oldu. Lüğətdə təkrar açar (tək və ya cüt dırnaqla) xəta verir.
 
 Ətraflı: `docs/rus-dili-promtu.md`.
