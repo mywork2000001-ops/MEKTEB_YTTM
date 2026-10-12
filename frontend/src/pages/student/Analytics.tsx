@@ -11,7 +11,7 @@ function Compare({ label, me, avg, min = 0, max = 100, unit = '%' }: { label: st
   return (
     <div style={{ marginBottom: 14 }}>
       <div className="row small"><span className="grow">{label}</span><b>{t('Mən')}: {fmt(me, unit ? 1 : 2)}{me != null ? unit : ''}</b><span className="muted">{t('Sinif ortası')}: {fmt(avg, unit ? 1 : 2)}{avg != null ? unit : ''}</span></div>
-      <div className="cmp"><i style={{ width: (me == null ? 0 : pos(me)) + '%' }} />{avg != null && <u style={{ left: `calc(${pos(avg)}% - 1px)` }} title="sinif ortası" />}</div>
+      <div className="cmp"><i style={{ width: (me == null ? 0 : pos(me)) + '%' }} />{avg != null && <u style={{ left: `calc(${pos(avg)}% - 1px)` }} title={t('sinif ortası')} />}</div>
     </div>
   )
 }
@@ -24,19 +24,19 @@ export default function Analytics() {
   const [d, err, loading] = useLoad<any>(() => get('/api/portal/analytics', { date_from: from, date_to: to }), [from, to])
   return (
     <>
-      <Top title={t('Analitika')} sub="Öz göstəriciləriniz; sinif ortası adsızdır"
-        actions={<button className="btn no-print" disabled={!d} onClick={() => d && printReport(d, me, from, to)}>Hesabatım – çap / PDF</button>} />
+      <Top title={t('Analitika')} sub={t('Öz göstəriciləriniz; sinif ortası adsızdır')}
+        actions={<button className="btn no-print" disabled={!d} onClick={() => d && printReport(d, me, from, to)}>{t('Hesabatım – çap / PDF')}</button>} />
       <div className="toolbar no-print">
-        <label className="small row">Başlanğıc <input type="date" className="sel" value={from} onChange={e => setFrom(e.target.value)} /></label>
+        <label className="small row">{t('Başlanğıc')} <input type="date" className="sel" value={from} onChange={e => setFrom(e.target.value)} /></label>
         <label className="small row">Son <input type="date" className="sel" value={to} onChange={e => setTo(e.target.value)} /></label>
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : d?.subjects.map((s: any, i: number) => (
         <section key={i} className="panel" style={{ marginBottom: 14 }}>
-          <h2>{s.subject} <small>{s.class_name} · {s.class_size} şagird</small></h2>
-          <Compare label="Orta qiymət (2–5)" me={s.me.avg_grade} avg={s.class_avg.avg_grade} min={2} max={5} unit="" />
-          <Compare label="Davamiyyət" me={s.me.attendance_pct} avg={s.class_avg.attendance_pct} />
-          <Compare label="Ev tapşırığı" me={s.me.homework_pct} avg={s.class_avg.homework_pct} />
+          <h2>{s.subject} <small>{s.class_name} · {t('{n} şagird', { n: s.class_size })}</small></h2>
+          <Compare label={t('Orta qiymət (2–5)')} me={s.me.avg_grade} avg={s.class_avg.avg_grade} min={2} max={5} unit="" />
+          <Compare label={t('Davamiyyət')} me={s.me.attendance_pct} avg={s.class_avg.attendance_pct} />
+          <Compare label={t('Ev tapşırığı')} me={s.me.homework_pct} avg={s.class_avg.homework_pct} />
         </section>))}
     </>
   )

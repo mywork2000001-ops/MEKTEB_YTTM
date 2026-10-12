@@ -1,6 +1,7 @@
 // «Uğurlarım»: səviyyə/XP, seriya, həftəlik hədəf, nişanlar, bölmələr üzrə proqres və sertifikatlar (docs/sertifikat-ve-motivasiya-promtu.md).
 // Hamısı yalnız şagirdin özünə görünür; sertifikat şagirdin hesabına bağlıdır – yeni sertifikat tətbiq açılanda özü göstərilir.
 import { useEffect, useState } from 'react'
+import { tt } from '../../i18n'
 import { get, post } from '../../api'
 import { CertView, confetti, printCert, shareCert, type Cert } from '../../certificate'
 import { Drawer, ErrorBox, fmt, fmtDate, Loading, prettySection, Top, useLoad } from '../../ui'
@@ -23,7 +24,7 @@ export default function Achievements() {
   const [open, setOpen] = useState<Cert | null>(null)
   return (
     <>
-      <Top title="Uğurlarım" sub="Səviyyən, nişanların və sertifikatların – yalnız sən görürsən" />
+      <Top title={tt('Uğurlarım')} sub={tt('Səviyyən, nişanların və sertifikatların – yalnız sən görürsən')} />
       <ErrorBox error={err || err2} />
       {!a ? <Loading /> : (
         <div className="stack">
@@ -31,40 +32,40 @@ export default function Achievements() {
             <div className="row" style={{ alignItems: 'center', gap: 16 }}>
               <div style={{ width: 64, height: 64, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 26, fontWeight: 900, color: '#fff',
                 background: 'linear-gradient(135deg,#8b5cf6,#3b82f6)' }}>{a.level}</div>
-              <div className="grow"><b style={{ fontSize: 18 }}>{a.level_name}</b><div className="small muted">{a.xp} XP{a.level_to ? ` · növbəti səviyyəyə ${a.level_to - a.xp} XP` : ' · ən yüksək səviyyə'}</div>
+              <div className="grow"><b style={{ fontSize: 18 }}>{tt(a.level_name)}</b><div className="small muted">{a.xp} XP{a.level_to ? ` · ${tt('növbəti səviyyəyə {n} XP', { n: a.level_to - a.xp })}` : ` · ${tt('ən yüksək səviyyə')}`}</div>
                 {a.level_to && <div style={{ marginTop: 6 }}><Bar value={a.xp - a.level_from} max={a.level_to - a.level_from} color="linear-gradient(90deg,#8b5cf6,#3b82f6)" /></div>}</div>
             </div>
             <div className="kpis" style={{ marginTop: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))' }}>
-              <div className="kpi"><b>🔥 {a.streak}</b><span>seriya (ən yaxşı {a.best_streak})</span></div>
-              <div className="kpi"><b>{a.tests}</b><span>test yazılıb</span></div>
-              <div className="kpi"><b>{a.avg_pct != null ? fmt(a.avg_pct) + '%' : '—'}</b><span>orta nəticə</span></div>
+              <div className="kpi"><b>🔥 {a.streak}</b><span>{tt('seriya (ən yaxşı {n})', { n: a.best_streak })}</span></div>
+              <div className="kpi"><b>{a.tests}</b><span>{tt('test yazılıb')}</span></div>
+              <div className="kpi"><b>{a.avg_pct != null ? fmt(a.avg_pct) + '%' : '—'}</b><span>{tt('orta nəticə')}</span></div>
               <div className="kpi"><b>🏆 {a.certificates}</b><span>sertifikat</span></div>
             </div>
           </section>
-          <section className="panel"><h2>Həftəlik hədəf</h2>
-            {a.week.total ? <><div className="row small"><span className="grow">Bu həftə {a.week.total} test – yazılıb {a.week.done}</span>{a.week.done >= a.week.total && <b style={{ color: 'var(--ok)' }}>✓ Hədəf tamamlandı!</b>}</div>
+          <section className="panel"><h2>{tt('Həftəlik hədəf')}</h2>
+            {a.week.total ? <><div className="row small"><span className="grow">{tt('Bu həftə {a} test – yazılıb {b}', { a: a.week.total, b: a.week.done })}</span>{a.week.done >= a.week.total && <b style={{ color: 'var(--ok)' }}>✓ {tt('Hədəf tamamlandı!')}</b>}</div>
               <Bar value={a.week.done} max={a.week.total} color={a.week.done >= a.week.total ? 'var(--ok)' : undefined} /></>
-              : <p className="small muted" style={{ margin: 0 }}>Bu həftə test yoxdur.</p>}
+              : <p className="small muted" style={{ margin: 0 }}>{tt('Bu həftə test yoxdur.')}</p>}
           </section>
-          <section className="panel"><h2>Nişanlar<small>{a.badges.filter(b => b.earned).length}/{a.badges.length}</small></h2>
+          <section className="panel"><h2>{tt('Nişanlar')}<small>{a.badges.filter(b => b.earned).length}/{a.badges.length}</small></h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 8 }}>
               {a.badges.map(b => (
-                <div key={b.key} title={b.how} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, textAlign: 'center', opacity: b.earned ? 1 : 0.45,
+                <div key={b.key} title={tt(b.how)} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 10, textAlign: 'center', opacity: b.earned ? 1 : 0.45,
                   background: b.earned ? 'var(--accent-soft)' : undefined, filter: b.earned ? undefined : 'grayscale(1)' }}>
-                  <div style={{ fontSize: 28 }}>{b.icon}</div><b className="small">{b.title}</b><div className="small muted" style={{ fontSize: 11 }}>{b.how}</div>
+                  <div style={{ fontSize: 28 }}>{b.icon}</div><b className="small">{tt(b.title)}</b><div className="small muted" style={{ fontSize: 11 }}>{tt(b.how)}</div>
                 </div>))}
             </div>
           </section>
-          {a.sections.length > 0 && <section className="panel"><h2>Bölmələr üzrə proqres</h2>
+          {a.sections.length > 0 && <section className="panel"><h2>{tt('Bölmələr üzrə proqres')}</h2>
             {a.sections.map(s => (
               <div key={s.section} style={{ marginBottom: 8 }}>
                 <div className="row small"><span className="grow">{prettySection(s.section)}</span><b style={{ color: tone(s.pct) }}>{fmt(s.pct, 0)}%</b><span className="muted">· {s.tests} test</span></div>
                 <Bar value={s.pct} max={100} color={tone(s.pct)} />
-                {s.pct < 75 && <span className="small muted">Növbəti hədəf: 75%</span>}
+                {s.pct < 75 && <span className="small muted">{tt('Növbəti hədəf')}: 75%</span>}
               </div>))}
           </section>}
-          <section className="panel"><h2>Sertifikatlarım<small>{certs?.length ?? 0}</small></h2>
-            {!certs ? <Loading /> : certs.length === 0 ? <p className="small muted" style={{ margin: 0 }}>Mövzu testində 90%-dən, sınaqda 80%-dən yuxarı nəticə və ya sinifdə ilk yerlər – sertifikat gətirir.</p> : (
+          <section className="panel"><h2>{tt('Sertifikatlarım')}<small>{certs?.length ?? 0}</small></h2>
+            {!certs ? <Loading /> : certs.length === 0 ? <p className="small muted" style={{ margin: 0 }}>{tt('Mövzu testində 90%-dən, sınaqda 80%-dən yuxarı nəticə və ya sinifdə ilk yerlər – sertifikat gətirir.')}</p> : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 10 }}>
                 {certs.map(c => (
                   <button key={c.id} className="panel click" style={{ textAlign: 'left', margin: 0 }} onClick={() => setOpen(c)}>
@@ -82,9 +83,9 @@ export default function Achievements() {
 export function CertDrawer({ c, onClose, title }: { c: Cert; onClose: () => void; title?: string }) {
   return (
     <Drawer title={title || 'Sertifikat'} onClose={onClose}
-      footer={<><button className="btn" onClick={() => shareCert(c)}>Paylaş</button><button className="btn primary" onClick={() => printCert(c)}>Çap / PDF</button></>}>
+      footer={<><button className="btn" onClick={() => shareCert(c)}>{tt('Paylaş')}</button><button className="btn primary" onClick={() => printCert(c)}>{tt('Çap / PDF')}</button></>}>
       <CertView c={c} />
-      <p className="small muted">Yoxlama kodu: <b>{c.code}</b> – QR kodu oxudanda sertifikatın həqiqi olduğu görünür.</p>
+      <p className="small muted">{tt('Yoxlama kodu')}: <b>{c.code}</b> – {tt('QR kodu oxudanda sertifikatın həqiqi olduğu görünür.')}</p>
     </Drawer>
   )
 }
@@ -96,5 +97,5 @@ export function CertNudge() {
     get<Cert[]>('/api/portal/certificates').then(l => { const n = l.find(x => x.new); if (n) { setC(n); confetti() } }, () => {})
   }, [])
   if (!c) return null
-  return <CertDrawer c={c} title="🎉 Təbriklər! Yeni sertifikat" onClose={() => { setC(null); post('/api/portal/certificates/seen').catch(() => {}) }} />
+  return <CertDrawer c={c} title={tt('🎉 Təbriklər! Yeni sertifikat')} onClose={() => { setC(null); post('/api/portal/certificates/seen').catch(() => {}) }} />
 }

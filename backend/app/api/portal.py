@@ -483,6 +483,8 @@ def notifications(user: User = Depends(student_only), db: Session = Depends(get_
     s = me_student(db, user)
     at = now()
     hm = lambda x: aware(x).astimezone(ZoneInfo(SCHOOL_TZ)).strftime('%d.%m %H:%M')
+    lang = user.language if user.language in ('ru', 'en') else 'az'
+    L = lambda az, ru, en: {'az': az, 'ru': ru, 'en': en}[lang]          # bildiriş mətni istifadəçinin dilində (rus dili promtu)
     out = []
     tasks = _my_tasks(db, s)
     for t in tasks:
@@ -490,21 +492,21 @@ def notifications(user: User = Depends(student_only), db: Session = Depends(get_
         st = _status(t, a, at)
         kind = 'sınaq' if t.kind == 'sinaq' else 'test'
         if st in ('açıq', 'həll edilir'):
-            out.append({'key': f'task-open-{t.id}', 'kind': kind, 'title': f'{t.title} – açıqdır',
-                        'text': f'{hm(t.closes_at)}-dək · {t.duration_min} dəq', 'link': f'/t/{t.id}', 'at': aware(t.opens_at)})
+            out.append({'key': f'task-open-{t.id}', 'kind': kind, 'title': f"{t.title} – {L('açıqdır', 'открыт', 'open')}",
+                        'text': L(f'{hm(t.closes_at)}-dək', f'до {hm(t.closes_at)}', f'until {hm(t.closes_at)}') + ' · ' + L(f'{t.duration_min} dəq', f'{t.duration_min} мин', f'{t.duration_min} min'), 'link': f'/t/{t.id}', 'at': aware(t.opens_at)})
         elif st == 'gözlənilir' and aware(t.opens_at) - at <= dt.timedelta(hours=24):
-            out.append({'key': f'task-soon-{t.id}', 'kind': kind, 'title': f'{t.title} – tezliklə',
-                        'text': f'açılır: {hm(t.opens_at)}', 'link': '/tasks', 'at': aware(t.opens_at)})
+            out.append({'key': f'task-soon-{t.id}', 'kind': kind, 'title': f"{t.title} – {L('tezliklə', 'скоро', 'soon')}",
+                        'text': L('açılır', 'открывается', 'opens') + f': {hm(t.opens_at)}', 'link': '/tasks', 'at': aware(t.opens_at)})
     for x in student_exams(db, s, [t.id for t in tasks]):
         if x.get('closed') and x.get('pct') is not None and at - x['closes_at'] <= dt.timedelta(days=7):
-            out.append({'key': f'exam-{x["batch_id"]}', 'kind': 'nəticə', 'title': f'{x["title"]} – nəticə hazırdır',
-                        'text': f'{x["pct"]}% · sinifdə {x["place_class"]}/{x["class_count"]}', 'link': '/results',
+            out.append({'key': f'exam-{x["batch_id"]}', 'kind': 'nəticə', 'title': f'{x["title"]} – ' + L('nəticə hazırdır', 'результат готов', 'result is ready'),
+                        'text': f'{x["pct"]}% · ' + L('sinifdə', 'в классе', 'in class') + f' {x["place_class"]}/{x["class_count"]}', 'link': '/results',
                         'at': x['closes_at']})
     today = at.astimezone(ZoneInfo(SCHOOL_TZ)).date()
     for c in student_courses(db, s):
         n = c['next']
         if n and (n['date'] - today).days <= 1:
-            when = 'bu gün' if n['date'] == today else 'sabah'
+            when = L('bu gün', 'сегодня', 'today') if n['date'] == today else L('sabah', 'завтра', 'tomorrow')
             out.append({'key': f'extra-{n["id"]}', 'kind': 'məşğələ', 'title': f'{c["title"]} – {when} {n["start"]}',
                         'text': ' · '.join(n['topics']) or n['format'], 'link': '/extra',
                         'at': dt.datetime.combine(n['date'], dt.time.fromisoformat(n['start']), tzinfo=ZoneInfo(SCHOOL_TZ))})

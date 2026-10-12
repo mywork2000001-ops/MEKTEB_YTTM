@@ -1,6 +1,7 @@
 // Dövr filtri (gün / həftə / ay / yarımil / il) + sıralama (mövzu / tarix) – onlayn test və sınaq siyahıları üçün.
 // Yarımil: I – sentyabr–yanvar, II – fevral–avqust; tədris ili 1 sentyabrdan.
 import { useState } from 'react'
+import { tt } from './i18n'
 import { azDT, Seg } from './ui'
 
 export type Period = 'all' | 'day' | 'week' | 'month' | 'half' | 'year'
@@ -63,13 +64,13 @@ export function PeriodBar({ f, count, total, topicLabel = 'Mövzu üzrə' }: { f
   return (
     <div className="stack" style={{ gap: 8, margin: '4px 0 10px' }}>
       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <Seg label="Sıralama" value={f.sort} onChange={f.setSort} options={[['topic', topicLabel], ['date', 'Tarix üzrə']]} />
-        <Seg label="Dövr" value={f.period} onChange={f.setPeriod} options={PERIODS} />
+        <Seg label={tt('Sıralama')} value={f.sort} onChange={f.setSort} options={[['topic', topicLabel], ['date', tt('Tarix üzrə')]]} />
+        <Seg label={tt('Dövr')} value={f.period} onChange={f.setPeriod} options={PERIODS.map(([k, l]) => [k, tt(l)] as [Period, string])} />
       </div>
       <div className="row" style={{ gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-        {f.range && <button className="btn sm" aria-label="Əvvəlki dövr" onClick={() => f.shift(-1)}>‹</button>}
+        {f.range && <button className="btn sm" aria-label={tt('Əvvəlki dövr')} onClick={() => f.shift(-1)}>‹</button>}
         <b className="small">{f.label}</b>
-        {f.range && <button className="btn sm" aria-label="Növbəti dövr" onClick={() => f.shift(1)}>›</button>}
+        {f.range && <button className="btn sm" aria-label={tt('Növbəti dövr')} onClick={() => f.shift(1)}>›</button>}
         {f.range && <button className="btn sm ghost" onClick={f.today}>Bu gün</button>}
         <span className="small muted grow" style={{ textAlign: 'right' }}>{count === total ? `${total} test` : `${count} / ${total} test`}</span>
       </div>

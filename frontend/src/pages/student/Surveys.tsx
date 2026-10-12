@@ -1,5 +1,6 @@
 // Şagirdin tətbiqində sorğular: müəllimlərinin açıq sorğuları; həftəlik sorğu hər tədris həftəsində yenilənir.
 import { useEffect, useState } from 'react'
+import { tt } from '../../i18n'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { get, post } from '../../api'
 import { Empty, ErrorBox, Loading, Pill, Top, useLoad } from '../../ui'
@@ -16,22 +17,22 @@ export default function Surveys() {
   const [one, oneErr] = useLoad<SvPublic | null>(() => (open ? get(`/api/portal/surveys/${open}`) : Promise.resolve(null)), [open])
   if (open) return (
     <div className="sv-wrap" style={{ padding: 0 }}>
-      <button className="btn sm ghost" style={{ marginBottom: 8 }} onClick={() => { setOpen(null); reload() }}>← Sorğular</button>
+      <button className="btn sm ghost" style={{ marginBottom: 8 }} onClick={() => { setOpen(null); reload() }}>← {tt('Sorğular')}</button>
       <ErrorBox error={oneErr} />
       {one ? <SurveyForm sv={one} onSubmit={(answers, device) => post(`/api/portal/surveys/${open}/responses`, { answers, device })} onDone={reload} /> : !oneErr && <Loading />}
     </div>
   )
   return (
     <>
-      <Top title="Sorğular" sub="Müəllimləriniz haqqında anonim rəy – kimin nə yazdığı görünmür" />
+      <Top title={tt('Sorğular')} sub={tt('Müəllimləriniz haqqında anonim rəy – kimin nə yazdığı görünmür')} />
       <ErrorBox error={err} />
-      {loading && !list ? <Loading /> : !list?.length ? <Empty><p>Hazırda açıq sorğu yoxdur.</p></Empty> : (
+      {loading && !list ? <Loading /> : !list?.length ? <Empty><p>{tt('Hazırda açıq sorğu yoxdur.')}</p></Empty> : (
         <div className="grid g2">{list.map(s => (
           <section key={s.id} className="panel">
             <h2 style={{ marginBottom: 4 }}>{s.title}</h2>
-            <p className="small muted" style={{ margin: '0 0 10px' }}>Müəllim: {s.teacher}{s.period_label ? ` · həftə: ${s.period_label}` : ''} · {s.questions} sual, ~{mins(s.questions)} dəq.</p>
+            <p className="small muted" style={{ margin: '0 0 10px' }}>{tt('Müəllim')}: {s.teacher}{s.period_label ? ` · ${tt('həftə')}: ${s.period_label}` : ''} · {tt('{n} sual', { n: s.questions })}, ~{tt('{n} dəq', { n: mins(s.questions) })}</p>
             <div className="row" style={{ justifyContent: 'space-between' }}>
-              {s.done ? <Pill tone="ok">{s.repeat === 'weekly' ? 'Bu həftə cavab verdiniz' : 'Cavab verdiniz'}</Pill> : <Pill tone="warn">{s.repeat === 'weekly' ? 'Bu həftənin sorğusu' : 'Gözləyir'}</Pill>}
+              {s.done ? <Pill tone="ok">{s.repeat === 'weekly' ? tt('Bu həftə cavab verdiniz') : tt('Cavab verdiniz')}</Pill> : <Pill tone="warn">{s.repeat === 'weekly' ? tt('Bu həftənin sorğusu') : tt('Gözləyir')}</Pill>}
               {!s.done && <button className="btn primary sm" onClick={() => setOpen(s.id)}>Cavab ver</button>}
             </div>
           </section>))}</div>)}
@@ -57,13 +58,13 @@ export function SurveyNudge() {
   }, [])
   if (!item) return null
   return (
-    <div className="sv-nudge" role="dialog" aria-label="Sorğuya dəvət">
+    <div className="sv-nudge" role="dialog" aria-label={tt('Sorğuya dəvət')}>
       <div className="grow">
-        <b>Müəlliminiz haqqında fikriniz</b>
-        <div className="small muted">{item.teacher} · {item.questions} sual, ~{mins(item.questions)} dəq. · anonim</div>
+        <b>{tt('Müəlliminiz haqqında fikriniz')}</b>
+        <div className="small muted">{item.teacher} · {tt('{n} sual', { n: item.questions })}, ~{tt('{n} dəq', { n: mins(item.questions) })} · {tt('anonim')}</div>
       </div>
       <button className="btn sm ghost" onClick={() => setItem(null)}>Sonra</button>
-      <button className="btn sm primary" onClick={() => { setItem(null); nav(`/surveys?open=${item.id}`) }}>Başla</button>
+      <button className="btn sm primary" onClick={() => { setItem(null); nav(`/surveys?open=${item.id}`) }}>{tt('Başla')}</button>
     </div>
   )
 }

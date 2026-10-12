@@ -87,7 +87,7 @@ export function Layout({ children }: { children: ReactNode }) {
             ))}
           </nav>
           <div className="side-foot">
-            <p className="quote">«Hər şagirdin öz addımı var. Əsas odur ki, irəliləsin.»</p><br />
+            <p className="quote">«{t('Hər şagirdin öz addımı var. Əsas odur ki, irəliləsin.')}»</p><br />
             <button className="btn ghost sm" style={{ color: 'var(--side-muted)' }} onClick={logout}>{t('Çıxış')}</button>
           </div>
         </aside>
