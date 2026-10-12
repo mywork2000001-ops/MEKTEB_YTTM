@@ -22,7 +22,7 @@ type Lv = 'Zəif' | 'Orta' | 'Güclü'
 const LV: Lv[] = ['Zəif', 'Orta', 'Güclü']
 type Toplu = { mode: 'chapter' | 'exam' | 'diag' | 'mock'; in_bank: boolean; url?: string; chapter?: string; has_ev?: boolean
   title?: string; questions: any[]; missing: number[]; absent?: string[] }
-type P0010 = { eligible: boolean; matches: { file_id: number; label: string; count: number }[]; file?: { file_id: number; label: string }
+type P0010 = { eligible: boolean; source?: string; matches: { file_id: number; label: string; count: number }[]; file?: { file_id: number; label: string }
   title?: string; questions: any[] }
 type Prev = { task_id: number; title: string; class_name: string; opens_at: string; questions: any[]; count: number; avg_pct: number | null }
 
@@ -68,7 +68,14 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
       }, () => setP10(null))
     }, setErr)
     get<Prev[]>(`/api/plan/${ta}/topics/${pl}/previous`).then(setPrev, () => setPrev([]))
-    get<Toplu>(`/api/programs/toplu/questions?lesson_id=${pl}`).then(setToplu, () => setToplu(null))   // «Test toplusu» dərsi deyilsə – 400
+    get<Toplu>(`/api/programs/toplu/questions?lesson_id=${pl}`).then(r => {   // «Test toplusu» dərsi deyilsə – 400
+      setToplu(r)
+      // IX «Test toplusu» (DİM 9): dərsin S/E/M aralığının sualları özü əlavə olunur (müəllim dəyişə bilər)
+      if (r.in_bank && r.questions.length) {
+        setPlain(cur => cur.length ? cur : r.questions.map(q => fromSnapshot(q, 'b' + q.bank_id)))
+        if (r.title) setF(x => ({ ...x, title: r.title!.slice(0, 200) }))
+      }
+    }, () => setToplu(null))
   }, [ta, pl])
   const takePrev = (p: Prev) => { setQs(cur => [...cur, ...p.questions.map((q, i) => fromSnapshot(q, `p${p.task_id}-${i}`)).filter(q => !cur.some(c => c.key === q.key))]); toast(`${p.count} sual götürüldü`) }
 
@@ -218,8 +225,8 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
                 </div>)}
             </fieldset>)}
           {p10?.eligible && (
-            <fieldset><legend>P0010 testləri (mövzuya uyğun)</legend>
-              {!p10.matches.length ? <p className="small muted" style={{ margin: 0 }}>P0010 test bazasında bu mövzuya uyğun fayl tapılmadı – aşağıdan əl ilə seçin.</p> : (<>
+            <fieldset><legend>{p10.source === 'p007' ? 'DİM 9 test toplusu' : 'P0010 testləri'} (mövzuya uyğun)</legend>
+              {!p10.matches.length ? <p className="small muted" style={{ margin: 0 }}>{p10.source === 'p007' ? 'DİM 9' : 'P0010'} test bazasında bu mövzuya uyğun fayl tapılmadı – aşağıdan əl ilə seçin.</p> : (<>
                 {p10.file && <p className="small" style={{ margin: '0 0 6px' }}>Avtomatik əlavə olundu: <b>{p10.file.label}</b> ({p10.questions.length} sual). Lazım olmayanları siyahıdan silin.</p>}
                 <div className="row" style={{ gap: 6 }}>
                   {p10.matches.map(m => <button key={m.file_id} type="button" className="btn sm" disabled={tbusy} onClick={() => takeP10(m.file_id)}>{m.label} <span className="muted">({m.count})</span></button>)}

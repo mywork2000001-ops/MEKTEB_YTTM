@@ -68,9 +68,10 @@ def attach_p0010(db: Session, cls, lessons: list[dict]) -> None:
     """X–XI sinif: hər plan dərsinə P0010 test faylı (docs/x-xi-p0010-testleri-promtu.md) – müəllimin seçimi
     (LessonBankLink) varsa o, yoxdursa mövzuya ən uyğun fayl. p0010_manual – müəllim özü seçib/götürüb."""
     from ..services import class_grade
-    if class_grade(db, cls) not in (10, 11) or not lessons:
+    from ..bank.match import Matcher, source_for
+    src = source_for(class_grade(db, cls))
+    if not src or not lessons:
         return
-    from ..bank.match import Matcher
     from ..models import BankFile, LessonBankLink
     ids = [l['id'] for l in lessons if l.get('id')]
     manual = {k.plan_lesson_id: k for k in db.scalars(select(LessonBankLink).where(LessonBankLink.plan_lesson_id.in_(ids or [0])))}
@@ -81,11 +82,13 @@ def attach_p0010(db: Session, cls, lessons: list[dict]) -> None:
             f = db.get(BankFile, k.file_id) if k.file_id else None
             l['p0010'] = f and {'file_id': f.id, 'label': f.label, 'url': f.url}
             l['p0010_manual'] = True
+            l['p0010_src'] = src
             continue
         if l.get('assessment_type') in ('KSQ', 'BSQ'):          # summativ dərsə mövzu testi verilmir
             continue
-        m = m or Matcher(db)
+        m = m or Matcher(db, src)
         best = m.matches(l['topic'], l.get('section'), 1)
+        l['p0010_src'] = src
         l['p0010'] = {'file_id': best[0][0].id, 'label': best[0][0].label, 'url': best[0][0].url} if best else None
 
 
@@ -97,9 +100,11 @@ class P0010In(BaseModel):
 @router.put('/plan/{ta_id}/topics/{pl_id}/p0010')
 def set_p0010(ta_id: int, pl_id: int, body: P0010In, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Müəllim dərsin P0010 faylını dəyişir: auto – avtomatik uyğunluğa qayıt, none – bağlantı yoxdur, file – bu fayl."""
-    from ..bank.match import SOURCE
+    from ..bank.match import source_for
     from ..models import BankFile, LessonBankLink, PlanLesson
+    from ..services import class_grade
     ta = own_assignment(db, user, ta_id)
+    SOURCE = source_for(class_grade(db, db.get(SchoolClass, ta.class_id)))
     pl = db.get(PlanLesson, pl_id)
     if not pl or pl.assignment_id != ta.id:
         raise HTTPException(404, 'Mövzu bu dərsin planında yoxdur')

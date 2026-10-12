@@ -13,6 +13,11 @@ from sqlalchemy.orm import Session
 from ..models import BankFile, BankSource
 
 SOURCE = 'p003'
+GRADE_SOURCE = {9: 'p007', 10: 'p003', 11: 'p003'}     # IX – DİM 9 test toplusu (P007), X–XI – P0010
+
+
+def source_for(grade: int | None) -> str | None:
+    return GRADE_SOURCE.get(grade)
 _STOP = {'ve', 'ile', 'onun', 'onlar', 'ucun', 'bezi', 'sinif', 'iki', 'hiss', 'mesel', 'anlay', 'esas', 'muxte', 'usull'}
 _PREFIX = re.compile(r'^\s*[IVX]+\s+sinif\s*:\s*', re.I)
 
@@ -34,17 +39,17 @@ def _raw(s: str) -> set[str]:
     return {w[:5] for w in s.split() if len(w) >= 3 and not w.isdigit()} - {'bolme', 'ile', 've'}
 
 
-def p0010_files(db: Session) -> list[BankFile]:
+def p0010_files(db: Session, source: str = SOURCE) -> list[BankFile]:
     return list(db.scalars(select(BankFile).join(BankSource, BankSource.key == BankFile.source_key).where(
-        BankFile.source_key == SOURCE, BankFile.active.is_(True), BankSource.enabled.is_(True), BankFile.question_count > 0,
+        BankFile.source_key == source, BankFile.active.is_(True), BankSource.enabled.is_(True), BankFile.question_count > 0,
         BankFile.kind == 'movzu').order_by(BankFile.lesson)))
 
 
 class Matcher:
     """Bankdakı P0010 faylları bir dəfə oxunur (plan görünüşündə hər dərs üçün təkrar sorğu olmasın)."""
 
-    def __init__(self, db: Session):
-        self.files = p0010_files(db)
+    def __init__(self, db: Session, source: str = SOURCE):
+        self.files = p0010_files(db, source)
         self.fst = {f.id: stems(f.label) for f in self.files}
         self.own = {f.id: stems(f.label.split(' — ', 1)[-1]) for f in self.files}     # alt mövzu adı bölmədən ağırdır
         self.grp = {f.id: _raw(f.label.split(' — ', 1)[0]) for f in self.files}      # P0010 bölməsi
@@ -75,5 +80,5 @@ class Matcher:
         return scored[:limit]
 
 
-def p0010_matches(db: Session, topic: str, section: str | None = None, limit: int = 6) -> list[tuple[BankFile, float]]:
-    return Matcher(db).matches(topic, section, limit)
+def p0010_matches(db: Session, topic: str, section: str | None = None, limit: int = 6, source: str = SOURCE) -> list[tuple[BankFile, float]]:
+    return Matcher(db, source).matches(topic, section, limit)
