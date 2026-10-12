@@ -73,3 +73,16 @@ def test_ksq_archive_zip_and_purge(world):
     names2 = zipfile.ZipFile(io.BytesIO(admin.get('/api/exam-archive/zip').content)).namelist()
     assert not any('kartlar/' in n for n in names2)
     assert world[0]('yad').get('/api/exam-archive/zip').status_code == 404
+
+
+def test_ksq_edit_and_delete(world):
+    from .test_ksq_scan import ksq, photo
+    admin, ta, e, pr = ksq(world)
+    admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([pr['sheets'][0]['qr']]), 'image/jpeg'))])
+    ex = admin.get(f'/api/exams/{ta}').json()['exams'][0]
+    r = admin.patch(f'/api/exams/{ta}/{e["id"]}', json={**{k: ex[k] for k in ('kind', 'no', 'semester', 'max_points', 'items')},
+                                                       'date': '2026-10-21', 'title': 'Faiz'})
+    assert r.status_code == 200 and r.json()['date'] == '2026-10-21'
+    assert world[0]('yad').delete(f'/api/exams/{ta}/{e["id"]}').status_code in (403, 404)
+    d = admin.delete(f'/api/exams/{ta}/{e["id"]}').json()
+    assert d['variants'] == 3 and d['scans'] == 1 and admin.get(f'/api/exams/{ta}').json()['exams'] == []

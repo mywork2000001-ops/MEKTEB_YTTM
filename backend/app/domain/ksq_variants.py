@@ -89,14 +89,14 @@ class Shortage(Exception):
                          f"{x['missing']} şagird üçün sual çatmır" for x in self.items[:8])
 
 
-def bank_candidates(db, topics: list[tuple[str, str | None]]) -> list[Cand]:
-    """Aralıqdakı plan mövzuları → P0010 faylları (Matcher, hər mövzuya 2 fayl) → yararlı bank sualları."""
+def bank_candidates(db, topics: list[tuple[str, str | None]], source: str = 'p003') -> list[Cand]:
+    """Aralıqdakı plan mövzuları → sinfin test bazası (IX – DİM 9 P007, X–XI – P0010; Matcher, hər mövzuya 4 fayl) → yararlı suallar."""
     from sqlalchemy import select
     from ..models import BankQuestion
-    m = Matcher(db)
+    m = Matcher(db, source)
     out, seen = [], set()
     for ti, (topic, section) in enumerate(topics):
-        for f, _ in m.matches(topic, section, limit=2):
+        for f, _ in m.matches(topic, section, limit=4):
             for q in db.scalars(select(BankQuestion).where(BankQuestion.file_id == f.id, BankQuestion.active.is_(True))):
                 key = 'b:' + (q.content_hash or str(q.id))
                 if key in seen:
@@ -164,12 +164,13 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
                 if same or pool:
                     pick = (same or pool)[0]
                     break
-            if pick is None and s['kind'] == 'open':
-                for t in sorted(tpls, key=lambda t: (t.level != s['level'], rng.random())):
+            if pick is None:
+                # bankda çatmır → parametrli şablon (açıq və ya test); mövzuya uyğun yoxdursa – ümumi şablonlar (son çarə)
+                for t in sorted(tpls or T.TEMPLATES, key=lambda t: (t.level != s['level'], rng.random())):
                     for _ in range(60):
-                        q = T.instance(t, rng)
-                        if q['key'] not in used and q['key'] not in hist and norm_text(q['text']) not in used_text:
-                            pick = Cand(q['key'], 'open', q['level'], -1, {**q, 'card_answer': q['answer']})
+                        q = T.instance(t, rng) if s['kind'] == 'open' else T.mcq_instance(t, rng)
+                        if q and q['key'] not in used and q['key'] not in hist and norm_text(q['text']) not in used_text:
+                            pick = Cand(q['key'], s['kind'], q['level'], -1, {**q, 'card_answer': q.get('answer')})
                             break
                     if pick:
                         break

@@ -94,9 +94,11 @@ def test_generate_strictly_unique():
     assert rep['unique'] == rep['questions'] == 750 and rep['open_pct'] == 70.0
 
 
-def test_generate_shortage_is_strict():
+def test_generate_shortage_is_strict(monkeypatch):
+    # mövzuya uyğun şablon yoxdursa ümumi şablonlar işləyir; şablon ümumiyyətlə yoxdursa – səssiz təkrar yox, Shortage
+    monkeypatch.setattr(T, 'TEMPLATES', [])
     with pytest.raises(Shortage) as e:
-        generate(list(range(1, 26)), [('Heç nə', None)], _cands(2), {}, seed=1)     # şablon uyğun gəlmir
+        generate(list(range(1, 26)), [('Heç nə', None)], _cands(2), {}, seed=1)
     assert e.value.items and all(x['missing'] > 0 for x in e.value.items)
 
 
@@ -196,3 +198,25 @@ def test_cross_class_reuse_cap():
     assert len(keys) == 20 and len(set(keys)) == 20
     assert sum(k in others for k in keys) <= 4                         # 20% × 20
     _ = rng
+
+
+def test_mcq_shortage_filled_by_templates():
+    """İstifadəçi halı (12.10.2026): 25 şagird, 20 sual, bankda test sualı az → test slotları şablondan (A–E), çatışmazlıq yoxdur."""
+    cands = [Cand(f'b{i}', 'mcq', 'asan', 0, {'text': {'az': f'q{i}'}, 'kind': 'mcq', 'options': [{'az': '1'}, {'az': '2'}], 'correct': 0})
+             for i in range(8)]
+    res = generate(list(range(25)), [('Faiz', None)], cands, {}, seed=5, n=20)
+    qs = [q for v in res.values() for q in v]
+    assert len(qs) == 500 and len({q['key'] for q in qs}) == 500
+    mcq = [q for q in qs if q['kind'] == 'mcq']
+    tpl = [q for q in mcq if q.get('template')]
+    assert len(mcq) == 25 * sum(s['kind'] == 'mcq' for s in slots(20)) and tpl
+    for q in tpl:
+        opts = [o['az'] for o in q['options']]
+        assert len(opts) == 5 and len(set(opts)) == 5 and 0 <= q['correct'] < 5
+
+
+def test_distractors_distinct():
+    rng = random.Random(2)
+    for ans in ('12', '-4', '2,5', '3/7', '0', '1;4'):
+        d = T.distractors(ans, rng)
+        assert d and len(set(d)) == 4 and ans not in d

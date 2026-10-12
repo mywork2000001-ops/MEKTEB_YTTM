@@ -128,6 +128,31 @@ def update_exam(ta_id: int, exam_id: int, body: ExamIn, user: User = Depends(sta
     return exam_out(e)
 
 
+@router.delete('/{ta_id}/{exam_id}')
+def delete_exam(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """KSQ/BSQ-ni silir: nəticələr, kağız variantlar, kart skanları (şəkillər daxil) birlikdə. Plan sətri qalır («Hazırla»)."""
+    from ..models import ExamScan
+    from ..storage import DbStorage
+    own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    n = {'scores': 0, 'variants': 0, 'scans': 0}
+    for sc in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id)):
+        if sc.crop_key and sc.crop_key.startswith('db:'):
+            DbStorage.remove(db, sc.crop_key)
+        db.delete(sc)
+        n['scans'] += 1
+    for x in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)):
+        db.delete(x)
+        n['variants'] += 1
+    for x in db.scalars(select(ExamScore).where(ExamScore.exam_id == e.id)):
+        db.delete(x)
+        n['scores'] += 1
+    audit(db, user, 'delete', 'exam', e.id, kind=e.kind, no=e.no, **n)
+    db.delete(e)
+    db.commit()
+    return {'ok': True, **n}
+
+
 class ScoreIn(BaseModel):
     student_id: int
     points: float | None = Field(None, ge=0)
@@ -347,7 +372,11 @@ def make_variants(ta_id: int, exam_id: int, body: VariantsIn | None = None, user
         same = select(Exam.id).join(TeachingAssignment, TeachingAssignment.id == Exam.assignment_id).where(
             TeachingAssignment.teacher_id == ta.teacher_id, Exam.kind == e.kind, Exam.no == e.no, Exam.semester == e.semester, Exam.id != e.id)
         others = {q.get('key') for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id.in_(same))) for q in v.questions if q.get('key')}
-        res = generate(students, topics, bank_candidates(db, topics), _history(db, ta, e, students), seed=e.id * 7919, n=n, others=others)
+        from ..bank.match import source_for
+        from ..models import SchoolClass
+        from ..services import class_grade
+        src = source_for(class_grade(db, db.get(SchoolClass, ta.class_id))) or 'p003'
+        res = generate(students, topics, bank_candidates(db, topics, src), _history(db, ta, e, students), seed=e.id * 7919, n=n, others=others)
     except Shortage as sh:
         raise HTTPException(409, {'message': 'Hər şagirdə fərqli sual üçün bazada sual çatmır: ' + sh.message(),
                                   'shortage': sh.items, 'topics': [t for t, _ in topics]})

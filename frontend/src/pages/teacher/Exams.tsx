@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { api, get, post, put } from '../../api'
-import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Pill, toast, useLoad } from '../../ui'
+import { api, del, get, patch, post, put } from '../../api'
+import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Pill, toast, useLoad } from '../../ui'
 import type { MyLesson } from './common'
 import { head, printDoc, SIGN, table } from '../../print'
 import { tt } from '../../i18n'
@@ -15,6 +15,8 @@ export default function Exams({ ta }: { ta: MyLesson }) {
   const [create, setCreate] = useState<Planned | null>(null)
   const [open, setOpen] = useState<number | null>(null)
   const [vars, setVars] = useState<Exam | null>(null)
+  const [edit, setEdit] = useState<Exam | null>(null)
+  const [delAsk, setDelAsk] = useState<Exam | null>(null)
   if (d && !d.has_summative) return <div className="empty">Bu qrupda KSQ/BSQ keçirilmir – bütöv sinifdə keçirilir.</div>
   const byKey = new Map((d?.exams || []).map(e => [`${e.kind}-${e.semester}-${e.no}`, e]))
   return (
@@ -35,7 +37,9 @@ export default function Exams({ ta }: { ta: MyLesson }) {
             <div className="jrow cols" key={`${p.kind}${p.semester}${p.no}`} style={{ ['--cols' as any]: 'minmax(0,1fr) auto auto', ['--mcols' as any]: 'minmax(0,1fr) auto' }}>
               <span><b>{p.kind}-{p.no}</b> <span className="muted small">({p.semester}-ci yarımil) · {fmtDate(p.date)}</span><span className="sub small muted"><br />{p.topic}</span></span>
               {e ? <Pill tone="ok">{e.max_points} bal{e.items ? ` · ${e.items.length} tapşırıq` : ''}</Pill> : <Pill>yaradılmayıb</Pill>}
-              {e ? <span className="row" style={{ gap: 4 }}><button className="btn sm" onClick={() => setVars(e)} title={tt('Hər şagirdə fərqli 30 sual · bir A4 + cavab kartı')}>🖨 {tt('Kağız variantlar')}</button>
+              {e ? <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}><button className="btn sm ghost" onClick={() => setEdit(e)} title={tt('Tarixi və başlığı dəyiş')}>✏</button>
+                <button className="btn sm ghost" onClick={() => setDelAsk(e)} title={tt('Sil')}>🗑</button>
+                <button className="btn sm" onClick={() => setVars(e)} title={tt('Hər şagirdə fərqli 30 sual · bir A4 + cavab kartı')}>🖨 {tt('Kağız variantlar')}</button>
                 <button className="btn sm primary" onClick={() => setOpen(e.id)}>Nəticələr</button></span> : <button className="btn sm" onClick={() => setCreate(p)}>Hazırla</button>}
             </div>)
         })}
@@ -44,7 +48,9 @@ export default function Exams({ ta }: { ta: MyLesson }) {
           <div className="jrow cols" key={'x' + e.id} style={{ ['--cols' as any]: 'minmax(0,1fr) auto auto', ['--mcols' as any]: 'minmax(0,1fr) auto' }}>
             <span><b>{e.kind}-{e.no}</b> <span className="muted small">({e.semester}-ci yarımil) · {fmtDate(e.date)}</span><span className="sub small muted"><br />{tt('planda yoxdur')}</span></span>
             <Pill tone="ok">{e.max_points} bal{e.items ? ` · ${e.items.length} tapşırıq` : ''}</Pill>
-            <span className="row" style={{ gap: 4 }}><button className="btn sm" onClick={() => setVars(e)}>🖨 {tt('Kağız variantlar')}</button>
+            <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}><button className="btn sm ghost" onClick={() => setEdit(e)} title={tt('Tarixi və başlığı dəyiş')}>✏</button>
+              <button className="btn sm ghost" onClick={() => setDelAsk(e)} title={tt('Sil')}>🗑</button>
+              <button className="btn sm" onClick={() => setVars(e)}>🖨 {tt('Kağız variantlar')}</button>
               <button className="btn sm primary" onClick={() => setOpen(e.id)}>Nəticələr</button></span>
           </div>))}
         {d && !d.planned.length && !d.exams.length && <div className="empty">Planda KSQ/BSQ yoxdur (plan yüklənməyib?).</div>}
@@ -52,6 +58,9 @@ export default function Exams({ ta }: { ta: MyLesson }) {
       {create && <CreateExam ta={ta} p={create} prev={(d?.planned || []).filter(x => x.semester === create.semester && x.date < create.date).map(x => x.date).sort().pop() || null} onClose={() => setCreate(null)} onDone={id => { setCreate(null); reload(); setOpen(id) }} />}
       {open && <Scores ta={ta} examId={open} onClose={() => { setOpen(null); reload() }} />}
       {vars && <Variants ta={ta} e={vars} onClose={() => { setVars(null); reload() }} />}
+      {edit && <EditExam ta={ta} e={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
+      {delAsk && <ConfirmName name={`${delAsk.kind}-${delAsk.no}`} action={tt('Birdəfəlik sil (nəticələr, variantlar və skanlar da)')} onCancel={() => setDelAsk(null)}
+        onConfirm={async () => { const r = await del<{ scores: number; variants: number; scans: number }>(`/api/exams/${ta.id}/${delAsk.id}`); toast(tt('Silindi: nəticə {a}, variant {b}, skan {c}', { a: r.scores, b: r.variants, c: r.scans })); setDelAsk(null); reload() }} />}
     </>
   )
 }
@@ -197,7 +206,7 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
       footer={<>{has && <><AsyncBtn className="btn" onClick={async () => printKey(await load())}>🔑 {tt('Müəllim açarı')}</AsyncBtn>
         <AsyncBtn className="btn primary" onClick={async () => printSheets(await load())}>🖨 {tt('Vərəqləri çap et (A4)')}</AsyncBtn></>}</>}>
       <ErrorBox error={err} />
-      <p className="small muted" style={{ marginTop: 0 }}>{tt('30 sual · 100 bal (9 test, 21 açıq). Hər şagirdin sualları fərqlidir, əvvəl verilən suallar təkrarlanmır. Hər şagirdə bir A4 vərəq: ön üzdə 1–16, arxada 17–30 və cavab kartı. İki üzlü çap edin.')}</p>
+      <p className="small muted" style={{ marginTop: 0 }}>{tt('Sual sayını seçin (cəmi 100 bal; ~30 % test, ~70 % açıq). Sinifdə hər şagirdin sualları fərqlidir, əvvəl verilən suallar təkrarlanmır. Bankda çatmayanda suallar parametrli şablonlardan yaranır. Hər şagirdə bir A4 vərəq (iki üz) + cavab kartı.')}</p>
       {fail && <div className="empty" style={{ color: 'var(--bad)', textAlign: 'left' }}>{fail}</div>}
       <label className="lsel" style={{ marginBottom: 10 }}><span>{tt('Sual sayı')}</span>
         <select className="sel" value={n} onChange={x => setN(Number(x.target.value))}>{[10, 12, 15, 18, 20, 24, 25, 30].map(k => <option key={k} value={k}>{tt('{n} sual · 100 bal', { n: k })}</option>)}</select></label>
@@ -297,5 +306,25 @@ function ScanDetail({ s, onChange }: { s: Scan; onChange: () => void }) {
           })}
         </div>) : <p className="small muted">{tt('Kart hələ oxunmayıb.')}</p>}
     </div>
+  )
+}
+
+/** KSQ/BSQ redaktəsi: tarix və başlıq (nəticə yazılıbsa da olar); bal və tapşırıq quruluşu toxunulmur. */
+function EditExam({ ta, e, onClose, onDone }: { ta: MyLesson; e: Exam & { title?: string | null }; onClose: () => void; onDone: () => void }) {
+  const [date, setDate] = useState(e.date)
+  const [title, setTitle] = useState(e.title || '')
+  const save = async () => {
+    await patch(`/api/exams/${ta.id}/${e.id}`, { kind: e.kind, no: e.no, semester: e.semester, date, title: title.trim() || null,
+      max_points: e.max_points, items: e.items })
+    toast(tt('Yadda saxlanıldı')); onDone()
+  }
+  return (
+    <Drawer title={`${e.kind}-${e.no} · ${tt('Redaktə')}`} onClose={onClose} footer={<AsyncBtn className="btn primary" onClick={save}>{tt('Yadda saxla')}</AsyncBtn>}>
+      <div className="fg">
+        <Field label={tt('Tarix')}><input type="date" value={date} onChange={x => setDate(x.target.value)} /></Field>
+        <Field label={tt('Başlıq / qeyd')}><input value={title} maxLength={300} onChange={x => setTitle(x.target.value)} /></Field>
+      </div>
+      <p className="small muted">{tt('Bal və tapşırıqların quruluşu burada dəyişmir (kağız variantlarda sual sayı «Yenidən yarat» ilə).')}</p>
+    </Drawer>
   )
 }

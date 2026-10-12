@@ -500,6 +500,15 @@ const D: Record<string, [string, string]> = {
   "Arxivi endirib Google Drive-a yüklədinizmi? Kart şəkilləri serverdən silinəcək.": ["Have you downloaded the archive and uploaded it to Google Drive? Card images will be deleted from the server.", "Вы скачали архив и загрузили его в Google Drive? Фото бланков будут удалены с сервера."],
   "Silinən şəkil: {n}": ["Images deleted: {n}", "Удалено фото: {n}"],
   "Şəkilləri serverdən sil": ["Delete images from server", "Удалить фото с сервера"],
+  // KSQ redaktə/silmə (12.10.2026)
+  "Tarixi və başlığı dəyiş": ["Change date and title", "Изменить дату и название"],
+  "Birdəfəlik sil (nəticələr, variantlar və skanlar da)": ["Delete permanently (results, variants and scans too)", "Удалить навсегда (вместе с результатами, вариантами и сканами)"],
+  "Silindi: nəticə {a}, variant {b}, skan {c}": ["Deleted: results {a}, variants {b}, scans {c}", "Удалено: результатов {a}, вариантов {b}, сканов {c}"],
+  "Yadda saxlanıldı": ["Saved", "Сохранено"],
+  "Redaktə": ["Edit", "Редактирование"],
+  "Başlıq / qeyd": ["Title / note", "Название / заметка"],
+  "Bal və tapşırıqların quruluşu burada dəyişmir (kağız variantlarda sual sayı «Yenidən yarat» ilə).": ["Points and task structure are not changed here (for paper variants change the question count with «Recreate»).", "Баллы и структура заданий здесь не меняются (число вопросов бумажных вариантов — через «Создать заново»)."],
+  "Sual sayını seçin (cəmi 100 bal; ~30 % test, ~70 % açıq). Sinifdə hər şagirdin sualları fərqlidir, əvvəl verilən suallar təkrarlanmır. Bankda çatmayanda suallar parametrli şablonlardan yaranır. Hər şagirdə bir A4 vərəq (iki üz) + cavab kartı.": ["Choose the number of questions (100 points in total; ~30 % multiple choice, ~70 % open). Every student in the class gets different questions; earlier questions are not repeated. If the bank runs short, questions are generated from parametric templates. One A4 sheet per student (double-sided) + answer card.", "Выберите число вопросов (всего 100 баллов; ~30 % тестовых, ~70 % открытых). У каждого ученика класса свои вопросы, ранее выданные не повторяются. Если банка не хватает, вопросы создаются из параметрических шаблонов. Каждому ученику один лист A4 (двусторонний) + бланк ответов."],
 }
 
 export const I18nCtx = createContext<Lang>('az')

@@ -230,6 +230,45 @@ def matching(topic_stems: set[str]) -> list[Template]:
     return [t for t in TEMPLATES if any(k in s or s in k for k in t.keys for s in topic_stems if len(s) >= 4)]
 
 
+def _num(s: str) -> Fraction | None:
+    try:
+        return Fraction(s.replace(',', '.')) if '/' not in s else Fraction(int(s.split('/')[0]), int(s.split('/')[1]))
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def distractors(ans: str, rng: random.Random, k: int = 4) -> list[str] | None:
+    """Düzgün cavaba yaxın, amma fərqli 4 cavab (tipik səhvlər: ±1, ±addım, işarə, ikiqat/yarı). Cütlərdə birinci ədəd dəyişir."""
+    parts = ans.split(';')
+    a = _num(parts[0])
+    if a is None:
+        return None
+    step = max(Fraction(1), abs(a) / 10) if a.denominator == 1 else Fraction(1, a.denominator)
+    pool = [a + 1, a - 1, a + step, a - step, -a, a * 2, a / 2 if a else a + 3, a + 2 * step, a - 2 * step, a + 10]
+    out, seen = [], {fmt(a)}
+    rng.shuffle(pool)
+    for x in pool:
+        v = ';'.join([fmt(x), *parts[1:]])
+        if fmt(x) not in seen and len(v) <= 12:
+            seen.add(fmt(x))
+            out.append(v)
+        if len(out) == k:
+            return out
+    return None
+
+
+def mcq_instance(t: Template, rng: random.Random) -> dict | None:
+    """Parametrli şablondan TEST sualı: A–E, düzgün cavabın yeri təsadüfi. Bankda test sualı çatmayanda (KSQ variantları)."""
+    q = instance(t, rng)
+    wrong = distractors(q['answer'], rng)
+    if not wrong:
+        return None
+    opts = [q['answer'], *wrong]
+    rng.shuffle(opts)
+    return {**q, 'key': q['key'] + ':m', 'kind': 'mcq', 'options': [{'az': o} for o in opts], 'correct': opts.index(q['answer']),
+            'answer': None}
+
+
 def instance(t: Template, rng: random.Random) -> dict:
     text, ans, params = t.make(rng)
     return {'key': f'tpl:{t.id}:{params}', 'kind': 'open', 'text': text, 'answer': fmt(ans if not isinstance(ans, float) else Fraction(ans).limit_denominator()),
