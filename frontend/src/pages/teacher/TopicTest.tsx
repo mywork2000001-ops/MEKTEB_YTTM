@@ -48,7 +48,7 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
   const [p10, setP10] = useState<P0010 | null>(null)
   const qs = variants ? vqs[vk] : plain
   const setQs = (fn: (cur: Q[]) => Q[]) => (variants ? setVqs(v => ({ ...v, [vk]: fn(v[vk]) })) : setPlain(fn))
-  const [f, setF] = useState({ title: '', duration: 20, show: 'after_close', shuffle: true, journal: true })
+  const [f, setF] = useState({ title: '', duration: 45, show: 'after_close', shuffle: true, journal: true })
   const [err, setErr] = useState<unknown>()
   const [busy, setBusy] = useState(false)
 
@@ -138,7 +138,7 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
           </div></div>
           <div className="fg">
             <Field label="Ad" full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
-            <Field label="Həll müddəti (dəq)"><input type="number" min={1} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+            <Field label="Həll müddəti (dəq)" hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
             <Field label="Düzgün cavablar görünsün"><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
               <option value="after_close">test bağlandıqdan sonra</option><option value="after_submit">təhvil verdikdən dərhal sonra</option><option value="never">heç vaxt</option></select></Field>
             <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> Sualların sırası hər şagirdə fərqli</label>

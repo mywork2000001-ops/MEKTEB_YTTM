@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AfterValidator, BaseModel, Field, model_validator
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,9 @@ from ..services import class_grade, own_assignment, roster
 from .common import audit, get_or_404
 
 router = APIRouter(prefix='/api/tasks', tags=['tasks'])
+
+MIN_TEST_MIN = 45        # mövzu testi və sınaqda həll müddəti ən azı 45 dəqiqə (az yazılsa – 45-ə qaldırılır)
+TestMinutes = Annotated[int, Field(ge=1, le=300), AfterValidator(lambda v: max(v, MIN_TEST_MIN))]
 
 
 def aware(t: dt.datetime) -> dt.datetime:
@@ -139,7 +142,7 @@ class TaskIn(BaseModel):
     description: str | None = Field(None, max_length=2000)
     opens_at: dt.datetime
     closes_at: dt.datetime
-    duration_min: int = Field(ge=1, le=300)
+    duration_min: TestMinutes
     bank_ids: list[int] = Field(default_factory=list)
     custom: list[CustomQ] = Field(default_factory=list)
     shuffle: bool = True
@@ -402,7 +405,7 @@ class CopyIn(BaseModel):
     target_ta_id: int                              # eyni və ya başqa sinif/qrup (müəllimin öz dərsi)
     opens_at: dt.datetime
     closes_at: dt.datetime
-    duration_min: int | None = Field(None, ge=1, le=300)    # boş – əvvəlki müddət
+    duration_min: TestMinutes | None = None                  # boş – əvvəlki müddət
     title: str | None = Field(None, min_length=2, max_length=200)
     student_ids: list[int] | None = None           # boş – bütün sinif/qrup
 
@@ -417,7 +420,7 @@ def copy_task(ta_id: int, task_id: int, body: CopyIn, user: User = Depends(staff
         raise HTTPException(404, 'Tapşırıq tapılmadı')
     target = own_assignment(db, user, body.target_ta_id)
     o, c = aware(body.opens_at), aware(body.closes_at)
-    dur = body.duration_min or src.duration_min
+    dur = body.duration_min or max(src.duration_min, MIN_TEST_MIN)
     if c <= o:
         raise HTTPException(400, 'Bağlanma vaxtı açılmadan sonra olmalıdır')
     if c <= now():
@@ -572,7 +575,7 @@ class TaskPatch(BaseModel):
     description: str | None = Field(None, max_length=2000)
     opens_at: dt.datetime | None = None
     closes_at: dt.datetime | None = None
-    duration_min: int | None = Field(None, ge=1, le=300)
+    duration_min: TestMinutes | None = None
     shuffle: bool | None = None
     show_answers: Literal['after_close', 'after_submit', 'never'] | None = None
     student_ids: list[int] | None = None
@@ -627,3 +630,65 @@ def update_task(ta_id: int, task_id: int, body: TaskPatch, user: User = Depends(
     audit(db, user, 'update', 'task', t.id, fields=sorted(data))
     db.commit()
     return task_out(t)
+
+
+# ---------------------------------------------------------------- səliqə (miqrasiya f7b9d1e3a5c8)
+def tidy_tasks(bind, at: dt.datetime | None = None) -> dict:
+    """Köhnə mövzu testləri və sınaqlar:
+    1) bağlanmamışların həll müddəti ən azı 45 dəq (açıq qalma aralığı imkan verdikcə), sınaq seriyaları da;
+    2) təkrarlar – eyni sinif, növ, mövzu, ad, suallar və şagirdlər: heç kimin başlamadığı surətlər silinir
+       (nəticəsi olan test HEÇ VAXT silinmir; qalan – ən çox cəhdi olan, bərabərdirsə ən köhnəsi)."""
+    import json
+    import sqlalchemy as sa
+    t0 = at or now()
+
+    def ts(v):
+        if v is None or isinstance(v, dt.datetime):
+            return aware(v) if v else None
+        return aware(dt.datetime.fromisoformat(str(v)))
+
+    def js(v):
+        return json.loads(v) if isinstance(v, str) else v
+
+    out = {'duration': 0, 'series': 0, 'deleted': 0, 'kept_with_results': 0}
+    rows = bind.execute(sa.text("SELECT id, assignment_id, kind, plan_lesson_id, title, questions, student_ids, opens_at, "
+                                "closes_at, duration_min FROM online_tasks WHERE kind IN ('movzu', 'sinaq') "
+                                "AND archived_at IS NULL")).fetchall()
+    for r in rows:
+        o, c = ts(r.opens_at), ts(r.closes_at)
+        if c and c > t0 and r.duration_min < MIN_TEST_MIN:
+            new = min(MIN_TEST_MIN, int((c - o).total_seconds() // 60))
+            if new > r.duration_min:
+                bind.execute(sa.text('UPDATE online_tasks SET duration_min = :d WHERE id = :i'), {'d': new, 'i': r.id})
+                out['duration'] += 1
+    out['series'] = bind.execute(sa.text('UPDATE exam_series SET duration_min = :d WHERE duration_min < :d AND window_hours * 60 >= :d'),
+                                 {'d': MIN_TEST_MIN}).rowcount or 0
+    att = {k: n for k, n in bind.execute(sa.text('SELECT task_id, COUNT(*) FROM task_attempts GROUP BY task_id')).fetchall()}
+    groups: dict[tuple, list] = {}
+    for r in rows:
+        qs = js(r.questions) or []
+        sig = tuple(q.get('bank_id') or json.dumps(q.get('text'), ensure_ascii=False, sort_keys=True) for q in qs if isinstance(q, dict))
+        sids = tuple(sorted(js(r.student_ids) or [])) if r.student_ids is not None else None
+        key = (r.assignment_id, r.kind, r.plan_lesson_id, (r.title or '').strip().casefold(), sig, sids)
+        groups.setdefault(key, []).append(r)
+    drop, batches = [], set()
+    for g in groups.values():
+        if len(g) < 2:
+            continue
+        g.sort(key=lambda r: (-att.get(r.id, 0), r.id))
+        for r in g[1:]:
+            if att.get(r.id):
+                out['kept_with_results'] += 1
+            else:
+                drop.append(r.id)
+    if drop:
+        for bid, in bind.execute(sa.text('SELECT DISTINCT batch_id FROM online_tasks WHERE id IN :ids AND batch_id IS NOT NULL')
+                                 .bindparams(sa.bindparam('ids', expanding=True)), {'ids': drop}).fetchall():
+            batches.add(bid)
+        bind.execute(sa.text('UPDATE marks SET task_id = NULL WHERE task_id IN :ids').bindparams(sa.bindparam('ids', expanding=True)), {'ids': drop})
+        bind.execute(sa.text('DELETE FROM online_tasks WHERE id IN :ids').bindparams(sa.bindparam('ids', expanding=True)), {'ids': drop})
+        for bid in batches:
+            if not bind.execute(sa.text('SELECT 1 FROM online_tasks WHERE batch_id = :b LIMIT 1'), {'b': bid}).first():
+                bind.execute(sa.text('DELETE FROM test_batches WHERE id = :b'), {'b': bid})
+        out['deleted'] = len(drop)
+    return out

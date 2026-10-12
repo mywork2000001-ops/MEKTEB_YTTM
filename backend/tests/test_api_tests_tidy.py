@@ -45,3 +45,28 @@ def test_live_watch_for_exam_matches_journal(world, clock, monkeypatch):
     assert [(x['id'], x['classes'], x['wrote'], x['avg_pct'], x['state']) for x in ex] == [(bid, ['X e', 'X c'], 1, 58.3, 'açıqdır')]
     assert ex[0]['ta_ids'] == sorted([ta, ta_c])
     assert world[0]('yad').get('/api/exams-online').json() == []
+
+
+def test_tidy_old_tests(world, clock):
+    """Miqrasiya: təkrar surət (heç kim başlamayıb) silinir, nəticəsi olan qalır; açıq testin müddəti 45 dəqiqəyə qalxır."""
+    from app.api.tasks import tidy_tasks
+    from app.models import OnlineTask, TestBatch
+    from .test_api_portal import student_client
+    admin, ta, cid, st, ids = setup(world)
+    S = world[1]
+    a = mk_task(admin, ta, ids).json()                                        # 15:00–16:00
+    b = mk_task(admin, ta, ids).json()                                        # eyni test ikinci dəfə (təsadüfən)
+    c = mk_task(admin, ta, ids).json()
+    with S() as db:                                                           # köhnə qayda ilə yaradılmış kimi – 20 dəq
+        for x in (a, b, c):
+            db.get(OnlineTask, x['id']).duration_min = 20
+        db.commit()
+    clock.t = dt.datetime(2026, 9, 29, 15, 10, tzinfo=UTC)
+    s = student_client(st[0]['portal_code'], st[0]['initial_pin'])
+    s.post(f'/api/portal/tasks/{b["id"]}/start')                               # b-də nəticə var – silinməməlidir
+    with S() as db:
+        out = tidy_tasks(db.connection(), dt.datetime(2026, 9, 29, 15, 10, tzinfo=UTC))
+        db.commit()
+        left = {t.id: t.duration_min for t in db.query(OnlineTask)}
+        assert out['deleted'] == 2 and set(left) == {b['id']} and left[b['id']] == 45
+        assert db.query(TestBatch).count() == 1                               # silinənlərin boş paketi də getdi

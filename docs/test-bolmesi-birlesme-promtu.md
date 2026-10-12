@@ -19,3 +19,12 @@ seçimlər açılan siyahı ilə: əvvəl sinif, sonra mövzu testi / sınaq / n
 
 ## Yoxlama
 - `tsc`, build, backend testləri; brauzer: üç bölmə × sinif × görünüş, köhnə keçidlərin yönləndirilməsi, şagird profili keçidi.
+
+## Əlavə (12.10.2026): köhnə testlərin səliqəsi, 45 dəqiqə, təkrarlar
+- [x] **Həll müddəti ən azı 45 dəq:** mövzu testi, sınaq, yenidən göndərmə, redaktə, seriya, avtomatik mövzu testi
+      (az yazılsa – 45-ə qaldırılır; açıq qalma aralığı 45 dəqiqədən qısadırsa – xəbərdarlıq). Məşğələ testləri – dəyişmir.
+- [x] **Miqrasiya f7b9d1e3a5c8 (canlıda bir dəfə):** bağlanmamış mövzu testi/sınaqlarda müddət 45 dəqiqəyə (aralıq imkan
+      verdikcə), seriyalarda da; **təkrarlar** – eyni sinif, növ, mövzu, ad, suallar və şagirdlər: heç kimin başlamadığı
+      surətlər silinir, boş paket də; **nəticəsi olan test heç vaxt silinmir**. Nəticə Render logunda: «test tidy: {...}».
+- [x] **Mövzu testləri səliqəsi:** eyni test bir neçə sinfə verilibsə – bir kart («N sinif»), içində sinif sətirləri
+      (vəziyyət, vaxt, təhvil, orta, əməllər); ümumi təhvil və orta kartın başında.

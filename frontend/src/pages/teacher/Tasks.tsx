@@ -12,7 +12,7 @@ import { azDT } from '../../ui'
 
 type Task = { id: number; title: string; created_at?: string | null; opens_at: string; closes_at: string; duration_min: number; questions: number; submitted: number; avg_pct: number | null; student_ids: number[] | null
   kind?: string | null; topic?: { seq: number; topic: string } | null; journal_auto?: boolean; journal_done_at?: string | null
-  ta_id?: number; class_name?: string | null }
+  ta_id?: number; class_name?: string | null; batch_id?: number | null }
 const ml = (x: any) => (x ? (typeof x === 'string' ? x : x.az || x.ru || x.en || '') : '')
 const dt = (s: string) => azDT(new Date(s), { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const hm = (s: string) => azDT(new Date(s), { hour: '2-digit', minute: '2-digit' })
@@ -47,6 +47,40 @@ export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta
       ? (a.class_name || '').localeCompare(b.class_name || '', 'az') || (a.topic?.seq ?? 1e9) - (b.topic?.seq ?? 1e9)
       : Date.parse(b.opens_at) - Date.parse(a.opens_at)))
   const many = !ta                                       // «Bütün siniflərim» – hər testdə sinif nişanı
+  // eyni test (bir paket) bir neçə sinfə verilibsə – bir kart, içində siniflər (səliqə: 3 sinif = 3 sətir yox)
+  const groups: { key: string; items: Task[] }[] = []
+  for (const t of shown) {
+    const key = t.batch_id ? `b${t.batch_id}` : `t${t.id}`
+    const g = groups.find(x => x.key === key)
+    if (g) g.items.push(t)
+    else groups.push({ key, items: [t] })
+  }
+  const statePill = (s: Exclude<St, 'all'>) => s === 'soon' ? <Pill>gözlənilir</Pill> : s === 'open' ? <Pill tone="ok">● açıqdır</Pill> : <Pill tone="info">bağlanıb</Pill>
+  const when = (t: Task) => `${dt(t.opens_at)} – ${t.opens_at.slice(0, 10) === t.closes_at.slice(0, 10) ? hm(t.closes_at) : dt(t.closes_at)}`
+  const actions = (t: Task, s: Exclude<St, 'all'>) => (<>
+    {archived ? (
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <AsyncBtn className="btn sm primary" ok="Test geri qaytarıldı" onClick={async () => { await post(`/api/tasks/${t.ta_id}/${t.id}/restore`); reload() }}>Geri qaytar</AsyncBtn>
+        <button className="btn sm" onClick={() => setWatch(t)}>Nəticələr</button>
+        <button className="btn sm ghost" onClick={() => setDel(t)}>Birdəfəlik sil</button>
+      </div>
+    ) : (
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <button className={'btn sm' + (s === 'open' ? ' primary' : '')} onClick={() => setWatch(t)}>{s === 'open' ? 'Canlı izlə' : 'Nəticələr'}</button>
+        <button className="btn sm" onClick={() => setShare(t)}>Link göndər</button>
+        <More>
+          <button onClick={() => setResend(t)}>Yenidən göndər</button>
+          <button onClick={() => paper(t.ta_id!, t.id, t.class_name || '')}>Kağız variant (çap)</button>
+          <button onClick={() => setEdit(t)}>Redaktə</button>
+          <button className="danger" onClick={() => setDel(t)}>Sil</button>
+        </More>
+      </div>)}
+    {del?.id === t.id && <ConfirmName name={t.title} action={archived ? 'Birdəfəlik sil' : 'Sil'} onCancel={() => setDel(null)}
+      onConfirm={async () => {
+        if (archived) { await apiDel(`/api/tasks/${t.ta_id}/${t.id}`); toast('Test sistemdən birdəfəlik silindi') }
+        else { await post(`/api/tasks/${t.ta_id}/${t.id}/archive`); toast('Test silindi – «Silinənlər»dən geri qaytarmaq və ya birdəfəlik silmək olar') }
+        setDel(null); reload() }} />}
+  </>)
   return (
     <>
       {(() => {
@@ -71,40 +105,34 @@ export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta
           {list && inClass.length === 0 && <div className="empty">{archived ? 'Silinmiş mövzu testi yoxdur.'
             : <>Hələ mövzu testi yoxdur. <Link to="/plan">Perspektiv plan</Link>da mövzunun yanındakı «🧪 Test» ilə təyin edin.</>}</div>}
           {inClass.length > 0 && shown.length === 0 && <div className="empty">Bu seçimdə test yoxdur – vəziyyəti və ya dövrü dəyişin.</div>}
-          {shown.map(t => {
-            const s = stateOf(t, now)
+          {groups.map(g => {
+            const head = g.items[0]
+            const sts = g.items.map(t => stateOf(t, now))
+            const s = sts.includes('open') ? 'open' : sts.includes('soon') ? 'soon' : 'closed'
+            const sub = g.items.reduce((n, t) => n + t.submitted, 0)
+            const avg = sub ? g.items.reduce((n, t) => n + (t.avg_pct ?? 0) * t.submitted, 0) / sub : null
+            const one = g.items.length === 1
             return (
-              <div className="jrow cols" key={t.id} style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 8 }}>
+              <div className="jrow cols" key={g.key} style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 8 }}>
                 <div className="row" style={{ flexWrap: 'wrap' }}>
-                  {many && <Pill tone="info">{t.class_name}</Pill>}
-                  <Pill tone="acc">{t.topic ? `№${t.topic.seq}` : 'planda yoxdur'}</Pill>
-                  <b className="grow">{t.title}</b>
-                  {t.journal_auto && <Pill tone={t.journal_done_at ? 'ok' : undefined}>{t.journal_done_at ? 'jurnala yazılıb' : 'jurnala yazılacaq'}</Pill>}
-                  {s === 'soon' ? <Pill>gözlənilir</Pill> : s === 'open' ? <Pill tone="ok">● açıqdır</Pill> : <Pill tone="info">bağlanıb</Pill>}
+                  {one && many && <Pill tone="info">{head.class_name}</Pill>}
+                  <Pill tone="acc">{head.topic ? `№${head.topic.seq}` : 'planda yoxdur'}</Pill>
+                  <b className="grow">{head.title}</b>
+                  {!one && <Pill>{g.items.length} sinif</Pill>}
+                  {one && head.journal_auto && <Pill tone={head.journal_done_at ? 'ok' : undefined}>{head.journal_done_at ? 'jurnala yazılıb' : 'jurnala yazılacaq'}</Pill>}
+                  {statePill(s)}
                 </div>
-                <span className="small muted">{dt(t.opens_at)} – {t.opens_at.slice(0, 10) === t.closes_at.slice(0, 10) ? hm(t.closes_at) : dt(t.closes_at)} · {t.duration_min} dəq · {t.questions} sual · {t.student_ids ? `${t.student_ids.length} şagird` : 'bütün sinif'} · <b>{t.submitted}</b> təhvil{t.avg_pct != null ? <> · orta <b>{fmt(t.avg_pct)}%</b></> : ''}</span>
-                {archived ? (
-                  <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                    <AsyncBtn className="btn sm primary" ok="Test geri qaytarıldı" onClick={async () => { await post(`/api/tasks/${t.ta_id}/${t.id}/restore`); reload() }}>Geri qaytar</AsyncBtn>
-                    <button className="btn sm" onClick={() => setWatch(t)}>Nəticələr</button>
-                    <button className="btn sm ghost" onClick={() => setDel(t)}>Birdəfəlik sil</button>
-                  </div>
-                ) : (
-                  <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                    <button className={'btn sm' + (s === 'open' ? ' primary' : '')} onClick={() => setWatch(t)}>{s === 'open' ? 'Canlı izlə' : 'Nəticələr'}</button>
-                    <button className="btn sm" onClick={() => setShare(t)}>Link göndər</button>
-                    <More>
-                      <button onClick={() => setResend(t)}>Yenidən göndər</button>
-                      <button onClick={() => paper(t.ta_id!, t.id, t.class_name || '')}>Kağız variant (çap)</button>
-                      <button onClick={() => setEdit(t)}>Redaktə</button>
-                      <button className="danger" onClick={() => setDel(t)}>Sil</button>
-                    </More>
-                  </div>)}
-                {del?.id === t.id && <ConfirmName name={t.title} action={archived ? 'Birdəfəlik sil' : 'Sil'} onCancel={() => setDel(null)}
-                  onConfirm={async () => {
-                    if (archived) { await apiDel(`/api/tasks/${t.ta_id}/${t.id}`); toast('Test sistemdən birdəfəlik silindi') }
-                    else { await post(`/api/tasks/${t.ta_id}/${t.id}/archive`); toast('Test silindi – «Silinənlər»dən geri qaytarmaq və ya birdəfəlik silmək olar') }
-                    setDel(null); reload() }} />}
+                {one ? <><span className="small muted">{when(head)} · {head.duration_min} dəq · {head.questions} sual · {head.student_ids ? `${head.student_ids.length} şagird` : 'bütün sinif'} · <b>{head.submitted}</b> təhvil{head.avg_pct != null ? <> · orta <b>{fmt(head.avg_pct)}%</b></> : ''}</span>
+                  {actions(head, stateOf(head, now))}</>
+                  : <><span className="small muted">{head.duration_min} dəq · {head.questions} sual · <b>{sub}</b> təhvil{avg != null ? <> · orta <b>{fmt(avg)}%</b></> : ''}</span>
+                    <div className="subrows">{g.items.map(t => (
+                      <div key={t.id} className="subrow">
+                        <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                          <Pill tone="info">{t.class_name}</Pill>{statePill(stateOf(t, now))}
+                          <span className="small muted grow">{when(t)} · <b>{t.submitted}</b> təhvil{t.avg_pct != null ? <> · orta <b>{fmt(t.avg_pct)}%</b></> : ''}{t.journal_auto ? (t.journal_done_at ? ' · jurnala yazılıb' : ' · jurnala yazılacaq') : ''}</span>
+                        </div>
+                        {actions(t, stateOf(t, now))}
+                      </div>))}</div></>}
               </div>)
           })}
         </div>
@@ -165,8 +193,8 @@ function Resend({ ta, task, lessons, preset, onClose, onDone }: { ta: number; ta
   const [ids, setIds] = useState<number[] | null>(null)
   useEffect(() => { if (res && preset === 'absent') setIds(presets[0].ids) }, [res])
   const start = new Date(); start.setMinutes(Math.ceil(start.getMinutes() / 5) * 5 + 5, 0, 0)
-  const end = new Date(start.getTime() + Math.max(task.duration_min + 10, 60) * 60000)
-  const [f, setF] = useState({ target: ta, opens: localInput(start), closes: localInput(end), duration: task.duration_min, title: task.title })
+  const end = new Date(start.getTime() + Math.max(Math.max(task.duration_min, 45) + 10, 60) * 60000)
+  const [f, setF] = useState({ target: ta, opens: localInput(start), closes: localInput(end), duration: Math.max(task.duration_min, 45), title: task.title })
   const [err, setErr] = useState<unknown>()
   const save = async () => {
     try {
@@ -186,7 +214,7 @@ function Resend({ ta, task, lessons, preset, onClose, onDone }: { ta: number; ta
           <Field label="Ad" full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
           <Field label="Açılır"><input type="datetime-local" value={f.opens} onChange={e => setF({ ...f, opens: e.target.value })} /></Field>
           <Field label="Bağlanır"><input type="datetime-local" value={f.closes} onChange={e => setF({ ...f, closes: e.target.value })} /></Field>
-          <Field label="Həll müddəti (dəq)"><input type="number" min={1} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+          <Field label="Həll müddəti (dəq)" hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
         </div>
         {(f.target !== ta || res) && <StudentPicker key={`${f.target}-${!!res}`} ta={f.target} presets={f.target === ta ? presets : []}
           value={f.target === ta && preset === 'absent' && res ? presets[0].ids : null}

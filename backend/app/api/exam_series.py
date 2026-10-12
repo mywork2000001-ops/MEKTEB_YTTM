@@ -20,7 +20,7 @@ from ..models import (BankFile, BankQuestion, BankSource, ExamSeries, OnlineTask
 from ..services import SCHOOL_TZ, class_grade, roster
 from .common import audit
 from .exams_online import _can_target, given_files, grade_fits
-from .tasks import _snapshot, aware
+from .tasks import MIN_TEST_MIN, TestMinutes, _snapshot, aware
 
 router = APIRouter(prefix='/api/exam-series', tags=['exam-series'])
 TZ = ZoneInfo(SCHOOL_TZ)
@@ -164,7 +164,7 @@ def _send(db: Session, s: ExamSeries, f: BankFile, o: dt.datetime) -> TestBatch 
             sids = [x for x in sids if x in mine] or None
         t = OnlineTask(assignment_id=ta.id, title=title, description=f'Sınaq seriyası: {s.title}',
                        opens_at=o.astimezone(dt.timezone.utc), closes_at=c.astimezone(dt.timezone.utc),
-                       duration_min=s.duration_min, questions=copy.deepcopy(qs), shuffle=s.shuffle,
+                       duration_min=max(s.duration_min, MIN_TEST_MIN), questions=copy.deepcopy(qs), shuffle=s.shuffle,
                        show_answers=s.show_answers, student_ids=sids, created_by=user.id, kind='sinaq', batch_id=b.id)
         db.add(t)
         db.flush()
@@ -228,7 +228,7 @@ class SeriesIn(BaseModel):
     start: dt.date | None = None
     open_time: str = Field('15:00', pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
     window_hours: int = Field(48, ge=1, le=24 * 31)
-    duration_min: int = Field(60, ge=1, le=300)
+    duration_min: TestMinutes = 60
     penalty: Literal[0, 3, 4] = 0
     show_answers: Literal['after_close', 'after_submit', 'never'] = 'after_close'
     shuffle: bool = True

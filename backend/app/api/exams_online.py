@@ -28,7 +28,7 @@ from ..models import (AuditLog, BankFile, BankQuestion, OnlineTask, Role, School
                       User, now)
 from ..services import class_grade, roster
 from .common import audit, need_school
-from .tasks import CustomQ, _snapshot, aware, custom_snapshot, exam_score, expire_due, is_ok, purge_tasks, score
+from .tasks import CustomQ, TestMinutes, _snapshot, aware, custom_snapshot, exam_score, expire_due, is_ok, purge_tasks, score
 
 router = APIRouter(prefix='/api/exams-online', tags=['exams-online'])
 
@@ -330,7 +330,7 @@ class ExamTarget(BaseModel):
 class ExamIn(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     description: str | None = Field(None, max_length=2000)
-    duration_min: int = Field(60, ge=1, le=300)
+    duration_min: TestMinutes = 60
     bank_ids: list[int] = Field(default_factory=list)
     custom: list[CustomQ] = Field(default_factory=list)
     shuffle: bool = True

@@ -34,7 +34,7 @@ export const localParts = (s: string) => { const d = new Date(s); return [`${d.g
 export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, onClose, onDone }:
   { ta: number; taskId?: number; fromBank?: boolean; onClose: () => void; onDone: () => void }) {
   const today = new Date().toISOString().slice(0, 10)
-  const [f, setF] = useState({ title: `Test – ${today.split('-').reverse().join('.')}`, date: today, from: '15:00', to: '16:00', duration: 40, show: 'after_close', shuffle: true })
+  const [f, setF] = useState({ title: `Test – ${today.split('-').reverse().join('.')}`, date: today, from: '15:00', to: '16:00', duration: 45, show: 'after_close', shuffle: true })
   const [qs, setQs] = useState<Q[]>([])
   const [targets, setTargets] = useState<number[] | null | undefined>(taskId ? undefined : null)
   const [started, setStarted] = useState(0)
@@ -47,7 +47,7 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
     if (!taskId) return
     get(`/api/tasks/${ta}/${taskId}/full`).then(t => {
       const [d1, t1] = localParts(t.opens_at), [, t2] = localParts(t.closes_at)
-      setF({ title: t.title, date: d1, from: t1, to: t2, duration: t.duration_min, show: t.show_answers, shuffle: t.shuffle })
+      setF({ title: t.title, date: d1, from: t1, to: t2, duration: Math.max(t.duration_min, 45), show: t.show_answers, shuffle: t.shuffle })
       setQs(t.questions_full.map((s: any, i: number) => fromSnapshot(s, 'e' + i)))
       setStarted(t.started)
       setAud(t.student_ids ?? null)
@@ -90,7 +90,7 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
         <div className="fg">
           <Field label="Ad" full><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="məs. Kvadrat tənliklər – test" /></Field>
           <Field label="Tarix"><input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></Field>
-          <Field label="Həll müddəti (dəq)"><input type="number" min={1} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+          <Field label="Həll müddəti (dəq)" hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
           <Field label="Açılır"><input type="time" value={f.from} onChange={e => setF({ ...f, from: e.target.value })} /></Field>
           <Field label="Bağlanır"><input type="time" value={f.to} onChange={e => setF({ ...f, to: e.target.value })} /></Field>
           <Field label="Düzgün cavablar görünsün" full><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>

@@ -24,7 +24,7 @@ def test_copy_restore_and_retake(world, clock):
     # yenidən göndər: həmin sinfə, yeni vaxtla; və başqa sinfə
     body = {'target_ta_id': ta, 'opens_at': '2026-09-30T08:00:00Z', 'closes_at': '2026-09-30T09:00:00Z', 'title': 'Test 1 (təkrar)'}
     c1 = admin.post(f'/api/tasks/{ta}/{t["id"]}/copy', json=body)
-    assert c1.status_code == 200 and c1.json()['questions'] == 3 and c1.json()['duration_min'] == 40
+    assert c1.status_code == 200 and c1.json()['questions'] == 3 and c1.json()['duration_min'] == 45   # ən azı 45 dəq
     c2 = admin.post(f'/api/tasks/{ta}/{t["id"]}/copy', json={**body, 'target_ta_id': ta2, 'duration_min': 20}).json()
     assert c2['title'] == 'Test 1 (təkrar)' and len(admin.get(f'/api/tasks/{ta2}').json()) == 1
     assert admin.post(f'/api/tasks/{ta}/{t["id"]}/copy', json={**body, 'closes_at': '2026-09-29T10:00:00Z',

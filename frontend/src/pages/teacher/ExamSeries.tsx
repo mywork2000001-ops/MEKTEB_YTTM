@@ -125,7 +125,7 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
           <Field label="Başlama tarixi"><input type="date" value={f.start} onChange={e => setF({ ...f, start: e.target.value })} /></Field>
           <Field label="Açılma saatı"><input type="time" value={f.open_time} onChange={e => setF({ ...f, open_time: e.target.value })} /></Field>
           <Field label="Açıq qalır (saat)"><input type="number" min={1} max={744} value={f.window_hours} onChange={e => setF({ ...f, window_hours: Number(e.target.value) || 48 })} /></Field>
-          <Field label="Həll müddəti (dəq)"><input type="number" min={1} max={300} value={f.duration_min} onChange={e => setF({ ...f, duration_min: Number(e.target.value) || 60 })} /></Field>
+          <Field label="Həll müddəti (dəq)" hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration_min} onChange={e => setF({ ...f, duration_min: Number(e.target.value) || 60 })} /></Field>
           <Field label="Cərimə"><select value={f.penalty} onChange={e => setF({ ...f, penalty: Number(e.target.value) })}><option value={0}>yoxdur</option><option value={3}>3 səhv 1 düzü aparır</option><option value={4}>4 səhv 1 düzü aparır</option></select></Field>
           <Field label="Düzgün cavablar"><select value={f.show_answers} onChange={e => setF({ ...f, show_answers: e.target.value })}><option value="after_close">bağlandıqdan sonra</option><option value="after_submit">təhvildən dərhal sonra</option><option value="never">göstərilməsin</option></select></Field>
         </div>

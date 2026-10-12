@@ -26,7 +26,7 @@ from ..models import (LevelOverride, OnlineTask, PlanLesson, SchoolClass, TaskAt
 from ..services import SCHOOL_TZ, class_grade, own_assignment, plan_ctx, roster
 from .common import audit
 from .plan import bell
-from .tasks import CustomQ, _snapshot, aware, custom_snapshot, task_out
+from .tasks import CustomQ, TestMinutes, _snapshot, aware, custom_snapshot, task_out
 
 router = APIRouter(prefix='/api', tags=['topic-tests'])
 TZ = ZoneInfo(SCHOOL_TZ)
@@ -122,7 +122,7 @@ class VariantQs(BaseModel):
 class TopicTestIn(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     description: str | None = Field(None, max_length=2000)
-    duration_min: int = Field(ge=1, le=300)
+    duration_min: TestMinutes
     bank_ids: list[int] = Field(default_factory=list)
     custom: list[CustomQ] = Field(default_factory=list)
     shuffle: bool = True

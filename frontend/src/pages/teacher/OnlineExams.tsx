@@ -151,7 +151,7 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
         <div className="stack">
           <div className="fg">
             <Field label="Ad" full><input value={f.title} maxLength={200} placeholder="məs. Buraxılış sınağı №1" onChange={e => setF({ ...f, title: e.target.value })} /></Field>
-            <Field label="Həll müddəti (dəq)"><input type="number" min={1} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+            <Field label="Həll müddəti (dəq)" hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
             <Field label="Bal hesabı"><select value={f.penalty} onChange={e => setF({ ...f, penalty: e.target.value })}>{PENALTY.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
             <Field label="Düzgün cavablar görünsün" full><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
               <option value="after_close">sınaq bağlandıqdan sonra</option><option value="after_submit">təhvil verdikdən dərhal sonra</option><option value="never">heç vaxt</option></select></Field>

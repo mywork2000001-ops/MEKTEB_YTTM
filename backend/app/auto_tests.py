@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from .models import OnlineTask, SchoolClass, TeachingAssignment, TestBatch, User, now
 from .services import class_grade, plan_ctx, today
+from .api.tasks import MIN_TEST_MIN
 
 log = logging.getLogger('auto_tests')
 
@@ -59,7 +60,7 @@ def run(db: Session, day: dt.date | None = None) -> int:
             db.add(batch)
             db.flush()
             t = OnlineTask(assignment_id=ta.id, title=title[:200], description='Avtomatik mövzu testi (perspektiv plan)',
-                           opens_at=o, closes_at=c.astimezone(dt.timezone.utc), duration_min=20, questions=qs, shuffle=True,
+                           opens_at=o, closes_at=c.astimezone(dt.timezone.utc), duration_min=MIN_TEST_MIN, questions=qs, shuffle=True,
                            show_answers='after_close', student_ids=None, created_by=teacher.id, kind='movzu',
                            batch_id=batch.id, plan_lesson_id=pl.id, journal_auto=True)
             db.add(t)

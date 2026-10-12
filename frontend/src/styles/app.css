@@ -935,3 +935,6 @@ a.btn{text-decoration:none}
 .hub-pick select:focus{outline:2px solid var(--accent);outline-offset:1px}
 .hub-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
 @media (max-width:720px){.hub-bar{grid-template-columns:1fr}}
+/* bir test – bir neçə sinif: kartın içində sinif sətirləri */
+.subrows{display:flex;flex-direction:column;gap:6px;border-left:3px solid var(--line);padding-left:10px}
+.subrow{display:flex;flex-direction:column;gap:6px;padding:8px 10px;background:var(--surface-2);border-radius:var(--r-sm)}
