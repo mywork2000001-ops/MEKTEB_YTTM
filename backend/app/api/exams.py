@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import staff
 from ..domain.rules import grade_from_points, semester_grade
-from ..models import Exam, ExamScore, User
+from ..models import BankQuestion, Exam, ExamScore, ExamVariant, OnlineTask, User
 from ..services import own_assignment, plan_ctx, roster, today
 from .common import audit, get_or_404
 
@@ -235,3 +235,86 @@ def semester(ta_id: int, sem: int, user: User = Depends(staff), db: Session = De
                     'semester_grade': semester_grade(ksq_grades, bsq), **exam_stats(exs, s.id)})
     return {'semester': sem, 'formula': '(KSQ qiymətləri cəmi / sayı) × 0,4 + BSQ × 0,6', 'students': out,
             'exams': len(exs)}
+
+
+# ---------------------------------------------------------------- kağız variantları (docs/ksq-bsq-kagiz-promtu.md)
+def _range_topics(db: Session, ta, e: Exam) -> list[tuple[str, str | None]]:
+    """KSQ: əvvəlki KSQ/BSQ-dan bu imtahana qədər keçilmiş dərslərin mövzuları; BSQ: yarımilin bütün mövzuları (təkrarsız, ardıcıl)."""
+    lessons = [pl for pl in plan_ctx(db, ta).lessons if pl.semester == e.semester]
+    lessons.sort(key=lambda pl: pl.seq)
+    me = next((pl for pl in lessons if pl.assessment_type == e.kind and pl.exam_no == e.no), None)
+    end = me.seq if me else max((pl.seq for pl in lessons if pl.date <= e.date), default=10 ** 9)
+    start = 0
+    if e.kind == 'KSQ':
+        start = max((pl.seq for pl in lessons if pl.assessment_type in ('KSQ', 'BSQ') and pl.seq < end), default=0)
+    out, seen = [], set()
+    for pl in lessons:
+        if start < pl.seq < end and pl.assessment_type not in ('KSQ', 'BSQ') and pl.topic and pl.topic not in seen:
+            seen.add(pl.topic)
+            out.append((pl.topic, pl.section))
+    return out
+
+
+def _history(db: Session, ta, e: Exam, student_ids: list[int]) -> dict[int, set[str]]:
+    """Şagirdə əvvəl verilmiş suallar: bu dərsin onlayn testləri/sınaqları + digər KSQ/BSQ variantları."""
+    hist: dict[int, set[str]] = {sid: set() for sid in student_ids}
+    bank_keys: dict[int, str] = {}
+    tasks = list(db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id)))
+    ids = {q.get('bank_id') for t in tasks for q in (t.questions or []) if isinstance(q, dict) and q.get('bank_id')}
+    if ids:
+        bank_keys = {q.id: 'b:' + (q.content_hash or str(q.id)) for q in db.scalars(select(BankQuestion).where(BankQuestion.id.in_(ids)))}
+    for t in tasks:
+        keys = {bank_keys[q['bank_id']] for q in (t.questions or []) if isinstance(q, dict) and q.get('bank_id') in bank_keys}
+        for sid in (t.student_ids or student_ids):
+            if sid in hist:
+                hist[sid] |= keys
+    for v in db.scalars(select(ExamVariant).where(ExamVariant.student_id.in_(student_ids), ExamVariant.exam_id != e.id)):
+        hist[v.student_id] |= {q.get('key') for q in v.questions if q.get('key')}
+    return hist
+
+
+def _variants_out(db: Session, ta, e: Exam) -> dict:
+    from ..domain.ksq_variants import fairness
+    names = {s.id: s.full_name for s in roster(db, ta)}
+    vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
+    vs.sort(key=lambda v: v.code)
+    return {'exam': exam_out(e), 'variants': [{'student_id': v.student_id, 'full_name': names.get(v.student_id), 'code': v.code,
+                                               'questions': v.questions} for v in vs],
+            'report': fairness({v.student_id: v.questions for v in vs}) if vs else None}
+
+
+@router.get('/{ta_id}/{exam_id}/variants')
+def get_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    ta = own_assignment(db, user, ta_id)
+    return _variants_out(db, ta, _exam(db, ta_id, exam_id))
+
+
+@router.post('/{ta_id}/{exam_id}/variants')
+def make_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """30 sual / 100 bal; hər şagirdə tam fərqli suallar. Nəticə yazılıbsa – yenidən yaratmaq olmaz."""
+    from ..domain.ksq_variants import Shortage, bank_candidates, generate, slots
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    if db.scalar(select(ExamScore).where(ExamScore.exam_id == e.id, ExamScore.points.is_not(None))):
+        raise HTTPException(409, 'Nəticələr yazılıb – variantları yenidən yaratmaq olmaz')
+    students = [s.id for s in roster(db, ta)]
+    if not students:
+        raise HTTPException(400, 'Sinifdə şagird yoxdur')
+    topics = _range_topics(db, ta, e)
+    if not topics:
+        raise HTTPException(400, 'Perspektiv planda bu imtahanın aralığında mövzu tapılmadı')
+    try:
+        res = generate(students, topics, bank_candidates(db, topics), _history(db, ta, e, students), seed=e.id * 7919)
+    except Shortage as sh:
+        raise HTTPException(409, {'message': 'Hər şagirdə fərqli sual üçün bazada sual çatmır: ' + sh.message(),
+                                  'shortage': sh.items, 'topics': [t for t, _ in topics]})
+    for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)):
+        db.delete(v)
+    db.flush()
+    for i, sid in enumerate(students):
+        db.add(ExamVariant(exam_id=e.id, student_id=sid, code=f'{e.kind}{e.no}-{i + 1:02d}', questions=res[sid]))
+    e.items = [{'n': s['slot'], 'points': s['points'], 'standard': None, 'kind': s['kind'], 'level': s['level']} for s in slots()]
+    e.max_points = 100
+    audit(db, user, 'create', 'exam_variants', e.id, students=len(students), topics=len(topics))
+    db.commit()
+    return _variants_out(db, ta, e)

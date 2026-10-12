@@ -438,6 +438,18 @@ class Exam(Base):
     __table_args__ = (UniqueConstraint('assignment_id', 'kind', 'semester', 'no'),)
 
 
+class ExamVariant(Base):
+    """KSQ/BSQ kağız variantı: hər şagirdə ayrıca 30 sual (docs/ksq-bsq-kagiz-promtu.md). questions – dondurulmuş surət
+    [{slot, key, kind, level, points, topic, text, options, correct, answer, image, bank_id, template}]."""
+    __tablename__ = 'exam_variants'
+    exam_id: Mapped[int] = mapped_column(ForeignKey('exams.id', ondelete='CASCADE'), primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
+    code: Mapped[str] = mapped_column(String(16))
+    questions: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('exam_id', 'code'),)
+
+
 class ExamScore(Base):
     __tablename__ = 'exam_scores'
     exam_id: Mapped[int] = mapped_column(ForeignKey('exams.id', ondelete='CASCADE'), primary_key=True)
