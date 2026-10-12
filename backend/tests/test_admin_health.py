@@ -53,3 +53,23 @@ def test_old_crops_removed(world, monkeypatch):
     scheduler._scan_cleanup_job()
     with S() as db:
         assert db.query(ExamScan).one().crop_key is None
+
+
+def test_ksq_archive_zip_and_purge(world):
+    """KSQ arxivi: sinif/tarix qovluqları, variantlar, açar, nəticələr, kart şəkli; sonra şəkillər serverdən silinir."""
+    import zipfile
+    from .test_ksq_scan import ksq, photo
+    admin, ta, e, pr = ksq(world)
+    a = pr['sheets'][0]
+    admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([a['qr']]), 'image/jpeg'))])
+    r = admin.get('/api/exam-archive/zip', params={'ta_id': ta})
+    assert r.status_code == 200 and r.headers['content-type'] == 'application/zip'
+    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    base = 'X e · Riyaziyyat/2026-10-20 KSQ-1/'
+    assert {base + 'variantlar.json', base + 'acar.csv', base + 'neticeler.csv', base + f'kartlar/{a["code"]}.jpg'} <= set(names)
+    data = json.loads(zipfile.ZipFile(io.BytesIO(r.content)).read(base + 'variantlar.json'))
+    assert data['imtahan'] == 'KSQ-1' and len(data['variantlar']) == 3
+    assert admin.post('/api/exam-archive/purge-images', params={'ta_id': ta}).json()['removed'] == 1
+    names2 = zipfile.ZipFile(io.BytesIO(admin.get('/api/exam-archive/zip').content)).namelist()
+    assert not any('kartlar/' in n for n in names2)
+    assert world[0]('yad').get('/api/exam-archive/zip').status_code == 404

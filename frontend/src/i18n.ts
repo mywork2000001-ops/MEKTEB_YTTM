@@ -492,6 +492,14 @@ const D: Record<string, [string, string]> = {
   "Claude oxunuşu": ["Claude readings", "распознано Claude"],
   "Son fon işləri": ["Recent background jobs", "Последние фоновые задачи"],
   "Hələ qeyd yoxdur (server yenidən başlayandan sonra yazılır).": ["No entries yet (recorded after the server restarts).", "Записей пока нет (появятся после перезапуска сервера)."],
+  // KSQ arxivi (12.10.2026)
+  "Siniflər və tarix üzrə qovluqlar: variantlar, açar, nəticələr, kart şəkilləri": ["Folders by class and date: variants, key, results, card images", "Папки по классам и датам: варианты, ключ, результаты, фото бланков"],
+  "KSQ arxivi (ZIP)": ["KSQ archive (ZIP)", "Архив KSQ (ZIP)"],
+  "Bütün siniflərim": ["All my classes", "Все мои классы"],
+  "Arxivi Google Drive-a yüklədikdən sonra: kart şəkilləri serverdən silinir (bal və jurnal qalır)": ["After uploading the archive to Google Drive: card images are deleted from the server (points and journal stay)", "После загрузки архива в Google Drive: фото бланков удаляются с сервера (баллы и журнал остаются)"],
+  "Arxivi endirib Google Drive-a yüklədinizmi? Kart şəkilləri serverdən silinəcək.": ["Have you downloaded the archive and uploaded it to Google Drive? Card images will be deleted from the server.", "Вы скачали архив и загрузили его в Google Drive? Фото бланков будут удалены с сервера."],
+  "Silinən şəkil: {n}": ["Images deleted: {n}", "Удалено фото: {n}"],
+  "Şəkilləri serverdən sil": ["Delete images from server", "Удалить фото с сервера"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

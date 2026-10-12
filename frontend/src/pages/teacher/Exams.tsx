@@ -21,6 +21,13 @@ export default function Exams({ ta }: { ta: MyLesson }) {
     <>
       <ErrorBox error={err} />
       <p className="small muted">Bal → faiz → qiymət: 0–30% → 2, 31–60% → 3, 61–80% → 4, 81–100% → 5.</p>
+      {/* arxiv: siniflər və tarix üzrə ZIP – Google Drive-da saxlamaq üçün; sonra kart şəkilləri serverdən silinə bilər */}
+      {d && d.exams.length > 0 && <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        <a className="btn sm" href={`/api/exam-archive/zip?ta_id=${ta.id}`} title={tt('Siniflər və tarix üzrə qovluqlar: variantlar, açar, nəticələr, kart şəkilləri')}>📦 {tt('KSQ arxivi (ZIP)')}</a>
+        <a className="btn sm ghost" href="/api/exam-archive/zip">📦 {tt('Bütün siniflərim')}</a>
+        <AsyncBtn className="btn sm ghost" title={tt('Arxivi Google Drive-a yüklədikdən sonra: kart şəkilləri serverdən silinir (bal və jurnal qalır)')}
+          onClick={async () => { if (!window.confirm(tt('Arxivi endirib Google Drive-a yüklədinizmi? Kart şəkilləri serverdən silinəcək.'))) return; const r = await post<{ removed: number }>(`/api/exam-archive/purge-images?ta_id=${ta.id}`); toast(tt('Silinən şəkil: {n}', { n: r.removed })) }}>🧹 {tt('Şəkilləri serverdən sil')}</AsyncBtn>
+      </div>}
       <div className="jlist">
         {(d?.planned || []).map(p => {
           const e = byKey.get(`${p.kind}-${p.semester}-${p.no}`)
