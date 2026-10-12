@@ -163,6 +163,15 @@ def _scan_cleanup_job():
             log.info('köhnə kart şəkilləri silindi: %s', n)
 
 
+def _ksq_stale_job():
+    """Köhnə KSQ variantlarında şablon/mövzudan kənar suallar → P0010 (nəticəsi yazılmamış imtahanlar)."""
+    from .api.exams import fix_stale_all
+    with SessionLocal() as db:
+        n = fix_stale_all(db)
+        if n:
+            log.info('KSQ: köhnə variantlarda əvəz olunan sual: %s', n)
+
+
 def start():
     global _sched
     import os
@@ -179,6 +188,8 @@ def start():
     _sched.add_job(_auto_tests_job, 'interval', minutes=15, id='auto_tests', max_instances=1, coalesce=True,
                    next_run_time=dt.datetime.now() + dt.timedelta(minutes=2))
     _sched.add_job(_ksq_scan_job, 'interval', minutes=2, id='ksq_scans', max_instances=1, coalesce=True)
+    _sched.add_job(_ksq_stale_job, 'interval', minutes=10, id='ksq_stale', max_instances=1, coalesce=True,
+                   next_run_time=dt.datetime.now())
     _sched.add_job(_scan_cleanup_job, 'cron', hour=3, minute=50, id='scan_cleanup', max_instances=1, coalesce=True)
     _sched.add_job(_difficulty_job, 'cron', hour=3, minute=30, id='difficulty', max_instances=1, coalesce=True)
     if keep:

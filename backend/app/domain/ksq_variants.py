@@ -123,6 +123,15 @@ def bank_candidates(db, topics: list[tuple[str, str | None]], source: str = 'p00
                     'bank_id': q.id, 'source': f.source_key, 'lesson': f.label, 'kind': q.kind, 'text': q.text,
                     'options': q.options, 'correct': q.correct, 'answer': q.answer, 'image': q.image,
                     'card_answer': card_answer(q.answer) if q.kind == 'open' else None}))
+                # P0010-da sualların çoxu testdir (A–E), KSQ-də isə ~70 % açıq: düzgün variantı ƏDƏD olan test sualı
+                # açıq sual kimi də verilə bilər (variantsız, cavab kart xanasına) – sual yenə P0010-dandır, şablon deyil
+                if q.kind == 'mcq':
+                    opt = q.options[q.correct]
+                    ans = card_answer(opt.get('az') if isinstance(opt, dict) else str(opt))
+                    if ans and not re.search(r'[a-zA-Zəğıöüşç]', (opt.get('az') if isinstance(opt, dict) else str(opt)) or ''):
+                        out.append(Cand(key + ':o', 'open', 'orta' if level == 'asan' else level, ti, {
+                            'bank_id': q.id, 'source': f.source_key, 'lesson': f.label, 'kind': 'open', 'text': q.text,
+                            'options': None, 'correct': None, 'answer': ans, 'image': q.image, 'card_answer': ans, 'from_mcq': True}))
     return out
 
 
@@ -234,6 +243,20 @@ def pick_one(slot: dict, topics: list[tuple[str, str | None]], cands: list[Cand]
                 if q and q['key'] not in exclude and norm_text(q['text']) not in exclude:
                     return {**q, 'card_answer': q.get('answer'), 'level_actual': q['level'], 'topic_actual': t_, 'v': RULES_V}
     return None
+
+
+def generate_auto(students: list[int], topics, cands, history, seed: int, n: int = 30, others: set[str] | None = None,
+                  max_share: int | None = None) -> tuple[dict[int, list[dict]], int]:
+    """Ən az təkrarla variantlar (istifadəçi qaydası 13.10): əvvəl hər şagirdə fərqli; bank çatmırsa sistem özü
+    «bir sual ən çox k şagirdə» həddini 2, 3, … qaldırır (ən kiçik mümkün k). Şagirdin öz variantında təkrar heç vaxt yoxdur.
+    Şablon sualı yoxdur – yalnız layihənin (X–XI: P0010) sualları."""
+    last = None
+    for k in range(1, max(1, max_share or len(students)) + 1):
+        try:
+            return generate(students, topics, cands, history, seed=seed, n=n, others=others, share=k), k
+        except Shortage as sh:
+            last = sh
+    raise last or Shortage([])
 
 
 def fairness(variants: dict[int, list[dict]]) -> dict:

@@ -250,3 +250,21 @@ def test_bank_only_by_default():
              for i in range(8)]
     with pytest.raises(Shortage):
         generate(list(range(25)), [('Faiz', None)], cands, {}, seed=5, n=20)
+
+
+def test_auto_minimal_share_no_templates():
+    """Bank kiçikdir: sistem özü ən az təkrarı seçir (k = 2, 3, …); şablon sualı yoxdur; şagirdin öz variantında təkrar yoxdur."""
+    from collections import Counter
+    from app.domain.ksq_variants import generate_auto
+    cands = []
+    for i in range(40):
+        lvl = ['asan', 'orta', 'çətin'][i % 3]
+        cands.append(Cand(f'm{i}', 'mcq', ['asan', 'orta'][i % 2], 0, {'text': {'az': f'm{i}'}, 'kind': 'mcq', 'options': [{'az': '1'}, {'az': '2'}], 'correct': 0}))
+        cands.append(Cand(f'o{i}', 'open', lvl, 0, {'text': {'az': f'o{i}'}, 'kind': 'open', 'answer': str(i)}))
+    res, k = generate_auto(list(range(12)), [('Faiz', None)], cands, {}, seed=1, n=10)
+    qs = [q for v in res.values() for q in v]
+    use = Counter(q['key'] for q in qs)
+    assert k > 1 and max(use.values()) <= k and not any(q.get('template') for q in qs)
+    assert all(len({q['key'] for q in v}) == 10 for v in res.values())
+    with pytest.raises(Shortage):                                     # bir şagirdə də çatmırsa – Shortage (sual sayını azaltmaq)
+        generate_auto([1], [('Faiz', None)], cands[:6], {}, seed=1, n=30)

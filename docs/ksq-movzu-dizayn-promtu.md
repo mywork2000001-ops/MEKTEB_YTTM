@@ -54,3 +54,12 @@
 - Gələcək üçün başqa platformalar (layihələr) seçimi saxlanılır: «Test layihələri» sətrində qoşulur.
 - Audit 13.10 (X-b, X-c, X-e, XI-a): «ədədi silsilə» KSQ-1-ə şablondan düşürdü (açar «ədədi» ← «ədədin») – düzəldildi; köhnə variantlar üçün
   «🧹 Uyğunsuz sualları düzəlt» – bütün şablon sualları və planın fayllarından kənar sualları P0010 sualları ilə əvəz edir.
+
+## G. Xüsusi audit (13.10.2026, Bayramlı Zeynəb – X-b, «ədədi silsilə» yenə)
+| № | Tapıntı | Qərar (icra olundu) |
+|---|---|---|
+| 1 | «Düzəlt» basılanda boş P0010 sualı tapılmayıb, sual qalıb, amma variant «yeni» işarələnib – xəbərdarlıq itib | Versiya yalnız uyğunsuz sual qalmayanda yenilənir; yoxlama əvəzdən sonra yenilənmiş fayl siyahısı ilə |
+| 2 | P0010-da sualların çoxu testdir, KSQ-də ~70 % açıq → açıq slotlar şablonla dolurdu | Düzgün variantı ƏDƏD olan P0010 test sualı açıq sual kimi də verilir (variantsız, cavab karta) – sual yenə P0010-dandır |
+| 3 | Şablon suallar (istifadəçi: «ümumiyyətlə sil») | KSQ-də şablon **yoxdur**: generatorda, əvəzetmədə, pəncərədə söndürülüb; köhnə variantlardakı şablon sualları fon işi (hər 10 dəq) və «🧹 Düzəlt» P0010 sualları ilə əvəz edir |
+| 4 | Təkrar müəllimin seçimi idi | **Sistem özü** ən az təkrarı seçir: əvvəl hamıya fərqli, çatmasa «bir sual ən çox k şagirdə» (k = 2, 3, …, ən kiçik mümkün); şagirdin öz variantında təkrar heç vaxt yoxdur |
+| 5 | Nəticəsi yazılmamış köhnə variantlar | Fon işi avtomatik təmizləyir (müəllimin düyməyə basması lazım deyil); nəticəli imtahanlarda – «🧹 Düzəlt» düyməsi |

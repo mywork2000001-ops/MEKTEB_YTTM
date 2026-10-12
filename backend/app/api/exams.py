@@ -339,6 +339,7 @@ def _history(db: Session, ta, e: Exam, student_ids: list[int]) -> dict[int, set[
 
 
 def _variants_out(db: Session, ta, e: Exam) -> dict:
+    from collections import Counter
     from ..domain.ksq_variants import RULES_V, fairness
     names = {s.id: s.full_name for s in roster(db, ta)}
     vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
@@ -347,7 +348,8 @@ def _variants_out(db: Session, ta, e: Exam) -> dict:
                                                'questions': v.questions} for v in vs],
             'report': fairness({v.student_id: v.questions for v in vs}) if vs else None,
             # köhnə qaydalarla yaradılıb (mövzudan kənar sual ola bilər) – müəllimə «Yenidən yarat» təklif olunur
-            'stale': any(q.get('v', 0) < RULES_V for v in vs for q in v.questions if not q.get('edited'))}
+            'stale': any(q.get('v', 0) < RULES_V or q.get('template') for v in vs for q in v.questions if not q.get('edited')),
+            'share': max(Counter(q.get('key') for v in vs for q in v.questions).values(), default=0)}
 
 
 @router.get('/{ta_id}/{exam_id}/variants')
@@ -462,12 +464,17 @@ def replace_slot_all(ta_id: int, exam_id: int, slot: int, body: ReplaceAllIn | N
 @router.post('/{ta_id}/{exam_id}/fix-offtopic')
 def fix_offtopic(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Köhnə qaydalarla yaradılmış variantlarda MÖVZUDAN KƏNAR sualları tapıb əvəz edir (qalanlara toxunmur):
-    şablon – aralıq mövzularına uyğun deyilsə (məs. «ədədi silsilə» KSQ-1-də); bank sualı – faylı indiki mövzu fayllarında deyilsə."""
-    import random
-    from ..domain import templates as T
-    from ..domain.ksq_variants import RULES_V, norm_text, pick_one, stems
+    şablon sualları (standart qadağandır) və planın fayllarından kənar bank sualları → P0010 sualları."""
     ta = own_assignment(db, user, ta_id)
     e = _exam(db, ta_id, exam_id)
+    r = _fix_offtopic(db, ta, e, user)
+    db.commit()
+    return r
+
+
+def _fix_offtopic(db: Session, ta, e: Exam, user: User | None = None) -> dict:
+    import random
+    from ..domain.ksq_variants import RULES_V, norm_text, pick_one
     vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
     if not vs:
         raise HTTPException(404, 'Variant yoxdur')
@@ -487,6 +494,10 @@ def fix_offtopic(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sess
             if q.get('edited') or not bad(q):
                 continue
             got = pick_one(q, topics, cands, taken | texts | hist.get(v.student_id, set()), rng.randrange(10 ** 9))
+            if got is None:                       # sinifdə boş P0010 sualı qalmayıb → başqa BİR şagirddə olan sual (≤ 2 nəfər)
+                own = {x.get('key') for x in qs} | {norm_text(x.get('text')) for x in qs}
+                many = {k for k in taken if k and sum(k == x.get('key') for w in vs for x in w.questions) >= 2}
+                got = pick_one(q, topics, cands, own | many | hist.get(v.student_id, set()), rng.randrange(10 ** 9))
             if got is None:
                 failed += 1
                 continue
@@ -495,15 +506,39 @@ def fix_offtopic(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sess
             qs[i] = {**got, 'slot': q['slot'], 'kind': q['kind'], 'level': q['level'], 'topic': q.get('topic'), 'points': q['points'], 'replaced': True}
             changed = True
             fixed += 1
-        # yoxlanılmış (uyğun) suallar da yeni qayda versiyasını alır – xəbərdarlıq itsin
-        qs = [{**q, 'v': max(q.get('v', 0), RULES_V)} for q in qs]
+        # versiya yalnız uyğunsuz sual QALMAYANDA yenilənir (əks halda xəbərdarlıq qalır – müəllim görsün)
+        new_ids = [x.get('bank_id') for x in qs if x.get('bank_id') and x['bank_id'] not in file_of]
+        if new_ids:                                   # əvəz olunan sualların faylı – yoxlama üçün
+            file_of.update({b.id: b.file_id for b in db.scalars(select(BankQuestion).where(BankQuestion.id.in_(new_ids)))})
+        if not any(bad(x) and not x.get('edited') for x in qs):
+            qs = [{**x, 'v': max(x.get('v', 0), RULES_V)} for x in qs]
         v.questions = qs
         if changed:
             touched.append(v.student_id)
     _rescore(db, e, touched)
     audit(db, user, 'update', 'exam_variant', e.id, op='fix_offtopic', fixed=fixed, failed=failed)
-    db.commit()
     return {'ok': failed == 0, 'fixed': fixed, 'failed': failed, 'students': len(touched)}
+
+
+def fix_stale_all(db: Session) -> int:
+    """Fon işi: köhnə qaydalarla yaradılmış, NƏTİCƏSİ HƏLƏ YAZILMAMIŞ bütün KSQ/BSQ variantları avtomatik təmizlənir
+    (şablon və mövzudan kənar suallar → P0010). Nəticəli imtahanlara toxunulmur (müəllim düymə ilə)."""
+    from ..domain.ksq_variants import RULES_V
+    from ..models import TeachingAssignment
+    n = 0
+    for e in db.scalars(select(Exam).where(Exam.id.in_(select(ExamVariant.exam_id).distinct()))):
+        if db.scalar(select(ExamScore.exam_id).where(ExamScore.exam_id == e.id, ExamScore.points.is_not(None)).limit(1)):
+            continue
+        vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
+        if all(q.get('v', 0) >= RULES_V for v in vs for q in v.questions):
+            continue
+        ta = db.get(TeachingAssignment, e.assignment_id)
+        if ta is None:
+            continue
+        r = _fix_offtopic(db, ta, e)
+        db.commit()
+        n += r['fixed']
+    return n
 
 
 class QuestionEditIn(BaseModel):
@@ -602,7 +637,6 @@ class VariantsIn(BaseModel):
     only_mine: bool = False                                   # True – yalnız seçilən testlər (plan nəzərə alınmır)
     share: int = Field(1, ge=1, le=2)                          # bir sual sinifdə ən çox neçə şagirdə (çatışmazlıqda 2)
     sources: list[str] | None = Field(None, max_length=20)     # test layihələri (bank mənbələri); boş – sinfin əsas layihəsi
-    templates: bool = False                                    # parametrli şablon suallar – yalnız müəllim açsa (standart: yalnız bank)
 
 
 def _prepare(db: Session, ta, e: Exam, body: 'VariantsIn') -> tuple:
@@ -623,8 +657,7 @@ def _prepare(db: Session, ta, e: Exam, body: 'VariantsIn') -> tuple:
 @router.post('/{ta_id}/{exam_id}/readiness')
 def readiness(ta_id: int, exam_id: int, body: 'VariantsIn', user: User = Depends(staff), db: Session = Depends(get_db)):
     """Hazırlıq paneli: mövzular üzrə hovuz (bank test/açıq, şablon), seçilən n üçün sınaq generasiyası, maksimal mümkün n."""
-    from ..domain import templates as T
-    from ..domain.ksq_variants import N_MIN, Shortage, generate, stems
+    from ..domain.ksq_variants import N_MIN, Shortage
     ta = own_assignment(db, user, ta_id)
     e = _exam(db, ta_id, exam_id)
     students, topics, cands, hist, others, files = _prepare(db, ta, e, body)
@@ -632,19 +665,23 @@ def readiness(ta_id: int, exam_id: int, body: 'VariantsIn', user: User = Depends
     for ti, (t, sec) in enumerate(topics):
         cs = [c for c in cands if c.topic == ti]
         rows.append({'topic': t, 'files': len(files.get(ti, [])), 'mcq': sum(c.kind == 'mcq' for c in cs), 'open': sum(c.kind == 'open' for c in cs),
-                     'templates': len(T.matching(stems(t) | stems(sec or ''))) if body.templates else 0})
+                     'templates': 0})
     extra = [c for c in cands if c.topic == -1]
-    def ok(n: int) -> list | None:
+    from ..domain.ksq_variants import generate_auto
+    def ok(n: int) -> tuple[list | None, int | None]:
         try:
-            generate(students, topics, cands, hist, seed=e.id * 7919, n=n, others=others, share=body.share, templates=body.templates)
-            return None
+            _, k = generate_auto(students, topics, cands, hist, seed=e.id * 7919, n=n, others=others)
+            return None, k
         except Shortage as sh:
-            return sh.items
-    short = ok(body.n) if students and topics else [{'missing': 1}]
-    max_n = body.n if not short else next((k for k in range(body.n - 1, N_MIN - 1, -1) if not ok(k)), None) if students and topics else None
+            return sh.items or [{'missing': 1}], None
+    if students and topics:
+        short, share = ok(body.n)
+        max_n = body.n if not short else next((k for k in range(body.n - 1, N_MIN - 1, -1) if not ok(k)[0]), None)
+    else:
+        short, share, max_n = [{'missing': 1}], None, None
     return {'students': len(students), 'n': body.n, 'need': len(students) * body.n, 'topics': rows,
             'selected': {'mcq': sum(c.kind == 'mcq' for c in extra), 'open': sum(c.kind == 'open' for c in extra)},
-            'ok': not short, 'shortage': short or [], 'max_n': max_n}
+            'ok': not short, 'shortage': short or [], 'max_n': max_n, 'share': share}
 
 
 @router.get('/{ta_id}/{exam_id}/sources')
@@ -671,7 +708,7 @@ def variant_sources(ta_id: int, exam_id: int, sources: str | None = None, user: 
 
 def _make(db: Session, user: User, ta, e: Exam, body: 'VariantsIn') -> None:
     """Bir sinif üçün variantlar (yaradılır və ya yenidən): nəticə yazılıbsa – 409, çatışmazlıq – 409 (mətnli)."""
-    from ..domain.ksq_variants import Shortage, generate, slots
+    from ..domain.ksq_variants import Shortage, generate_auto, slots
     if db.scalar(select(ExamScore).where(ExamScore.exam_id == e.id, ExamScore.points.is_not(None))):
         raise HTTPException(409, 'Nəticələr yazılıb – variantları yenidən yaratmaq olmaz')
     students, topics, cands, hist, others, _ = _prepare(db, ta, e, body)
@@ -680,9 +717,9 @@ def _make(db: Session, user: User, ta, e: Exam, body: 'VariantsIn') -> None:
     if not topics:
         raise HTTPException(400, 'Perspektiv planda bu imtahanın aralığında mövzu tapılmadı')
     try:
-        res = generate(students, topics, cands, hist, seed=e.id * 7919, n=body.n, others=others, share=body.share, templates=body.templates)
+        res, share = generate_auto(students, topics, cands, hist, seed=e.id * 7919, n=body.n, others=others)
     except Shortage as sh:
-        raise HTTPException(409, {'message': 'Hər şagirdə fərqli sual üçün bazada sual çatmır: ' + sh.message(),
+        raise HTTPException(409, {'message': 'Bu mövzular üzrə layihədə (P0010) sual çatmır – sual sayını azaldın: ' + sh.message(),
                                   'shortage': sh.items, 'topics': [t for t, _ in topics]})
     for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)):
         db.delete(v)
@@ -691,7 +728,7 @@ def _make(db: Session, user: User, ta, e: Exam, body: 'VariantsIn') -> None:
         db.add(ExamVariant(exam_id=e.id, student_id=sid, code=f'{e.kind}{e.no}-{i + 1:02d}', questions=res[sid]))
     e.items = [{'n': s['slot'], 'points': s['points'], 'standard': None, 'kind': s['kind'], 'level': s['level']} for s in slots(body.n)]
     e.max_points = 100
-    audit(db, user, 'create', 'exam_variants', e.id, students=len(students), topics=len(topics))
+    audit(db, user, 'create', 'exam_variants', e.id, students=len(students), topics=len(topics), share=share)
 
 
 @router.post('/{ta_id}/{exam_id}/variants')

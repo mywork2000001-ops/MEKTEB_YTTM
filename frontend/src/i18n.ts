@@ -578,6 +578,9 @@ const D: Record<string, [string, string]> = {
   "Uyğunsuz sualları avtomatik düzəlt": ["Fix off-topic questions automatically", "Исправить неподходящие вопросы автоматически"],
   "Parametrli şablon suallar da (bank çatmayanda)": ["Also parametric template questions (when the bank runs short)", "Также параметрические шаблонные вопросы (если банка не хватает)"],
   "standart: yalnız layihə testləri (X–XI: P0010 Blok İmtahan)": ["default: project tests only (X–XI: P0010 Block Exam)", "по умолчанию: только тесты проекта (X–XI: P0010 Blok İmtahan)"],
+  "Suallar yalnız layihənin testlərindən (X–XI: P0010 Blok İmtahan), şablon yoxdur. Təkrarı sistem özü ən az səviyyədə seçir.": ["Questions come only from the project's tests (X–XI: P0010 Block Exam), no templates. The system keeps repeats to the minimum itself.", "Вопросы только из тестов проекта (X–XI: P0010 Blok İmtahan), без шаблонов. Повторы система сама сводит к минимуму."],
+  "Hər sual ən çox {k} şagirddə olacaq (bankda sual az olduğuna görə – ən az mümkün təkrar).": ["Each question will be given to at most {k} students (the bank is small — the minimum possible repeat).", "Каждый вопрос будет не более чем у {k} учеников (вопросов в банке мало — минимально возможный повтор)."],
+  "Hər şagirdin sualları fərqlidir.": ["Every student has different questions.", "У каждого ученика свои вопросы."],
 }
 
 export const I18nCtx = createContext<Lang>('az')

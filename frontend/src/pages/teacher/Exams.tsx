@@ -191,7 +191,7 @@ type Sources = { source: string; projects?: { key: string; label: string; defaul
   all: { file_id: number; label: string; questions: number }[] }
 type VarRes = { exam: Exam; variants: { student_id: number; full_name: string | null; code: string }[]
   report: { open_pct: number; [k: string]: unknown } | null; stale?: boolean }
-type Ready = { students: number; n: number; need: number; ok: boolean; max_n: number | null
+type Ready = { students: number; n: number; need: number; ok: boolean; max_n: number | null; share: number | null
   topics: { topic: string; files: number; mcq: number; open: number; templates: number }[]; selected: { mcq: number; open: number }
   shortage: { slot?: number; kind?: string; level?: string; missing: number }[] }
 
@@ -210,8 +210,6 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   const [d, err, , reload] = useLoad<VarRes>(() => get(`/api/exams/${ta.id}/${e.id}/variants`), [e.id])
   const [fail, setFail] = useState<string | null>(null)
   const [n, setN] = useState(30)
-  const [share, setShare] = useState(1)
-  const [tpl, setTpl] = useState(false)          // parametrli şablonlar – standart söndürülü (yalnız P0010)
   const [src, setSrc] = useState<Sources | null>(null)
   const [mode, setMode] = useState<'plan' | 'add' | 'only'>('plan')
   const [pickd, setPickd] = useState<number[]>([])
@@ -223,14 +221,14 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   const [also, setAlso] = useState<number[]>([])
   useEffect(() => { get<typeof sibs>(`/api/exams/${ta.id}/${e.id}/siblings`).then(setSibs, () => setSibs([])) }, [e.id])   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { get<Sources>(`/api/exams/${ta.id}/${e.id}/sources`, projs.length ? { sources: projs.join(',') } : undefined).then(setSrc, () => setSrc(null)) }, [e.id, projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
-  const body = () => ({ n, share, templates: tpl, file_ids: mode === 'plan' ? null : pickd, only_mine: mode === 'only', sources: projs.length ? projs : null })
+  const body = () => ({ n, file_ids: mode === 'plan' ? null : pickd, only_mine: mode === 'only', sources: projs.length ? projs : null })
   // hazırlıq: seçim dəyişəndə hovuz yenidən yoxlanır (kiçik gecikmə ilə)
   useEffect(() => {
     if (mode !== 'plan' && !pickd.length) { setReady(null); return }
     setChecking(true)
     const t = setTimeout(() => { post<Ready>(`/api/exams/${ta.id}/${e.id}/readiness`, body()).then(setReady, () => setReady(null)).finally(() => setChecking(false)) }, 350)
     return () => clearTimeout(t)
-  }, [n, share, tpl, mode, pickd.join(','), projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [n, mode, pickd.join(','), projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
   const make = async () => {
     setFail(null)
     try {
@@ -262,9 +260,6 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
                 <option value="plan">{tt('Perspektiv plandan (hər mövzunun öz testləri)')}</option>
                 <option value="add">{tt('Plan + özüm əlavə edirəm')}</option>
                 <option value="only">{tt('Yalnız özüm seçdiklərim')}</option></select></label>
-            <label className="lsel"><span>{tt('Təkrar')}</span>
-              <select className="sel" value={share} onChange={x => setShare(Number(x.target.value))}>
-                <option value={1}>{tt('Hər şagirdə fərqli sual')}</option><option value={2}>{tt('Bir sual ən çox 2 şagirdə')}</option></select></label>
           </div>
           {src?.projects && src.projects.length > 1 && <div style={{ marginTop: 8 }}>
             <span className="small" style={{ fontWeight: 600 }}>{tt('Test layihələri')}:</span>{' '}
@@ -272,23 +267,21 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
               return <button key={p.key} className="chip" aria-pressed={on} title={tt('{n} fayl', { n: p.files })} style={{ margin: '2px 4px 2px 0' }}
                 onClick={() => { const cur = projs.length ? projs : src.projects!.filter(x => x.default).map(x => x.key); const nx = on ? cur.filter(k => k !== p.key) : [...cur, p.key]; setProjs(nx.length ? nx : []) }}>{p.label}</button> })}
             <p className="small muted" style={{ margin: '2px 0 0' }}>{tt('Mövzuya uyğun testlər seçilmiş layihələrdən avtomatik götürülür; başqa layihəni qoşmaq üçün üzərinə toxunun.')}</p></div>}
-          <label className="check small" style={{ marginTop: 8 }}><input type="checkbox" checked={tpl} onChange={x => setTpl(x.target.checked)} />
-            {tt('Parametrli şablon suallar da (bank çatmayanda)')} <span className="muted">— {tt('standart: yalnız layihə testləri (X–XI: P0010 Blok İmtahan)')}</span></label>
+          <p className="small muted" style={{ margin: '8px 0 0' }}>{tt('Suallar yalnız layihənin testlərindən (X–XI: P0010 Blok İmtahan), şablon yoxdur. Təkrarı sistem özü ən az səviyyədə seçir.')}</p>
           {mode !== 'plan' && src && <div className="kpick">
             {src.all.map(f => <label key={f.file_id} className="check small"><input type="checkbox" checked={pickd.includes(f.file_id)}
               onChange={x => setPickd(p => x.target.checked ? [...p, f.file_id] : p.filter(i => i !== f.file_id))} />{f.label} <span className="muted">({f.questions})</span></label>)}
             <p className="small muted" style={{ margin: '4px 0 0' }}>{tt('Seçildi: {n}', { n: pickd.length })}</p></div>}
           {ready && <>
             <div className="tbl-wrap" style={{ marginTop: 8 }}><table className="ktbl">
-              <thead><tr><th>{tt('Mövzu')}</th><th className="r">{tt('Fayl')}</th><th className="r">{tt('Test')}</th><th className="r">{tt('Açıq')}</th><th className="r">{tt('Şablon')}</th></tr></thead>
-              <tbody>{ready.topics.map((t, i) => <tr key={i} className={t.mcq + t.open + t.templates === 0 ? 'bad' : ''}><td>{t.topic}</td>
-                <td className="r num">{t.files}</td><td className="r num">{t.mcq}</td><td className="r num">{t.open}</td><td className="r num">{t.templates}</td></tr>)}
-                {(ready.selected.mcq + ready.selected.open > 0) && <tr><td><i>{tt('Seçdiyim testlər')}</i></td><td /><td className="r num">{ready.selected.mcq}</td><td className="r num">{ready.selected.open}</td><td /></tr>}</tbody></table></div>
+              <thead><tr><th>{tt('Mövzu')}</th><th className="r">{tt('Fayl')}</th><th className="r">{tt('Test')}</th><th className="r">{tt('Açıq')}</th></tr></thead>
+              <tbody>{ready.topics.map((t, i) => <tr key={i} className={t.mcq + t.open === 0 ? 'bad' : ''}><td>{t.topic}</td>
+                <td className="r num">{t.files}</td><td className="r num">{t.mcq}</td><td className="r num">{t.open}</td></tr>)}
+                {(ready.selected.mcq + ready.selected.open > 0) && <tr><td><i>{tt('Seçdiyim testlər')}</i></td><td /><td className="r num">{ready.selected.mcq}</td><td className="r num">{ready.selected.open}</td></tr>}</tbody></table></div>
             <p className={'small kverdict ' + (ok ? 'ok' : 'warn')}>{tt('{s} şagird × {n} sual = {need} sual lazımdır.', { s: ready.students, n: ready.n, need: ready.need })}{' '}
-              {ok ? tt('Hovuz kifayətdir.') : ready.max_n ? tt('Bu seçimlə ən çox {m} sual mümkündür.', { m: ready.max_n }) : tt('Bu seçimlə variant yaratmaq olmur.')}</p>
+              {ok ? (ready.share && ready.share > 1 ? tt('Hər sual ən çox {k} şagirddə olacaq (bankda sual az olduğuna görə – ən az mümkün təkrar).', { k: ready.share }) : tt('Hər şagirdin sualları fərqlidir.')) : ready.max_n ? tt('Bu seçimlə ən çox {m} sual mümkündür.', { m: ready.max_n }) : tt('Bu seçimlə variant yaratmaq olmur.')}</p>
             {!ok && <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
               {ready.max_n && <button className="btn sm" onClick={() => setN([10, 12, 15, 18, 20, 24, 25, 30].filter(k => k <= ready.max_n!).pop() || 10)}>↓ {tt('Sual sayını azalt ({m})', { m: ready.max_n })}</button>}
-              {share === 1 && <button className="btn sm" onClick={() => setShare(2)}>👥 {tt('Bir sual 2 şagirdə')}</button>}
               {mode === 'plan' && <button className="btn sm" onClick={() => setMode('add')}>＋ {tt('Test əlavə et')}</button>}
             </div>}
           </>}
