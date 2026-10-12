@@ -1,5 +1,5 @@
 import { Component, lazy as reactLazy, Suspense, useState, type ComponentType, type ReactNode } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './auth'
 import { I18nCtx, type Lang } from './i18n'
 import { Layout } from './Layout'
@@ -41,6 +41,7 @@ const T = {
   Tasks: lazy(() => import('./pages/teacher/Tasks')),
   OnlineExams: lazy(() => import('./pages/teacher/OnlineExams')),
   ResultsCenter: lazy(() => import('./pages/teacher/ResultsCenter')),
+  TestsHub: lazy(() => import('./pages/teacher/TestsHub')),
   Surveys: lazy(() => import('./pages/teacher/Surveys')),
   ExtraCourses: lazy(() => import('./pages/teacher/ExtraCourses')),
   Materials: lazy(() => import('./pages/teacher/Materials')),
@@ -62,6 +63,15 @@ const S = {
   Settings: lazy(() => import('./pages/student/Settings')),
 }
 const Chat = lazy(() => import('./pages/Chat'))
+
+/** Köhnə ünvan → «Testlər və sınaqlar» (sorğu parametrləri saxlanır: ?tab= → görünüş, ?student= → şagird profili). */
+function ToTests({ s }: { s: string }) {
+  const q = new URLSearchParams(useLocation().search)
+  q.set('s', s)
+  if (q.get('tab')) { q.set('v', q.get('tab')!); q.delete('tab') }
+  if (q.get('student')) q.set('v', 'student')
+  return <Navigate to={`/tests?${q}`} replace />
+}
 
 export default function App() {
   const { me, ready } = useAuth()
@@ -108,12 +118,14 @@ export default function App() {
                 <Route path="/plan" element={<T.Plan />} />
                 <Route path="/daily" element={<T.DailyPlan />} />
                 <Route path="/timetable" element={<T.Timetable />} />
-                <Route path="/tasks" element={<T.Tasks />} />
-                <Route path="/exams-online" element={<T.OnlineExams />} />
-                <Route path="/results-center" element={<T.ResultsCenter />} />
+                <Route path="/tests" element={<T.TestsHub />} />
+                {/* köhnə ünvanlar – «Testlər və sınaqlar»a (parametrlər saxlanır) */}
+                <Route path="/tasks" element={<ToTests s="movzu" />} />
+                <Route path="/exams-online" element={<ToTests s="sinaq" />} />
+                <Route path="/results-center" element={<ToTests s="netice" />} />
                 <Route path="/surveys" element={<T.Surveys />} />
                 <Route path="/extra" element={<T.ExtraCourses />} />
-                <Route path="/t/:id" element={<Navigate to="/tasks" replace />} />
+                <Route path="/t/:id" element={<Navigate to="/tests" replace />} />
                 <Route path="/materials" element={<T.Materials />} />
                 <Route path="/reports" element={<T.Reports />} />
                 <Route path="/homeroom" element={<T.Homeroom />} />

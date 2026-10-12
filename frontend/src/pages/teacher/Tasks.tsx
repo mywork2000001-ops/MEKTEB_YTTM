@@ -23,9 +23,11 @@ const stateOf = (t: { opens_at: string; closes_at: string }, now = Date.now()): 
   now < Date.parse(t.opens_at) ? 'soon' : now < Date.parse(t.closes_at) ? 'open' : 'closed'
 const ST_ORDER: Record<Exclude<St, 'all'>, number> = { open: 0, soon: 1, closed: 2 }
 
-export default function Tasks() {
+/** embedded – «Testlər və sınaqlar» mərkəzinin içində: sinif yuxarıdakı açılan siyahıdan gəlir, başlıq təkrarlanmır. */
+export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta?: number | null } = {}) {
   const [lessons, err0] = useMyLessons()
-  const [ta, setTa] = usePick('tasks-all')                // boş – bütün siniflərim (sinif seçmədən hər şey görünür)
+  const [taOwn, setTa] = usePick('tasks-all')             // boş – bütün siniflərim (sinif seçmədən hər şey görünür)
+  const ta = embedded ? taProp ?? null : taOwn
   const [archived, setArchived] = useState(false)
   const [list, err, loading, reload] = useLoad<Task[]>(() => get('/api/tasks/mine', archived ? { archived: true } : {}), [archived])
   const [st, setSt] = useState<St>('all')
@@ -47,16 +49,19 @@ export default function Tasks() {
   const many = !ta                                       // «Bütün siniflərim» – hər testdə sinif nişanı
   return (
     <>
-      <Top title={archived ? 'Silinmiş mövzu testləri' : 'Onlayn tapşırıqlar'}
-        sub={archived ? 'Geri qaytarmaq və ya birdəfəlik silmək olar' : 'Perspektiv planın mövzu testləri – təyin etmək, izləmək, idarə etmək. Plandan kənar testlər – «Sınaq imtahanları», analitika – «Test nəticələri».'}
-        actions={archived ? <button className="btn" onClick={() => setArchived(false)}>‹ Mövzu testləri</button>
-          : <Link className="btn primary" to="/plan" title="Perspektiv planda mövzunun yanındakı «🧪 Test» düyməsi">+ Mövzu testi təyin et</Link>} />
+      {(() => {
+        const sub = archived ? 'Silinmiş mövzu testləri – geri qaytarmaq və ya birdəfəlik silmək olar' : 'Perspektiv planın mövzu testləri – təyin etmək, izləmək, idarə etmək.'
+        const act = archived ? <button className="btn" onClick={() => setArchived(false)}>‹ Mövzu testləri</button>
+          : <Link className="btn primary" to="/plan" title="Perspektiv planda mövzunun yanındakı «🧪 Test» düyməsi">+ Mövzu testi təyin et</Link>
+        return embedded ? <div className="hub-head"><span className="small muted grow">{sub}</span>{act}</div>
+          : <Top title={archived ? 'Silinmiş mövzu testləri' : 'Onlayn tapşırıqlar'} sub={sub} actions={act} />
+      })()}
       <ErrorBox error={err0 || err} />
       <div className="toolbar">
-        <select className="sel" aria-label="Sinif / qrup" style={{ width: 'auto', maxWidth: 280 }} value={ta ?? ''} onChange={e => setTa(e.target.value ? Number(e.target.value) : null)}>
+        {!embedded && <select className="sel" aria-label="Sinif / qrup" style={{ width: 'auto', maxWidth: 280 }} value={ta ?? ''} onChange={e => setTa(e.target.value ? Number(e.target.value) : null)}>
           <option value="">Bütün siniflərim</option>
           {(lessons || []).map(l => <option key={l.id} value={l.id}>{l.class_name}{l.subject !== 'Riyaziyyat' ? ` · ${l.subject}` : ''}</option>)}
-        </select>
+        </select>}
         {!archived && <Chips label="Vəziyyət" value={st} onChange={setSt} options={[['all', 'Hamısı', inPeriod.length], ['open', '● Açıq', count('open')],
           ['soon', 'Gözlənilir', count('soon')], ['closed', 'Bağlanıb', count('closed')]]} />}
       </div>

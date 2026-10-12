@@ -17,7 +17,7 @@ import { azDT } from '../../ui'
 const EXAM_SOURCES = ['sinaqlar', 'p012', 'p009']
 
 type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; teacher: string; mine: boolean; students: number }
-type Exam = { id: number; title: string; subject: string; grade: number | null; classes: string[]; opens_at: string | null; closes_at: string | null
+type Exam = { id: number; title: string; subject: string; grade: number | null; classes: string[]; ta_ids?: number[]; opens_at: string | null; closes_at: string | null
   questions: number; mine: boolean; wrote: number; avg_pct: number | null; state: 'gözlənilir' | 'açıqdır' | 'bitib' }
 type Row = { student_id: number | null; full_name: string | null; class_name: string; task_id: number; status: 'yazıb' | 'yazmayıb' | 'yazır' | 'gözlənilir'
   correct: number | null; wrong: number | null; blank: number | null; points: number | null; pct: number | null; grade: number | null
@@ -32,14 +32,16 @@ const dt = (s: string | null) => (s ? azDT(new Date(s), { day: '2-digit', month:
 const stateTone = (s: string) => (s === 'açıqdır' ? 'ok' : s === 'bitib' ? 'info' : undefined)
 const PENALTY: [string, string][] = [['0', 'cərimə yoxdur'], ['4', '4 səhv 1 düzü aparır'], ['3', '3 səhv 1 düzü aparır']]
 
-export default function OnlineExams() {
-  const [view, setView] = useState<'list' | 'series'>('list')
+/** embedded – «Testlər və sınaqlar» mərkəzində: sinif və görünüş (sınaqlar / seriyalar) yuxarıdakı açılan siyahılardan. */
+export default function OnlineExams({ embedded, ta, view: viewProp }: { embedded?: boolean; ta?: number | null; view?: 'list' | 'series' } = {}) {
+  const [viewOwn, setView] = useState<'list' | 'series'>('list')
+  const view = embedded ? viewProp ?? 'list' : viewOwn
   const [st, setSt] = useState<'all' | Exam['state']>('all')
   const [list, err, loading, reload] = useLoad<Exam[]>(() => get('/api/exams-online'), [])
   const [creating, setCreating] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
   const f = usePeriod('exams', 'date')
-  const all = list || []
+  const all = (list || []).filter(x => !ta || (x.ta_ids || []).includes(ta))     // sinif filtri – həmin sinfə verilən sınaqlar
   // eyni adlı sınaq ikinci dəfə (və ya «(təkrar)») – «təkrar» nişanı
   const base = (t: string) => t.replace(/\s*\(təkrar\)\s*$/i, '').trim().toLocaleLowerCase('az')
   const firstId = new Map<string, number>()
@@ -54,16 +56,18 @@ export default function OnlineExams() {
     : Date.parse(b.opens_at || '') - Date.parse(a.opens_at || '')))
   return (
     <>
-      <Top title="Sınaq imtahanları" sub="Plandan kənar sınaqlar və avtomatik seriyalar – yaratmaq, sınaq jurnalı. Formativ qiymətə təsir etmir; reytinq və analitika – «Test nəticələri»."
-        actions={<><Link className="btn" to="/results-center?tab=rating&kind=sinaq">Reytinq →</Link><button className="btn primary" onClick={() => setCreating(true)}>+ Yeni sınaq</button></>} />
-      <div className="toolbar"><Seg value={view} onChange={setView} options={[['list', 'Sınaqlar'], ['series', 'Avtomatik seriyalar']]} />
+      {embedded ? <div className="hub-head"><span className="small muted grow">{view === 'series' ? 'Seçilmiş sınaqlar dövrə görə (gün / həftə / ay) siniflərə özü gedir.' : 'Plandan kənar sınaqlar – bir neçə sinfə eyni anda; sınaq jurnalı. Formativ qiymətə təsir etmir.'}</span>
+        {view === 'list' && <button className="btn primary" onClick={() => setCreating(true)}>+ Yeni sınaq</button>}</div>
+        : <Top title="Sınaq imtahanları" sub="Plandan kənar sınaqlar və avtomatik seriyalar – yaratmaq, sınaq jurnalı. Formativ qiymətə təsir etmir; reytinq və analitika – «Test nəticələri»."
+          actions={<><Link className="btn" to="/tests?s=netice&v=rating&kind=sinaq">Reytinq →</Link><button className="btn primary" onClick={() => setCreating(true)}>+ Yeni sınaq</button></>} />}
+      <div className="toolbar">{!embedded && <Seg value={view} onChange={setView} options={[['list', 'Sınaqlar'], ['series', 'Avtomatik seriyalar']]} />}
         {view === 'list' && all.length > 0 && <Chips label="Vəziyyət" value={st} onChange={setSt} options={[['all', 'Hamısı', inPeriod.length],
           ['açıqdır', '● Açıq', n('açıqdır')], ['gözlənilir', 'Gözlənilir', n('gözlənilir')], ['bitib', 'Bitib', n('bitib')]]} />}</div>
       <ErrorBox error={err} />
       {view === 'series' ? <ExamSeriesPanel /> : loading && !list ? <Loading /> : (
         <>{all.length > 0 && <PeriodBar f={f} count={shown.length} total={all.length} topicLabel="Ad üzrə" />}
         <div className="jlist">
-          {list?.length === 0 && <div className="empty">Hələ sınaq yoxdur – «+ Yeni sınaq» ilə test bazasından sınaq seçin.</div>}
+          {list && all.length === 0 && <div className="empty">{ta ? 'Bu sinfə hələ sınaq verilməyib' : 'Hələ sınaq yoxdur'} – «+ Yeni sınaq» ilə test bazasından sınaq seçin.</div>}
           {all.length > 0 && shown.length === 0 && <div className="empty">Bu seçimdə sınaq yoxdur – vəziyyəti və ya dövrü dəyişin.</div>}
           {shown.map(x => (
             <div key={x.id} className="jrow cols click" onClick={() => setOpen(x.id)} style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 6 }}>

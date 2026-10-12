@@ -442,7 +442,7 @@ def list_exams(user: User = Depends(staff), db: Session = Depends(get_db)):
         pcts = [exam_score(t, a, b.penalty)['pct'] for t, _, _ in live for a in done.get(t.id, [])]
         o = min(aware(t.opens_at) for t, _, _ in live)
         c = max(aware(t.closes_at) for t, _, _ in live)
-        out.append({'id': b.id, 'title': b.title, 'subject': b.subject, 'grade': b.grade, 'classes': [cls.name for _, _, cls in live],
+        out.append({'id': b.id, 'title': b.title, 'subject': b.subject, 'grade': b.grade, 'classes': [cls.name for _, _, cls in live], 'ta_ids': sorted({ta.id for _, ta, _ in live}),
                     'opens_at': o, 'closes_at': c, 'questions': len(live[0][0].questions),
                     'mine': b.created_by == user.id, 'wrote': len(pcts),
                     'avg_pct': round(sum(pcts) / len(pcts), 1) if pcts else None,

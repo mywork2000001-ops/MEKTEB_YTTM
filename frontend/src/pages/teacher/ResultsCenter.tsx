@@ -29,8 +29,8 @@ function downloadCsv(name: string, heads: string[], rows: (string | number | nul
 }
 const KIND_LABEL: Record<Kind, string> = { movzu: 'Mövzu testləri', sinaq: 'Sınaqlar' }
 const KIND_ONE: Record<string, string> = { movzu: 'mövzu testi', sinaq: 'sınaq' }
-const TABS = [['rating', 'Reytinq'], ['missing', 'Yazmayanlar'], ['student', 'Şagird'], ['class', 'Sinif və qrup'], ['overall', 'Ümumi']] as const
-type Tab = (typeof TABS)[number][0]
+export const TABS = [['rating', 'Reytinq'], ['missing', 'Yazmayanlar'], ['student', 'Şagird'], ['class', 'Sinif və qrup'], ['overall', 'Ümumi']] as const
+export type Tab = (typeof TABS)[number][0]
 const LV = ['Zəif', 'Orta', 'Güclü'] as const
 const pct = (v: number | null | undefined) => (v == null ? '—' : fmt(v) + '%')
 const sgn = (v: number | null | undefined) => (v == null ? '—' : (v > 0 ? '+' : '') + fmtN(v))
@@ -77,9 +77,12 @@ function ClassSelect({ lessons, value, onChange, all = 'Hamısı (bütün sinifl
 }
 
 // ---------------------------------------------------------------- səhifə
-export default function ResultsCenter() {
+/** embedded – «Testlər və sınaqlar» mərkəzində: bölmə (tab) və sinif yuxarıdakı açılan siyahılardan gəlir. */
+export default function ResultsCenter({ embedded, ta, tab: tabProp, onTab }: { embedded?: boolean; ta?: number | null; tab?: Tab; onTab?: (t: Tab) => void } = {}) {
   const [sp, setSp] = useSearchParams()
-  const [tab, setTab] = useState<Tab>(() => (sp.get('student') ? 'student' : (sp.get('tab') as Tab) || 'rating'))
+  const [tabOwn, setTabOwn] = useState<Tab>(() => (sp.get('student') ? 'student' : (sp.get('tab') as Tab) || 'rating'))
+  const tab = embedded ? tabProp ?? 'rating' : tabOwn
+  const setTab = (t: Tab) => (embedded ? onTab?.(t) : setTabOwn(t))
   const [student, setStudent] = useState<number | null>(() => (sp.get('student') ? Number(sp.get('student')) : null))
   const f = usePeriodParams()
   const [lessons] = useMyLessons()
@@ -89,24 +92,30 @@ export default function ResultsCenter() {
     if (q && ['all', 'movzu', 'sinaq'].includes(q)) return q
     try { return (localStorage.getItem('mk-rc-kind') as KF) || 'all' } catch { return 'all' }
   })
-  const [rta, setRta] = useState<number | null>(null)
+  const [rtaOwn, setRta] = useState<number | null>(null)
+  const rta = embedded ? ta ?? null : rtaOwn
   const [sort, setSort] = useState<Sort>('place')
   const setKf = (v: KF) => { setKfRaw(v); try { localStorage.setItem('mk-rc-kind', v) } catch { /* noop */ } }
   const kinds = kindsOf(kf)
   const [miss] = useLoad<{ students: { chronic: boolean }[] }>(() => get('/api/results-center/missing', { kind: kf, ...f.params }), [kf, f.label])
   const chronic = miss?.students.filter(x => x.chronic).length || 0
-  useEffect(() => { if (sp.get('student') || sp.get('tab') || sp.get('kind')) setSp({}, { replace: true }) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {                                   // yalnız öz parametrləri silinir (mərkəzin s/v qalır)
+    if (sp.get('student') || sp.get('tab') || sp.get('kind'))
+      setSp(prev => { const n = new URLSearchParams(prev); ['student', 'tab', 'kind'].forEach(k => n.delete(k)); return n }, { replace: true })
+  }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
-      <Top title="Test nəticələri" sub="Bütün analitika bir yerdə: mövzu testləri və sınaqlar ayrıca – reytinq, yazmayanlar, şagird, sinif və qrup, ümumi, süni intellektin rəyi." />
+      {!embedded && <><Top title="Test nəticələri" sub="Bütün analitika bir yerdə: mövzu testləri və sınaqlar ayrıca – reytinq, yazmayanlar, şagird, sinif və qrup, ümumi, süni intellektin rəyi." />
       <div className="tabs rtabs no-print">{TABS.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{l}
-        {k === 'missing' && chronic > 0 && <span className="pill bad" style={{ marginLeft: 6 }} title="xroniki yazmayanlar">{chronic}</span>}</button>)}</div>
+        {k === 'missing' && chronic > 0 && <span className="pill bad" style={{ marginLeft: 6 }} title="xroniki yazmayanlar">{chronic}</span>}</button>)}</div></>}
+      {embedded && tab !== 'missing' && chronic > 0 && <p className="small no-print" style={{ margin: '0 0 8px' }}><button className="btn sm ghost" onClick={() => setTab('missing')}>
+        <span className="pill bad">{chronic}</span> xroniki yazmayan – «Yazmayanlar»a bax ›</button></p>}
       <div className="toolbar no-print" style={{ flexWrap: 'wrap' }}><LSeg label="Növ" value={kf} onChange={setKf} options={KF_OPTS} /><PeriodPick f={f} />
-        {tab === 'rating' && <><ClassSelect lessons={lessons} value={rta} onChange={setRta} /><LSeg label="Sıralama" value={sort} onChange={setSort} options={SORTS} /></>}</div>
+        {tab === 'rating' && <>{!embedded && <ClassSelect lessons={lessons} value={rta} onChange={setRta} />}<LSeg label="Sıralama" value={sort} onChange={setSort} options={SORTS} /></>}</div>
       {tab === 'rating' && kinds.map(k => <div key={k} style={{ marginBottom: 18 }}><RatingPanel f={f} lessons={lessons} onStudent={openStudent} kind={k} ta={rta} sort={sort} /></div>)}
-      {tab === 'missing' && <Missing f={f} lessons={lessons} onStudent={openStudent} kind={kf} />}
+      {tab === 'missing' && <Missing key={embedded ? `m${ta ?? ''}` : 'm'} f={f} lessons={lessons} onStudent={openStudent} kind={kf} fixedTa={embedded ? ta ?? null : undefined} />}
       {tab === 'student' && <StudentPanel f={f} id={student} setId={setStudent} kinds={kinds} kf={kf} />}
-      {tab === 'class' && <ClassPanel f={f} lessons={lessons} onStudent={openStudent} kinds={kinds} kf={kf} />}
+      {tab === 'class' && <ClassPanel key={embedded ? `c${ta ?? ''}` : 'c'} f={f} lessons={lessons} onStudent={openStudent} kinds={kinds} kf={kf} fixedTa={embedded ? ta ?? null : undefined} />}
       {tab === 'overall' && <Overall f={f} kinds={kinds} kf={kf} />}
     </>
   )
@@ -207,8 +216,9 @@ type MTest = { unit: string; kind: Kind; title: string; date: string; topic: str
 type MStud = { student_id: number; full_name: string; class_name: string; given: number; missed: number; last_missed: string; chronic: boolean; tests: MTest[] }
 type MData = { students: MStud[]; tests: { unit: string; kind: Kind; title: string; date: string; topic: string | null; given: number; missed: number }[] }
 
-function Missing({ f, lessons, onStudent, kind }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kind: KF }) {
-  const [ta, setTa] = useState<number | null>(null)
+function Missing({ f, lessons, onStudent, kind, fixedTa }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kind: KF; fixedTa?: number | null }) {
+  const [taOwn, setTa] = useState<number | null>(null)
+  const ta = fixedTa !== undefined ? fixedTa : taOwn
   const [sel, setSel] = useState<Set<number>>(new Set())
   const [resend, setResend] = useState(false)
   const [note, setNote] = useState<MStud | null>(null)
@@ -228,7 +238,7 @@ function Missing({ f, lessons, onStudent, kind }: { f: PP; lessons?: MyLesson[];
   return (
     <>
       <div className="toolbar no-print">
-        {lessons && <ClassSelect lessons={lessons} value={ta} onChange={v => { setTa(v); setSel(new Set()) }} />}
+        {lessons && fixedTa === undefined && <ClassSelect lessons={lessons} value={ta} onChange={v => { setTa(v); setSel(new Set()) }} />}
         {d && d.students.length > 0 && <span className="row right" style={{ gap: 6 }}>
           <button className="btn sm" onClick={() => downloadCsv('Testi yazmayanlar', ['Şagird', 'Sinif', 'Yazmayıb', 'Verilən', 'Son', 'Xroniki', 'Testlər'],
             d.students.map(x => [x.full_name, x.class_name, x.missed, x.given, fmtD(x.last_missed), x.chronic ? 'bəli' : '', x.tests.map(t => `${fmtD(t.date)} ${t.title}`).join('; ')]))}>Excel (CSV)</button>
@@ -439,8 +449,9 @@ type CPart = { summary: { tests: number; students: number; avg_pct: number | nul
   students: (RRow & { level: string | null })[] }
 type CData = { ta_id: number; class_name: string; subject: string; level: string | null; parts: Record<Kind, CPart> }
 
-function ClassPanel({ f, lessons, onStudent, kinds, kf }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kinds: Kind[]; kf: KF }) {
-  const [ta, setTa] = useState<number | null>(null)            // null – «Hamısı (bütün siniflərim)»
+function ClassPanel({ f, lessons, onStudent, kinds, kf, fixedTa }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kinds: Kind[]; kf: KF; fixedTa?: number | null }) {
+  const [taOwn, setTa] = useState<number | null>(null)         // null – «Hamısı (bütün siniflərim)»
+  const ta = fixedTa !== undefined ? fixedTa : taOwn
   const [level, setLevel] = useState<'all' | (typeof LV)[number]>('all')
   const [d, err, loading] = useLoad<CData>(() => get(ta ? `/api/results-center/class/${ta}` : '/api/results-center/class', { ...(level !== 'all' ? { level } : {}), ...f.params }), [ta, level, f.label])
   const [review, setReview] = useState<Review | null>(null)
@@ -460,7 +471,7 @@ function ClassPanel({ f, lessons, onStudent, kinds, kf }: { f: PP; lessons?: MyL
   return (
     <>
       <div className="toolbar no-print">
-        <ClassSelect lessons={lessons} value={ta} onChange={setTa} />
+        {fixedTa === undefined && <ClassSelect lessons={lessons} value={ta} onChange={setTa} />}
         <Seg label="Səviyyə" value={level} onChange={setLevel} options={[['all', 'Hamısı'], ['Zəif', 'Zəif'], ['Orta', 'Orta'], ['Güclü', 'Güclü']]} />
         {d && <button className="btn sm right" onClick={print}>Çap / PDF</button>}
       </div>

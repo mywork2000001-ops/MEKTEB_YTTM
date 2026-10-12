@@ -149,7 +149,7 @@ function Risk({ a, ta }: { a: any; ta: number }) {
   const nav = useNavigate()
   const [open, setOpen] = useState<{ sid: number; name: string; kind: 'contacts' | 'plans' } | null>(null)
   const rows = [...a.students].sort((x: any, y: any) => y.risk.score - x.risk.score)
-  const test = () => { try { sessionStorage.setItem('mk-pick-tasks', String(ta)) } catch { /* noop */ } nav('/tasks') }
+  const test = () => { try { sessionStorage.setItem('mk-pick-tasks', String(ta)) } catch { /* noop */ } nav('/tests?s=movzu') }
   return (
     <>
       <div className="jlist">{rows.map((r: any) => (

@@ -927,3 +927,11 @@ label.f textarea{min-height:84px;padding:10px 12px;resize:vertical}
 .more-pop .danger{color:var(--bad)}
 .chip .chip-n{margin-left:6px;font-weight:700;opacity:.75}
 a.btn{text-decoration:none}
+/* «Testlər və sınaqlar» – başda açılan siyahılar (Bölmə · Sinif · Görünüş) */
+.hub-bar{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);gap:10px;margin:0 0 14px;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.hub-pick{display:flex;flex-direction:column;gap:4px;min-width:0}
+.hub-pick>span{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.hub-pick select{min-height:44px;width:100%;padding:0 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface-2);font-size:15px;font-weight:600;color:var(--ink);text-overflow:ellipsis}
+.hub-pick select:focus{outline:2px solid var(--accent);outline-offset:1px}
+.hub-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+@media (max-width:720px){.hub-bar{grid-template-columns:1fr}}

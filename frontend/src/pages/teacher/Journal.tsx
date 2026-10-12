@@ -184,7 +184,7 @@ function LessonCard({ ta, date, lesson, students, onSaved }: { ta: MyLesson; dat
       </div></>}
       <div className="row" style={{ marginTop: 12 }}>
         <AsyncBtn className="btn" onClick={hold}>{lesson.held ? 'Saxlamanı götür' : 'Mövzunu saxla'}</AsyncBtn>
-        <button className="btn" onClick={() => { try { sessionStorage.setItem('mk-pick-tasks', String(ta.id)) } catch { /* noop */ } nav('/tasks') }}>Onlayn test təyin et</button>
+        <button className="btn" onClick={() => { try { sessionStorage.setItem('mk-pick-tasks', String(ta.id)) } catch { /* noop */ } nav('/tests?s=movzu') }}>Onlayn test təyin et</button>
         <span className="small muted">«Mövzunu saxla» – mövzu növbəti dərsdə davam edir, plan bir dərs sürüşür (rəsmi plan dəyişmir).</span>
       </div>
       <div className="jsave">

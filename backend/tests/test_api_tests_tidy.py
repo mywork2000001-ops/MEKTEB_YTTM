@@ -43,4 +43,5 @@ def test_live_watch_for_exam_matches_journal(world, clock, monkeypatch):
     assert (w['pct'], w['grade']) == (58.3, None)
     ex = admin.get('/api/exams-online').json()
     assert [(x['id'], x['classes'], x['wrote'], x['avg_pct'], x['state']) for x in ex] == [(bid, ['X e', 'X c'], 1, 58.3, 'açıqdır')]
+    assert ex[0]['ta_ids'] == sorted([ta, ta_c])
     assert world[0]('yad').get('/api/exams-online').json() == []
