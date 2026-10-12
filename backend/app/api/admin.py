@@ -16,6 +16,34 @@ from ..models import User
 from .common import audit
 
 router = APIRouter(prefix='/api/admin', tags=['admin'])
+
+
+@router.get('/jobs')
+def jobs(user: User = Depends(admin_only), db: Session = Depends(get_db)):
+    """Son fon işləri (app/joblog.py): bank, sertifikat, kart oxunuşu, avtomatik testlər, xətalar."""
+    from ..joblog import read
+    return read(db)
+
+
+@router.get('/resources')
+def resources(user: User = Depends(admin_only), db: Session = Depends(get_db)):
+    """Pulsuz hostinq limitləri üçün: bazanın ölçüsü, fayllar (file_blobs), bu ay kart skanı və Claude oxunuşu."""
+    from sqlalchemy import func, text
+    from ..models import ExamScan
+    from ..storage import DbStorage
+    size = None
+    try:
+        if db.bind.dialect.name == 'postgresql':
+            size = db.scalar(text('select pg_database_size(current_database())'))
+        else:
+            size = db.scalar(text('select page_count * page_size from pragma_page_count(), pragma_page_size()'))
+    except Exception:                                   # noqa: BLE001
+        size = None
+    m0 = dt.datetime.now(dt.timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    scans = db.scalar(select(func.count()).select_from(ExamScan).where(ExamScan.created_at >= m0)) or 0
+    read = db.scalar(select(func.count()).select_from(ExamScan).where(ExamScan.updated_at >= m0, ExamScan.read_by.like('claude%'))) or 0
+    return {'db_bytes': size, 'files_bytes': DbStorage.used_bytes(db), 'scans_month': scans, 'claude_reads_month': read,
+            'limits': {'neon_storage_bytes': 512 * 1024 * 1024, 'render_hours': 750}}
 SKIP = {'file_blobs'}                               # fayllar ayrıca (həcmli) – ixraca daxil deyil
 
 

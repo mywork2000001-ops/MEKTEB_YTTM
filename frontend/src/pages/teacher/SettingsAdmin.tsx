@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { get, patch, post } from '../../api'
 import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, Loading, Pill, toast, useLoad } from '../../ui'
 import { azDT } from '../../ui'
+import { tt } from '../../i18n'
 
 export default function SettingsAdmin({ tab }: { tab: 'teachers' | 'bank' | 'audit' }) {
   if (tab === 'teachers') return <Teachers />
@@ -135,10 +136,30 @@ function BankFiles({ sources }: { sources: any[] }) {
   )
 }
 
+const mb = (b?: number | null) => (b == null ? '—' : (b / 1048576).toFixed(1).replace('.', ',') + ' MB')
+
+/** Hostinq limitləri və son fon işləri (docs/qalan-isler-promtu.md A1–A2). */
+function Health() {
+  const [r] = useLoad<any>(() => get('/api/admin/resources'), [])
+  const [jobs] = useLoad<{ at: string; name: string; level: string; msg: string }[]>(() => get('/api/admin/jobs'), [])
+  return (<>
+    <section className="panel" style={{ marginBottom: 14 }}>
+      <h2>{tt('Resurslar')} <small>{tt('pulsuz hostinq limitləri')}</small></h2>
+      {!r ? <Loading /> : <p className="small" style={{ margin: 0 }}>{tt('Baza')}: <b>{mb(r.db_bytes)}</b> / {mb(r.limits.neon_storage_bytes)} · {tt('fayllar')}: <b>{mb(r.files_bytes)}</b> ·         {tt('bu ay skan edilən kart')}: <b>{r.scans_month}</b> · {tt('Claude oxunuşu')}: <b>{r.claude_reads_month}</b></p>}
+    </section>
+    <section className="panel" style={{ marginBottom: 14 }}>
+      <h2>{tt('Son fon işləri')} <small>{jobs?.length ?? 0}</small></h2>
+      {!jobs ? <Loading /> : jobs.length === 0 ? <p className="small muted" style={{ margin: 0 }}>{tt('Hələ qeyd yoxdur (server yenidən başlayandan sonra yazılır).')}</p> : (
+        <div className="jlist">{jobs.slice(0, 30).map((j, i) => <div key={i} className="jrow" style={{ display: 'block' }}>
+          <span className="small muted">{azDT(new Date(j.at), undefined, 'all')} · {j.name}</span> {j.level !== 'INFO' && <Pill tone="bad">{j.level}</Pill>}<br /><span className="small">{j.msg}</span></div>)}</div>)}
+    </section></>)
+}
+
 function Audit() {
   const [rows, err] = useLoad<any[]>(() => get('/api/audit', { limit: 300 }), [])
   return (
     <>
+      <Health />
       <ErrorBox error={err} />
       <section className="panel" style={{ marginBottom: 14 }}>
         <h2>Ehtiyat nüsxə</h2>

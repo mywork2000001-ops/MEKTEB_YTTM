@@ -28,11 +28,20 @@ def images_from_upload(data: bytes, mime: str | None) -> list:
         for page in PdfReader(io.BytesIO(data)).pages:
             for im in page.images:
                 try:
-                    out.append(ImageOps.exif_transpose(Image.open(io.BytesIO(im.data))).convert('L'))
+                    out.append(_small(ImageOps.exif_transpose(Image.open(io.BytesIO(im.data))).convert('L')))
                 except Exception:                       # noqa: BLE001 – oxunmayan şəkil atlanır
                     continue
         return out
-    return [ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert('L')]
+    return [_small(ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert('L'))]
+
+
+MAX_SIDE = 2400                    # yaddaş (Render 512 MB): telefon şəkli 4000 px-dən çox ola bilər; QR və kəsik üçün 2400 kifayətdir
+
+
+def _small(img):
+    if max(img.size) > MAX_SIDE:
+        img.thumbnail((MAX_SIDE, MAX_SIDE))
+    return img
 
 
 def _pt(p) -> tuple[float, float]:

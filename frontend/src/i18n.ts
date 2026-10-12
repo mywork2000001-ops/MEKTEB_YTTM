@@ -483,6 +483,15 @@ const D: Record<string, [string, string]> = {
   "Hamısını «var» et": ["Mark everyone present", "Отметить всех присутствующими"],
   "Sual sayı": ["Number of questions", "Количество вопросов"],
   "{n} sual · 100 bal": ["{n} questions · 100 points", "{n} вопросов · 100 баллов"],
+  // admin: resurslar, fon işləri (12.10.2026)
+  "Resurslar": ["Resources", "Ресурсы"],
+  "pulsuz hostinq limitləri": ["free hosting limits", "лимиты бесплатного хостинга"],
+  "Baza": ["Database", "База данных"],
+  "fayllar": ["files", "файлы"],
+  "bu ay skan edilən kart": ["cards scanned this month", "бланков отсканировано в этом месяце"],
+  "Claude oxunuşu": ["Claude readings", "распознано Claude"],
+  "Son fon işləri": ["Recent background jobs", "Последние фоновые задачи"],
+  "Hələ qeyd yoxdur (server yenidən başlayandan sonra yazılır).": ["No entries yet (recorded after the server restarts).", "Записей пока нет (появятся после перезапуска сервера)."],
 }
 
 export const I18nCtx = createContext<Lang>('az')

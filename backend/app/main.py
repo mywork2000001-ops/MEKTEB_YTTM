@@ -74,6 +74,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname
 async def lifespan(app: FastAPI):
     with scheduler.startup_lock():                   # bir neçə proses: miqrasiyalar növbə ilə
         bootstrap()
+    from . import joblog
+    joblog.install()                                 # fon işlərinin mesajları bazaya («Son fon işləri»)
     if scheduler.leader():                           # fon işləri yalnız bir prosesdə (təkrar göndərmə olmasın)
         scheduler.start()
     yield

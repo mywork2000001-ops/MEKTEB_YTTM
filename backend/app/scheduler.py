@@ -145,6 +145,24 @@ def _ksq_scan_job():
             log.info('kart oxundu: %s', n)
 
 
+def _scan_cleanup_job():
+    """KSQ/BSQ kart kəsikləri 60 gün sonra silinir (məxfilik + yer; oxunuş və bal qalır)."""
+    from sqlalchemy import select
+    from .models import ExamScan, now
+    from .storage import DbStorage
+    with SessionLocal() as db:
+        n = 0
+        for sc in db.scalars(select(ExamScan).where(ExamScan.crop_key.is_not(None),
+                                                    ExamScan.created_at < now() - dt.timedelta(days=60))):
+            if sc.crop_key.startswith('db:'):
+                DbStorage.remove(db, sc.crop_key)
+            sc.crop_key = None
+            n += 1
+        db.commit()
+        if n:
+            log.info('köhnə kart şəkilləri silindi: %s', n)
+
+
 def start():
     global _sched
     import os
@@ -161,6 +179,7 @@ def start():
     _sched.add_job(_auto_tests_job, 'interval', minutes=15, id='auto_tests', max_instances=1, coalesce=True,
                    next_run_time=dt.datetime.now() + dt.timedelta(minutes=2))
     _sched.add_job(_ksq_scan_job, 'interval', minutes=2, id='ksq_scans', max_instances=1, coalesce=True)
+    _sched.add_job(_scan_cleanup_job, 'cron', hour=3, minute=50, id='scan_cleanup', max_instances=1, coalesce=True)
     _sched.add_job(_difficulty_job, 'cron', hour=3, minute=30, id='difficulty', max_instances=1, coalesce=True)
     if keep:
         _sched.add_job(_keepalive_job, 'interval', minutes=10, id='keepalive', max_instances=1, coalesce=True)
