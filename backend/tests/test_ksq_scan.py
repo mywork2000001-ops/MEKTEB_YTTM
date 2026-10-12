@@ -269,3 +269,44 @@ def test_variants_for_several_classes(world):
     assert len(ex2) == 1 and ex2[0]['kind'] == 'KSQ' and ex2[0]['max_points'] == 100
     v2 = admin.get(f'/api/exams/{ta2}/{ex2[0]["id"]}/variants').json()['variants']
     assert len(v2) == 2 and len(v2[0]['questions']) == 10
+
+
+def test_openrouter_reader(world, monkeypatch):
+    """Açar OpenRouter-dədirsə: müəllimin «Süni intellekt» ayarından götürülür; şəkil oxumayan model – Claude ilə əvəz; cavab tool_calls-dan."""
+    import json
+    import httpx
+    from app.domain import ksq_reader as R
+    from app.models import User
+    from app.security import secret_encrypt
+    as_, S = world
+    with S() as db:
+        u = db.query(User).filter_by(login='admin').first()
+        u.ai_settings = {'provider': 'openrouter', 'model': 'deepseek/deepseek-chat-v3.1', 'key': secret_encrypt('sk-or-test-123456')}
+        db.commit()
+        c = R.api_key_for(db, u.id)
+    assert c == {'provider': 'openrouter', 'key': 'sk-or-test-123456', 'model': R.OR_DEFAULT}
+    sent = []
+
+    class Resp:
+        status_code = 200
+        text = ''
+
+        def __init__(self, js):
+            self._js = js
+
+        def json(self):
+            return self._js
+
+    def post(self, url, json=None, headers=None):
+        sent.append((url, json, headers))
+        args = {'answers': [{'slot': 1, 'value': 'C', 'confidence': 0.97}, {'slot': 2, 'value': '3/7', 'confidence': 0.5}]}
+        return Resp({'choices': [{'message': {'tool_calls': [{'function': {'name': 'submit_card', 'arguments': __import__('json').dumps(args)}}]}}]})
+    monkeypatch.setattr(httpx.Client, 'post', post)
+    got, by = R.read_card({'provider': 'openrouter', 'key': 'sk-or', 'model': 'google/gemini-2.5-flash'}, b'\xff\xd8x',
+                          [{'slot': 1, 'kind': 'mcq'}, {'slot': 2, 'kind': 'open'}])
+    assert [g['value'] for g in got] == ['C', '3/7'] and by.endswith('+2') and len(sent) == 2      # şübhəli 2-ci xana – ikinci oxunuş
+    url, body, headers = sent[0]
+    assert url == R.OPENROUTER and headers['Authorization'] == 'Bearer sk-or' and body['model'] == 'google/gemini-2.5-flash'
+    assert body['messages'][1]['content'][1]['image_url']['url'].startswith('data:image/jpeg;base64,')
+    assert body['tool_choice']['function']['name'] == 'submit_card'
+    _ = json

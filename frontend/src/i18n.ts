@@ -569,6 +569,7 @@ const D: Record<string, [string, string]> = {
   "imtahan var": ["exam exists", "работа есть"],
   "imtahan yaradılacaq": ["exam will be created", "работа будет создана"],
   "Siniflər arasında suallar ən çox 20 % təkrarlanır.": ["Questions repeat across classes by at most 20 %.", "Между классами вопросы повторяются не более чем на 20 %."],
+  "Süni intellekt bağlantısı yoxdur: kartlar oxunmağı gözləyəcək. Tənzimləmələr → «Süni intellekt» → OpenRouter və ya Anthropic açarını daxil edin (OpenRouter-də şəkil oxuyan model: Claude, Gemini, GPT-4o).": ["No AI connection: cards will wait to be read. Settings → «AI» → enter an OpenRouter or Anthropic key (on OpenRouter use a vision model: Claude, Gemini, GPT-4o).", "Нет подключения ИИ: бланки будут ждать распознавания. Настройки → «Искусственный интеллект» → введите ключ OpenRouter или Anthropic (в OpenRouter нужна модель, читающая изображения: Claude, Gemini, GPT-4o)."],
 }
 
 export const I18nCtx = createContext<Lang>('az')

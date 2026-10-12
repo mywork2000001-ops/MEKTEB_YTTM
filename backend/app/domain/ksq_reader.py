@@ -84,8 +84,75 @@ def call(key: str, model: str, jpeg: bytes, slots: list[dict], only: list[int] |
     return out
 
 
-def read_card(key: str, jpeg: bytes, slots: list[dict]) -> tuple[list[dict], str]:
-    """Birinci oxunuş + şübhəli/oxunmamış xanalar üçün ikinci oxunuş (güclü model); hər xana üçün daha əmin olan qalır."""
+OPENROUTER = 'https://openrouter.ai/api/v1/chat/completions'
+OR_DEFAULT = 'anthropic/claude-sonnet-4.5'          # şəkli oxuyan model (müəllimin modeli şəkil oxumursa)
+VISION = ('claude', 'gemini', 'gpt-4', 'gpt-5', 'vision', '-vl', 'llama-4', 'qwen2.5-vl', 'pixtral')
+
+
+def _clean(blk_input: dict, slots: list[dict]) -> list[dict]:
+    valid = {s['slot'] for s in slots}
+    out = []
+    for a in blk_input.get('answers', []):
+        try:
+            slot = int(a['slot'])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if slot in valid:
+            out.append({'slot': slot, 'value': str(a.get('value') or '')[:12],
+                        'confidence': max(0.0, min(1.0, float(a.get('confidence') or 0)))})
+    return out
+
+
+def call_openrouter(key: str, model: str, jpeg: bytes, slots: list[dict], only: list[int] | None = None) -> list[dict]:
+    """OpenRouter (OpenAI-uyğun): şəkil data-URI ilə, məcburi funksiya çağırışı submit_card."""
+    import json as _json
+    body = {'model': model, 'max_tokens': 4000, 'temperature': 0,
+            'messages': [{'role': 'system', 'content': SYSTEM},
+                         {'role': 'user', 'content': [
+                             {'type': 'text', 'text': _instructions(slots, only)},
+                             {'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,' + base64.b64encode(jpeg).decode()}}]}],
+            'tools': [{'type': 'function', 'function': {'name': TOOL['name'], 'description': TOOL['description'], 'parameters': TOOL['input_schema']}}],
+            'tool_choice': {'type': 'function', 'function': {'name': TOOL['name']}}}
+    with httpx.Client(timeout=TIMEOUT) as c:
+        r = c.post(OPENROUTER, json=body, headers={'Authorization': f'Bearer {key}', 'Content-Type': 'application/json',
+                                                   'X-Title': 'Muellim komekcisi'})
+    if r.status_code != 200:
+        try:
+            msg = r.json().get('error', {}).get('message')
+        except Exception:                                    # noqa: BLE001
+            msg = None
+        raise RuntimeError(f'OpenRouter {r.status_code}: {msg or r.text[:200]}')
+    msg = (r.json().get('choices') or [{}])[0].get('message') or {}
+    calls = msg.get('tool_calls') or []
+    try:
+        data = _json.loads(calls[0]['function']['arguments']) if calls else _json.loads(
+            (msg.get('content') or '').strip().removeprefix('```json').removesuffix('```'))
+    except (ValueError, KeyError, IndexError):
+        raise RuntimeError('OpenRouter cavabında oxunuş yoxdur (model alət çağırışını dəstəkləmir?)')
+    return _clean(data, slots)
+
+
+def _conn(c) -> dict:
+    """Köhnə çağırış (yalnız açar mətni) – Anthropic birbaşa."""
+    return c if isinstance(c, dict) else {'provider': 'anthropic', 'key': c, 'model': MODEL}
+
+
+def read_card(key, jpeg: bytes, slots: list[dict]) -> tuple[list[dict], str]:
+    c = _conn(key)
+    if c['provider'] == 'openrouter':
+        m = c['model']
+        first = {a['slot']: a for a in call_openrouter(c['key'], m, jpeg, slots)}
+        doubt = [s['slot'] for s in slots if s['slot'] not in first or first[s['slot']]['confidence'] < LOW]
+        if doubt:                                            # şübhəli xanalar – eyni modellə ayrıca, diqqətli ikinci oxunuş
+            try:
+                for a in call_openrouter(c['key'], m, jpeg, slots, doubt):
+                    if a['slot'] not in first or a['confidence'] > first[a['slot']]['confidence']:
+                        first[a['slot']] = {**a, 'second': True}
+                m += '+2'
+            except RuntimeError as e:
+                log.warning('ikinci oxunuş: %s', e)
+        return [first[k] for k in sorted(first)], m
+    key = c['key']
     first = {a['slot']: a for a in call(key, MODEL, jpeg, slots)}
     doubt = [s['slot'] for s in slots if s['slot'] not in first or first[s['slot']]['confidence'] < LOW]
     by = MODEL
@@ -100,16 +167,24 @@ def read_card(key: str, jpeg: bytes, slots: list[dict]) -> tuple[list[dict], str
     return [first[k] for k in sorted(first)], by
 
 
-def api_key_for(db: Session, teacher_id: int | None) -> str | None:
+def api_key_for(db: Session, teacher_id: int | None) -> dict | None:
+    """Kart oxumaq üçün bağlantı: MK_ANTHROPIC_API_KEY → müəllimin → adminin «Süni intellekt» açarı (Anthropic və ya OpenRouter)."""
     from ..models import Role, User
     from ..security import secret_decrypt
     if settings().anthropic_api_key:
-        return settings().anthropic_api_key
+        return {'provider': 'anthropic', 'key': settings().anthropic_api_key, 'model': MODEL}
     t = db.get(User, teacher_id) if teacher_id else None
 
-    def own(u) -> str | None:
+    def own(u) -> dict | None:
         s = (u.ai_settings or {}) if u else {}
-        return secret_decrypt(s.get('key')) if s.get('provider') == 'anthropic' else None
+        key = secret_decrypt(s.get('key')) if s.get('provider') in ('anthropic', 'openrouter') else None
+        if not key:
+            return None
+        if s['provider'] == 'anthropic':
+            return {'provider': 'anthropic', 'key': key, 'model': MODEL}
+        m = s.get('model') or ''
+        ok = m.startswith('@preset/') or any(v in m.lower() for v in VISION)       # OpenRouter preseti – müəllimin seçimi, olduğu kimi
+        return {'provider': 'openrouter', 'key': key, 'model': m if ok else OR_DEFAULT}
     if (k := own(t)):
         return k
     q = select(User).where(User.role == Role.admin)
@@ -146,7 +221,7 @@ def read_pending(db: Session, exam_id: int | None = None, limit: int = 20) -> in
             db.commit()
             log.warning('kart oxunmadı (scan %s): %s', sc.id, ex)
             continue
-        sc.reading, sc.read_by = reading, ('claude+2' if '+' in by else 'claude')
+        sc.reading, sc.read_by = reading, ((('claude' if 'openrouter' != _conn(key)['provider'] else 'openrouter') + ('+2' if '+' in by else '')))[:20]
         apply(db, e, sc)
         db.commit()
         n += 1
