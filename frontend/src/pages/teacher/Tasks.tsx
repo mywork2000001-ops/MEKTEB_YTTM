@@ -208,15 +208,25 @@ export function TaskActions({ ta, id, cls, onChange }: { ta: number; id: number;
 const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 
 /** Yenidən göndər: eyni suallarla surət – yeni vaxt, həmin və ya başqa sinif/qrup. Köhnə nəticələr yerində qalır. */
-function Resend({ ta, task, lessons, preset, onClose, onDone }: { ta: number; task: Task; lessons: MyLesson[]; preset?: 'absent'; onClose: () => void; onDone: (t: Task, sameClass: boolean) => void }) {
+/** Bir (və ya bir neçə) konkret şagirdə yenidən göndər — sınaq jurnalından / şagird siyahısından (eyni sınaq paketinə düşür). */
+export function ResendToStudents({ ta, taskId, ids, onClose, onDone }: { ta: number; taskId: number; ids: number[]; onClose: () => void; onDone: () => void }) {
+  const [lessons] = useMyLessons()
+  const [task, err] = useLoad<Task>(() => get(`/api/tasks/${ta}/${taskId}/full`), [ta, taskId])
+  if (err) return <Drawer title="Yenidən göndər" onClose={onClose}><ErrorBox error={err} /></Drawer>
+  if (!task) return null
+  return <Resend ta={ta} task={task} lessons={lessons || []} onlyIds={ids} onClose={onClose}
+    onDone={() => { toast(ids.length === 1 ? 'Sınaq şagirdə yenidən göndərildi' : `Sınaq ${ids.length} şagirdə yenidən göndərildi`); onDone() }} />
+}
+
+function Resend({ ta, task, lessons, preset, onlyIds, onClose, onDone }: { ta: number; task: Task; lessons: MyLesson[]; preset?: 'absent'; onlyIds?: number[]; onClose: () => void; onDone: (t: Task, sameClass: boolean) => void }) {
   // həmin sinfə: «Yazmayanlar» və «50%-dən aşağı» – bu testin nəticələrindən (docs/sagird-secimi-promtu.md §6)
   const [res] = useLoad<any>(() => get(`/api/tasks/${ta}/${task.id}`), [ta, task.id])
   const presets: Preset[] = res ? [
     { key: 'absent', label: 'Yazmayanlar', ids: res.rows.filter((r: any) => r.status !== 'təhvil verib').map((r: any) => r.student_id) },
     { key: 'low', label: '50%-dən aşağı', ids: res.rows.filter((r: any) => r.pct != null && r.pct < 50).map((r: any) => r.student_id) },
   ] : []
-  const [ids, setIds] = useState<number[] | null>(null)
-  useEffect(() => { if (res && preset === 'absent') setIds(presets[0].ids) }, [res])
+  const [ids, setIds] = useState<number[] | null>(onlyIds ?? null)
+  useEffect(() => { if (res && preset === 'absent' && !onlyIds) setIds(presets[0].ids) }, [res])
   const start = new Date(); start.setMinutes(Math.ceil(start.getMinutes() / 5) * 5 + 5, 0, 0)
   const end = new Date(start.getTime() + Math.max(Math.max(task.duration_min, 45) + 10, 60) * 60000)
   const [f, setF] = useState({ target: ta, opens: localInput(start), closes: localInput(end), duration: Math.max(task.duration_min, 45), title: task.title })
@@ -242,7 +252,7 @@ function Resend({ ta, task, lessons, preset, onClose, onDone }: { ta: number; ta
           <Field label="Həll müddəti (dəq)" hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
         </div>
         {(f.target !== ta || res) && <StudentPicker key={`${f.target}-${!!res}`} ta={f.target} presets={f.target === ta ? presets : []}
-          value={f.target === ta && preset === 'absent' && res ? presets[0].ids : null}
+          value={f.target === ta && onlyIds ? onlyIds : f.target === ta && preset === 'absent' && res ? presets[0].ids : null}
           initialPreset={f.target === ta && preset === 'absent' ? 'absent' : undefined} onChange={setIds} />}
         <ErrorBox error={err} />
       </div>

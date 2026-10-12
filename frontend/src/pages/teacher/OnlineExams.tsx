@@ -8,7 +8,7 @@ import { Chips, ConfirmName, Drawer, ErrorBox, Field, fmt, Loading, Pill, Seg, S
 import { Link } from 'react-router-dom'
 import { esc, head, printDoc, table } from '../../print'
 import TaskEditor, { BankPicker, iso, localParts, OwnQuestion, toCustom, type Given, type Q } from './TaskEditor'
-import { TaskActions } from './Tasks'
+import { ResendToStudents, TaskActions } from './Tasks'
 import { PeriodBar, usePeriod } from '../../periods'
 import ExamSeriesPanel from './ExamSeries'
 import { azDT } from '../../ui'
@@ -112,7 +112,8 @@ const STATUS_TONE: Record<Row['status'], 'ok' | 'bad' | 'info' | undefined> = { 
 
 /** Sınağı alan siniflərin şagirdləri (əlifba ilə) və vəziyyəti; başqa müəllimin sinfində adlar gizlidir (access: own). */
 function ExamStudents({ id }: { id: number }) {
-  const [d, err] = useLoad<Res>(() => get(`/api/exams-online/${id}`), [id])
+  const [d, err, , reload] = useLoad<Res>(() => get(`/api/exams-online/${id}`), [id])
+  const [rs, setRs] = useState<{ ta: number; task: number; ids: number[] } | null>(null)
   if (err) return <ErrorBox error={err} />
   if (!d) return <Loading />
   return (
@@ -131,10 +132,13 @@ function ExamStudents({ id }: { id: number }) {
                 {rows.map((r, i) => (
                   <li key={(r.student_id ?? 'x') + '-' + i} style={{ breakInside: 'avoid', marginBottom: 2 }}>
                     {r.full_name || 'şagird'} <Pill tone={STATUS_TONE[r.status]}>{r.status === 'yazıb' ? `${fmt(r.pct)}%` : r.status}</Pill>
-                    {r.retake && <span className="muted"> · təkrar</span>}</li>))}
+                    {r.retake && <span className="muted"> · təkrar</span>}
+                    {c.own && r.student_id && <button className="btn sm ghost" style={{ padding: '0 6px', minHeight: 24, marginLeft: 4 }}
+                      title="Bu şagirdə sınağı yenidən göndər (yeni vaxtla)" onClick={() => setRs({ ta: c.ta_id, task: r.task_id, ids: [r.student_id!] })}>↻ Yenidən göndər</button>}</li>))}
               </ol>}
           </div>)
       })}
+      {rs && <ResendToStudents ta={rs.ta} taskId={rs.task} ids={rs.ids} onClose={() => setRs(null)} onDone={() => { setRs(null); reload() }} />}
     </div>
   )
 }
@@ -320,6 +324,7 @@ function Results({ id, onClose, onChange }: { id: number; onClose: () => void; o
   const [cls, setCls] = useState('')
   const [att, setAtt] = useState<Row | null>(null)
   const [delAsk, setDelAsk] = useState(false)
+  const [rs, setRs] = useState<{ ta: number; task: number; ids: number[] } | null>(null)
   const rows = d ? d.rows.filter(r => !cls || r.class_name === cls) : []
   const name = (r: Row) => r.full_name || `şagird (${r.class_name})`
   const print = () => {
@@ -355,7 +360,10 @@ function Results({ id, onClose, onChange }: { id: number; onClose: () => void; o
               <tbody>{rows.map((r, i) => (
                 <tr key={i} className={r.student_id && r.status === 'yazıb' ? 'click' : ''} onClick={() => r.student_id && r.status === 'yazıb' && setAtt(r)}>
                   <td className="r num"><b>{r.place_all ?? '—'}</b></td><td className="r num">{r.place_class ?? '—'}</td>
-                  <td>{r.full_name ? <b>{r.full_name}</b> : <span className="muted">{name(r)}</span>}<span className="sub">{r.class_name}{r.retake ? ' · təkrar cəhd' : ''}{r.late ? ' · sonradan yazıb' : ''}</span></td>
+                  <td>{r.full_name ? <b>{r.full_name}</b> : <span className="muted">{name(r)}</span>}<span className="sub">{r.class_name}{r.retake ? ' · təkrar cəhd' : ''}{r.late ? ' · sonradan yazıb' : ''}</span>
+                    {r.student_id && (() => { const c = d.classes.find(k => k.task_id === r.task_id) || d.classes.find(k => k.class_name === r.class_name)
+                      return c?.own ? <button className="btn sm ghost" style={{ padding: '0 6px', minHeight: 24 }} title="Bu şagirdə sınağı yenidən göndər"
+                        onClick={e => { e.stopPropagation(); setRs({ ta: c.ta_id, task: c.task_id, ids: [r.student_id!] }) }}>↻ Yenidən göndər</button> : null })()}</td>
                   {r.status === 'yazıb' ? <>
                     <td className="r num">{r.correct}</td><td className="r num">{r.wrong}</td><td className="r num">{r.blank}</td>
                     <td className="r num">{fmt(r.points, r.points != null && r.points % 1 ? 2 : 0)}</td><td className="r num"><b>{fmt(r.pct)}</b></td></>
@@ -388,6 +396,7 @@ function Results({ id, onClose, onChange }: { id: number; onClose: () => void; o
             </div>)}
         </div>)}
       {att && <Attempt batch={id} r={att} onClose={() => setAtt(null)} onDone={() => { reload(); onChange() }} />}
+      {rs && <ResendToStudents ta={rs.ta} taskId={rs.task} ids={rs.ids} onClose={() => setRs(null)} onDone={() => { setRs(null); reload(); onChange() }} />}
     </Drawer>
   )
 }
