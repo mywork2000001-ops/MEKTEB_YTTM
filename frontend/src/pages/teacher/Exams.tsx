@@ -275,7 +275,8 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
           {ready && <>
             <div className="tbl-wrap" style={{ marginTop: 8 }}><table className="ktbl">
               <thead><tr><th>{tt('Mövzu')}</th><th className="r">{tt('Fayl')}</th><th className="r">{tt('Test')}</th><th className="r">{tt('Açıq')}</th></tr></thead>
-              <tbody>{ready.topics.map((t, i) => <tr key={i} className={t.mcq + t.open === 0 ? 'bad' : ''}><td>{t.topic}</td>
+              <tbody>{ready.topics.map((t, i) => <tr key={i} className={t.mcq + t.open === 0 ? (t.files ? 'shared' : 'bad') : ''}>
+                <td title={t.topic}>{t.topic.length > 70 ? t.topic.slice(0, 68) + '…' : t.topic}{t.mcq + t.open === 0 && t.files > 0 && <span className="small muted"> · {tt('faylı qonşu mövzu ilə ortaqdır – sualları orada sayılır')}</span>}</td>
                 <td className="r num">{t.files}</td><td className="r num">{t.mcq}</td><td className="r num">{t.open}</td></tr>)}
                 {(ready.selected.mcq + ready.selected.open > 0) && <tr><td><i>{tt('Seçdiyim testlər')}</i></td><td /><td className="r num">{ready.selected.mcq}</td><td className="r num">{ready.selected.open}</td></tr>}</tbody></table></div>
             <p className={'small kverdict ' + (ok ? 'ok' : 'warn')}>{tt('{s} şagird × {n} sual = {need} sual lazımdır.', { s: ready.students, n: ready.n, need: ready.need })}{' '}

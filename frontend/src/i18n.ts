@@ -581,6 +581,7 @@ const D: Record<string, [string, string]> = {
   "Suallar yalnız layihənin testlərindən (X–XI: P0010 Blok İmtahan), şablon yoxdur. Təkrarı sistem özü ən az səviyyədə seçir.": ["Questions come only from the project's tests (X–XI: P0010 Block Exam), no templates. The system keeps repeats to the minimum itself.", "Вопросы только из тестов проекта (X–XI: P0010 Blok İmtahan), без шаблонов. Повторы система сама сводит к минимуму."],
   "Hər sual ən çox {k} şagirddə olacaq (bankda sual az olduğuna görə – ən az mümkün təkrar).": ["Each question will be given to at most {k} students (the bank is small — the minimum possible repeat).", "Каждый вопрос будет не более чем у {k} учеников (вопросов в банке мало — минимально возможный повтор)."],
   "Hər şagirdin sualları fərqlidir.": ["Every student has different questions.", "У каждого ученика свои вопросы."],
+  "faylı qonşu mövzu ilə ortaqdır – sualları orada sayılır": ["file shared with a neighbouring topic — its questions are counted there", "файл общий с соседней темой — вопросы учтены там"],
 }
 
 export const I18nCtx = createContext<Lang>('az')
