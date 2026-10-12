@@ -63,3 +63,15 @@
 | 3 | Şablon suallar (istifadəçi: «ümumiyyətlə sil») | KSQ-də şablon **yoxdur**: generatorda, əvəzetmədə, pəncərədə söndürülüb; köhnə variantlardakı şablon sualları fon işi (hər 10 dəq) və «🧹 Düzəlt» P0010 sualları ilə əvəz edir |
 | 4 | Təkrar müəllimin seçimi idi | **Sistem özü** ən az təkrarı seçir: əvvəl hamıya fərqli, çatmasa «bir sual ən çox k şagirdə» (k = 2, 3, …, ən kiçik mümkün); şagirdin öz variantında təkrar heç vaxt yoxdur |
 | 5 | Nəticəsi yazılmamış köhnə variantlar | Fon işi avtomatik təmizləyir (müəllimin düyməyə basması lazım deyil); nəticəli imtahanlarda – «🧹 Düzəlt» düyməsi |
+
+## H. Səhvlər birdə yaranmasın + gələcək illər üçün KSQ bazası (13.10.2026)
+- **Məcburi yoxlama** (`ksq_base.validate`, `_guard`): variant bazaya yazılmazdan əvvəl – şablon sualı, layihədən kənar sual, aralıqdan kənar fayl,
+  variantda təkrar → variant yazılmır.
+- **KSQ bazası** (`ksq_bases`, açar: fənn|sinif|KSQ/BSQ|nömrə|yarımil): mövzular, P0010 faylları, müəllimin düzəlişləri (redaktə) və
+  istisnalar (əvəz edilən / bankda gizlədilən suallar). Gələn il eyni KSQ hazırlananda avtomatik tətbiq olunur.
+- **Kart ↔ variant bağlılığı**: QR-da variantın barmaq izi (`code~rev`); çapdan sonra sual/açar dəyişibsə köhnə kart qəbul olunmur
+  («köhnə çapdır – yenidən çap edin»). Versiyasız köhnə kartlar (13.10-dan əvvəlki çaplar) qəbul olunur.
+- **Çap olunmuş variantlar qorunur** (`exam_variants.printed_at`): fon işi toxunmur; 13.10-a qədərki bütün variantlar çap olunmuş sayılır
+  (müəllim X b, X c, X e, XI a-nı çap edib).
+- Canlı yoxlamada tapılan səhvlər üçün reqressiya testləri: «ədədi» → silsilə, ortaq fayl 0, siniflərarası limit k-nı bloklayırdı,
+  hazırlıq asılırdı, «Düzəlt» variantı səhv işarələyirdi.

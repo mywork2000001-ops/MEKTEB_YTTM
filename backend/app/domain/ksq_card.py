@@ -45,3 +45,16 @@ def key_value(q: dict) -> str:
     if q.get('kind') == 'mcq' and q.get('correct') is not None:
         return MCQ_LETTERS[int(q['correct'])]
     return card_answer(q.get('answer')) or str(q.get('answer') or '')
+
+
+def variant_rev(questions: list[dict]) -> str:
+    """Variantın «barmaq izi»: slot · sual · düzgün cavab. Çapdan sonra sual/açar dəyişsə – dəyişir, köhnə kart qəbul olunmur."""
+    import json
+    raw = json.dumps(sorted([q.get('slot'), q.get('key'), q.get('correct'), q.get('answer')] for q in questions), ensure_ascii=False, default=str)
+    return hashlib.sha1(raw.encode()).hexdigest()[:6]
+
+
+def split_code(code: str) -> tuple[str, str | None]:
+    """«KSQ1-03~a1b2c3» → ('KSQ1-03', 'a1b2c3'); köhnə kartlarda versiya yoxdur."""
+    base, _, rev = (code or '').partition('~')
+    return base, rev or None

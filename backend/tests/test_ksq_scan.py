@@ -224,6 +224,10 @@ def test_question_replace_edit_annul(world):
     ra = admin.post(f'/api/exams/{ta}/{e["id"]}/slots/3/replace-all').json()
     assert ra['replaced'] == 3 and ra['failed'] == 0
     # skan + oxunuş: hamısı düz → 100; 12-ci sualın açarını dəyiş → bal düşür; 12-ci slotu ləğv et → yenə 100
+    # köhnə çap (əvəzetmədən əvvəlki kart) qəbul olunmur – kart variantın versiyasına bağlıdır
+    old = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([a['qr']]), 'image/jpeg'))]).json()
+    assert not old['found'] and 'köhnə çap' in old['problems'][0]['error']
+    a = next(x for x in admin.get(f'/api/exams/{ta}/{e["id"]}/variants/print').json()['sheets'] if x['student_id'] == sid)   # yenidən çap
     admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([a['qr']]), 'image/jpeg'))])
     from app.domain.ksq_card import key_value
     qs = {q['slot']: q for q in next(x for x in admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()['variants'] if x['student_id'] == sid)['questions']}
@@ -359,3 +363,28 @@ def test_fix_offtopic(world):
     d = admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()
     mine = next(x for x in d['variants'] if x['student_id'] == sid)['questions']
     assert mine[i].get('template') != 'ap' and [q['key'] for k, q in enumerate(mine) if k != i] == keep and d['stale'] is False
+
+
+def test_printed_variants_protected_and_old_cards_accepted(world):
+    """Çap olunmuş variantlara fon işi toxunmur; versiyasız köhnə kart (əvvəlki çaplar) qəbul olunur."""
+    from app.api.exams import fix_stale_all
+    from app.domain.ksq_card import qr_payload
+    from app.models import ExamVariant
+    admin, ta, e, pr = ksq(world)                                      # ksq() artıq çap endpoint-ini çağırır → printed_at
+    S = world[1]
+    with S() as db:
+        v = db.query(ExamVariant).filter_by(exam_id=e['id']).first()
+        assert v.printed_at is not None
+        qs = [dict(q) for q in v.questions]
+        for q in qs:
+            q.pop('v', None)                                           # «köhnə» kimi görünsün
+        v.questions = qs
+        db.commit()
+        before = [q['key'] for q in qs]
+        assert fix_stale_all(db) == 0                                  # çap olunub – toxunulmur
+        db.refresh(v)
+        assert [q['key'] for q in v.questions] == before
+        sid, code = v.student_id, v.code
+    legacy = qr_payload(e['id'], sid, code)                            # versiyasız (əvvəlki çaplar)
+    r = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([legacy]), 'image/jpeg'))]).json()
+    assert len(r['found']) == 1 and not r['problems']

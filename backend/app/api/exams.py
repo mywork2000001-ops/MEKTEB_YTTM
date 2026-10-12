@@ -338,6 +338,13 @@ def _history(db: Session, ta, e: Exam, student_ids: list[int]) -> dict[int, set[
     return hist
 
 
+def _base_info(db: Session, ta, e: Exam) -> dict | None:
+    from ..domain import ksq_base
+    b = ksq_base.get(db, ta, e)
+    return b and {'topics': len(b.topics or []), 'files': len(b.files or []), 'edits': len(b.edits or {}), 'excluded': len(b.excluded or []),
+                  'updated_at': b.updated_at}
+
+
 def _variants_out(db: Session, ta, e: Exam) -> dict:
     from collections import Counter
     from ..domain.ksq_variants import RULES_V, fairness
@@ -349,7 +356,9 @@ def _variants_out(db: Session, ta, e: Exam) -> dict:
             'report': fairness({v.student_id: v.questions for v in vs}) if vs else None,
             # köhnə qaydalarla yaradılıb (mövzudan kənar sual ola bilər) – müəllimə «Yenidən yarat» təklif olunur
             'stale': any(q.get('v', 0) < RULES_V or q.get('template') for v in vs for q in v.questions if not q.get('edited')),
-            'share': max(Counter(q.get('key') for v in vs for q in v.questions).values(), default=0)}
+            'share': max(Counter(q.get('key') for v in vs for q in v.questions).values(), default=0),
+            'base': _base_info(db, ta, e),
+            'printed_at': max((v.printed_at for v in vs if v.printed_at), default=None)}
 
 
 @router.get('/{ta_id}/{exam_id}/variants')
@@ -412,6 +421,8 @@ def replace_question(ta_id: int, exam_id: int, student_id: int, slot: int, body:
     qs = list(v.questions)
     qs[i] = {**new, 'points': old['points'], 'replaced': True}
     v.questions = qs
+    from ..domain import ksq_base
+    ksq_base.exclude(db, ta, e, old.get('key'))                  # gələn il bu sual seçilməsin
     _rescore(db, e, [student_id])
     audit(db, user, 'update', 'exam_variant', e.id, student_id=student_id, slot=slot, op='replace')
     db.commit()
@@ -455,6 +466,9 @@ def replace_slot_all(ta_id: int, exam_id: int, slot: int, body: ReplaceAllIn | N
                  'points': old['points'], 'replaced': True}
         v.questions = qs
         done += 1
+    from ..domain import ksq_base
+    for k in olds:
+        ksq_base.exclude(db, ta, e, k)
     _rescore(db, e)
     audit(db, user, 'update', 'exam_variant', e.id, slot=slot, op='replace_all', done=done, failed=failed)
     db.commit()
@@ -529,6 +543,8 @@ def fix_stale_all(db: Session) -> int:
     for e in db.scalars(select(Exam).where(Exam.id.in_(select(ExamVariant.exam_id).distinct()))):
         if db.scalar(select(ExamScore.exam_id).where(ExamScore.exam_id == e.id, ExamScore.points.is_not(None)).limit(1)):
             continue
+        if db.scalar(select(ExamVariant.exam_id).where(ExamVariant.exam_id == e.id, ExamVariant.printed_at.is_not(None)).limit(1)):
+            continue                                          # çap olunub – kağızla uyğunluq pozulmasın
         vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
         if all(q.get('v', 0) >= RULES_V for v in vs for q in v.questions):
             continue
@@ -572,6 +588,9 @@ def edit_question(ta_id: int, exam_id: int, student_id: int, slot: int, body: Qu
     qs = list(v.questions)
     qs[i] = q
     v.questions = qs
+    from ..domain import ksq_base
+    ksq_base.note_edit(db, db.get(TeachingAssignment, e.assignment_id), e, q.get('key'),
+                       {'text': body.text, 'options': [{'az': o} for o in body.options] if body.options else None, 'correct': body.correct, 'answer': body.answer})
     n = _rescore(db, e, [student_id])
     audit(db, user, 'update', 'exam_variant', e.id, student_id=student_id, slot=slot, op='edit')
     db.commit()
@@ -602,7 +621,8 @@ def annul_slot(ta_id: int, exam_id: int, slot: int, body: AnnulIn, user: User = 
 def print_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Çap üçün: hər şagirdə bir A4 (iki üz) – suallar şagirdin dilində (yoxdursa AZ), cavab kartı üçün imzalı QR; müəllim açarı.
     Düzgün cavablar yalnız açarda (vərəqdə yox)."""
-    from ..domain.ksq_card import key_value, pick_lang, qr_payload
+    from ..domain.ksq_card import key_value, pick_lang, qr_payload, variant_rev
+    from ..models import now as _now
     from ..models import SchoolClass, Student
     from .lessonplans import header_school
     ta = own_assignment(db, user, ta_id)
@@ -620,12 +640,15 @@ def print_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Se
         lang = langs.get(st.user_id, 'az') if st and st.user_id else 'az'
         qs = sorted(v.questions, key=lambda q: q['slot'])
         sheets.append({'student_id': v.student_id, 'full_name': st.full_name if st else '—', 'code': v.code, 'lang': lang,
-                       'qr': qr_payload(e.id, v.student_id, v.code),
+                       'qr': qr_payload(e.id, v.student_id, f'{v.code}~{variant_rev(v.questions)}'),   # kart variantın versiyasına bağlı
                        'questions': [{'slot': q['slot'], 'kind': q['kind'], 'points': q['points'], 'text': pick_lang(q.get('text'), lang),
                                       'options': [pick_lang(o, lang) for o in q.get('options') or []] if q['kind'] == 'mcq' else None,
                                       'image': q.get('image'), 'topic': q.get('topic_actual') or q.get('topic')} for q in qs]})
         key.append({'code': v.code, 'full_name': st.full_name if st else '—',
                     'answers': [{'slot': q['slot'], 'value': key_value(q), 'points': q['points'], 'topic': q.get('topic_actual') or q.get('topic')} for q in qs]})
+    for v in vs:
+        v.printed_at = v.printed_at or _now()                 # çap olunub – fon işi bu variantlara toxunmur
+    db.commit()
     return {'exam': {**exam_out(e), 'class_name': cls.name if cls else '', 'subject': ta.subject, 'school': header_school(user),
                      'teacher': user.full_name},
             'sheets': sheets, 'key': key}
@@ -651,7 +674,9 @@ def _prepare(db: Session, ta, e: Exam, body: 'VariantsIn') -> tuple:
     same = select(Exam.id).join(TeachingAssignment, TeachingAssignment.id == Exam.assignment_id).where(
         TeachingAssignment.teacher_id == ta.teacher_id, Exam.kind == e.kind, Exam.no == e.no, Exam.semester == e.semester, Exam.id != e.id)
     others = {q.get('key') for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id.in_(same))) for q in v.questions if q.get('key')}
-    return students, topics, bank_candidates(db, topics, src, files), _history(db, ta, e, students), others, files
+    from ..domain import ksq_base
+    cands = ksq_base.apply(db, ta, e, bank_candidates(db, topics, src, files))      # gələcək illər: istisnalar və düzəlişlər
+    return students, topics, cands, _history(db, ta, e, students), others, files
 
 
 @router.post('/{ta_id}/{exam_id}/readiness')
@@ -704,18 +729,35 @@ def variant_sources(ta_id: int, exam_id: int, sources: str | None = None, user: 
                     for s in chosen for f in p0010_files(db, s, any_kind=s != src)]}
 
 
+def _guard(db: Session, ta, e: Exam, res: dict, body: 'VariantsIn') -> None:
+    """Məcburi yoxlama – variant bazaya yazılmazdan ƏVVƏL (şablon, layihədən/aralıqdan kənar sual, variantda təkrar)."""
+    from ..domain import ksq_base
+    _, files = _plan_files(db, ta, e, body.sources or [_source(db, ta)])
+    allowed = {f for lst in files.values() for f in lst} | set(body.file_ids or [])
+    ids = [q.get('bank_id') for qs in res.values() for q in qs if q.get('bank_id')]
+    file_of = {b.id: b.file_id for b in db.scalars(select(BankQuestion).where(BankQuestion.id.in_(ids or [0])))}
+    srcs = set(body.sources or [_source(db, ta)])
+    if body.file_ids:
+        from ..models import BankFile
+        srcs |= {f.source_key for f in db.scalars(select(BankFile).where(BankFile.id.in_(body.file_ids)))}
+    errs = ksq_base.validate(res, allowed, file_of, srcs)
+    if errs:
+        raise HTTPException(500, 'Variant yoxlamadan keçmədi (yazılmadı): ' + '; '.join(errs[:5]))
+
+
 def _make(db: Session, user: User, ta, e: Exam, body: 'VariantsIn') -> None:
     """Bir sinif üçün variantlar (yaradılır və ya yenidən): nəticə yazılıbsa – 409, çatışmazlıq – 409 (mətnli)."""
     from ..domain.ksq_variants import Shortage, generate_auto, slots
     if db.scalar(select(ExamScore).where(ExamScore.exam_id == e.id, ExamScore.points.is_not(None))):
         raise HTTPException(409, 'Nəticələr yazılıb – variantları yenidən yaratmaq olmaz')
-    students, topics, cands, hist, others, _ = _prepare(db, ta, e, body)
+    students, topics, cands, hist, others, files = _prepare(db, ta, e, body)
     if not students:
         raise HTTPException(400, 'Sinifdə şagird yoxdur')
     if not topics:
         raise HTTPException(400, 'Perspektiv planda bu imtahanın aralığında mövzu tapılmadı')
     try:
         res, share = generate_auto(students, topics, cands, hist, seed=e.id * 7919, n=body.n, others=others)
+        _guard(db, ta, e, res, body)
     except Shortage as sh:
         raise HTTPException(409, {'message': 'Bu mövzular üzrə layihədə (P0010) sual çatmır – sual sayını azaldın: ' + sh.message(),
                                   'shortage': sh.items, 'topics': [t for t, _ in topics]})
@@ -726,6 +768,8 @@ def _make(db: Session, user: User, ta, e: Exam, body: 'VariantsIn') -> None:
         db.add(ExamVariant(exam_id=e.id, student_id=sid, code=f'{e.kind}{e.no}-{i + 1:02d}', questions=res[sid]))
     e.items = [{'n': s['slot'], 'points': s['points'], 'standard': None, 'kind': s['kind'], 'level': s['level']} for s in slots(body.n)]
     e.max_points = 100
+    from ..domain import ksq_base
+    ksq_base.remember(db, ta, e, topics, files, user.id if user else None)
     audit(db, user, 'create', 'exam_variants', e.id, students=len(students), topics=len(topics), share=share)
 
 

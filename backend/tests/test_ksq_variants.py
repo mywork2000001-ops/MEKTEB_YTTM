@@ -167,7 +167,8 @@ def test_api_variants(world):
     assert len(pr['sheets']) == 3 and len(sh['questions']) == 30 and [q['slot'] for q in sh['questions']] == list(range(1, 31))
     assert all('answer' not in q and 'correct' not in q for q in sh['questions'])
     info = parse_qr(sh['qr'])
-    assert info == {'exam_id': e['id'], 'student_id': sh['student_id'], 'code': sh['code']}
+    assert {**info, 'code': info['code'].split('~')[0]} == {'exam_id': e['id'], 'student_id': sh['student_id'], 'code': sh['code']}
+    assert '~' in info['code']                                        # kart variantın versiyasına bağlıdır
     assert parse_qr(sh['qr'][:-1] + ('A' if sh['qr'][-1] != 'A' else 'B')) is None          # saxta imza
     assert parse_qr(sh['qr'].replace(sh['code'], 'KSQ1-99')) is None
     k = pr['key'][0]['answers']

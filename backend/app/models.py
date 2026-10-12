@@ -447,7 +447,22 @@ class ExamVariant(Base):
     code: Mapped[str] = mapped_column(String(16))
     questions: Mapped[list] = mapped_column(JSON)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    printed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))   # çap olunub – avtomatik işlər toxunmur
     __table_args__ = (UniqueConstraint('exam_id', 'code'),)
+
+
+class KsqBase(Base):
+    """KSQ/BSQ bazası – gələcək illər üçün (app/domain/ksq_base.py): fənn|sinif|növ|nömrə|yarımil üzrə mövzular, P0010 faylları,
+    müəllimin düzəlişləri və istisnaları; eyni KSQ növbəti dəfə hazırlananda avtomatik tətbiq olunur."""
+    __tablename__ = 'ksq_bases'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(120), unique=True)
+    topics: Mapped[list] = mapped_column(JSON, default=list)
+    files: Mapped[list] = mapped_column(JSON, default=list)
+    excluded: Mapped[list] = mapped_column(JSON, default=list)
+    edits: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey('users.id', ondelete='SET NULL'))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
 
 class ExamScan(Base):

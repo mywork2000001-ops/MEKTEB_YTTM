@@ -143,6 +143,7 @@ async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[Uplo
                  db: Session = Depends(get_db)):
     """Kart şəkilləri və ya skan PDF: QR → şagird; cavab zonası saxlanır. Eyni şagirdin kartı təkrar gəlsə – köhnə oxunuş arxivə."""
     from ..domain.ksq_scan import find_cards, images_from_upload
+    from ..domain.ksq_card import split_code, variant_rev
     from ..storage import get_storage, storage_for_key
     ta, e = _exam(db, user, ta_id, exam_id)
     if len(files) > FILES_MAX:
@@ -166,6 +167,11 @@ async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[Uplo
             problems.append({'file': f.filename, 'error': 'QR kod tapılmadı – kartı düz, işıqlı yerdə, tam çəkin'})
         for c in cards:
             v = variants.get(c['student_id'])
+            base, rev = split_code(c['code'])
+            if v is not None and base == v.code and rev and rev != variant_rev(v.questions):
+                problems.append({'file': f.filename, 'error': f'{base}: kart köhnə çapdır – variant çapdan sonra dəyişib, vərəqi yenidən çap edin'})
+                continue
+            c['code'] = base
             if c['exam_id'] != e.id or v is None or v.code != c['code']:
                 problems.append({'file': f.filename, 'error': f'Kart başqa imtahanın və ya köhnə variantındır ({c["code"]})'})
                 continue
