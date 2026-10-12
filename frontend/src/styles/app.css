@@ -783,7 +783,7 @@ label.f textarea{min-height:84px;padding:10px 12px;resize:vertical}
 .kbody{padding:12px 14px}
 .kpick{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 8px;margin-top:8px}
 .kpick label{display:flex;gap:6px;align-items:flex-start;padding:2px 0}
-.ktbl{table-layout:fixed;width:100%}.ktbl td,.ktbl th{padding:5px 8px}.ktbl tr.bad td{color:var(--bad)}.ktbl tr.shared td{color:var(--ink-3,#6b7280)}
+.ktbl{table-layout:fixed;width:100%;min-width:0 !important}.ktbl td,.ktbl th{padding:5px 8px}.ktbl tr.bad td{color:var(--bad)}.ktbl tr.shared td{color:var(--ink-3,#6b7280)}
 .ktbl th:not(:first-child),.ktbl td:not(:first-child){width:54px}.ktbl td:first-child{font-size:12.5px;line-height:1.3;overflow-wrap:anywhere}
 .kverdict{margin:8px 0;padding:8px 10px;border-radius:10px}.kverdict.ok{background:var(--ok-soft,#dcfce7)}.kverdict.warn{background:var(--warn-soft,#fef3c7)}
 .kvars{columns:2 200px;margin:0;padding-left:22px}
