@@ -451,6 +451,19 @@ const D: Record<string, [string, string]> = {
   "Kartlar Claude-a təzədən göndərilir (əl düzəlişləri də silinir)": ["Cards are sent to Claude again (manual corrections are cleared)", "Бланки снова отправляются Claude (ручные исправления сбрасываются)"],
   "Yenidən oxu": ["Read again", "Распознать заново"],
   "Claude bağlantısı yoxdur: kartlar oxunmağı gözləyəcək. Tənzimləmələr → «Süni intellekt» → Anthropic (Claude) açarını daxil edin (admin bir dəfə daxil etsə, bütün müəllimlər üçün işləyir).": ["No Claude connection: cards will wait to be read. Settings → «AI» → enter an Anthropic (Claude) key (if the admin enters it once, it works for all teachers).", "Нет подключения Claude: бланки будут ждать распознавания. Настройки → «Искусственный интеллект» → введите ключ Anthropic (Claude) (если администратор введёт его один раз, он работает для всех учителей)."],
+  // telefon skan rejimi (12.10.2026)
+  "Qaranlıqdır – işıqlı yerdə yenidən çəkin": ["Too dark — retake in a brighter place", "Темно — переснимите при хорошем освещении"],
+  "Çox işıqlıdır – parıltısız yenidən çəkin": ["Too bright — retake without glare", "Слишком светло — переснимите без бликов"],
+  "Bulanıqdır – telefonu sabit saxlayıb yenidən çəkin": ["Blurry — hold the phone steady and retake", "Размыто — держите телефон неподвижно и переснимите"],
+  "Kamera açılmadı – brauzerə kamera icazəsi verin və ya «Şəkil / PDF seç» istifadə edin": ["Camera did not open — allow camera access in the browser or use «Choose photo / PDF»", "Камера не открылась — разрешите доступ к камере в браузере или используйте «Выбрать фото / PDF»"],
+  "QR kod tapılmadı – yenidən çəkin": ["QR code not found — retake", "QR-код не найден — переснимите"],
+  "Cavab kartını çərçivəyə salın – QR və dörd qara künc görünsün": ["Put the answer card in the frame — the QR and four black corners must be visible", "Поместите бланк в рамку — должны быть видны QR и четыре чёрных угла"],
+  "Göndərildi: {n}": ["Sent: {n}", "Отправлено: {n}"],
+  "yüklənir: {n}": ["uploading: {n}", "загружается: {n}"],
+  "Bitir": ["Finish", "Готово"],
+  "Çək": ["Shoot", "Снять"],
+  "Kamera açıq qalır, kartları bir-bir çəkin": ["The camera stays open — shoot the cards one by one", "Камера остаётся открытой — снимайте бланки по одному"],
+  "Ardıcıl skan": ["Batch scan", "Скан подряд"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

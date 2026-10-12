@@ -5,6 +5,7 @@ import type { MyLesson } from './common'
 import { head, printDoc, SIGN, table } from '../../print'
 import { tt } from '../../i18n'
 import { printKey, printSheets, type KsqPrint } from '../../ksqPrint'
+import ScanCamera from '../../scanCamera'
 
 type Exam = { id: number; kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; max_points: number; items: { n: number; points: number; standard?: string }[] | null }
 type Planned = { kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; topic: string; created: boolean }
@@ -212,6 +213,7 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
   const [d, err, , reload] = useLoad<ScanList>(() => get(`/api/exam-scans/${ta}/${examId}`), [examId])
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
+  const [cam, setCam] = useState(false)
   const send = async (files: FileList | null) => {
     if (!files?.length) return
     const form = new FormData()
@@ -231,7 +233,8 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
       <h3 style={{ margin: '0 0 6px' }}>📷 {tt('Cavab kartlarını skan et')}</h3>
       <p className="small muted" style={{ marginTop: 0 }}>{tt('Kartların şəklini çəkin və ya skan PDF yükləyin – bir şəkildə bir neçə kart ola bilər. Şagird QR koddan tanınır, bal və qiymət jurnala özü yazılır.')}</p>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-        <label className="btn sm primary">📷 {tt('Kamera')}
+        <button type="button" className="btn sm primary" onClick={() => setCam(true)} title={tt('Kamera açıq qalır, kartları bir-bir çəkin')}>📷 {tt('Ardıcıl skan')}</button>
+        <label className="btn sm">📷 {tt('Kamera')}
           <input type="file" accept="image/*" capture="environment" hidden disabled={busy} onChange={e => { send(e.target.files); e.target.value = '' }} /></label>
         <label className="btn sm">🖼 {tt('Şəkil / PDF seç')}
           <input type="file" accept="image/*,application/pdf" multiple hidden disabled={busy} onChange={e => { send(e.target.files); e.target.value = '' }} /></label>
@@ -241,6 +244,7 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
           title={tt('Kartlar Claude-a təzədən göndərilir (əl düzəlişləri də silinir)')}>👁 {tt('Yenidən oxu')}</AsyncBtn>}
         {busy && <span className="small muted">{tt('Yüklənir…')}</span>}
       </div>
+      {cam && <ScanCamera url={`/api/exam-scans/${ta}/${examId}/upload`} onClose={() => { setCam(false); reload() }} onSent={reload} />}
       <ErrorBox error={err} />
       {d && !d.claude && <p className="small" style={{ margin: '8px 0 0', color: 'var(--warn)' }}>{tt('Claude bağlantısı yoxdur: kartlar oxunmağı gözləyəcək. Tənzimləmələr → «Süni intellekt» → Anthropic (Claude) açarını daxil edin (admin bir dəfə daxil etsə, bütün müəllimlər üçün işləyir).')}</p>}
       {c && <p className="small" style={{ margin: '8px 0 4px' }}>{tt('Skan: {a}/{b} · yoxlanılıb: {c} · oxunmağı gözləyir: {p}', { a: c.scanned, b: c.variants, c: c.graded, p: c.pending })}

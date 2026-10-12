@@ -103,7 +103,7 @@ Bütün müəllimlər üçün işləyir. «Bağlantını yoxla» düyməsi; ayl�
 2. A4 iki üzlü çap + cavab kartı (QR, markerlər). ✅ 12.10.2026: `GET …/variants/print`, `domain/ksq_card.py` (HMAC QR), `frontend/src/ksqPrint.ts`, «🖨 Kağız variantlar».
 3. Yükləmə, QR, kəsik, qiymətləndirmə, `scan-import` (ehtiyat yol dərhal işləyir). ✅ 12.10.2026: `api/exam_scans.py`, `domain/ksq_scan.py` (zxing-cpp + Pillow, QR künclərinə görə afin kəsik), `exam_scans` cədvəli, «📷 Cavab kartlarını skan et».
 4. Claude API (admin bağlantısı, fon işi, ikinci oxunuş, yenidən yoxlama, xərc sayğacı). ✅ 12.10.2026 (xərc sayğacı – sonra): `domain/ksq_reader.py` (httpx, məcburi alət çağırışı, sonnet → opus ikinci oxunuş), açar: MK_ANTHROPIC_API_KEY → müəllim → admin; yükləmədən dərhal + hər 2 dəq fon işi; «Yenidən oxu».
-5. Telefon skan rejimi (ardıcıl çəkiliş, bulanıq/qaranlıq — «yenidən çək»).
+5. Telefon skan rejimi (ardıcıl çəkiliş, bulanıq/qaranlıq — «yenidən çək»). ✅ 12.10.2026: `frontend/src/scanCamera.tsx` («📷 Ardıcıl skan», QR görünəndə avtomatik çəkiliş – BarcodeDetector olan brauzerdə).
 
 ## 7. Şablon bazası (təkrarsızlıq üçün vacib)
 - Hər sinif və mövzu üçün parametrli şablonlar: hər birindən ən azı 30 fərqli düzgün variant çıxmalıdır.
