@@ -591,3 +591,24 @@ def toplu_questions(lesson_id: int, scope: Literal['lesson', 'ev', 'chapter'] = 
     snaps = _snapshot(db, [q.id for q in picked]) if picked else []
     out['questions'] = [{**s, 'qid': int(q.qid)} for s, q in zip(snaps, picked)]
     return out
+
+
+# ---------------------------------------------------------------- zəif qrup tempi (docs/x-e-zeif-qrup-tempi-promtu.md)
+class SlowIn(BaseModel):
+    keep_until: dt.date                       # bu tarixədək (daxil) yuvalardakı dərslər toxunulmur
+    apply: bool = False                       # False – yalnız önbaxış (hesabat)
+
+
+@router.post('/slow/{ta_id}')
+def slow_plan(ta_id: int, body: SlowIn, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    """Perspektiv planı zəif qrup tempinə keçir: 1-ci il – baza (bərpa + məşq dərsləri), 2-ci il – ayrıca proqram."""
+    from .. import slow_plan as S
+    ta = own_assignment(db, user, ta_id)
+    if body.apply:
+        res = S.make(db, ta, user, body.keep_until)
+        audit(db, user, 'update', 'plan_slow', ta.id, keep_until=str(body.keep_until), program=res['program_id'])
+        db.commit()
+        return res
+    year, y2, rep = S.build(db, ta, body.keep_until)
+    return {**rep, 'preview': [{'seq': i + 1, 'semester': l['semester'], 'section': l['section'], 'topic': l['topic'],
+                                'type': l['assessment_type']} for i, l in enumerate(year)]}
