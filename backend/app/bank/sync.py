@@ -238,6 +238,20 @@ def fill_task_translations(db: Session) -> int:
     return changed
 
 
+INTERRUPTED = 'Server yenidən başladı (deploy və ya yaddaş) – yoxlama yarımçıq qaldı; növbəti yoxlamada avtomatik təkrarlanır.'
+
+
+def close_interrupted(db: Session) -> int:
+    """Proses ölüb – «running» qalmış yoxlamalar «error» kimi bağlanır (viktorina_sha yazılmadığından növbəti
+    yoxlama hər şeyi yenidən oxuyur). Proses başlayanda çağırılır (12.10.2026: deploy yoxlamanı kəsmişdi)."""
+    rows = list(db.scalars(select(BankSync).where(BankSync.status == 'running')))
+    for r in rows:
+        r.status, r.finished_at, r.message = 'error', now(), INTERRUPTED
+    if rows:
+        db.commit()
+    return len(rows)
+
+
 def run_sync(db: Session, trigger: str = 'manual', force: bool = False,
              browser_factory=Browser, fetcher=fetch_all) -> SyncResult:
     """Bir sinxronizasiya. Eyni anda yalnız biri işləyir (qalanları dərhal «busy» qaytarır)."""

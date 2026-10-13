@@ -146,3 +146,21 @@ def test_qid_added_later_updates_existing_question(env):
     site.files['a.html'] = [dict(q, _qid=i + 1) for i, q in enumerate(site.files['a.html'])]
     r = run()
     assert r.updated == 2 and [qs()[('a.html', n)].qid for n in (1, 2)] == ['1', '2']
+
+
+def test_interrupted_sync_is_closed_and_retried():
+    """Deploy/yaddaş prosesi öldürəndə «running» qalan yoxlama bağlanır, növbəti yoxlama hər şeyi yenidən oxuyur."""
+    eng = create_engine('sqlite://')
+    Base.metadata.create_all(eng)
+    S = sessionmaker(eng, expire_on_commit=False)
+    with S() as db:
+        db.add(models.BankSync(trigger='auto'))                  # proses yoxlamanın ortasında ölüb
+        db.commit()
+        assert sync.close_interrupted(db) == 1
+        row = db.scalar(select(models.BankSync))
+        assert row.status == 'error' and row.finished_at and 'yarımçıq' in row.message
+        assert sync.close_interrupted(db) == 0
+    site = FakeSite()
+    with S() as db:
+        r = sync.run_sync(db, 'auto', browser_factory=site.browser, fetcher=site.fetcher)
+    assert r.status == 'updated' and r.added == 3

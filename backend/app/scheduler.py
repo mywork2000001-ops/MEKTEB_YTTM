@@ -179,6 +179,12 @@ def start():
     keep = bool(settings().keepalive_url or os.environ.get('RENDER_EXTERNAL_URL'))
     if _sched:                                   # mövzu testi → jurnal işi həmişə lazımdır
         return
+    try:                                         # əvvəlki prosesin yarımçıq qalmış test bazası yoxlaması
+        from .bank.sync import close_interrupted
+        with SessionLocal() as db:
+            close_interrupted(db)
+    except Exception:                            # noqa: BLE001
+        log.exception('close_interrupted failed')
     _sched = BackgroundScheduler(timezone='Asia/Baku')
     _sched.add_job(_topic_journal_job, 'interval', minutes=15, id='topic_journal', max_instances=1, coalesce=True)
     _sched.add_job(_certificates_job, 'interval', minutes=15, id='certificates', max_instances=1, coalesce=True,
