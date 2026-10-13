@@ -105,7 +105,7 @@ def build(db: Session, ta: TeachingAssignment, user: User, school: str) -> tuple
     st = doc.styles['Normal']
     st.font.name, st.font.size = FONT, Pt(10)
 
-    _para(doc, school.upper(), 11, bold=True, center=True)
+    _para(doc, school.replace('i', 'İ').replace('ı', 'I').upper(), 11, bold=True, center=True)   # az: i → İ
     _para(doc, f'{cls.name} sinfi “{ta.subject}” fənni üzrə {year.name}-ci tədris ili üçün perspektiv plan', 14, bold=True, center=True)
     sub = (prog.title.split(': ', 1)[-1] if prog else ta.subject)
     if prog and prog.level == 'Zəif':
