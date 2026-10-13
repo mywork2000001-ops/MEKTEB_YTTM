@@ -899,3 +899,25 @@ def test_key_edit_all_students_keeps_print(world, monkeypatch):
     sc = next(x for x in admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'] if x['student_id'] == sid)
     assert sc['keys'][str(q['slot'])] == '777' and sc['kinds'][str(q['slot'])] == 'open'
     assert admin.put(f'/api/exams/{ta}/{e["id"]}/variants/{sid}/{q["slot"]}', json={'answer': 'abc'}).status_code == 400
+
+
+def test_teacher_clears_auto_lost(world, monkeypatch):
+    """Müəllim avtomatik ⊘-ları götürür (bütün suallar vərəqdə var idi) – yenidən hesablamada geri qayıtmır."""
+    import datetime as dt
+    from app.domain import ksq_reader as R
+    from app.models import ExamVariant
+    admin, ta, e, pr = ksq(world)
+    _, S = world
+    sh = pr['sheets'][0]
+    with S() as db:
+        v = db.query(ExamVariant).filter_by(exam_id=e['id'], code=sh['code']).one()
+        v.printed_at, v.unprinted = dt.datetime(2026, 10, 12, tzinfo=dt.timezone.utc), [1, 2]
+        db.commit()
+    monkeypatch.setattr(R, 'call', lambda *a, **k: [{'slot': s['slot'], 'value': '', 'confidence': 0.99} for s in a[3]])
+    monkeypatch.setattr(R, 'key_pool', lambda db, tid: [{'provider': 'anthropic', 'key': 'sk-ant-test', 'model': R.MODEL}])
+    admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([sh['qr']]), 'image/jpeg'))])
+    sc = admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'][0]
+    assert sc['lost'] == [1, 2]
+    assert admin.put(f'/api/exam-scans/{sc["id"]}/lost', json={'slots': []}).json()['lost'] == []
+    admin.post(f'/api/exam-scans/{ta}/{e["id"]}/regrade')
+    assert admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'][0]['lost'] == []

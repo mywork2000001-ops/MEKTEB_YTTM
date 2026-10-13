@@ -165,7 +165,7 @@ def set_lost(scan_id: int, body: LostIn, user: User = Depends(staff), db: Sessio
     sc, e = _own_scan(db, user, scan_id)
     v = db.get(ExamVariant, (e.id, sc.student_id))
     have = {q['slot'] for q in (v.questions if v else [])}
-    sc.lost = sorted({s for s in body.slots if s in have}) or None
+    sc.lost = sorted({s for s in body.slots if s in have})   # boş siyahı da müəllimin qərarıdır – avtomatik ⊘ geri qayıtmır
     apply(db, e, sc)
     audit(db, user, 'update', 'exam_scan', sc.id, lost=sc.lost)
     db.commit()
@@ -197,7 +197,7 @@ def lost_auto(ta_id: int, exam_id: int, body: LostAutoIn, user: User = Depends(s
         new = (old - (cut & filled)) | (cut & empty)
         if new != old:
             before = sc.points
-            sc.lost = sorted(new) or None
+            sc.lost = sorted(new)
             apply(db, e, sc)
             out.append({'student_id': sc.student_id, 'lost': sc.lost or [], 'before': before, 'after': sc.points})
     audit(db, user, 'update', 'exam_scans', e.id, lost_auto=len(out))
