@@ -53,4 +53,10 @@ def view_range(view: str, d: dt.date, sem1_end: dt.date, sem2_start: dt.date, st
         return a, b
     if view == 'semester':
         return (start, sem1_end) if d <= sem1_end else (sem2_start, end)
+    if view == 'sem1':                                     # perspektiv plan: I / II yarımil, bütün il (açılan siyahı)
+        return start, sem1_end
+    if view == 'sem2':
+        return sem2_start, end
+    if view == 'year':
+        return start, end
     raise ValueError(view)

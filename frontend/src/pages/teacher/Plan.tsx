@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { get, put } from '../../api'
-import { ErrorBox, toast, fmtDate, isoDate, lessonWhen, Loading, PickFirst, Pill, Seg, Top, useLoad } from '../../ui'
+import { ErrorBox, toast, fmtDate, isoDate, lessonWhen, Loading, PickFirst, Pill, Top, useLoad } from '../../ui'
 import { docCtx } from '../../doccontext'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { ProgramBox } from './Programs'
@@ -79,7 +79,8 @@ function P0010Edit({ ta, l, onDone }: { ta: number; l: { id: number; p0010?: { f
 export default function Plan() {
   const [lessons, err0, , reloadLessons] = useMyLessons()
   const [ta, setTa] = usePick('plan')
-  const [view, setView] = useState<'day' | 'week' | 'month' | 'semester'>('week')
+  // görünüş – açılan siyahı: gün, həftə, ay, I / II yarımil, bütün il (əvvəl «Yarımil» yalnız cari yarımili göstərirdi)
+  const [view, setView] = useState<'day' | 'week' | 'month' | 'sem1' | 'sem2' | 'year'>('week')
   const [date, setDate] = useState(isoDate(new Date()))
   const cur = lessons?.find(l => l.id === ta)
   const [testFor, setTestFor] = useState<number | null>(null)
@@ -92,7 +93,8 @@ export default function Plan() {
       <ErrorBox error={err0 || err} />
       <div className="toolbar">
         <LessonSelect lessons={lessons} value={ta} onChange={setTa} />
-        {ta && <Seg value={view} onChange={setView} options={[['day', 'Gün'], ['week', 'Həftə'], ['month', 'Ay'], ['semester', 'Yarımil']]} />}
+        {ta && <select className="sel" value={view} aria-label={tt('Görünüş')} onChange={e => setView(e.target.value as typeof view)}>
+          {([['day', 'Gün'], ['week', 'Həftə'], ['month', 'Ay'], ['sem1', 'I yarımil'], ['sem2', 'II yarımil'], ['year', 'Bütün il']] as const).map(([k, l]) => <option key={k} value={k}>{tt(l)}</option>)}</select>}
       </div>
       {lessons && lessons.length === 0 && <div className="empty"><p>Bu məkanda heç bir sinif və ya qrupa qoşulmamısınız. Perspektiv plan qoşulduğunuz sinfə təyin olunur:
           <b> Tənzimləmələr → Siniflər</b> → sinfin kartında <b>«Qoşul»</b> – orada əsas proqramı da seçə bilərsiniz.</p></div>}
@@ -101,9 +103,9 @@ export default function Plan() {
       {!ta ? (lessons?.length === 0 ? null : <PickFirst text="Yuxarıda sinif və ya qrupu seçin" />) : loading && !d ? <Loading /> : d && (
         <>
           <div className="row" style={{ marginBottom: 12 }}>
-            <button className="btn sm" onClick={() => setDate(step(date, view, -1))}>‹</button>
+            {!['sem1', 'sem2', 'year'].includes(view) && <button className="btn sm" onClick={() => setDate(step(date, view, -1))}>‹</button>}
             <b>{fmtDate(d.from)} – {fmtDate(d.to)}</b>
-            <button className="btn sm" onClick={() => setDate(step(date, view, 1))}>›</button>
+            {!['sem1', 'sem2', 'year'].includes(view) && <button className="btn sm" onClick={() => setDate(step(date, view, 1))}>›</button>}
             <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>Bu gün</button>
             <button className="btn sm right" onClick={() => printDoc({ title: `${cur?.class_name} – perspektiv plan ${fmtDate(d.from)}–${fmtDate(d.to)}`, body: head(`${cur?.class_name} – ${cur?.subject}: perspektiv plan (işçi)`, `${fmtDate(d.from)} – ${fmtDate(d.to)}`) + table(['Tarix', 'Saat', '№', 'Mövzu', 'Qiymətləndirmə'], d.items.map(i => [`${i.weekday} ${fmtDate(i.date)}`, i.period, i.lesson?.seq ?? '', i.lesson?.topic ?? '—', i.lesson && i.lesson.assessment_type !== 'formativ' ? i.lesson.assessment_type + (i.lesson.exam_no ? '-' + i.lesson.exam_no : '') : ''])) })}>Çap / PDF</button>
             {cur && <a className="btn sm" href={`/api/plan/${cur.id}/docx`} title={tt('Rəsmi perspektiv plan – Word sənədi (yalnız Azərbaycan dilində)')}>📄 Word (.docx)</a>}

@@ -5,6 +5,9 @@ import { createContext, useContext } from 'react'
 export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
+  "I yarımil": ["Semester I", "I полугодие"],
+  "II yarımil": ["Semester II", "II полугодие"],
+  "Bütün il": ["Whole year", "Весь год"],
   "Rəsmi perspektiv plan – Word sənədi (yalnız Azərbaycan dilində)": ["Official long-term plan – Word document (Azerbaijani only)", "Официальный перспективный план – документ Word (только на азербайджанском)"],
   "Hamıya eyni suallar (mövzu-mövzu)": ["Same questions for everyone (topic by topic)", "Одинаковые вопросы для всех (по темам)"],
   "DİM sinif testi kimi: hamıya eyni suallar, hər mövzudan bərabər, mövzu-mövzu düzülür": ["Like the DIM class test: the same questions for everyone, evenly from each topic, ordered topic by topic", "Как классный тест ГЭЦ: одинаковые вопросы для всех, поровну из каждой темы, по порядку тем"],
