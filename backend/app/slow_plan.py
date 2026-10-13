@@ -31,7 +31,7 @@ def _les(sem: int, section: str, topic: str, typ: str = 'formativ', assessment: 
 def _az_cap(t: str) -> str:
     """«TAM CƏBRİ İFADƏLƏR» → «Tam cəbri ifadələr» (Python lower() «İ»-ni «i̇» edir, «I»-ni «i»)."""
     low = t.replace('İ', 'i').replace('I', 'ı').lower()
-    return low[:1].upper().replace('ı', 'I').replace('i', 'İ') + low[1:] if low else low
+    return ({'i': 'İ', 'ı': 'I'}.get(low[:1]) or low[:1].upper()) + low[1:] if low else low
 
 
 def _content(l: dict) -> bool:
