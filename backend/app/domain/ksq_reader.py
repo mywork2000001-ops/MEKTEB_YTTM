@@ -176,7 +176,17 @@ def read_card(key, jpeg: bytes, slots: list[dict]) -> tuple[list[dict], str]:
     c = _conn(key)
     if c['provider'] == 'openrouter':
         m = c['model']
-        first = {a['slot']: a for a in call_openrouter(c['key'], m, jpeg, slots)}
+        from concurrent.futures import ThreadPoolExecutor
+        opn = [s for s in slots if s['kind'] != 'mcq']
+        with ThreadPoolExecutor(2) as ex:                  # yoxlama oxunuşu birinci ilə eyni vaxtda – gözləmə yarıya düşür
+            f1 = ex.submit(call_openrouter, c['key'], m, jpeg, slots)
+            fv = ex.submit(call_openrouter, c['key'], VERIFY_MODEL, jpeg, opn) if opn and VERIFY_MODEL and VERIFY_MODEL != m else None
+            first = {a['slot']: a for a in f1.result()}
+            try:
+                verify = fv.result() if fv else None
+            except RuntimeError as e:
+                log.warning('yoxlama oxunuşu: %s', e)
+                verify = None
         doubt = [s['slot'] for s in slots if s['slot'] not in first or first[s['slot']]['confidence'] < LOW]
         if doubt:                                            # şübhəli xanalar – eyni modellə ayrıca, diqqətli ikinci oxunuş
             try:
@@ -188,16 +198,12 @@ def read_card(key, jpeg: bytes, slots: list[dict]) -> tuple[list[dict], str]:
                 log.warning('ikinci oxunuş: %s', e)
         # müstəqil yoxlama: açıq cavabları başqa model də oxuyur; fərqli oxunan xana – sarı (müəllim baxır), alternativ saxlanır
         # (13.10.2026 auditi: əl yazısı «1»/«7», «6»/«3» bir modellə səhv oxunurdu)
-        opn = [s for s in slots if s['kind'] != 'mcq']
-        if opn and VERIFY_MODEL and VERIFY_MODEL != m:
-            try:
-                for a in call_openrouter(c['key'], VERIFY_MODEL, jpeg, opn):
-                    cur = first.get(a['slot'])
-                    if cur is not None and a['value'] != cur['value']:
-                        first[a['slot']] = {**cur, 'confidence': min(cur['confidence'], LOW / 2), 'alt': a['value']}
-                m += '+v'
-            except RuntimeError as e:
-                log.warning('yoxlama oxunuşu: %s', e)
+        if verify is not None:
+            for a in verify:
+                cur = first.get(a['slot'])
+                if cur is not None and a['value'] != cur['value']:
+                    first[a['slot']] = {**cur, 'confidence': min(cur['confidence'], LOW / 2), 'alt': a['value']}
+            m += '+v'
         return [first[k] for k in sorted(first)], m
     key = c['key']
     first = {a['slot']: a for a in call(key, MODEL, jpeg, slots)}
@@ -270,39 +276,62 @@ def _add_usage(db: Session, cards: int, tin: int, tout: int) -> None:
         st.value = json.dumps(u)
 
 
-def read_pending(db: Session, exam_id: int | None = None, limit: int = 20) -> int:
-    """Oxunmamış kartları Claude ilə oxuyur və qiymətləndirir. Açar yoxdursa – toxunmur (ehtiyat yol: /import)."""
+_busy: set[int] = set()                     # hazırda oxunan kartlar – fon işi və yükləmə eyni kartı iki dəfə oxumasın (pul)
+_busy_lock = __import__('threading').Lock()
+
+
+def read_pending(db: Session, exam_id: int | None = None, limit: int = 20, ids: list[int] | None = None) -> int:
+    """Oxunmamış kartları Claude ilə oxuyur və qiymətləndirir. Açar yoxdursa – toxunmur (ehtiyat yol: /import).
+    ids – yeni çəkilmiş kartlar: növbəni gözləmədən dərhal (13.10.2026: kamera «bal hesablanır» deyib gözləyirdi)."""
     from ..api.exam_scans import apply
     from ..models import Exam, ExamScan, ExamVariant, TeachingAssignment
     from ..storage import storage_for_key
     q = select(ExamScan).where(ExamScan.status == 'pending', ExamScan.crop_key.is_not(None)).order_by(ExamScan.id).limit(limit)
     if exam_id:
         q = q.where(ExamScan.exam_id == exam_id)
+    if ids is not None:
+        q = q.where(ExamScan.id.in_(ids or [0]))
     n = 0
     for sc in list(db.scalars(q)):
-        e = db.get(Exam, sc.exam_id)
-        ta = db.get(TeachingAssignment, e.assignment_id) if e else None
-        v = db.get(ExamVariant, (sc.exam_id, sc.student_id))
-        key = api_key_for(db, ta.teacher_id if ta else None)
-        if not (e and v and key):
-            continue
-        slots = [{'slot': x['slot'], 'kind': x['kind']} for x in sorted(v.questions, key=lambda x: x['slot'])]
-        if month_usage(db)['cards'] >= settings().ksq_monthly_limit:           # aylıq limit – pul getməsin, kart gözləyir
-            sc.error = f'Aylıq süni intellekt limiti ({settings().ksq_monthly_limit} kart) dolub – gələn ay və ya admin limiti artırsın'
-            db.commit()
-            continue
+        with _busy_lock:
+            if sc.id in _busy:
+                continue
+            _busy.add(sc.id)
         try:
-            jpeg = b''.join(storage_for_key(sc.crop_key).stream(sc.crop_key, db))
-            _usage['in'] = _usage['out'] = 0
-            reading, by = read_card(key, jpeg, slots)
-            _add_usage(db, 1, _usage['in'], _usage['out'])
-        except Exception as ex:                              # noqa: BLE001 – şəbəkə/limit: kart gözləməyə qalır
-            sc.error = str(ex)[:300]
-            db.commit()
-            log.warning('kart oxunmadı (scan %s): %s', sc.id, ex)
-            continue
-        sc.reading, sc.read_by = reading, ((('claude' if 'openrouter' != _conn(key)['provider'] else 'openrouter') + ('+2' if '+' in by else '')))[:20]
-        apply(db, e, sc)
-        db.commit()
-        n += 1
+            db.refresh(sc)
+            if sc.status != 'pending' or not sc.crop_key:          # başqa iş artıq oxuyub
+                continue
+            n += _read_one(db, sc, apply, storage_for_key, Exam, ExamVariant, TeachingAssignment)
+        finally:
+            with _busy_lock:
+                _busy.discard(sc.id)
     return n
+
+
+def _read_one(db, sc, apply, storage_for_key, Exam, ExamVariant, TeachingAssignment) -> int:
+    """Bir kartın oxunuşu və balı. 1 – oxundu, 0 – keçildi (açar/limit/xəta)."""
+    e = db.get(Exam, sc.exam_id)
+    ta = db.get(TeachingAssignment, e.assignment_id) if e else None
+    v = db.get(ExamVariant, (sc.exam_id, sc.student_id))
+    key = api_key_for(db, ta.teacher_id if ta else None)
+    if not (e and v and key):
+        return 0
+    slots = [{'slot': x['slot'], 'kind': x['kind']} for x in sorted(v.questions, key=lambda x: x['slot'])]
+    if month_usage(db)['cards'] >= settings().ksq_monthly_limit:           # aylıq limit – pul getməsin, kart gözləyir
+        sc.error = f'Aylıq süni intellekt limiti ({settings().ksq_monthly_limit} kart) dolub – gələn ay və ya admin limiti artırsın'
+        db.commit()
+        return 0
+    try:
+        jpeg = b''.join(storage_for_key(sc.crop_key).stream(sc.crop_key, db))
+        _usage['in'] = _usage['out'] = 0
+        reading, by = read_card(key, jpeg, slots)
+        _add_usage(db, 1, _usage['in'], _usage['out'])
+    except Exception as ex:                              # noqa: BLE001 – şəbəkə/limit: kart gözləməyə qalır
+        sc.error = str(ex)[:300]
+        db.commit()
+        log.warning('kart oxunmadı (scan %s): %s', sc.id, ex)
+        return 0
+    sc.reading, sc.read_by = reading, ((('claude' if 'openrouter' != _conn(key)['provider'] else 'openrouter') + ('+2' if '+' in by else '')))[:20]
+    apply(db, e, sc)
+    db.commit()
+    return 1

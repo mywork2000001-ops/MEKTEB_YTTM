@@ -9,7 +9,7 @@ import { tt } from './i18n'
 
 type Quality = { ok: boolean; why?: string }
 type Found = { student_id: number; scan_id: number; full_name: string | null }
-type Res = { scan_id: number; name: string; points: number | null; right?: number; total?: number; check?: number; wait: boolean }
+type Res = { scan_id: number; name: string; points: number | null; right?: number; total?: number; check?: number; wait: boolean; queue?: number; late?: boolean; err?: string | null }
 type Up = { found: Found[]; problems: { error: string; kind?: string; full_name?: string | null }[];
   already: { student_id: number; scan_id: number; points: number | null; full_name: string | null }[] }
 const buzz = (p: number | number[]) => { try { navigator.vibrate?.(p) } catch { /* noop */ } }
@@ -50,22 +50,24 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
   const [results, setResults] = useState<Res[]>([])
   const listUrl = url.replace(/\/upload$/, '')
 
-  // oxunmuş kartların balı: hər 2 saniyədən bir (90 saniyəyədək) siyahı yoxlanılır
+  // oxunmuş kartların balı: hər 2 saniyədən bir (5 dəqiqəyədək) siyahı yoxlanılır; növbə və xəta göstərilir
   const watch = (ids: number[]) => {
     let n = 0
     const step = async () => {
       n++
       try {
-        const d = await api<{ scans: { id: number; status: string; points: number | null; marks: number[] | null; flagged: number[] }[]; claude: boolean }>(listUrl)
+        const d = await api<{ scans: { id: number; status: string; points: number | null; marks: number[] | null; flagged: number[]; error: string | null }[]; claude: boolean;
+          counts: { pending: number } }>(listUrl)
+        const last = n >= 150
         let open = false
         setResults(rs => rs.map(r => {
           if (!ids.includes(r.scan_id)) return r
           const s = d.scans.find(x => x.id === r.scan_id)
-          if (!s || s.status !== 'graded') { open = true; return { ...r, wait: d.claude } }
+          if (!s || s.status !== 'graded') { open = true; return { ...r, wait: d.claude && !last, late: last, queue: d.counts.pending, err: s?.error || null } }
           return { ...r, wait: false, points: s.points, right: (s.marks || []).filter(Boolean).length, total: (s.marks || []).length, check: s.flagged.length }
         }))
-        if (open && d.claude && n < 45) setTimeout(step, 2000)
-      } catch { if (n < 45) setTimeout(step, 2000) }
+        if (open && d.claude && !last) setTimeout(step, 2000)
+      } catch { if (n < 150) setTimeout(step, 2000) }
     }
     setTimeout(step, 2000)
   }
@@ -152,7 +154,10 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
         {results.length > 0 && <div style={{ fontSize: 13, display: 'grid', gap: 2 }}>
           {results.map(r => <div key={r.scan_id}>
             <b>{r.name}</b> — {r.points != null ? <>{tt('{n} bal', { n: r.points })} ({r.right}/{r.total}){r.check ? ` · ${tt('yoxlayın: {n}', { n: r.check })}` : ''}</>
-              : r.wait ? tt('bal hesablanır…') : tt('bal: süni intellekt açarı yoxdur – siyahıdan yoxlayın')}
+              : r.err ? <span style={{ color: '#fca5a5' }}>{r.err}</span>
+              : r.late ? tt('bal hələ hazır deyil – oxunuş növbədədir, nəticə siyahıda görünəcək')
+              : r.wait ? tt('bal hesablanır…') + (r.queue && r.queue > 1 ? ' ' + tt('(növbədə {n} kart)', { n: r.queue }) : '')
+              : tt('bal: süni intellekt açarı yoxdur – siyahıdan yoxlayın')}
           </div>)}
         </div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

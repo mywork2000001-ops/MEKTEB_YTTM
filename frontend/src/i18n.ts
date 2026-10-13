@@ -5,6 +5,8 @@ import { createContext, useContext } from 'react'
 export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
+  "bal hələ hazır deyil – oxunuş növbədədir, nəticə siyahıda görünəcək": ["score not ready yet – reading is queued, the result will appear in the list", "балл ещё не готов – распознавание в очереди, результат появится в списке"],
+  "(növbədə {n} kart)": ["({n} cards in queue)", "(в очереди {n} бланков)"],
   "Köhnə çapda kəsilmiş və kartda cavabı boş olan suallar şagird üçün sayılmır (⊘); cavabı olan – sayılır": ["Questions cut off in the old print and left blank on the card are not counted (⊘); answered ones are counted", "Вопросы, обрезанные в старой печати и пустые на бланке, не учитываются (⊘); отвеченные учитываются"],
   "Kağıza düşməyən suallar": ["Questions missing from the sheet", "Вопросы, не попавшие на лист"],
   "Kağıza düşməyən suallar nəzərə alındı: {n} şagird": ["Missing questions taken into account: {n} students", "Учтены не попавшие на лист вопросы: {n} учеников"],

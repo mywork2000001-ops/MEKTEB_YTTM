@@ -250,20 +250,20 @@ async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[Uplo
     audit(db, user, 'create', 'exam_scans', e.id, cards=len(found), problems=len(problems), already=len(dupes))
     db.commit()
     if found:
-        bg.add_task(_read_now, db.get_bind(), e.id)                     # Claude açarı varsa – dərhal oxunur (fon işi də hər 2 dəq yoxlayır)
+        bg.add_task(_read_now, db.get_bind(), e.id, [x['scan_id'] for x in found])   # yeni kartlar növbəsiz, dərhal (kamera balı gözləyir)
     names = {s.id: s.full_name for s in roster(db, ta)}
     return {'found': [{**x, 'full_name': names.get(x['student_id'])} for x in found],
             'problems': [{**p, 'full_name': names.get(p['student_id'])} if p.get('student_id') else p for p in problems],
             'already': [{**x, 'full_name': names.get(x['student_id'])} for x in dupes]}
 
 
-def _read_now(bind, exam_id: int) -> None:
+def _read_now(bind, exam_id: int, ids: list[int] | None = None) -> None:
     """Fon: sorğunun bazası ilə (testdə də eyni) oxunmamış kartları oxuyur; xəta – loqa, kart gözləməyə qalır."""
     import logging
     from ..domain.ksq_reader import read_pending
     try:
         with Session(bind=bind, expire_on_commit=False) as db:
-            read_pending(db, exam_id, limit=60)
+            read_pending(db, exam_id, limit=60, ids=ids)
     except Exception:                                          # noqa: BLE001
         logging.getLogger(__name__).exception('kart oxunuşu')
 
