@@ -142,6 +142,12 @@ class Browser:
         self.page.wait_for_function("typeof IMPORT_SOURCES === 'object'", timeout=60_000)
         return self
 
+    def reload(self):
+        self.page.close()
+        self.page = self._b.new_page()
+        self.page.goto(self.url, wait_until='domcontentloaded', timeout=90_000)
+        self.page.wait_for_function("typeof IMPORT_SOURCES === 'object'", timeout=60_000)
+
     def sources(self) -> list[dict]:
         return self.page.evaluate(LIST_JS)
 
@@ -156,6 +162,9 @@ class Browser:
 
 
 # ---------------------------------------------------------------- əsas funksiya
+FETCH_CHUNK = 20        # birinci yoxlamada neçə fayl birlikdə yüklənsin
+CHUNK = 10              # neçə fayldan bir bazaya yazılsın (yarımçıq qalsa – davamı növbəti dəfə)
+BROWSER_RELOAD = 40     # neçə fayldan bir Chromium səhifəsi təzələnsin
 @dataclass
 class SyncResult:
     status: str = 'unchanged'
@@ -269,14 +278,23 @@ def run_sync(db: Session, trigger: str = 'manual', force: bool = False,
         exclude = {x.strip() for x in cfg.bank_exclude_sources.split(',') if x.strip()}
         files = list(db.scalars(select(BankFile).where(BankFile.active.is_(True))))
         # 1) yüngül yoxlama
-        got = fetcher([cfg.viktorina_url] + [f.url for f in files])
-        page = got.get(cfg.viktorina_url)
+        # yaddaş: fayllar 20-lik hissələrlə yüklənir, mətnləri dərhal heşə çevrilir (13.10.2026 – Render 512 MB aşıldı)
+        page = fetcher([cfg.viktorina_url])[cfg.viktorina_url]
+        got: dict = {}
+        urls = list(dict.fromkeys(f.url for f in files))
+        for i in range(0, len(urls), FETCH_CHUNK):
+            for u, b in fetcher(urls[i:i + FETCH_CHUNK]).items():
+                got[u] = sha(b) if isinstance(b, bytes) else b
         if isinstance(page, Exception):
             raise RuntimeError(f'viktorina.html açılmadı: {page}')
         page_hash = sha(page)
         page_changed = force or page_hash != _state(db, 'viktorina_sha')
-        changed = {f.url for f in files if isinstance(got.get(f.url), bytes) and sha(got[f.url]) != f.sha256}
+        changed = {f.url for f in files if isinstance(got.get(f.url), str) and got[f.url] != f.sha256}
         res.errors += [f'{f.url}: {got[f.url]}' for f in files if isinstance(got.get(f.url), Exception)]
+        hashes = got                                 # fayl mətnləri yaddaşda saxlanmır – lazım olanda təkrar yüklənir
+        # viktorina.html dəyişəndə bütün fayllar yenidən oxunur; proses ortada ölərsə (yaddaş) – davamı növbəti dəfə
+        redo = json.loads(_state(db, 'viktorina_redo') or '{}')
+        done = set(redo.get('done', [])) if redo.get('page') == page_hash else set()
         res.files_checked = len(files)
         for f in files:
             f.checked_at = now()
@@ -315,28 +333,39 @@ def run_sync(db: Session, trigger: str = 'manual', force: bool = False,
             for src in db.scalars(select(BankSource)):
                 if src.key not in {s['key'] for s in listed}:
                     src.active = False
-            if new_urls:
-                got.update(fetcher([u for u in new_urls if u not in got]))
+            db.commit()
+            since = 0
             for f, url in todo:
-                body = got.get(url)
-                if body is None:
-                    body = fetcher([url])[url]
+                h = hashes.get(url)
+                if isinstance(h, Exception):
+                    res.errors.append(f'{url}: {h}')
+                    continue
+                # viktorina.html dəyişibsə (idxal funksiyaları yenilənə bilər — məs. 12.10.2026 P007 dil bağlamaları)
+                # fayl dəyişməsə də yenidən oxunur, yoxsa köhnə «donmuş» mətn bazada qalır
+                if h is not None and f.sha256 == h and f.question_count and (
+                        (not force and not page_changed) or (page_changed and not force and f.id in done)):
+                    continue
+                body = fetcher([url])[url]
                 if isinstance(body, Exception):
                     res.errors.append(f'{url}: {body}')
                     continue
                 h = sha(body)
-                # viktorina.html dəyişibsə (idxal funksiyaları yenilənə bilər — məs. 12.10.2026 P007 dil bağlamaları)
-                # fayl dəyişməsə də yenidən oxunur, yoxsa köhnə «donmuş» mətn bazada qalır
-                if not force and not page_changed and f.sha256 == h and f.question_count:
-                    continue
                 try:
                     qs = br.extract(f.source_key, f.lesson, url, body.decode('utf-8', errors='replace'))
                 except Exception as e:                       # noqa: BLE001
                     res.errors.append(f'{url}: extract – {str(e)[:200]}')
                     continue
+                del body
                 _apply_questions(db, f, qs, res)
                 f.sha256, f.changed_at, f.checked_at = h, now(), now()
                 res.files_changed += 1
+                done.add(f.id)
+                since += 1
+                if since % CHUNK == 0:                       # hissə-hissə yazılır – proses ölsə də iş itmir
+                    _set_state(db, 'viktorina_redo', json.dumps({'page': page_hash, 'done': sorted(done)}))
+                    db.commit()
+                if since % BROWSER_RELOAD == 0:              # Chromium yaddaşı: səhifə təzələnir
+                    br.reload()
             for k, f in by_key.items():                       # viktorina-dan çıxarılan dərslər
                 if k not in live and f.active:
                     f.active = False
@@ -347,6 +376,7 @@ def run_sync(db: Session, trigger: str = 'manual', force: bool = False,
         if res.updated:
             fill_task_translations(db)
         _set_state(db, 'viktorina_sha', page_hash)
+        _set_state(db, 'viktorina_redo', '{}')
         res.files_checked = len(todo)
         res.status = 'updated' if (res.added or res.updated or res.deactivated) else 'unchanged'
         db.commit()

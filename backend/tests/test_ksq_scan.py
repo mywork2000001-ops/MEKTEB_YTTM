@@ -94,8 +94,19 @@ def test_scan_flow(world):
     wrong = 'B' if keys[a['code']][0]['value'] != 'B' else 'C'
     assert admin.put(f'/api/exam-scans/{mine["id"]}/slot', json={'slot': 1, 'value': wrong}).json()['points'] == 98.5
     assert admin.post(f'/api/exam-scans/{ta}/{e["id"]}/regrade').json()['graded'] == 2
-    # təkrar yükləmə: köhnə oxunuş arxivə, yenidən gözləyir
-    admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p2.jpg', photo([a['qr']], -4), 'image/jpeg'))])
+    # bir blank – bir dəfə: təkrar göndərilən kart qəbul edilmir (oxunuş və bal dəyişmir)
+    d2 = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p1.jpg', photo([a['qr']], 3), 'image/jpeg'))]).json()
+    assert d2['found'] == [] and [x['student_id'] for x in d2['already']] == [a['student_id']] and d2['already'][0]['points'] == 98.5
+    # kart kadra tam düşməyib – «yenidən çək», köhnə oxunuşa toxunulmur
+    cut = Image.open(io.BytesIO(photo([a['qr']])))
+    buf = io.BytesIO(); cut.crop((0, 0, 900, 900)).save(buf, 'JPEG', quality=92)
+    d3 = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', params={'replace': True}, files=[('files', ('c.jpg', buf.getvalue(), 'image/jpeg'))]).json()
+    assert d3['found'] == [] and d3['problems'][0]['kind'] == 'partial' and d3['problems'][0]['student_id'] == a['student_id']
+    still = next(x for x in admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'] if x['student_id'] == a['student_id'])
+    assert still['status'] == 'graded' and still['points'] == 98.5
+    # yenidən skan (müəllim seçib): köhnə oxunuş arxivə, yenidən gözləyir
+    r2 = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', params={'replace': True}, files=[('files', ('p2.jpg', photo([a['qr']], -4), 'image/jpeg'))]).json()
+    assert r2['found'][0]['scan_id'] == mine['id']
     again = next(x for x in admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'] if x['student_id'] == a['student_id'])
     assert again['status'] == 'pending' and again['rescans'] == 1
 

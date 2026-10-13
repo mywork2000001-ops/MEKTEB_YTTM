@@ -57,8 +57,30 @@ def find_cards(img) -> list[dict]:
         if not info or b.text in seen:
             continue
         seen.add(b.text)
-        out.append({**info, 'crop': crop_zone(img, _pt(b.position.top_left), _pt(b.position.top_right), _pt(b.position.bottom_left))})
+        tl, tr, bl = _pt(b.position.top_left), _pt(b.position.top_right), _pt(b.position.bottom_left)
+        if not zone_inside(img.size, tl, tr, bl):                 # kartın bir hissəsi kadrdan kənardadır
+            out.append({**info, 'partial': True})
+            continue
+        out.append({**info, 'crop': crop_zone(img, tl, tr, bl)})
     return out
+
+
+EDGE_MM = 2.0                      # zona şəkildən bu qədər (mm) kənara çıxa bilər – kənar xətlər; çoxu – «yenidən çək»
+
+
+def zone_inside(size: tuple[int, int], tl, tr, bl) -> bool:
+    """Cavab zonasının 4 küncü şəklin içindədirmi? Yoxsa crop_zone kənarı ağ doldurur və həmin suallar «boş» oxunur
+    (şagirdə səhvən 0 bal) – belə kart qəbul edilmir (13.10.2026)."""
+    ux, uy = (tr[0] - tl[0]) / QR_MM, (tr[1] - tl[1]) / QR_MM
+    vx, vy = (bl[0] - tl[0]) / QR_MM, (bl[1] - tl[1]) / QR_MM
+    w, h = size
+    tol = EDGE_MM * max((ux * ux + uy * uy) ** 0.5, (vx * vx + vy * vy) ** 0.5)
+    x0, y0, x1, y1 = ZONE
+    for mx, my in ((x0 + EDGE_MM, y0), (x1 - EDGE_MM, y0), (x0 + EDGE_MM, y1), (x1 - EDGE_MM, y1)):
+        px, py = tl[0] + ux * mx + vx * my, tl[1] + uy * mx + vy * my
+        if px < -tol or py < -tol or px > w + tol or py > h + tol:
+            return False
+    return True
 
 
 def crop_zone(img, tl, tr, bl) -> bytes:

@@ -5,6 +5,22 @@ import { createContext, useContext } from 'react'
 export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
+  "13.10-dan əvvəl çap olunubsa, bu vərəqlərdə suallar kəsilmiş ola bilər – yenidən çap edin: {names}": ["If printed before 13.10, questions on these sheets may have been cut off – reprint: {names}", "Если печатали до 13.10, на этих листах вопросы могли быть обрезаны – перепечатайте: {names}"],
+  "Şəkillər yüklənir, səhifələr yoxlanılır…": ["Loading images, checking pages…", "Загружаются картинки, проверяются страницы…"],
+  "{n} şagird · {p} səhifə (iki üzlü çap edin)": ["{n} students · {p} pages (print double-sided)", "{n} учеников · {p} стр. (печатайте с двух сторон)"],
+  "suallar sığmır (qırmızı): {names}": ["questions do not fit (red): {names}", "вопросы не помещаются (красным): {names}"],
+  "bütün suallar səhifədədir": ["all questions are on the page", "все вопросы на странице"],
+  "Bu kart artıq qəbul edilib – növbəti karta keçin": ["This card is already accepted – move on to the next card", "Эта карта уже принята – переходите к следующей"],
+  "bal hesablanır…": ["calculating score…", "считается балл…"],
+  "{name} artıq skan olunub": ["{name} is already scanned", "{name}: уже отсканировано"],
+  "{n} bal": ["{n} points", "{n} баллов"],
+  "Kart kadra tam düşməyib – bütün kartı çərçivəyə salıb yenidən çəkin": ["The card is not fully in the frame – fit the whole card in the frame and shoot again", "Карта не полностью в кадре – поместите всю карту в рамку и снимите заново"],
+  "Növbəti çəkiliş {name} üçün köhnə skanı əvəz edəcək": ["The next shot will replace the old scan of {name}", "Следующий снимок заменит старый скан: {name}"],
+  "Səhv oxunubsa, yenidən skan edin": ["If it was read wrongly, scan it again", "Если прочитано неверно, отсканируйте заново"],
+  "Yenidən skan et": ["Scan again", "Сканировать заново"],
+  "yoxlayın: {n}": ["check: {n}", "проверьте: {n}"],
+  "bal: süni intellekt açarı yoxdur – siyahıdan yoxlayın": ["score: no AI key – check in the list", "балл: нет ключа ИИ – проверьте в списке"],
+  "artıq skan olunub (təkrar göndərilmədi): {names}": ["already scanned (not sent again): {names}", "уже отсканированы (повторно не отправлены): {names}"],
   'Əsas səhifə': ['Home', 'Главная'],
   'Siniflər və qruplar': ['Classes & groups', 'Классы и группы'],
   'Bu gün': ['Today', 'Сегодня'],

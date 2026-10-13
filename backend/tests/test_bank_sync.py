@@ -22,6 +22,8 @@ class FakeSite:
                       'b.html': [self.q('x=?', None, None, 'open', '5')]}
         self.fetches = 0
         self.browsers = 0
+        self.extracted: list[str] = []
+        self.die_after: int | None = None
 
     @staticmethod
     def q(text, opts, c, typ=None, a=None):
@@ -59,7 +61,13 @@ class FakeSite:
                          'lessons': [{'id': k, 'label': k} for k in site.files]}]
 
             def extract(self, key, lesson, url, html):
+                site.extracted.append(lesson)
+                if site.die_after is not None and len(site.extracted) > site.die_after:
+                    raise SystemExit('proses öldü')                 # Render yaddaş limiti – proses ölür
                 return [dict(q, n=i + 1) for i, q in enumerate(json.loads(html))]
+
+            def reload(self):
+                pass
         return B()
 
 
@@ -164,3 +172,18 @@ def test_interrupted_sync_is_closed_and_retried():
     with S() as db:
         r = sync.run_sync(db, 'auto', browser_factory=site.browser, fetcher=site.fetcher)
     assert r.status == 'updated' and r.added == 3
+
+
+def test_page_change_reread_resumes_after_crash(env, monkeypatch):
+    """viktorina.html dəyişib – hamısı yenidən oxunur; proses ortada ölsə, növbəti dəfə yalnız qalanlar oxunur."""
+    site, run, qs = env
+    run()
+    monkeypatch.setattr(sync, 'CHUNK', 1)
+    site.page, site.extracted, site.die_after = b'<html>v2</html>', [], 1
+    with pytest.raises(SystemExit):
+        run()
+    assert site.extracted == ['a.html', 'b.html']
+    site.extracted, site.die_after = [], None
+    r = run()
+    assert r.status in ('unchanged', 'updated') and site.extracted == ['b.html']       # a.html artıq oxunmuşdu
+    assert run().status == 'unchanged'

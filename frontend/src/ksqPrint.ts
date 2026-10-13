@@ -4,6 +4,7 @@
 import QRCode from 'qrcode'
 import { esc, fmtD, mathHtml } from './print'
 import { toast } from './ui'
+import { tt } from './i18n'
 
 export type KsqQ = { slot: number; kind: 'mcq' | 'open'; points: number; text: string; options: string[] | null; image?: string | null; topic?: string | null }
 export type KsqSheet = { student_id: number; full_name: string; code: string; lang: string; qr: string; questions: KsqQ[] }
@@ -93,15 +94,49 @@ function sheet(s: KsqSheet, ex: KsqPrint['exam'], qr: string): string {
       <div class="qs">${back.map(question).join('')}</div>${card(s, ex, qr)}</section>`
 }
 
-/** Sütunlara sığmayanda (əlavə sütun / aşağı daşma) şrift 10 pt-dən 7 pt-yə qədər kiçilir. */
-function fit(doc: Document) {
-  doc.querySelectorAll<HTMLElement>('.qs').forEach(el => {
+/** Şəkillər yüklənənə qədər gözlə (13.10.2026: ölçmə şəkillərdən əvvəl aparılırdı – şəkil sonra yüklənib sualları
+ *  «overflow:hidden» altına itələyirdi, 1-ci səhifədə suallar kəsilirdi: kağızda 30 əvəzinə 28–29 sual). */
+async function imagesReady(doc: Document) {
+  await Promise.all([...doc.images].map(im => im.complete ? Promise.resolve() : new Promise<void>(ok => {
+    const t = setTimeout(ok, 15000); im.onload = im.onerror = () => { clearTimeout(t); ok() } })))
+  try { await (doc as any).fonts?.ready } catch { /* noop */ }
+}
+
+const over = (el: HTMLElement) => el.scrollWidth > el.clientWidth + 2 || el.scrollHeight > el.clientHeight + 2
+
+/** Bir sütun bloku sığana qədər: şrift 10 → 7 pt, sonra şəkillər 26 → 16 mm, sonra şrift 6,5 pt. Sığdısa – true. */
+function shrink(el: HTMLElement): boolean {
+  let pt = parseFloat(el.style.fontSize) || 10
+  while (over(el) && pt > 7) { pt -= 0.25; el.style.fontSize = pt + 'pt' }
+  for (let mm = 26; over(el) && mm >= 16; mm -= 2) el.querySelectorAll<HTMLElement>('img').forEach(im => { im.style.maxHeight = mm + 'mm' })
+  if (over(el)) el.style.fontSize = '6.5pt'
+  return !over(el)
+}
+
+/** Vərəqlər: hər sual görünməlidir. Ön üz sığmırsa – sonuncu suallar arxa üzə keçir; arxa üz sığmırsa – qırmızı
+ *  çərçivə və şagirdin adı (çapdan əvvəl müəllim görsün). Qaytarır: sığmayan şagirdlərin adları. */
+async function fit(doc: Document): Promise<{ bad: string[]; moved: string[] }> {
+  await imagesReady(doc)
+  const bad: string[] = [], moved: string[] = []
+  const sides = [...doc.querySelectorAll<HTMLElement>('section.side')]
+  for (let i = 0; i + 1 < sides.length; i += 2) {
+    const fr = sides[i].querySelector<HTMLElement>('.qs'), bk = sides[i + 1].querySelector<HTMLElement>('.qs')
+    if (!fr || !bk) continue
+    fr.style.fontSize = bk.style.fontSize = ''
+    const name = sides[i].querySelector('.who .nm')?.childNodes[0]?.textContent?.trim() || String(i / 2 + 1)
     let pt = 10
-    const over = () => el.scrollWidth > el.clientWidth + 2 || el.scrollHeight > el.clientHeight + 2
-    while (over() && pt > 7) { pt -= 0.25; el.style.fontSize = pt + 'pt' }
-    if (over()) el.style.outline = '2px solid red'                   // yenə sığmır – müəllim görsün
-  })
-  return [...doc.querySelectorAll<HTMLElement>('.qs')].filter(el => el.style.outline).length
+    while (over(fr) && pt > 7) { pt -= 0.25; fr.style.fontSize = pt + 'pt' }
+    if (over(fr)) moved.push(name)                                  // köhnə qayda bu vərəqdə sualları kəsərdi
+    fr.style.fontSize = ''
+    while (!shrink(fr) && fr.children.length > 1) {                // ön üzdən arxaya – sual itmir
+      bk.insertBefore(fr.lastElementChild!, bk.firstChild)
+      fr.style.fontSize = ''
+      fr.querySelectorAll<HTMLElement>('img').forEach(im => { im.style.maxHeight = '' })
+    }
+    if (!shrink(bk)) { bk.style.outline = '2px solid red'; bad.push(name) }
+    if (over(fr)) { fr.style.outline = '2px solid red' }
+  }
+  return { bad, moved }
 }
 
 function open(title: string, body: string, after?: (d: Document) => void) {
@@ -122,9 +157,15 @@ export async function printSheets(d: KsqPrint) {
   const qrs = await Promise.all(d.sheets.map(s => QRCode.toDataURL(s.qr, { margin: 0, width: 300, errorCorrectionLevel: 'M' })))
   const ex = d.exam
   open(`${ex.class_name} – ${ex.kind}-${ex.no} vərəqlər`, d.sheets.map((s, i) => sheet(s, ex, qrs[i])).join(''), doc => {
-    const bad = fit(doc)
-    const m = doc.getElementById('m')
-    if (m) m.textContent = `${d.sheets.length} şagird · ${d.sheets.length * 2} səhifə (iki üzlü çap edin)` + (bad ? ` · ⚠ ${bad} səhifədə suallar sığmır (qırmızı)` : '')
+    const m = doc.getElementById('m'), p = doc.getElementById('p') as HTMLButtonElement | null
+    if (m) m.textContent = tt('Şəkillər yüklənir, səhifələr yoxlanılır…')
+    if (p) p.disabled = true
+    fit(doc).then(({ bad, moved }) => {
+      if (p) p.disabled = false
+      if (m) m.textContent = tt('{n} şagird · {p} səhifə (iki üzlü çap edin)', { n: d.sheets.length, p: d.sheets.length * 2 })
+        + (bad.length ? ' · ⚠ ' + tt('suallar sığmır (qırmızı): {names}', { names: bad.join(', ') }) : ' · ✓ ' + tt('bütün suallar səhifədədir'))
+        + (moved.length ? ' · ' + tt('13.10-dan əvvəl çap olunubsa, bu vərəqlərdə suallar kəsilmiş ola bilər – yenidən çap edin: {names}', { names: moved.join(', ') }) : '')
+    })
   })
 }
 

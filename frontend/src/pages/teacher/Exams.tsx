@@ -338,8 +338,12 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
     Array.from(files).forEach(f => form.append('files', f))
     setBusy(true)
     try {
-      const r = await api<{ found: { full_name: string | null }[]; problems: { file: string; error: string }[] }>(`/api/exam-scans/${ta}/${examId}/upload`, { method: 'POST', form })
-      toast(tt('Tapılan kart: {n}', { n: r.found.length }) + (r.problems.length ? ' · ' + r.problems.map(p => `${p.file}: ${p.error}`).join('; ') : ''))
+      const r = await api<{ found: { full_name: string | null }[]; problems: { file: string; error: string; kind?: string; full_name?: string | null }[];
+        already?: { full_name: string | null }[] }>(`/api/exam-scans/${ta}/${examId}/upload`, { method: 'POST', form })
+      const al = r.already || []
+      toast(tt('Tapılan kart: {n}', { n: r.found.length })
+        + (al.length ? ' · ' + tt('artıq skan olunub (təkrar göndərilmədi): {names}', { names: al.map(x => x.full_name || '—').join(', ') }) : '')
+        + (r.problems.length ? ' · ' + r.problems.map(p => `${p.file}: ${p.kind === 'partial' ? (p.full_name ? p.full_name + ' – ' : '') + tt('Kart kadra tam düşməyib – bütün kartı çərçivəyə salıb yenidən çəkin') : p.error}`).join('; ') : ''))
       reload()
     } catch (x) { toast((x as Error).message) } finally { setBusy(false) }
   }

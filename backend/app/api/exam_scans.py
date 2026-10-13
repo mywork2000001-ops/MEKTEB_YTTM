@@ -139,8 +139,8 @@ def fix_slot(scan_id: int, body: FixIn, user: User = Depends(staff), db: Session
 
 # ---------------------------------------------------------------- yükləmə, siyahı, yenilə
 @router.post('/{ta_id}/{exam_id}/upload')
-async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[UploadFile] = File(...), user: User = Depends(staff),
-                 db: Session = Depends(get_db)):
+async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[UploadFile] = File(...), replace: bool = False,
+                 user: User = Depends(staff), db: Session = Depends(get_db)):
     """Kart şəkilləri və ya skan PDF: QR → şagird; cavab zonası saxlanır. Eyni şagirdin kartı təkrar gəlsə – köhnə oxunuş arxivə."""
     from ..domain.ksq_scan import find_cards, images_from_upload
     from ..domain.ksq_card import split_code, variant_rev
@@ -151,7 +151,7 @@ async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[Uplo
     variants = {v.student_id: v for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id))}
     if not variants:
         raise HTTPException(409, 'Bu imtahan üçün kağız variant yoxdur')
-    found, problems = [], []
+    found, problems, dupes = [], [], []
     for f in files:
         data = await f.read(UPLOAD_MAX + 1)
         if len(data) > UPLOAD_MAX:
@@ -167,6 +167,10 @@ async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[Uplo
             problems.append({'file': f.filename, 'error': 'QR kod tapılmadı – kartı düz, işıqlı yerdə, tam çəkin'})
         for c in cards:
             v = variants.get(c['student_id'])
+            if c.get('partial'):                                    # köhnə oxunuşa toxunulmur
+                problems.append({'file': f.filename, 'kind': 'partial', 'student_id': c['student_id'],
+                                 'error': 'Kart kadra tam düşməyib – bütün kartı çərçivəyə salıb yenidən çəkin'})
+                continue
             base, rev = split_code(c['code'])
             if v is not None and base == v.code and rev and rev != variant_rev(v.questions):
                 problems.append({'file': f.filename, 'error': f'{base}: kart köhnə çapdır – variant çapdan sonra dəyişib, vərəqi yenidən çap edin'})
@@ -176,6 +180,11 @@ async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[Uplo
                 problems.append({'file': f.filename, 'error': f'Kart başqa imtahanın və ya köhnə variantındır ({c["code"]})'})
                 continue
             sc = db.scalar(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == c['student_id']))
+            # bir blank – bir dəfə: artıq qəbul edilib (xətasız) – təkrar göndərilmir; yenidən skan – yalnız replace=true ilə
+            if sc is not None and sc.crop_key and sc.status != 'error' and not replace:
+                if c['student_id'] not in {d['student_id'] for d in dupes}:
+                    dupes.append({'student_id': c['student_id'], 'scan_id': sc.id, 'status': sc.status, 'points': sc.points})
+                continue
             if sc is None:
                 sc = ExamScan(exam_id=e.id, student_id=c['student_id'], code=c['code'], history=[])
                 db.add(sc)
@@ -187,13 +196,16 @@ async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[Uplo
             key, _ = get_storage().save(io.BytesIO(c['crop']), f'ksq-{e.id}-{c["student_id"]}.jpg', 'image/jpeg', UPLOAD_MAX, db)
             sc.crop_key, sc.code, sc.reading, sc.read_by, sc.status, sc.marks, sc.flagged, sc.error = \
                 key, c['code'], None, None, 'pending', None, None, None
-            found.append({'student_id': c['student_id'], 'code': c['code']})
-    audit(db, user, 'create', 'exam_scans', e.id, cards=len(found), problems=len(problems))
+            db.flush()
+            found.append({'student_id': c['student_id'], 'code': c['code'], 'scan_id': sc.id})
+    audit(db, user, 'create', 'exam_scans', e.id, cards=len(found), problems=len(problems), already=len(dupes))
     db.commit()
     if found:
         bg.add_task(_read_now, db.get_bind(), e.id)                     # Claude açarı varsa – dərhal oxunur (fon işi də hər 2 dəq yoxlayır)
     names = {s.id: s.full_name for s in roster(db, ta)}
-    return {'found': [{**x, 'full_name': names.get(x['student_id'])} for x in found], 'problems': problems}
+    return {'found': [{**x, 'full_name': names.get(x['student_id'])} for x in found],
+            'problems': [{**p, 'full_name': names.get(p['student_id'])} if p.get('student_id') else p for p in problems],
+            'already': [{**x, 'full_name': names.get(x['student_id'])} for x in dupes]}
 
 
 def _read_now(bind, exam_id: int) -> None:
