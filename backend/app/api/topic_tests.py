@@ -298,8 +298,8 @@ def p0010_for_topic(ta_id: int, pl_id: int, file_id: int | None = None, n: int =
     from .programs import _pick
     ta = own_assignment(db, user, ta_id)
     pl = _pl(db, ta, pl_id)
-    grade = class_grade(db, db.get(SchoolClass, ta.class_id))
-    SOURCE = source_for(grade)
+    from ..bank.match import ta_source
+    SOURCE = ta_source(db, ta)
     if not SOURCE:
         return {'eligible': False, 'matches': [], 'questions': []}
     if SOURCE == 'p007':                     # «Test toplusu» dərsi – sualları öz S/E/M aralığından gəlir (programs.toplu_questions)

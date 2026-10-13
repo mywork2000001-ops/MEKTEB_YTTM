@@ -64,12 +64,16 @@ def my_lessons(user: User = Depends(staff), db: Session = Depends(get_db)):
     return out
 
 
-def attach_p0010(db: Session, cls, lessons: list[dict]) -> None:
+def attach_p0010(db: Session, cls, lessons: list[dict], ta=None) -> None:
     """X–XI sinif: hər plan dərsinə P0010 test faylı (docs/x-xi-p0010-testleri-promtu.md) – müəllimin seçimi
     (LessonBankLink) varsa o, yoxdursa mövzuya ən uyğun fayl. p0010_manual – müəllim özü seçib/götürüb."""
     from ..services import class_grade
-    from ..bank.match import Matcher, source_for
-    src = source_for(class_grade(db, cls))
+    from ..bank.match import GRADE_SOURCE, Matcher, source_for, ta_source
+    if ta is None and lessons and lessons[0].get('id'):
+        from ..models import PlanLesson, TeachingAssignment
+        pl = db.get(PlanLesson, lessons[0]['id'])
+        ta = db.get(TeachingAssignment, pl.assignment_id) if pl else None
+    src = ta_source(db, ta) if ta is not None else source_for(class_grade(db, cls))
     if not src or not lessons:
         return
     from ..models import BankFile, LessonBankLink
@@ -86,7 +90,7 @@ def attach_p0010(db: Session, cls, lessons: list[dict]) -> None:
             continue
         if l.get('assessment_type') in ('KSQ', 'BSQ'):          # summativ dərsə mövzu testi verilmir
             continue
-        m = m or Matcher(db, src)
+        m = m or Matcher(db, src, any_kind=src not in GRADE_SOURCE.values())
         best = m.matches(l['topic'], l.get('section'), 1)
         l['p0010_src'] = src
         l['p0010'] = {'file_id': best[0][0].id, 'label': best[0][0].label, 'url': best[0][0].url} if best else None
@@ -100,11 +104,10 @@ class P0010In(BaseModel):
 @router.put('/plan/{ta_id}/topics/{pl_id}/p0010')
 def set_p0010(ta_id: int, pl_id: int, body: P0010In, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Müəllim dərsin P0010 faylını dəyişir: auto – avtomatik uyğunluğa qayıt, none – bağlantı yoxdur, file – bu fayl."""
-    from ..bank.match import source_for
+    from ..bank.match import ta_source
     from ..models import BankFile, LessonBankLink, PlanLesson
-    from ..services import class_grade
     ta = own_assignment(db, user, ta_id)
-    SOURCE = source_for(class_grade(db, db.get(SchoolClass, ta.class_id)))
+    SOURCE = ta_source(db, ta)
     pl = db.get(PlanLesson, pl_id)
     if not pl or pl.assignment_id != ta.id:
         raise HTTPException(404, 'Mövzu bu dərsin planında yoxdur')
@@ -126,7 +129,7 @@ def set_p0010(ta_id: int, pl_id: int, body: P0010In, user: User = Depends(staff)
     audit(db, user, 'update', 'lesson_bank_link', pl.id, mode=body.mode, file_id=body.file_id)
     db.commit()
     x = {'id': pl.id, 'topic': pl.topic, 'section': pl.section, 'assessment_type': pl.assessment_type}
-    attach_p0010(db, db.get(SchoolClass, ta.class_id), [x])
+    attach_p0010(db, db.get(SchoolClass, ta.class_id), [x], ta)
     return {'p0010': x.get('p0010'), 'p0010_manual': bool(x.get('p0010_manual'))}
 
 
@@ -149,7 +152,7 @@ def plan_view(ta_id: int, view: str = 'week', date: dt.date | None = None, user:
     for i in items:
         if i['lesson']:
             i['lesson']['tests'] = tests.get(i['lesson']['id'], [])
-    attach_p0010(db, ctx.cls, [i['lesson'] for i in items if i['lesson']])
+    attach_p0010(db, ctx.cls, [i['lesson'] for i in items if i['lesson']], ctx.ta)
     return {'class_name': ctx.cls.name, 'subject': ta.subject, 'from': a, 'to': b, 'items': items, 'auto_tests': bool(ta.auto_tests),
             'unfit': [lesson_out(ctx.lessons[i]) for i in ctx.unfit], 'has_plan': bool(ctx.lessons)}
 

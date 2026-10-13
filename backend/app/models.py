@@ -169,6 +169,11 @@ class TeachingAssignment(Base, Archivable):
     auto_tests: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # sertifikat hədləri (None – default, app/certificates.py::DEFAULT_RULES)
     cert_rules: Mapped[dict | None] = mapped_column(JSON)
+    # perspektiv planda dərslərə test linkləri: None – sinfə görə avtomatik (IX – P007, X–XI – P0010), 'none' – link yoxdur,
+    # və ya mənbə açarı (məs. 'p013'). XI peşə: 'none' (proqram P0010 ilə uyğun deyil – istifadəçi 14.10.2026)
+    bank_source: Mapped[str | None] = mapped_column(String(32))
+    # KSQ/BSQ kağız variantları üçün əsas layihə (None – bank_source / sinfə görə); XI peşə: 'p013' (DİM sinif testləri)
+    ksq_source: Mapped[str | None] = mapped_column(String(32))
     __table_args__ = (UniqueConstraint('teacher_id', 'class_id', 'subject'),)
     teacher: Mapped[User] = relationship()
     cls: Mapped[SchoolClass] = relationship()

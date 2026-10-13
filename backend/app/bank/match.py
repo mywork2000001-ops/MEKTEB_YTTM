@@ -18,6 +18,15 @@ GRADE_SOURCE = {9: 'p007', 10: 'p003', 11: 'p003'}     # IX – DİM 9 test topl
 
 def source_for(grade: int | None) -> str | None:
     return GRADE_SOURCE.get(grade)
+
+
+def ta_source(db, ta) -> str | None:
+    """Plan dərslərinin test linkləri üçün mənbə: sinfin ayarı (bank_source) üstündür; 'none' – link yoxdur."""
+    if ta is not None and ta.bank_source:
+        return None if ta.bank_source == 'none' else ta.bank_source
+    from ..models import SchoolClass
+    from ..services import class_grade
+    return source_for(class_grade(db, db.get(SchoolClass, ta.class_id))) if ta is not None else None
 _STOP = {'ve', 'ile', 'onun', 'onlar', 'ucun', 'bezi', 'sinif', 'iki', 'hiss', 'mesel', 'anlay', 'esas', 'muxte', 'usull'}
 _PREFIX = re.compile(r'^\s*[IVX]+\s+sinif\s*:\s*', re.I)
 

@@ -297,6 +297,11 @@ def _plan_files(db: Session, ta, e: Exam, source: str | list[str]) -> tuple[list
 
 
 def _source(db: Session, ta) -> str:
+    if ta.ksq_source:
+        return ta.ksq_source
+    from ..bank.match import ta_source
+    if ta.bank_source and ta.bank_source != 'none':
+        return ta_source(db, ta)
     from ..bank.match import source_for
     from ..models import SchoolClass
     from ..services import class_grade
