@@ -935,3 +935,12 @@ def test_mcq_only_variants(world):
     items = admin.get(f'/api/exams/{ta}').json()
     ex = next(x for x in (items if isinstance(items, list) else items.get('exams', [])) if x.get('id') == e['id'])
     assert len(ex['items']) == 20
+
+
+def test_mcq_only_level_fallback():
+    """Yalnız qapalı: bankda «çətin» test yoxdursa çətin slotlar orta/asan ilə dolur (P013 – çətin test 0)."""
+    from app.domain import ksq_variants as V
+    cands = [V.Cand(f'k{i}', 'mcq', 'asan' if i % 2 else 'orta', 0, {'text': {'az': f's{i}'}, 'kind': 'mcq', 'options': [{'az': '1'}, {'az': '2'}], 'correct': 0})
+             for i in range(24)]
+    res, share = V.generate_auto([1, 2, 3], [('Mövzu', None)], cands, {}, seed=1, n=20, mcq_only=True)
+    assert all(len(v) == 20 and all(q['kind'] == 'mcq' for q in v) for v in res.values())

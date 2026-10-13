@@ -25,6 +25,8 @@ SLOT_PLAN: list[tuple[str, str, float, int]] = [
 SLOT_PLAN_MCQ: list[tuple[str, str, float, int]] = [('mcq', 'asan', 3.0, 12), ('mcq', 'orta', 3.5, 12), ('mcq', 'çətin', 4.0, 6)]
 LEVELS = ('asan', 'orta', 'çətin')
 NEAR = {'asan': ('orta',), 'orta': ('asan', 'çətin'), 'çətin': ('orta',)}
+# yalnız qapalı (DİM sinif testi): bankda «çətin» test az/yoxdur – tam zəncir (P013: 42 test, çətin – 0)
+NEAR_ALL = {'asan': ('orta', 'çətin'), 'orta': ('asan', 'çətin'), 'çətin': ('orta', 'asan')}
 CARD_MAX = 8
 _NUM = r'-?\d+(?:[.,]\d+)?(?:/\d+)?'
 _CARD = re.compile(rf'^{_NUM}(?:;{_NUM})*$')
@@ -203,7 +205,7 @@ def generate(students: list[int], topics: list[tuple[str, str | None]], cands: l
                         and text_uses.get(t, 0) < share)
 
             pick = None
-            for lvl in (s['level'], *NEAR[s['level']]):
+            for lvl in (s['level'], *(NEAR_ALL if mcq_only else NEAR)[s['level']]):
                 pool = [c for c in by.get((s['kind'], lvl), []) if ok(c)]
                 fresh = [c for c in pool if c.key not in others]          # başqa sinifdə işlənməyənlər əvvəl
                 if not fresh and reuse_left <= 0:
