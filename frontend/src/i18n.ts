@@ -5,6 +5,9 @@ import { createContext, useContext } from 'react'
 export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
+  "Sayılsın (vərəqdə var idi)": ["Count it (it was on the sheet)", "Учитывать (вопрос был на листе)"],
+  "Vərəqdə yox idi – sayılmasın": ["Not on the sheet – do not count", "Не было на листе – не учитывать"],
+  "Vərəqdə görünməyən suallar sayılmır, bal qalanlar üzrə 100-ə hesablanır: {list}": ["Questions missing from the sheet are not counted, the score is scaled to 100 over the rest: {list}", "Вопросы, которых не было на листе, не учитываются, балл пересчитан из 100 по остальным: {list}"],
   "13.10-dan əvvəl çap olunubsa, bu vərəqlərdə suallar kəsilmiş ola bilər – yenidən çap edin: {names}": ["If printed before 13.10, questions on these sheets may have been cut off – reprint: {names}", "Если печатали до 13.10, на этих листах вопросы могли быть обрезаны – перепечатайте: {names}"],
   "Şəkillər yüklənir, səhifələr yoxlanılır…": ["Loading images, checking pages…", "Загружаются картинки, проверяются страницы…"],
   "{n} şagird · {p} səhifə (iki üzlü çap edin)": ["{n} students · {p} pages (print double-sided)", "{n} учеников · {p} стр. (печатайте с двух сторон)"],

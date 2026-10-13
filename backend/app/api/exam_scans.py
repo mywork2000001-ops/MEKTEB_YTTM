@@ -50,7 +50,7 @@ def apply(db: Session, e: Exam, sc: ExamScan) -> None:
     if sc.reading is None:
         sc.status = 'pending'
         return
-    g = grade(v.questions, sc.reading, {it['n'] for it in (e.items or []) if it.get('annulled')})
+    g = grade(v.questions, sc.reading, {it['n'] for it in (e.items or []) if it.get('annulled')} | set(sc.lost or []))
     sc.marks, sc.points, sc.flagged, sc.status, sc.error = g['marks'], g['points'], g['flagged'], 'graded', None
     score = db.get(ExamScore, (e.id, sc.student_id)) or ExamScore(exam_id=e.id, student_id=sc.student_id)
     score.points, score.item_marks, score.absent = g['points'], g['marks'], False
@@ -60,7 +60,8 @@ def apply(db: Session, e: Exam, sc: ExamScan) -> None:
 def _out(sc: ExamScan, name: str | None) -> dict:
     return {'id': sc.id, 'student_id': sc.student_id, 'full_name': name, 'code': sc.code, 'status': sc.status, 'points': sc.points,
             'flagged': sc.flagged or [], 'reading': sc.reading, 'marks': sc.marks, 'read_by': sc.read_by, 'error': sc.error,
-            'updated_at': sc.updated_at, 'rescans': len(sc.history or [])}
+            'updated_at': sc.updated_at, 'rescans': len(sc.history or []), 'lost': sc.lost or [],
+            'n': len(sc.marks or []) or None}
 
 
 # ---------------------------------------------------------------- ehtiyat yol: oxunmamış kartlar və idxal (Claude Code)
@@ -133,6 +134,23 @@ def fix_slot(scan_id: int, body: FixIn, user: User = Depends(staff), db: Session
     sc.reading = sorted(rd, key=lambda r: r['slot'])
     apply(db, e, sc)
     audit(db, user, 'update', 'exam_scan', sc.id, slot=body.slot, value=body.value)
+    db.commit()
+    return _out(sc, None)
+
+
+class LostIn(BaseModel):
+    slots: list[int] = Field(default_factory=list, max_length=60)
+
+
+@router.put('/{scan_id}/lost')
+def set_lost(scan_id: int, body: LostIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Müəllim: bu şagirdin vərəqində görünməyən (çapda kəsilmiş) suallar – sayılmır, qalanlar 100-ə miqyaslanır."""
+    sc, e = _own_scan(db, user, scan_id)
+    v = db.get(ExamVariant, (e.id, sc.student_id))
+    have = {q['slot'] for q in (v.questions if v else [])}
+    sc.lost = sorted({s for s in body.slots if s in have}) or None
+    apply(db, e, sc)
+    audit(db, user, 'update', 'exam_scan', sc.id, lost=sc.lost)
     db.commit()
     return _out(sc, None)
 

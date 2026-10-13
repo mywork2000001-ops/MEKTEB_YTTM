@@ -124,10 +124,11 @@ async function fit(doc: Document): Promise<{ bad: string[]; moved: string[] }> {
     if (!fr || !bk) continue
     fr.style.fontSize = bk.style.fontSize = ''
     const name = sides[i].querySelector('.who .nm')?.childNodes[0]?.textContent?.trim() || String(i / 2 + 1)
-    let pt = 10
-    while (over(fr) && pt > 7) { pt -= 0.25; fr.style.fontSize = pt + 'pt' }
-    if (over(fr)) moved.push(name)                                  // köhnə qayda bu vərəqdə sualları kəsərdi
-    fr.style.fontSize = ''
+    // köhnə çap (13.10-dan əvvəl) 10 pt ilə, şəkillər sonra yüklənərək – bu suallar kəsilmiş ola bilər
+    const cut = [fr, bk].flatMap(el => { const r = el.getBoundingClientRect()
+      return [...el.querySelectorAll<HTMLElement>('.q')].filter(q => { const b = q.getBoundingClientRect(); return b.bottom > r.bottom + 1 || b.right > r.right + 1 })
+        .map(q => q.querySelector('.n')?.textContent || '?') })
+    if (cut.length) moved.push(`${name} (${cut.join(', ')})`)
     while (!shrink(fr) && fr.children.length > 1) {                // ön üzdən arxaya – sual itmir
       bk.insertBefore(fr.lastElementChild!, bk.firstChild)
       fr.style.fontSize = ''

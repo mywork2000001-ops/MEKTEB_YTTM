@@ -487,6 +487,8 @@ class ExamScan(Base):
     flagged: Mapped[list | None] = mapped_column(JSON)                 # yoxlanılmalı slotlar
     history: Mapped[list | None] = mapped_column(JSON)
     error: Mapped[str | None] = mapped_column(String(300))
+    # kağızda görünməyən suallar (13.10.2026: çapda sual kəsilirdi) – bu şagird üçün sayılmır, bal 100-ə miqyaslanır
+    lost: Mapped[list | None] = mapped_column(JSON)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
     __table_args__ = (UniqueConstraint('exam_id', 'student_id'),)

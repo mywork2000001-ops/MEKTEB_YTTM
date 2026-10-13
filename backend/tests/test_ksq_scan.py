@@ -94,6 +94,10 @@ def test_scan_flow(world):
     wrong = 'B' if keys[a['code']][0]['value'] != 'B' else 'C'
     assert admin.put(f'/api/exam-scans/{mine["id"]}/slot', json={'slot': 1, 'value': wrong}).json()['points'] == 98.5
     assert admin.post(f'/api/exam-scans/{ta}/{e["id"]}/regrade').json()['graded'] == 2
+    # kağızda görünməyən sual (çapda kəsilib): sayılmır, qalanlar 100-ə miqyaslanır; geri qaytarmaq olar
+    lo = admin.put(f'/api/exam-scans/{mine["id"]}/lost', json={'slots': [1, 99]}).json()
+    assert lo['lost'] == [1] and lo['points'] == 100 and lo['n'] == 30
+    assert admin.put(f'/api/exam-scans/{mine["id"]}/lost', json={'slots': []}).json()['points'] == 98.5
     # bir blank – bir dəfə: təkrar göndərilən kart qəbul edilmir (oxunuş və bal dəyişmir)
     d2 = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p1.jpg', photo([a['qr']], 3), 'image/jpeg'))]).json()
     assert d2['found'] == [] and [x['student_id'] for x in d2['already']] == [a['student_id']] and d2['already'][0]['points'] == 98.5

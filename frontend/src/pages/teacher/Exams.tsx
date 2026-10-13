@@ -322,7 +322,7 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
 }
 
 type Scan = { id: number; student_id: number; full_name: string | null; code: string; status: 'pending' | 'graded' | 'error'; points: number | null
-  flagged: number[]; reading: { slot: number; value: string | null; confidence: number | null }[] | null; marks: number[] | null; error: string | null; rescans: number }
+  flagged: number[]; reading: { slot: number; value: string | null; confidence: number | null }[] | null; marks: number[] | null; error: string | null; rescans: number; lost: number[]; n: number | null }
 type ScanList = { scans: Scan[]; missing: string[]; claude: boolean; counts: { variants: number; scanned: number; graded: number; pending: number; flagged: number } }
 const SCAN_TONE: Record<string, 'ok' | 'warn' | 'bad'> = { graded: 'ok', pending: 'warn', error: 'bad' }
 
@@ -392,21 +392,31 @@ function ScanDetail({ s, onChange }: { s: Scan; onChange: () => void }) {
   const fix = async (slot: number, value: string) => {
     try { await put(`/api/exam-scans/${s.id}/slot`, { slot, value: value.trim() || null }); onChange() } catch (x) { toast((x as Error).message) }
   }
+  // variantın öz sual sayı (10–30) – həmişə 30 deyil
+  const n = s.n || Math.max(0, ...(s.reading || []).map(r => r.slot)) || 30
+  const lost = new Set(s.lost || [])
+  const toggleLost = async (slot: number) => {
+    const next = new Set(lost); if (next.has(slot)) next.delete(slot); else next.add(slot)
+    try { await put(`/api/exam-scans/${s.id}/lost`, { slots: [...next] }); onChange() } catch (x) { toast((x as Error).message) }
+  }
   return (
     <div style={{ marginTop: 8 }}>
       <img src={`/api/exam-scans/image/${s.id}`} alt="" style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 6 }} />
       {s.reading ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(92px,1fr))', gap: 4, marginTop: 6 }}>
-          {Array.from({ length: 30 }, (_, i) => i + 1).map(slot => {
-            const ok = s.marks?.[slot - 1] === 1, flag = s.flagged.includes(slot)
+          {Array.from({ length: n }, (_, i) => i + 1).map(slot => {
+            const ok = s.marks?.[slot - 1] === 1, flag = s.flagged.includes(slot), gone = lost.has(slot)
             return (
               <label key={slot} className="small" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 4px', borderRadius: 6,
-                background: flag ? '#fef3c7' : ok ? '#dcfce7' : '#fee2e2', color: '#111' }}>
-                <b style={{ minWidth: 18 }}>{slot}</b>
-                <input defaultValue={val(slot)} maxLength={8} style={{ width: '100%', minWidth: 0, padding: '2px 4px' }}
-                  onBlur={e => { if (e.target.value !== val(slot)) fix(slot, e.target.value) }} /></label>)
+                background: gone ? '#e5e7eb' : flag ? '#fef3c7' : ok ? '#dcfce7' : '#fee2e2', color: '#111', opacity: gone ? .7 : 1 }}>
+                <b style={{ minWidth: 18, textDecoration: gone ? 'line-through' : undefined }}>{slot}</b>
+                <input defaultValue={val(slot)} maxLength={8} disabled={gone} style={{ width: '100%', minWidth: 0, padding: '2px 4px' }}
+                  onBlur={e => { if (e.target.value !== val(slot)) fix(slot, e.target.value) }} />
+                <button type="button" className="btn sm ghost" style={{ padding: '0 3px' }} onClick={() => toggleLost(slot)}
+                  title={gone ? tt('Sayılsın (vərəqdə var idi)') : tt('Vərəqdə yox idi – sayılmasın')}>⊘</button></label>)
           })}
         </div>) : <p className="small muted">{tt('Kart hələ oxunmayıb.')}</p>}
+      {lost.size > 0 && <p className="small muted" style={{ margin: '4px 0 0' }}>{tt('Vərəqdə görünməyən suallar sayılmır, bal qalanlar üzrə 100-ə hesablanır: {list}', { list: [...lost].sort((a, b) => a - b).join(', ') })}</p>}
     </div>
   )
 }
