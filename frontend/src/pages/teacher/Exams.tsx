@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, del, get, patch, post, put } from '../../api'
 import { AsyncBtn, azDT, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, Pill, toast, useLoad } from '../../ui'
 import type { MyLesson } from './common'
@@ -394,8 +394,8 @@ function OnlineKsq({ ta, examId }: { ta: number; examId: number }) {
 }
 
 type Scan = { id: number; student_id: number; full_name: string | null; code: string; status: 'pending' | 'graded' | 'error'; points: number | null
-  flagged: number[]; reading: { slot: number; value: string | null; confidence: number | null; alt?: string | null; alts?: string[] }[] | null; marks: number[] | null; error: string | null; read_by?: string | null; keys?: Record<string, string>; rescans: number; lost: number[]; n: number | null }
-type ScanList = { scans: Scan[]; missing: string[]; claude: boolean; printed_old?: boolean; ai_error?: string | null; scan_fallback?: boolean; counts: { variants: number; scanned: number; graded: number; pending: number; flagged: number } }
+  flagged: number[]; reading: { slot: number; value: string | null; confidence: number | null; alt?: string | null; alts?: string[] }[] | null; marks: number[] | null; error: string | null; read_by?: string | null; keys?: Record<string, string>; kinds?: Record<string, string>; rescans: number; lost: number[]; n: number | null }
+type ScanList = { scans: Scan[]; missing: string[]; claude: boolean; printed_old?: boolean; cut_saved?: boolean; ai_error?: string | null; scan_fallback?: boolean; counts: { variants: number; scanned: number; graded: number; pending: number; flagged: number } }
 const SCAN_TONE: Record<string, 'ok' | 'warn' | 'bad'> = { graded: 'ok', pending: 'warn', error: 'bad' }
 
 /** Cavab kartlarının skanı: şəkil / PDF yüklə → QR ilə şagird → oxunuş → bal jurnala özü yazılır; şübhəli xana – sarı, müəllim düzəldir. */
@@ -423,11 +423,12 @@ function Scans({ ta, examId, name }: { ta: number; examId: number; name: string 
     } catch (x) { toast((x as Error).message) } finally { setBusy(false) }
   }
   // kağıza düşməyən suallar (docs/ksq-dusmeyen-suallar-promtu.md): köhnə çapın təxmini ∩ boş cavab → ⊘
-  const lostAuto = async () => {
+  const lostAuto = async (silent = false) => {
     const { estimateOldCut } = await import('../../ksqPrint')
     const pr = await get<any>(`/api/exams/${ta}/${examId}/variants/print`)
     const cut = await estimateOldCut(pr)
     const r = await post<{ changed: { full_name: string | null; lost: number[]; before: number | null; after: number | null }[] }>(`/api/exam-scans/${ta}/${examId}/lost-auto`, { cut })
+    if (silent && !r.changed.length) { reload(); return }
     toast(r.changed.length ? tt('Kağıza düşməyən suallar nəzərə alındı: {n} şagird', { n: r.changed.length }) + ' · '
       + r.changed.map(x => `${x.full_name || '—'}: ⊘ ${x.lost.join(',') || '—'} (${fmt(x.before)} → ${fmt(x.after)})`).join('; ')
       : tt('Dəyişiklik yoxdur – kağıza düşməyən boş sual tapılmadı'))
@@ -442,6 +443,10 @@ function Scans({ ta, examId, name }: { ta: number; examId: number; name: string 
     setWatching(Math.min(60, 6 + r.started * 6))
   }
   const c = d?.counts
+  // köhnə çap: kağıza düşməyən suallar bir dəfə təxmin olunub serverdə saxlanır – təzə skanlar avtomatik ⊘ alır
+  // (docs/kagiza-dusmeyen-avtomatik-promtu.md)
+  const cutOnce = useRef(false)
+  useEffect(() => { if (d?.printed_old && d.cut_saved === false && !cutOnce.current) { cutOnce.current = true; lostAuto(true).catch(() => { cutOnce.current = false }) } }, [d])   // eslint-disable-line react-hooks/exhaustive-deps
   // oxunuş gedir – siyahı özü yenilənir (Claude adətən 10–30 saniyəyə oxuyur)
   useEffect(() => { if (!c?.pending || !d?.claude) return; const id = setTimeout(reload, 8000); return () => clearTimeout(id) }, [d])
   return (
@@ -461,7 +466,7 @@ function Scans({ ta, examId, name }: { ta: number; examId: number; name: string 
           title={tt('Səliqəsiz yazı üçün: kartın sütunları böyüdülür, iki model oxuyur, ən azı iki eyni oxunuş qəbul edilir; düzəlişləriniz saxlanır')}>🔍 {tt('Sinfi diqqətli oxu')}</AsyncBtn>}
         {d && c && c.flagged > 0 && d.claude && <AsyncBtn className="btn sm ghost" onClick={() => thorough(true)}
           title={tt('Yalnız sarı xanası olan kartlar diqqətlə yenidən oxunur')}>🔍 {tt('Yalnız baxılmalılar')} ({c.flagged})</AsyncBtn>}
-        {d?.printed_old && d.scans.length > 0 && <AsyncBtn className="btn sm" onClick={lostAuto}
+        {d?.printed_old && d.scans.length > 0 && <AsyncBtn className="btn sm" onClick={() => lostAuto()}
           title={tt('Köhnə çapda kəsilmiş və kartda cavabı boş olan suallar şagird üçün sayılmır (⊘); cavabı olan – sayılır')}>⊘ {tt('Kağıza düşməyən suallar')}</AsyncBtn>}
         {d && d.scans.length > 0 && <label className="small row" style={{ gap: 4 }} title={tt('Kartlar yenidən skan olunanda köhnə skan və oxunuş əvəz olunur')}>
           <input type="checkbox" checked={again} onChange={e => setAgain(e.target.checked)} />{tt('Yenidən skan (köhnəni əvəz et)')}</label>}
@@ -489,14 +494,15 @@ function Scans({ ta, examId, name }: { ta: number; examId: number; name: string 
               {s.flagged.length > 0 && <Pill tone="warn">⚠ {s.flagged.length}</Pill>}
             </div>
             {s.error && !s.error.startsWith('ai:') && <div className="small" style={{ color: 'var(--bad)' }}>{s.error}</div>}
-            {open === s.id && <ScanDetail s={s} onChange={reload} onThorough={() => setWatching(12)} />}
+            {open === s.id && <ScanDetail s={s} ta={ta} examId={examId} onChange={reload} onThorough={() => setWatching(12)} />}
           </div>))}
       </div>
     </section>
   )
 }
 
-function ScanDetail({ s, onChange, onThorough }: { s: Scan; onChange: () => void; onThorough?: () => void }) {
+function ScanDetail({ s, ta, examId, onChange, onThorough }: { s: Scan; ta: number; examId: number; onChange: () => void; onThorough?: () => void }) {
+  const [keyEdit, setKeyEdit] = useState<number | null>(null)     // düz cavabın redaktəsi (docs/skan-sayac-ve-donma-promtu.md)
   const val = (slot: number) => s.reading?.find(r => r.slot === slot)?.value ?? ''
   const alt = (slot: number) => { const r = s.reading?.find(x => x.slot === slot); return r && r.alt != null && r.alt !== r.value ? r.alt : null }
   const fix = async (slot: number, value: string) => {
@@ -529,13 +535,16 @@ function ScanDetail({ s, onChange, onThorough }: { s: Scan; onChange: () => void
                 <input defaultValue={val(slot)} maxLength={8} disabled={gone} style={{ width: '100%', minWidth: 0, padding: '2px 4px' }}
                   title={alt(slot) != null ? tt('İkinci oxunuş: {v}', { v: (s.reading?.find(r => r.slot === slot)?.alts || [alt(slot)]).map(x => x || '∅').join(' / ') }) : undefined}
                   onBlur={e => { if (e.target.value !== val(slot)) fix(slot, e.target.value) }} />
-                {s.keys?.[slot] != null && <span title={tt('Düz cavab')} style={{ whiteSpace: 'nowrap', fontWeight: 600, color: '#166534' }}>✓{s.keys[slot]}</span>}
+                {s.keys?.[slot] != null && <button type="button" className="btn sm ghost" title={tt('Düz cavab – düzəltmək üçün toxunun')}
+                  style={{ padding: '0 3px', whiteSpace: 'nowrap', fontWeight: 600, color: '#166534' }} onClick={e => { e.preventDefault(); setKeyEdit(slot) }}>✓{s.keys[slot]}</button>}
                 {alt(slot) != null && <button type="button" className="btn sm ghost" style={{ padding: '0 3px', fontSize: 11 }}
                   title={tt('İkinci oxunuşu qəbul et')} onClick={() => fix(slot, alt(slot) || '')}>{alt(slot) || '∅'}</button>}
                 <button type="button" className="btn sm ghost" style={{ padding: '0 3px' }} onClick={() => toggleLost(slot)}
                   title={gone ? tt('Sayılsın (vərəqdə var idi)') : tt('Vərəqdə yox idi – sayılmasın')}>⊘</button></label>)
           })}
         </div>) : <p className="small muted">{tt('Kart hələ oxunmayıb.')}</p>}
+      {keyEdit != null && <KeyEdit ta={ta} examId={examId} sid={s.student_id} slot={keyEdit} kind={s.kinds?.[keyEdit] || 'open'} cur={s.keys?.[keyEdit] || ''}
+        onClose={() => setKeyEdit(null)} onDone={() => { setKeyEdit(null); onChange() }} />}
       {lost.size > 0 && <p className="small muted" style={{ margin: '4px 0 0' }}>{tt('Vərəqdə görünməyən suallar sayılmır, bal qalanlar üzrə 100-ə hesablanır: {list}', { list: [...lost].sort((a, b) => a - b).join(', ') })}</p>}
     </div>
   )
@@ -615,6 +624,33 @@ function QEdit({ q, onSave }: { q: VQ; onSave: (b: any) => Promise<void> }) {
           <input className="grow" value={o} onChange={x => setOpts(p => p.map((v, k) => (k === i ? x.target.value : v)))} /></label>))
         : <Field label={tt('Düzgün cavab (kart xanaları: rəqəm, - , / ;)')}><input value={ans} maxLength={8} onChange={x => setAns(x.target.value)} /></Field>}
       <AsyncBtn className="btn sm primary" onClick={() => onSave(q.kind === 'mcq' ? { text, options: opts, correct: cor } : { text, answer: ans })}>{tt('Yadda saxla')}</AsyncBtn>
+    </div>
+  )
+}
+
+/** Düz cavabı müəllim düzəldir: bu şagirdin variantında və ya bu sual olan bütün şagirdlərdə; ballar dərhal yenidən hesablanır.
+ *  Kağız dəyişmir – çap olunmuş kartlar keçərli qalır (docs/skan-sayac-ve-donma-promtu.md). */
+function KeyEdit({ ta, examId, sid, slot, kind, cur, onClose, onDone }: { ta: number; examId: number; sid: number; slot: number; kind: string; cur: string; onClose: () => void; onDone: () => void }) {
+  const [v, setV] = useState(cur)
+  const [all, setAll] = useState(true)
+  const save = async () => {
+    const body = kind === 'mcq' ? { correct: LET.indexOf(v), all_same: all } : { answer: v.trim(), all_same: all }
+    const r = await put<{ rescored: number; students: number }>(`/api/exams/${ta}/${examId}/variants/${sid}/${slot}`, body)
+    toast(tt('Düz cavab dəyişdi: {n} şagird, yenidən hesablandı: {m}', { n: r.students, m: r.rescored }))
+    onDone()
+  }
+  return (
+    <div className="kpick" style={{ maxHeight: 'none', marginTop: 8 }}>
+      <b className="small">{tt('{n}-ci sualın düz cavabı', { n: slot })}</b>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
+        {kind === 'mcq'
+          ? <select className="sel" value={v} onChange={e => setV(e.target.value)}>{LET.split('').map(l => <option key={l} value={l}>{l}</option>)}</select>
+          : <input className="sel" value={v} maxLength={8} style={{ width: 120 }} onChange={e => setV(e.target.value)} placeholder="170" />}
+        <label className="check small"><input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} />{tt('Bu sual olan bütün şagirdlərdə')}</label>
+        <AsyncBtn className="btn sm primary" disabled={!v.trim() || v.trim() === cur} onClick={save}>{tt('Yadda saxla')}</AsyncBtn>
+        <button type="button" className="btn sm ghost" onClick={onClose}>{tt('Ləğv et')}</button>
+      </div>
+      <p className="small muted" style={{ margin: '4px 0 0' }}>{tt('Ballar dərhal yenidən hesablanır. Kağız vərəq dəyişmir – çap olunmuş kartlar keçərli qalır.')}</p>
     </div>
   )
 }

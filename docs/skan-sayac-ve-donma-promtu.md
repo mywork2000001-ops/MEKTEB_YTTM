@@ -87,3 +87,33 @@
   - Ləğv edilmiş və ⊘ suallar boz göstərilir.
 - API: `GET /api/exam-scans/{ta}/{exam}` → hər skanda `keys: {slot: düz cavab}` (yalnız müəllim görür).
 - Mətnlər AZ/EN/RU.
+
+---
+
+## Əlavə tələb: «X c Mənsurədə 11 düz vermir – yoxlayın; lazım gələndə müəllim düz cavabı redaktə etsin»
+### Yoxlama (canlı, 13.10.2026)
+- Ağazadə Mənsurə, scan 57: 11-ci xanada kartda **«40»** yazılıb (şəkil). Sistem **«49»** oxuyub, açar isə **«170»**-dir.
+  Hər iki halda cavab açarla üst-üstə düşmür, ✗ düzgündür.
+- Sual: BM ∥ DE, ∠ABC = 110°, ∠ADE = 130°, AC – ∠BAD-nin tənböləni, ∠ACM = ?
+  Hesab: ∠BAD = 360° − 110° − 130° = 120°, ∠BAC = 60°, ∠ACB = 10°, M C-dən o tərəfdədirsə ∠ACM = 170° – açar
+  düzgün görünür. Şəkilsiz M-in yeri dəqiq bilinmir, son qərar müəllimindir.
+- Oxunuşun özü («40» → «49») ayrıca məsələdir: müəllim xananı redaktə edə bilir, bu imkan var.
+
+### Kritik tapıntı
+`variant_rev` (QR-dakı çap izi) düzgün cavabı da hesablayırdı. Müəllim açarı çapdan sonra düzəldəndə çap olunmuş kartın
+yenidən skanı **«kart köhnə çapdır»** deyə rədd edilərdi.
+→ Açar düzəlişində ilk (çap anındakı) qiymət `rev_answer` / `rev_correct` kimi saxlanır, `variant_rev` onu işlədir.
+Kağızdakı vərəq dəyişmir, köhnə kart keçərli qalır. Sualın özü əvəz olunanda (yeni `key`) iz dəyişir – bu düzgündür.
+
+### Qərar – düz cavabı müəllim redaktə edir
+- Skan → şagird → xana: «✓170» üzərinə basanda yerində redaktə açılır.
+  - Açıq sual üçün mətn sahəsi (kart xanalarına yazılan forma), test sualı üçün A–E seçimi.
+  - **«Bu sual olan bütün şagirdlərdə»** seçimi (standart – açıq): eyni bank sualı (`key`) olan bütün variantlarda
+    açar düzəlir.
+  - Hamısının balı dərhal yenidən hesablanır (`_rescore`), jurnal yenilənir.
+- API: `PUT /api/exams/{ta}/{exam}/variants/{sid}/{slot}`:
+  - `text` və `options` istəyə bağlıdır (göndərilməsə, qalır);
+  - `all_same: true` – bütün eyni suallar;
+  - cavab: `{rescored, students}`.
+- Şagirdin «🧾 Kartım»ı yeni açarı göstərir. Audit qeydi yazılır.
+- Mətnlər AZ/EN/RU.

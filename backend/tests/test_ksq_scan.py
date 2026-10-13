@@ -840,3 +840,62 @@ def test_gemini_busy_backup_per_key(monkeypatch):
     except R.AiError as ex:
         assert str(ex) == R.AI_BUSY
     ai.GEMINI_FIX.clear(); ai.GEMINI_GONE.clear(); ai.GEMINI_NO_THINK.clear()
+
+
+def test_unprinted_auto_lost(world, monkeypatch):
+    """docs/kagiza-dusmeyen-avtomatik-promtu.md: köhnə çap təxmini saxlanır; təzə skanda «kəsilmiş ∩ boş» avtomatik ⊘, bal 100-ə;
+    kəsilmiş, amma cavablı – sayılır; yeni çap – təxmin saxlanmır."""
+    import datetime as dt
+    from app.domain import ksq_reader as R
+    from app.models import ExamVariant
+    admin, ta, e, pr = ksq(world)
+    _, S = world
+    sh = pr['sheets'][0]
+    key = {x['slot']: x['value'] for x in next(k for k in pr['key'] if k['code'] == sh['code'])['answers']}
+    last = max(key)
+    with S() as db:
+        for v in db.query(ExamVariant).filter_by(exam_id=e['id']):
+            v.printed_at = dt.datetime(2026, 10, 12, tzinfo=dt.timezone.utc)           # köhnə çap
+        db.commit()
+    lst = admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()
+    assert lst['printed_old'] is True and lst['cut_saved'] is False
+    sid = sh['student_id'] if 'student_id' in sh else None
+    with S() as db:
+        sid = sid or db.query(ExamVariant).filter_by(exam_id=e['id'], code=sh['code']).one().student_id
+    assert admin.post(f'/api/exam-scans/{ta}/{e["id"]}/lost-auto', json={'cut': {str(sid): [last - 1, last]}}).status_code == 200
+    assert admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['cut_saved'] is True
+    # şagird: hamısı düz, son sual boş (vərəqdə yox idi), sondan əvvəlki – cavablı (görünürmüş)
+
+    def fake(api_key, model, jpeg, slots, only=None, text=None):
+        return [{'slot': s['slot'], 'value': '' if s['slot'] == last else key[s['slot']], 'confidence': 0.99} for s in slots]
+    monkeypatch.setattr(R, 'call', fake)
+    monkeypatch.setattr(R, 'key_pool', lambda db, tid: [{'provider': 'anthropic', 'key': 'sk-ant-test', 'model': R.MODEL}])
+    admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([sh['qr']]), 'image/jpeg'))])
+    sc = next(x for x in admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'] if x['student_id'] == sid)
+    assert sc['lost'] == [last] and sc['points'] == 100                              # boş + kəsilmiş – sayılmır, bal 100
+
+
+def test_key_edit_all_students_keeps_print(world, monkeypatch):
+    """Müəllim düz cavabı skan ekranından düzəldir: bu sual olan bütün şagirdlərdə, ballar yenidən hesablanır; çap izi dəyişmir
+    (çap olunmuş kart yenidən skan oluna bilir)."""
+    from app.domain.ksq_card import variant_rev
+    from app.models import ExamVariant
+    admin, ta, e, pr, st, keys = _graded(world, monkeypatch)
+    _, S = world
+    with S() as db:
+        vs = {v.student_id: v for v in db.query(ExamVariant).filter_by(exam_id=e['id'])}
+        sid = next(iter(vs))
+        q = next(q for q in vs[sid].questions if q['kind'] == 'open')
+        same = [s for s, v in vs.items() if any(x.get('key') == q['key'] for x in v.questions)]
+        revs = {s: variant_rev(v.questions) for s, v in vs.items()}
+    r = admin.put(f'/api/exams/{ta}/{e["id"]}/variants/{sid}/{q["slot"]}', json={'answer': '777', 'all_same': True})
+    assert r.status_code == 200, r.text
+    assert r.json()['students'] == len(same) and r.json()['answer'] == '777'
+    with S() as db:
+        for s in same:
+            v = db.get(ExamVariant, (e['id'], s))
+            assert all(x['answer'] == '777' for x in v.questions if x.get('key') == q['key'])
+            assert variant_rev(v.questions) == revs[s]                                  # kağız dəyişmir – kart keçərlidir
+    sc = next(x for x in admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'] if x['student_id'] == sid)
+    assert sc['keys'][str(q['slot'])] == '777' and sc['kinds'][str(q['slot'])] == 'open'
+    assert admin.put(f'/api/exams/{ta}/{e["id"]}/variants/{sid}/{q["slot"]}', json={'answer': 'abc'}).status_code == 400

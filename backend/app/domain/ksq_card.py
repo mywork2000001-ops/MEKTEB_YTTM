@@ -50,7 +50,9 @@ def key_value(q: dict) -> str:
 def variant_rev(questions: list[dict]) -> str:
     """Variantın «barmaq izi»: slot · sual · düzgün cavab. Çapdan sonra sual/açar dəyişsə – dəyişir, köhnə kart qəbul olunmur."""
     import json
-    raw = json.dumps(sorted([q.get('slot'), q.get('key'), q.get('correct'), q.get('answer')] for q in questions), ensure_ascii=False, default=str)
+    # açar çapdan sonra düzəldilibsə – kağız dəyişməyib: çap anındakı qiymət (rev_*) – köhnə kart keçərlidir
+    raw = json.dumps(sorted([q.get('slot'), q.get('key'), q.get('rev_correct', q.get('correct')), q.get('rev_answer', q.get('answer'))]
+                            for q in questions), ensure_ascii=False, default=str)
     return hashlib.sha1(raw.encode()).hexdigest()[:6]
 
 

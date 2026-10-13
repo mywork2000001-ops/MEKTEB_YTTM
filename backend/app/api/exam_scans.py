@@ -51,6 +51,9 @@ def apply(db: Session, e: Exam, sc: ExamScan) -> None:
     if sc.reading is None:
         sc.status = 'pending'
         return
+    if sc.lost is None and v.unprinted:                     # köhnə çap: kağıza düşməyən + boş cavab – avtomatik ⊘ (bir dəfə)
+        empty = {int(r['slot']) for r in sc.reading if r.get('slot') is not None and not r.get('value')}
+        sc.lost = sorted(set(v.unprinted) & empty)
     g = grade(v.questions, sc.reading, {it['n'] for it in (e.items or []) if it.get('annulled')} | set(sc.lost or []))
     sc.marks, sc.points, sc.flagged, sc.status, sc.error = g['marks'], g['points'], g['flagged'], 'graded', None
     score = db.get(ExamScore, (e.id, sc.student_id)) or ExamScore(exam_id=e.id, student_id=sc.student_id)
@@ -181,6 +184,10 @@ def lost_auto(ta_id: int, exam_id: int, body: LostAutoIn, user: User = Depends(s
     """Kağıza düşməyən suallar (docs/ksq-dusmeyen-suallar-promtu.md): köhnə çapda kəsilmiş (brauzer təxmini) ∩ kartda boş cavab →
     «⊘» (sayılmır). Kəsilmiş sayılan, amma cavabı olan sual – görünürmüş, «⊘» götürülür. Müəllimin başqa «⊘»-larına toxunulmur."""
     ta, e = _exam(db, user, ta_id, exam_id)
+    # təxmin saxlanır – təzə skanlarda avtomatik tətbiq olunur (apply); yalnız köhnə çap olunmuş variantlar
+    for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)):
+        old_print = v.printed_at is not None and _aware(v.printed_at) < PRINT_FIX_AT
+        v.unprinted = sorted(set(body.cut.get(v.student_id, []))) if old_print else None
     out = []
     for sc in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.reading.is_not(None))):
         cut = set(body.cut.get(sc.student_id, []))
@@ -343,9 +350,12 @@ def list_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sessio
     have = {sc.student_id for sc in scans}
     variants = list(db.scalars(select(ExamVariant.student_id).where(ExamVariant.exam_id == e.id)))
     from ..domain.ksq_card import key_value
-    keys = {v.student_id: {q['slot']: key_value(q) for q in v.questions}                # düz cavablar – müəllim xananın yanında görür
-            for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id))}
-    return {'scans': sorted(({**_out(sc, names.get(sc.student_id)), 'keys': keys.get(sc.student_id) or {}} for sc in scans),
+    vs = {v.student_id: v for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id))}
+    # düz cavablar və sual növü – müəllim xananın yanında görür və redaktə edir
+    keys = {sid: {q['slot']: key_value(q) for q in v.questions} for sid, v in vs.items()}
+    kinds = {sid: {q['slot']: q['kind'] for q in v.questions} for sid, v in vs.items()}
+    return {'scans': sorted(({**_out(sc, names.get(sc.student_id)), 'keys': keys.get(sc.student_id) or {},
+                              'kinds': kinds.get(sc.student_id) or {}} for sc in scans),
                             key=lambda x: x['full_name'] or ''),
             'missing': sorted((names.get(sid) or '—') for sid in variants if sid not in have),
             'counts': {'variants': len(variants), 'scanned': len(scans), 'graded': sum(sc.status == 'graded' for sc in scans),
@@ -357,6 +367,8 @@ def list_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sessio
             # bütün açarlar limitdədirsə – ən tez bərpa olunanın kodu; açar bərpa olubsa – kartlar özü oxunacaq, banner yox
             'ai_error': _ai_error(db, ta, scans),
             # vərəqlər çap düzəlişindən (13.10.2026) əvvəl çap olunub – suallar kəsilmiş ola bilər
+            # köhnə çap təxmini serverdə saxlanıbmı – yoxdursa, brauzer bir dəfə hesablayıb göndərir
+            'cut_saved': not any(v.printed_at is not None and _aware(v.printed_at) < PRINT_FIX_AT and v.unprinted is None for v in vs.values()),
             'printed_old': bool(db.scalar(select(ExamVariant.exam_id).where(ExamVariant.exam_id == e.id, ExamVariant.printed_at.is_not(None),
                                                                              ExamVariant.printed_at < PRINT_FIX_AT).limit(1)))}
 

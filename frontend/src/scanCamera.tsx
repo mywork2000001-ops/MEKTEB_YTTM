@@ -15,10 +15,10 @@ import { newVersion } from './version'
 
 type Quality = { ok: boolean; why?: string }
 type Found = { student_id: number; scan_id: number; full_name: string | null }
-type Res = { scan_id: number; name: string; points: number | null; right?: number; total?: number; check?: number; wait: boolean; queue?: number; late?: boolean; err?: string | null }
+type Res = { scan_id: number; name: string; points: number | null; right?: number; total?: number; check?: number; lost?: number; wait: boolean; queue?: number; late?: boolean; err?: string | null }
 type Up = { found: Found[]; problems: { error: string; kind?: string; full_name?: string | null }[];
   already: { student_id: number; scan_id: number; points: number | null; full_name: string | null }[] }
-type List = { scans: { id: number; status: string; points: number | null; marks: number[] | null; flagged: number[]; error: string | null }[]
+type List = { scans: { id: number; status: string; points: number | null; marks: number[] | null; flagged: number[]; error: string | null; lost?: number[] }[]
   claude: boolean; ai_error?: string | null; counts: { pending: number; variants: number; scanned: number } }
 // cari şagird: yüklənir → oxunur → nəticə (növbəti şagird yalnız bundan sonra)
 type Cur = { phase: 'upload' } | { phase: 'read'; ids: number[]; since: number } | { phase: 'done'; ids: number[] }
@@ -101,7 +101,7 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
           const s = d.scans.find(x => x.id === r.scan_id)
           if (s?.status === 'error') return { ...r, wait: false, err: s.error || tt('xəta') }
           if (!s || s.status !== 'graded') { open = true; return { ...r, wait: d.claude && !final, late: final, queue: d.counts.pending, err: s?.error && !s.error.startsWith('ai:') ? s.error : null } }
-          return { ...r, wait: false, points: s.points, right: (s.marks || []).filter(Boolean).length, total: (s.marks || []).length, check: s.flagged.length }
+          return { ...r, wait: false, points: s.points, right: (s.marks || []).filter(Boolean).length, total: (s.marks || []).length - (s.lost || []).length, check: s.flagged.length, lost: (s.lost || []).length }
         }))
         const c = curRef.current
         const mine = c && c.phase !== 'upload' && c.ids.join() === ids.join()
@@ -194,6 +194,7 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
         <div style={{ fontSize: 18, fontWeight: 600 }}>{r.name}</div>
         <div style={{ fontSize: 44, fontWeight: 800, color: '#86efac', lineHeight: 1.1 }}>{tt('{n} bal', { n: r.points })}</div>
         <div style={{ fontSize: 14 }}>{tt('Düz: {r}/{t}', { r: r.right ?? 0, t: r.total ?? 0 })}</div>
+        {!!r.lost && <div style={{ fontSize: 14, color: '#cbd5e1' }}>⊘ {tt('{n} sual vərəqə düşməyib – sayılmır, bal qalanlar üzrə 100-ə', { n: r.lost })}</div>}
         {!!r.check && <div style={{ fontSize: 14, color: '#fde68a' }}>⚠ {tt('Sarı xana: {n} – siyahıda şəkilə baxıb yoxlayın', { n: r.check })}</div>}
       </div>
     : <div key={r.scan_id} style={{ textAlign: 'center' }}>

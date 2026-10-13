@@ -564,43 +564,65 @@ def fix_stale_all(db: Session) -> int:
 
 
 class QuestionEditIn(BaseModel):
-    text: str = Field(min_length=1, max_length=3000)
-    options: list[str] | None = Field(None, max_length=5)
+    text: str | None = Field(None, min_length=1, max_length=3000)     # None – mətn dəyişmir (skan ekranından yalnız açar)
+    options: list[str] | None = Field(None, max_length=5)              # None – variantlar dəyişmir
     correct: int | None = Field(None, ge=0, le=4)
     answer: str | None = Field(None, max_length=60)
+    all_same: bool = False                                             # eyni bank sualı olan bütün variantlarda açar
 
 
-@router.put('/{ta_id}/{exam_id}/variants/{student_id}/{slot}')
-def edit_question(ta_id: int, exam_id: int, student_id: int, slot: int, body: QuestionEditIn,
-                  user: User = Depends(staff), db: Session = Depends(get_db)):
-    """Sualın mətni / variantları / düzgün cavabı düzəldilir (yalnız bu variantda); skanı varsa bal yenidən hesablanır."""
+def _edit_q(q: dict, body: QuestionEditIn, key_only: bool) -> dict:
+    """Bir sualın düzəlişi. Çapdan sonra açar dəyişsə də kağız dəyişmir – çap izi (variant_rev) ilk qiymətlə qalır."""
     from ..domain.ksq_variants import card_answer
-    own_assignment(db, user, ta_id)
-    e = _exam(db, ta_id, exam_id)
-    v, i = _variant(db, e, student_id, slot)
-    q = dict(v.questions[i])
-    lang = 'az'
-    q['text'] = {**(q['text'] if isinstance(q.get('text'), dict) else {}), lang: body.text}
+    q = dict(q)
+    if not key_only and body.text is not None:
+        q['text'] = {**(q['text'] if isinstance(q.get('text'), dict) else {}), 'az': body.text}
+    q.setdefault('rev_correct', q.get('correct'))
+    q.setdefault('rev_answer', q.get('answer'))
     if q['kind'] == 'mcq':
-        if not body.options or len(body.options) < 2 or body.correct is None or body.correct >= len(body.options):
+        opts = [{'az': o} for o in body.options] if (body.options and not key_only) else (q.get('options') or [])
+        if len(opts) < 2 or body.correct is None or body.correct >= len(opts):
             raise HTTPException(400, 'Test sualı üçün ən azı 2 variant və düzgün cavab lazımdır')
-        q['options'] = [{'az': o} for o in body.options]
-        q['correct'] = body.correct
+        q['options'], q['correct'] = opts, body.correct
     else:
         if not card_answer(body.answer):
             raise HTTPException(400, 'Açıq cavab kartın xanalarına yazıla bilməlidir: rəqəm, «-», «,», «/», «;» (≤ 8 simvol)')
         q['answer'] = body.answer
     q['edited'] = True
+    return q
+
+
+@router.put('/{ta_id}/{exam_id}/variants/{student_id}/{slot}')
+def edit_question(ta_id: int, exam_id: int, student_id: int, slot: int, body: QuestionEditIn,
+                  user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Sualın mətni / variantları / düzgün cavabı düzəldilir; all_same – eyni bank sualı olan bütün variantlarda açar
+    (docs/skan-sayac-ve-donma-promtu.md). Skanı olanların balı yenidən hesablanır, jurnal yenilənir."""
+    own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    v, i = _variant(db, e, student_id, slot)
+    base = v.questions[i]
+    q = _edit_q(base, body, key_only=False)
     qs = list(v.questions)
     qs[i] = q
     v.questions = qs
+    students = [student_id]
+    if body.all_same and base.get('key'):
+        for o in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id, ExamVariant.student_id != student_id)):
+            hit = [k for k, x in enumerate(o.questions) if x.get('key') == base['key']]
+            if hit:
+                oq = list(o.questions)
+                for k in hit:
+                    oq[k] = _edit_q(oq[k], body, key_only=True)
+                o.questions = oq
+                students.append(o.student_id)
     from ..domain import ksq_base
     ksq_base.note_edit(db, db.get(TeachingAssignment, e.assignment_id), e, q.get('key'),
-                       {'text': body.text, 'options': [{'az': o} for o in body.options] if body.options else None, 'correct': body.correct, 'answer': body.answer})
-    n = _rescore(db, e, [student_id])
-    audit(db, user, 'update', 'exam_variant', e.id, student_id=student_id, slot=slot, op='edit')
+                       {**({'text': body.text} if body.text is not None else {}),       # yalnız açar – mətn bazada dəyişmir
+                        'options': q.get('options') if q['kind'] == 'mcq' else None, 'correct': body.correct, 'answer': body.answer})
+    n = _rescore(db, e, students)
+    audit(db, user, 'update', 'exam_variant', e.id, student_id=student_id, slot=slot, op='edit', students=len(students))
     db.commit()
-    return {**q, 'rescored': n}
+    return {**q, 'rescored': n, 'students': len(students)}
 
 
 class AnnulIn(BaseModel):

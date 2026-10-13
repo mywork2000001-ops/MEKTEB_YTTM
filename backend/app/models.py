@@ -453,6 +453,8 @@ class ExamVariant(Base):
     questions: Mapped[list] = mapped_column(JSON)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
     printed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))   # çap olunub – avtomatik işlər toxunmur
+    # köhnə çapda kağıza düşməyən suallar (brauzer təxmini) – təzə skanda «kəsilmiş ∩ boş» avtomatik ⊘ (docs/kagiza-dusmeyen-avtomatik-promtu.md)
+    unprinted: Mapped[list | None] = mapped_column(JSON)
     __table_args__ = (UniqueConstraint('exam_id', 'code'),)
 
 

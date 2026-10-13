@@ -5,6 +5,13 @@ import { createContext, useContext } from 'react'
 export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
+  "{n} sual vərəqə düşməyib – sayılmır, bal qalanlar üzrə 100-ə": ["{n} questions were not on the sheet – not counted, the score is scaled to 100 over the rest", "{n} вопр. не попали на лист – не засчитываются, балл пересчитан на 100 по остальным"],
+  // Müəllim düz cavabı redaktə edir (13.10.2026, docs/skan-sayac-ve-donma-promtu.md)
+  "Düz cavab – düzəltmək üçün toxunun": ["Correct answer – tap to edit", "Правильный ответ – нажмите, чтобы исправить"],
+  "Düz cavab dəyişdi: {n} şagird, yenidən hesablandı: {m}": ["Correct answer changed: {n} students, rescored: {m}", "Правильный ответ изменён: {n} учеников, пересчитано: {m}"],
+  "{n}-ci sualın düz cavabı": ["Correct answer to question {n}", "Правильный ответ на вопрос {n}"],
+  "Bu sual olan bütün şagirdlərdə": ["For all students with this question", "У всех учеников с этим вопросом"],
+  "Ballar dərhal yenidən hesablanır. Kağız vərəq dəyişmir – çap olunmuş kartlar keçərli qalır.": ["Scores are recalculated immediately. The paper sheet does not change – printed cards stay valid.", "Баллы пересчитываются сразу. Бумажный лист не меняется – напечатанные бланки остаются действительными."],
   // Gemini 503, müəllimdə düz cavab (13.10.2026, docs/skan-sayac-ve-donma-promtu.md §H)
   "Google məşğuldur": ["Google is busy", "Google перегружен"],
   "Google serverləri hazırda məşğuldur (503) – oxunuş bir dəqiqədən sonra özü davam edəcək.": ["Google servers are busy right now (503) – reading will resume by itself in a minute.", "Серверы Google сейчас перегружены (503) – чтение само продолжится через минуту."],
