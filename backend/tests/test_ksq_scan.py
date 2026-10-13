@@ -422,3 +422,25 @@ def test_openrouter_key_saved_as_anthropic(world, monkeypatch):
     assert r.status_code in (200, 403)                                  # 403 – ayarlar kilidi (settings_unlocked) testdə bağlı ola bilər
     if r.status_code == 200:
         assert r.json()['provider'] == 'openrouter'
+
+
+def test_ai_usage_counter_and_limit(world, monkeypatch):
+    """Xərc sayğacı: hər oxunan kart + tokenlər ayın hesabına; limit dolanda kart oxunmur (pul getmir)."""
+    from app.config import settings
+    from app.domain import ksq_reader as R
+    admin, ta, e, pr = ksq(world)
+    a, b = pr['sheets'][0], pr['sheets'][1]
+
+    def fake(api_key, model, jpeg, slots, only=None):
+        R._count({'input_tokens': 1000, 'output_tokens': 200})
+        return [{'slot': s['slot'], 'value': '1', 'confidence': 0.99} for s in slots]
+    monkeypatch.setattr(R, 'call', fake)
+    monkeypatch.setattr(R, 'api_key_for', lambda db, tid: 'sk-ant-test')
+    monkeypatch.setattr(settings(), 'ksq_monthly_limit', 1)
+    admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([a['qr'], b['qr']]), 'image/jpeg'))])
+    with world[1]() as db:
+        u = R.month_usage(db)
+    assert u == {'cards': 1, 'in': 1000, 'out': 200}
+    scans = admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans']
+    assert sorted(x['status'] for x in scans) == ['graded', 'pending'] and any('limit' in (x['error'] or '') for x in scans)
+    assert admin.get('/api/admin/resources').json()['ai_usage']['cards'] == 1

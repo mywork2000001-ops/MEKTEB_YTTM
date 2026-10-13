@@ -20,6 +20,13 @@ API = 'https://api.anthropic.com/v1/messages'
 MODEL = 'claude-sonnet-5-5'
 MODEL_2 = 'claude-opus-5-5'                    # ikinci oxunuş (şübhəli xanalar)
 TIMEOUT = httpx.Timeout(120, connect=15)
+_usage = {'in': 0, 'out': 0}                 # bir kartın oxunuşunda istifadə olunan tokenlər (xərc sayğacı)
+
+
+def _count(u: dict | None) -> None:
+    u = u or {}
+    _usage['in'] += int(u.get('input_tokens') or u.get('prompt_tokens') or 0)
+    _usage['out'] += int(u.get('output_tokens') or u.get('completion_tokens') or 0)
 
 TOOL = {
     'name': 'submit_card',
@@ -68,6 +75,7 @@ def call(key: str, model: str, jpeg: bytes, slots: list[dict], only: list[int] |
         except Exception:                                    # noqa: BLE001
             msg = None
         raise RuntimeError(f'Claude API {r.status_code}: {msg or r.text[:200]}')
+    _count(r.json().get('usage'))
     blk = next((b for b in r.json().get('content', []) if b.get('type') == 'tool_use'), None)
     if not blk:
         raise RuntimeError('Claude cavabında oxunuş yoxdur')
@@ -122,6 +130,7 @@ def call_openrouter(key: str, model: str, jpeg: bytes, slots: list[dict], only: 
         except Exception:                                    # noqa: BLE001
             msg = None
         raise RuntimeError(f'OpenRouter {r.status_code}: {msg or r.text[:200]}')
+    _count(r.json().get('usage'))
     msg = (r.json().get('choices') or [{}])[0].get('message') or {}
     calls = msg.get('tool_calls') or []
     try:
@@ -198,6 +207,29 @@ def api_key_for(db: Session, teacher_id: int | None) -> dict | None:
     return None
 
 
+def month_usage(db: Session) -> dict:
+    """Bu ayın kart oxunuşu: {cards, in, out} (AppState «ai_usage_YYYY-MM»)."""
+    import datetime as dt
+    import json
+    from ..models import AppState
+    st = db.get(AppState, f'ai_usage_{dt.date.today():%Y-%m}')
+    return json.loads(st.value) if st and st.value else {'cards': 0, 'in': 0, 'out': 0}
+
+
+def _add_usage(db: Session, cards: int, tin: int, tout: int) -> None:
+    import datetime as dt
+    import json
+    from ..models import AppState
+    k = f'ai_usage_{dt.date.today():%Y-%m}'
+    u = month_usage(db)
+    u = {'cards': u['cards'] + cards, 'in': u['in'] + tin, 'out': u['out'] + tout}
+    st = db.get(AppState, k)
+    if st is None:
+        db.add(AppState(key=k, value=json.dumps(u)))
+    else:
+        st.value = json.dumps(u)
+
+
 def read_pending(db: Session, exam_id: int | None = None, limit: int = 20) -> int:
     """Oxunmamış kartları Claude ilə oxuyur və qiymətləndirir. Açar yoxdursa – toxunmur (ehtiyat yol: /import)."""
     from ..api.exam_scans import apply
@@ -215,9 +247,15 @@ def read_pending(db: Session, exam_id: int | None = None, limit: int = 20) -> in
         if not (e and v and key):
             continue
         slots = [{'slot': x['slot'], 'kind': x['kind']} for x in sorted(v.questions, key=lambda x: x['slot'])]
+        if month_usage(db)['cards'] >= settings().ksq_monthly_limit:           # aylıq limit – pul getməsin, kart gözləyir
+            sc.error = f'Aylıq süni intellekt limiti ({settings().ksq_monthly_limit} kart) dolub – gələn ay və ya admin limiti artırsın'
+            db.commit()
+            continue
         try:
             jpeg = b''.join(storage_for_key(sc.crop_key).stream(sc.crop_key, db))
+            _usage['in'] = _usage['out'] = 0
             reading, by = read_card(key, jpeg, slots)
+            _add_usage(db, 1, _usage['in'], _usage['out'])
         except Exception as ex:                              # noqa: BLE001 – şəbəkə/limit: kart gözləməyə qalır
             sc.error = str(ex)[:300]
             db.commit()

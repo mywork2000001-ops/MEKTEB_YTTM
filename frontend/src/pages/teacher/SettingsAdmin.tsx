@@ -145,7 +145,8 @@ function Health() {
   return (<>
     <section className="panel" style={{ marginBottom: 14 }}>
       <h2>{tt('Resurslar')} <small>{tt('pulsuz hostinq limitləri')}</small></h2>
-      {!r ? <Loading /> : <p className="small" style={{ margin: 0 }}>{tt('Baza')}: <b>{mb(r.db_bytes)}</b> / {mb(r.limits.neon_storage_bytes)} · {tt('fayllar')}: <b>{mb(r.files_bytes)}</b> ·         {tt('bu ay skan edilən kart')}: <b>{r.scans_month}</b> · {tt('Claude oxunuşu')}: <b>{r.claude_reads_month}</b></p>}
+      {!r ? <Loading /> : <p className="small" style={{ margin: 0 }}>{tt('Baza')}: <b>{mb(r.db_bytes)}</b> / {mb(r.limits.neon_storage_bytes)} · {tt('fayllar')}: <b>{mb(r.files_bytes)}</b> ·         {tt('bu ay skan edilən kart')}: <b>{r.scans_month}</b> · {tt('Claude oxunuşu')}: <b>{r.claude_reads_month}</b>
+        {r.ai_usage && <> · {tt('Süni intellekt bu ay')}: <b>{r.ai_usage.cards}</b> / {r.ai_usage.limit} {tt('kart')} · {tt('{n} token', { n: (r.ai_usage.in + r.ai_usage.out).toLocaleString() })}</>}</p>}
     </section>
     <section className="panel" style={{ marginBottom: 14 }}>
       <h2>{tt('Son fon işləri')} <small>{jobs?.length ?? 0}</small></h2>

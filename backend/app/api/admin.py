@@ -42,7 +42,10 @@ def resources(user: User = Depends(admin_only), db: Session = Depends(get_db)):
     m0 = dt.datetime.now(dt.timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     scans = db.scalar(select(func.count()).select_from(ExamScan).where(ExamScan.created_at >= m0)) or 0
     read = db.scalar(select(func.count()).select_from(ExamScan).where(ExamScan.updated_at >= m0, (ExamScan.read_by.like('claude%') | ExamScan.read_by.like('openrouter%')))) or 0
+    from ..config import settings
+    from ..domain.ksq_reader import month_usage
     return {'db_bytes': size, 'files_bytes': DbStorage.used_bytes(db), 'scans_month': scans, 'claude_reads_month': read,
+            'ai_usage': {**month_usage(db), 'limit': settings().ksq_monthly_limit},
             'limits': {'neon_storage_bytes': 512 * 1024 * 1024, 'render_hours': 750}}
 SKIP = {'file_blobs'}                               # fayllar ayrıca (həcmli) – ixraca daxil deyil
 
