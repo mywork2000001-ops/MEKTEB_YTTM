@@ -194,7 +194,9 @@ def api_key_for(db: Session, teacher_id: int | None) -> dict | None:
         if prov == 'anthropic':
             return {'provider': 'anthropic', 'key': key, 'model': MODEL}
         m = s.get('model') or ''
-        ok = m.startswith('@preset/') or any(v in m.lower() for v in VISION)       # OpenRouter preseti – müəllimin seçimi, olduğu kimi
+        # OpenRouter preseti – müəllimin seçimi, olduğu kimi; «claude-sonnet-5-5» kimi «/»-suz ad OpenRouter-də yoxdur
+        # (13.10.2026: 31 kart «not a valid model ID» ilə gözləyirdi) – standart model
+        ok = m.startswith('@preset/') or ('/' in m and any(v in m.lower() for v in VISION))
         return {'provider': 'openrouter', 'key': key, 'model': m if ok else OR_DEFAULT}
     if (k := own(t)):
         return k

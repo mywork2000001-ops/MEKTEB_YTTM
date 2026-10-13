@@ -455,3 +455,19 @@ def test_ai_usage_counter_and_limit(world, monkeypatch):
     scans = admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans']
     assert sorted(x['status'] for x in scans) == ['graded', 'pending'] and any('limit' in (x['error'] or '') for x in scans)
     assert admin.get('/api/admin/resources').json()['ai_usage']['cards'] == 1
+
+
+def test_openrouter_model_without_vendor_prefix(world):
+    """OpenRouter + «claude-sonnet-5-5» (prefikssiz) → standart model; əks halda kartlar «not a valid model ID» ilə gözləyir."""
+    from app import ai
+    from app.domain import ksq_reader as R
+    from app.models import User
+    from app.security import secret_encrypt
+    assert ai.fix_provider('openrouter', 'claude-sonnet-5-5', 'sk-or-v1-x') == ('openrouter', ai.OR_CLAUDE)
+    assert ai.fix_provider('openrouter', 'google/gemini-2.5-pro', 'sk-or-v1-x') == ('openrouter', 'google/gemini-2.5-pro')
+    _, S = world
+    with S() as db:
+        u = db.query(User).filter_by(login='admin').first()
+        u.ai_settings = {'provider': 'openrouter', 'model': 'claude-sonnet-5-5', 'key': secret_encrypt('sk-or-v1-test-key-123')}
+        db.commit()
+        assert R.api_key_for(db, u.id)['model'] == R.OR_DEFAULT

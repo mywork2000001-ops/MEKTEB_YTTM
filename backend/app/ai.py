@@ -81,6 +81,8 @@ def fix_provider(provider: str, model: str, key: str | None) -> tuple[str, str]:
     k = (key or '').strip()
     if k.startswith('sk-or-') and provider != 'openrouter':
         return 'openrouter', model if '/' in (model or '') or (model or '').startswith('@preset/') else OR_CLAUDE
+    if provider == 'openrouter' and model and '/' not in model and not model.startswith('@preset/'):
+        return 'openrouter', OR_CLAUDE                      # «claude-sonnet-5-5» OpenRouter-də yoxdur (13.10.2026)
     if k.startswith('sk-ant-') and provider != 'anthropic':
         return 'anthropic', model if (model or '').startswith('claude') else 'claude-sonnet-5-5'
     return provider, model
