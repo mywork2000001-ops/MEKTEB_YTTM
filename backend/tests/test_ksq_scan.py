@@ -333,7 +333,7 @@ def test_openrouter_reader(world, monkeypatch):
                           [{'slot': 1, 'kind': 'mcq'}, {'slot': 2, 'kind': 'open'}])
     assert [g['value'] for g in got] == ['C', '3/7'] and by.endswith('+2+v') and len(sent) == 3      # şübhəli 2-ci xana – ikinci oxunuş; açıq xanalar – müstəqil yoxlama (başqa model)
     assert sorted(x[1]['model'] for x in sent).count(R.VERIFY_MODEL) == 1
-    url, body, headers = sent[0]
+    url, body, headers = next(x for x in sent if x[1]['model'] != R.VERIFY_MODEL)      # birinci oxunuş və yoxlama paraleldir – sıra təsadüfidir
     assert url == R.OPENROUTER and headers['Authorization'] == 'Bearer sk-or' and body['model'] == 'google/gemini-2.5-flash'
     assert body['messages'][1]['content'][1]['image_url']['url'].startswith('data:image/jpeg;base64,')
     assert body['tool_choice']['function']['name'] == 'submit_card'
