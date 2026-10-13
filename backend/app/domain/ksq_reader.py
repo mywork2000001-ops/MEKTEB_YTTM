@@ -30,7 +30,8 @@ AI_STOP = {AI_CREDIT, AI_KEY}
 
 
 class AiError(RuntimeError):
-    """Provayderin cavabı: kodu (ai:credit …) kart xətası kimi yazılır."""
+    """Provayderin cavabı: kodu (ai:credit …) kart xətası kimi yazılır. day – günlük kvota (Gemini «PerDay»)."""
+    day = False
 
 
 def _ai_error(provider: str, status: int, msg: str | None, text: str) -> RuntimeError:
@@ -40,7 +41,9 @@ def _ai_error(provider: str, status: int, msg: str | None, text: str) -> Runtime
     if status in (401, 403):
         return AiError(AI_KEY)
     if status == 429:
-        return AiError(AI_RATE)
+        ex = AiError(AI_RATE)
+        ex.day = 'perday' in low.replace(' ', '').replace('_', '') or 'per day' in low
+        return ex
     return RuntimeError(f'{provider} {status}: {(msg or text[:120])[:160]}')
 
 
@@ -224,8 +227,8 @@ def call_gemini(key: str, model: str, jpeg: bytes | list[bytes], slots: list[dic
     for attempt in range(2):                             # pulsuz kvota: dəqiqəlik limit (429) – bir dəfə gözləyib təkrar
         with httpx.Client(timeout=TIMEOUT) as c:
             r = c.post(GEMINI.format(model=model), json=body, headers={'x-goog-api-key': key, 'Content-Type': 'application/json'})
-        if r.status_code == 429 and attempt == 0:
-            time.sleep(20)
+        if r.status_code == 429 and attempt == 0 and getattr(_ctx, 'solo', True) and 'perday' not in r.text.lower().replace('_', ''):
+            time.sleep(20)                               # başqa açar varsa – gözləmədən növbəti açara (key_pool)
             continue
         break
     if r.status_code != 200:
@@ -386,40 +389,136 @@ def read_card(key, jpeg: bytes, slots: list[dict], thorough: bool = False,
     return [res[k] for k in sorted(res)], by
 
 
-def api_key_for(db: Session, teacher_id: int | None) -> dict | None:
-    """Kart oxumaq üçün bağlantı: MK_ANTHROPIC_API_KEY → müəllimin → adminin «Süni intellekt» açarı (Anthropic və ya OpenRouter)."""
-    from ..models import Role, User
-    from ..security import secret_decrypt
-    if settings().anthropic_api_key:
-        return {'provider': 'anthropic', 'key': settings().anthropic_api_key, 'model': MODEL}
-    t = db.get(User, teacher_id) if teacher_id else None
+# ---------------------------------------------------------------- açar hovuzu və avtomatik keçid (docs/kart-oxuyucu-acarlar-promtu.md)
+SCAN_PROVIDERS = ('gemini', 'openrouter', 'anthropic')      # şəkil oxuyan və funksiya çağıran provayderlər
+SCAN_KEYS_MAX = 5
+COOLDOWN = {AI_RATE: 65, AI_CREDIT: 6 * 3600, AI_KEY: 24 * 3600}
+DAY_COOLDOWN = 3 * 3600                                     # Gemini günlük kvota (Sakit okean gecə yarısı yenilənir)
+_ctx = __import__('threading').local()                       # solo – hovuzda başqa açar yoxdur (Gemini 429-da gözlə)
+_cool: dict[str, dict] = {}                                  # açarın izi → {until, code}
+_today: dict[str, list] = {}                                 # açarın izi → [tarix, bu gün oxunan kart]
 
-    def own(u) -> dict | None:
-        s = (u.ai_settings or {}) if u else {}
-        key = secret_decrypt(s.get('key')) if s.get('provider') in ('anthropic', 'openrouter', 'gemini') else None
-        if not key:
-            return None
-        from ..ai import fix_provider
-        prov, _ = fix_provider(s['provider'], s.get('model') or '', key)       # sk-or- açarı «Anthropic» seçilibsə
-        if prov == 'gemini':                                                # Google AI Studio açarı (pulsuz kvota)
-            m = s.get('model') or ''
-            return {'provider': 'gemini', 'key': key, 'model': m if m.startswith('gemini-') else GM_DEFAULT}
-        if prov == 'anthropic':
-            return {'provider': 'anthropic', 'key': key, 'model': MODEL}
-        m = s.get('model') or ''
-        # OpenRouter preseti – müəllimin seçimi, olduğu kimi; «claude-sonnet-5-5» kimi «/»-suz ad OpenRouter-də yoxdur
-        # (13.10.2026: 31 kart «not a valid model ID» ilə gözləyirdi) – standart model
-        ok = m.startswith('@preset/') or ('/' in m and any(v in m.lower() for v in VISION))
-        return {'provider': 'openrouter', 'key': key, 'model': m if ok else OR_DEFAULT}
-    if (k := own(t)):
-        return k
+
+def fingerprint(c: dict) -> str:
+    """Açarın izi (sha256-nın başı) – açarın özü yaddaşda/loqda saxlanmır."""
+    import hashlib
+    return hashlib.sha256(f"{c['provider']}:{c['key']}".encode()).hexdigest()[:16]
+
+
+def _conn_of(prov: str, model: str, key: str) -> dict:
+    """Provayder + model + açar → oxuyucu bağlantısı (model şəkil oxumursa – standart)."""
+    from ..ai import fix_provider
+    prov, _ = fix_provider(prov, model or '', key)                    # sk-or- açarı «Anthropic» seçilibsə
+    m = model or ''
+    if prov == 'gemini':                                                # Google AI Studio açarı (pulsuz kvota)
+        return {'provider': 'gemini', 'key': key, 'model': m if m.startswith('gemini-') else GM_DEFAULT}
+    if prov == 'anthropic':
+        return {'provider': 'anthropic', 'key': key, 'model': MODEL}
+    # OpenRouter preseti – müəllimin seçimi, olduğu kimi; «claude-sonnet-5-5» kimi «/»-suz ad OpenRouter-də yoxdur
+    # (13.10.2026: 31 kart «not a valid model ID» ilə gözləyirdi) – standart model
+    ok = m.startswith('@preset/') or ('/' in m and any(v in m.lower() for v in VISION))
+    return {'provider': 'openrouter', 'key': key, 'model': m if ok else OR_DEFAULT}
+
+
+def scan_keys(u) -> list[dict]:
+    """İstifadəçinin kart oxuyucusu açarları (Tənzimləmələr → Kart oxuyucusu), sıra ilə; söndürülmüş və boş – yox."""
+    from ..security import secret_decrypt
+    out = []
+    for i, k in enumerate(((u.ai_settings or {}).get('scan_keys') or [])[:SCAN_KEYS_MAX] if u else []):
+        key = secret_decrypt(k.get('key')) if k and k.get('on', True) and k.get('provider') in SCAN_PROVIDERS else None
+        if key:
+            out.append({**_conn_of(k['provider'], k.get('model') or '', key), 'label': f'#{i + 1}'})
+    return out
+
+
+def _general(u) -> dict | None:
+    """Ümumi «Süni intellekt» açarı (gündəlik planlar) – kart açarlarından sonra ehtiyat."""
+    from ..security import secret_decrypt
+    s = (u.ai_settings or {}) if u else {}
+    key = secret_decrypt(s.get('key')) if s.get('provider') in SCAN_PROVIDERS else None
+    return {**_conn_of(s['provider'], s.get('model') or '', key), 'label': 'ümumi'} if key else None
+
+
+def key_pool(db: Session, teacher_id: int | None) -> list[dict]:
+    """Kart oxumaq üçün açarlar, sıra ilə: MK_ANTHROPIC_API_KEY → müəllimin kart açarları (1–5) → məktəb adminin kart açarları.
+    Kart açarı varsa – YALNIZ onlar (gündəlik plan / rəy açarının kvotası paylaşılmır). Heç biri yoxdursa – ehtiyat:
+    müəllimin, sonra adminin gündəlik plan açarı (label «ümumi»). Eyni açar bir dəfə."""
+    from ..models import Role, User
+    pool: list[dict | None] = []
+    if settings().anthropic_api_key:
+        pool.append({'provider': 'anthropic', 'key': settings().anthropic_api_key, 'model': MODEL, 'label': 'server'})
+    t = db.get(User, teacher_id) if teacher_id else None
     q = select(User).where(User.role == Role.admin)
     if t is not None and t.school_id:
         q = q.where(User.school_id == t.school_id)
-    for a in db.scalars(q):
-        if (k := own(a)):
-            return k
+    admins = [a for a in db.scalars(q) if t is None or a.id != t.id]
+    pool += scan_keys(t)
+    for a in admins:
+        pool += [{**k, 'label': 'admin ' + k['label']} for k in scan_keys(a)]
+    if len(pool) == 0:                                       # ayrıca kart açarı yoxdur – plan açarı (keçid dövrü)
+        pool.append(_general(t))
+        for a in admins:
+            g = _general(a)
+            pool.append({**g, 'label': 'admin ümumi'} if g else None)
+    seen, out = set(), []
+    for c in pool:
+        if c and (fp := fingerprint(c)) not in seen:
+            seen.add(fp)
+            out.append(c)
+    return out
+
+
+def api_key_for(db: Session, teacher_id: int | None) -> dict | None:
+    """Hovuzun ilk açarı (bağlantı varmı?) – oxunuş özü hovuzla gedir (_read_one)."""
+    pool = key_pool(db, teacher_id)
+    return pool[0] if pool else None
+
+
+def cooling(c: dict) -> dict | None:
+    """Açar dincdədirsə – {until, code}; vaxtı keçibsə – None."""
+    import time
+    st = _cool.get(fingerprint(c))
+    if st and st['until'] > time.time():
+        return st
     return None
+
+
+def cool(c: dict, ex: Exception) -> None:
+    """Açarı limit/balans/açar xətasına görə müvəqqəti kənara qoy – növbəti kart növbəti açarla oxunur."""
+    import time
+    code = str(ex)
+    sec = DAY_COOLDOWN if getattr(ex, 'day', False) else COOLDOWN.get(code, 60)
+    _cool[fingerprint(c)] = {'until': time.time() + sec, 'code': code, 'day': bool(getattr(ex, 'day', False))}
+    log.warning('kart açarı %s (%s) dincə qoyuldu: %s, %d s', c.get('label'), c['provider'], code, sec)
+
+
+def uncool(c: dict | None = None) -> None:
+    if c is None:
+        _cool.clear()
+    else:
+        _cool.pop(fingerprint(c), None)
+
+
+def _counted(c: dict) -> None:
+    import datetime as _dt
+    d = _dt.date.today().isoformat()
+    cur = _today.get(fingerprint(c))
+    _today[fingerprint(c)] = [d, (cur[1] if cur and cur[0] == d else 0) + 1]
+
+
+def today_count(c: dict) -> int:
+    import datetime as _dt
+    cur = _today.get(fingerprint(c))
+    return cur[1] if cur and cur[0] == _dt.date.today().isoformat() else 0
+
+
+def pool_error(db: Session, teacher_id: int | None) -> str | None:
+    """Bütün açarlar dincdədirsə – ən tez bərpa olunanın kodu; işləyən açar varsa – None."""
+    pool = key_pool(db, teacher_id)
+    st = [cooling(c) for c in pool]
+    if not pool or not all(st):
+        return None
+    return min(st, key=lambda x: x['until'])['code']
 
 
 def month_usage(db: Session) -> dict:
@@ -474,7 +573,7 @@ def read_pending(db: Session, exam_id: int | None = None, limit: int = 20, ids: 
         finally:
             with _busy_lock:
                 _busy.discard(sc.id)
-        if sc.error in AI_STOP or sc.error == AI_LIMIT:     # balans/açar/limit – qalan kartlara boş sorğu getmir, gözləyirlər
+        if (sc.error or '').startswith('ai:'):           # bütün açarlar limitdə / aylıq limit – qalan kartlar gözləyir
             break
     return n
 
@@ -484,8 +583,8 @@ def _read_one(db, sc, apply, storage_for_key, Exam, ExamVariant, TeachingAssignm
     e = db.get(Exam, sc.exam_id)
     ta = db.get(TeachingAssignment, e.assignment_id) if e else None
     v = db.get(ExamVariant, (sc.exam_id, sc.student_id))
-    key = api_key_for(db, ta.teacher_id if ta else None)
-    if not (e and v and key):
+    pool = key_pool(db, ta.teacher_id if ta else None)
+    if not (e and v and pool):
         return 0
     slots = [{'slot': x['slot'], 'kind': x['kind']} for x in sorted(v.questions, key=lambda x: x['slot'])]
     if month_usage(db)['cards'] >= settings().ksq_monthly_limit:           # aylıq limit – pul getməsin, kart gözləyir
@@ -494,19 +593,43 @@ def _read_one(db, sc, apply, storage_for_key, Exam, ExamVariant, TeachingAssignm
         return 0
     try:
         jpeg = b''.join(storage_for_key(sc.crop_key).stream(sc.crop_key, db))
-        _usage['in'] = _usage['out'] = 0
-        keep = {int(r['slot']): r for r in (sc.reading or []) if r.get('by') == 'teacher'} if thorough else None
-        reading, by = read_card(key, jpeg, slots, thorough=thorough, keep=keep)
-        _add_usage(db, 1, _usage['in'], _usage['out'])
-    except Exception as ex:                              # noqa: BLE001 – şəbəkə/limit: kart gözləməyə qalır
-        sc.error = str(ex)[:300]                         # AiError – qısa kod (ai:credit …)
+    except Exception as ex:                              # noqa: BLE001
+        sc.error = str(ex)[:300]
         db.commit()
-        log.warning('kart oxunmadı (scan %s): %s', sc.id, ex)
+        log.warning('kart şəkli açılmadı (scan %s): %s', sc.id, ex)
         return 0
+    keep = {int(r['slot']): r for r in (sc.reading or []) if r.get('by') == 'teacher'} if thorough else None
+    live = [c for c in pool if not cooling(c)]
+    if not live:                                          # bütün açarlar limitdə – kart gözləyir (ən tez bərpa olunanın kodu)
+        sc.error = min((cooling(c) for c in pool), key=lambda x: x['until'])['code']
+        db.commit()
+        return 0
+    reading, by, key, err = None, '', None, None
+    for i, c in enumerate(live):                         # avtomatik keçid: limit/balans/açar xətası – növbəti açar
+        _ctx.solo = i == len(live) - 1
+        _usage['in'] = _usage['out'] = 0
+        try:
+            reading, by = read_card(c, jpeg, slots, thorough=thorough, keep=keep)
+            key = c
+            break
+        except AiError as ex:
+            cool(c, ex)
+            err = ex
+        except Exception as ex:                          # noqa: BLE001 – şəbəkə / 5xx: növbəti açar, bu açar dincə qoyulmur
+            err = ex
+            log.warning('kart oxunmadı (scan %s, açar %s): %s', sc.id, c.get('label'), ex)
+    if key is None:
+        sc.error = str(err)[:300]                        # AiError – qısa kod (ai:credit …)
+        db.commit()
+        return 0
+    _add_usage(db, 1, _usage['in'], _usage['out'])
+    _counted(key)
     if thorough and sc.reading:                              # əvvəlki oxunuş tarixçəyə
         sc.history = [*(sc.history or []), {'at': now_iso(), 'reading': sc.reading, 'points': sc.points, 'read_by': sc.read_by}][-5:]
     sc.reading, sc.error = reading, None
-    sc.read_by = ({'anthropic': 'claude'}.get(_conn(key)['provider'], _conn(key)['provider']) + ('+diq' if thorough else '+2' if '+' in by else ''))[:20]
+    lbl = key.get('label') or ''
+    sc.read_by = ({'anthropic': 'claude'}.get(key['provider'], key['provider']) + (lbl if lbl.startswith('#') else '')
+                  + ('+diq' if thorough else '+2' if '+' in by else ''))[:20]
     apply(db, e, sc)
     db.commit()
     return 1

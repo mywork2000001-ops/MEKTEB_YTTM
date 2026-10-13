@@ -377,7 +377,7 @@ def make_review(body: ReviewIn, user: User = Depends(staff), db: Session = Depen
     from .lessonplans import ai_config
     if body.scope == 'group' and body.level not in LEVELS:
         raise HTTPException(400, 'Səviyyə qrupunu seçin (Zəif, Orta, Güclü)')
-    cfg = ai_config(user)
+    cfg = ai_config(user, 'review')                 # rəy – ayrıca açar (yoxdursa – plan açarı)
     code = Coder()
     title, ctx = _context(db, user, body, code)
     db.commit()

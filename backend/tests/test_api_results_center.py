@@ -109,7 +109,7 @@ def test_results_center(world, clock, monkeypatch):
                 'sebebler': [], 'tovsiyeler': [{'ne': 'Sınaqda iştirak', 'kim': 'şagird', 'muddet': '2 həftə'}],
                 'valideyne': 'Ş-1 yaxşı oxuyur', 'diqqet': []}
     monkeypatch.setattr('app.api.results_center.ai.complete_json', fake)
-    monkeypatch.setattr('app.api.lessonplans.ai_config', lambda u: {'provider': 'gemini', 'model': 'm', 'api_key': 'k'})
+    monkeypatch.setattr('app.api.lessonplans.ai_config', lambda u, purpose='plan': {'provider': 'gemini', 'model': 'm', 'api_key': 'k'})
     r = admin.post('/api/results-center/ai-review', json={'scope': 'student', 'student_id': st[0]['id']})
     assert r.status_code == 200, r.text
     assert st[0]['full_name'] not in sent['text'] and 'Ş-1' in sent['text']

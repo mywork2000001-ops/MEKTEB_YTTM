@@ -58,6 +58,12 @@ def apply(db: Session, e: Exam, sc: ExamScan) -> None:
     db.add(score)
 
 
+def _ai_error(db: Session, ta, scans: list[ExamScan]) -> str | None:
+    from ..domain.ksq_reader import AI_LIMIT, pool_error
+    err = next((sc.error for sc in scans if sc.status == 'pending' and (sc.error or '').startswith('ai:')), None)
+    return err if err in (None, AI_LIMIT) else pool_error(db, ta.teacher_id)
+
+
 def _out(sc: ExamScan, name: str | None) -> dict:
     return {'id': sc.id, 'student_id': sc.student_id, 'full_name': name, 'code': sc.code, 'status': sc.status, 'points': sc.points,
             'flagged': sc.flagged or [], 'reading': sc.reading, 'marks': sc.marks, 'read_by': sc.read_by, 'error': sc.error,
@@ -320,7 +326,7 @@ def reread(ta_id: int, exam_id: int, bg: BackgroundTasks, user: User = Depends(s
 
 @router.get('/{ta_id}/{exam_id}')
 def list_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
-    from ..domain.ksq_reader import api_key_for
+    from ..domain.ksq_reader import key_pool
     ta, e = _exam(db, user, ta_id, exam_id)
     names = {s.id: s.full_name for s in roster(db, ta)}
     scans = list(db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id)))
@@ -330,9 +336,12 @@ def list_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sessio
             'missing': sorted((names.get(sid) or '—') for sid in variants if sid not in have),
             'counts': {'variants': len(variants), 'scanned': len(scans), 'graded': sum(sc.status == 'graded' for sc in scans),
                        'pending': sum(sc.status == 'pending' for sc in scans), 'flagged': sum(bool(sc.flagged) for sc in scans)},
-            'claude': bool(api_key_for(db, ta.teacher_id)),
+            'claude': bool(pool := key_pool(db, ta.teacher_id)),
+            # ayrıca kart açarı yoxdur – gündəlik plan açarı işləyir (Tənzimləmələr → Süni intellekt → Kart oxuyucusu)
+            'scan_fallback': bool(pool) and all('ümumi' in (c.get('label') or '') for c in pool),
             # süni intellekt xətası (ai:credit / ai:key / ai:rate / ai:limit) – interfeysdə BİR dəfə, kart sətrində yox
-            'ai_error': next((sc.error for sc in scans if sc.status == 'pending' and (sc.error or '').startswith('ai:')), None),
+            # bütün açarlar limitdədirsə – ən tez bərpa olunanın kodu; açar bərpa olubsa – kartlar özü oxunacaq, banner yox
+            'ai_error': _ai_error(db, ta, scans),
             # vərəqlər çap düzəlişindən (13.10.2026) əvvəl çap olunub – suallar kəsilmiş ola bilər
             'printed_old': bool(db.scalar(select(ExamVariant.exam_id).where(ExamVariant.exam_id == e.id, ExamVariant.printed_at.is_not(None),
                                                                              ExamVariant.printed_at < PRINT_FIX_AT).limit(1)))}

@@ -600,7 +600,7 @@ def make_review(sid: int, body: AiIn, user: User = Depends(staff), db: Session =
     d = compute(db, s, body.link_id, body.period, body.class_id)
     if d['hidden']:
         raise HTTPException(409, f'Cavab azdır ({d["n"]} < {s.min_group}) – rəy üçün kifayət deyil')
-    cfg = ai_config(user)
+    cfg = ai_config(user, 'review')                 # rəy – ayrıca açar (yoxdursa – plan açarı)
     titles = {x['key']: x['title'] for x in s.sections}
     ctx = {'cavab sayı': d['n'], 'sorğu': s.title,
            'əhatə': (f"sinif {next((c['name'] for c in d['classes'] if c['id'] == body.class_id), '?')} – bu sinif üçün təlim strategiyasını dəyiş"

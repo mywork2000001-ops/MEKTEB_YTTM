@@ -328,7 +328,7 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
 const aiErrorText = (code: string) => ({
   'ai:credit': tt('OpenRouter balansı bitib – openrouter.ai-də kredit əlavə edin və ya açarın limitini artırın. Kartlar gözləyir, balans artanda özü oxunacaq.'),
   'ai:key': tt('Süni intellekt açarı qəbul olunmur – Tənzimləmələr → «Süni intellekt» bölməsində açarı yoxlayın.'),
-  'ai:rate': tt('Süni intellektə çox sorğu getdi – bir neçə dəqiqədən sonra oxunuş özü davam edəcək.'),
+  'ai:rate': tt('Bütün kart açarları limitdədir – limit bərpa olunanda kartlar özü oxunacaq. Daha çox açar əlavə edə bilərsiniz (5-ə qədər).'),
   'ai:limit': tt('Aylıq süni intellekt limiti dolub – kartlar gözləyir (admin limiti artıra bilər).'),
 } as Record<string, string>)[code] || code
 
@@ -403,7 +403,7 @@ function OnlineKsq({ ta, examId }: { ta: number; examId: number }) {
 
 type Scan = { id: number; student_id: number; full_name: string | null; code: string; status: 'pending' | 'graded' | 'error'; points: number | null
   flagged: number[]; reading: { slot: number; value: string | null; confidence: number | null; alt?: string | null; alts?: string[] }[] | null; marks: number[] | null; error: string | null; read_by?: string | null; rescans: number; lost: number[]; n: number | null }
-type ScanList = { scans: Scan[]; missing: string[]; claude: boolean; printed_old?: boolean; ai_error?: string | null; counts: { variants: number; scanned: number; graded: number; pending: number; flagged: number } }
+type ScanList = { scans: Scan[]; missing: string[]; claude: boolean; printed_old?: boolean; ai_error?: string | null; scan_fallback?: boolean; counts: { variants: number; scanned: number; graded: number; pending: number; flagged: number } }
 const SCAN_TONE: Record<string, 'ok' | 'warn' | 'bad'> = { graded: 'ok', pending: 'warn', error: 'bad' }
 
 /** Cavab kartlarının skanı: şəkil / PDF yüklə → QR ilə şagird → oxunuş → bal jurnala özü yazılır; şübhəli xana – sarı, müəllim düzəldir. */
@@ -477,7 +477,8 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
       {cam && <ScanCamera url={`/api/exam-scans/${ta}/${examId}/upload`} replaceAll={again} onClose={() => { setCam(false); reload() }} onSent={reload} />}
       <ErrorBox error={err} />
       {d && !d.claude && <p className="small" style={{ margin: '8px 0 0', color: 'var(--warn)' }}>{tt('Süni intellekt bağlantısı yoxdur: kartlar oxunmağı gözləyəcək. Tənzimləmələr → «Süni intellekt» → Google Gemini (pulsuz açar: aistudio.google.com), OpenRouter və ya Anthropic açarını daxil edin.')}</p>}
-      {d?.ai_error && <div className="kverdict warn">⚠ {aiErrorText(d.ai_error)}</div>}
+      {d?.ai_error && <div className="kverdict warn">⚠ {aiErrorText(d.ai_error)} <a href="/settings?tab=ai&ai=scan">{tt('Kart oxuyucusunun açarları')} ›</a></div>}
+      {d?.scan_fallback && <p className="small muted" style={{ margin: '8px 0 0' }}>ℹ {tt('Kartları gündəlik plan açarı oxuyur. Kart oxuyucusu üçün ayrıca açarlar qoşun (5-ə qədər, limit bitəndə avtomatik keçid)')}: <a href="/settings?tab=ai&ai=scan">{tt('Tənzimləmələr → Süni intellekt')}</a></p>}
       {c && <p className="small" style={{ margin: '8px 0 4px' }}>{tt('Skan: {a}/{b} · yoxlanılıb: {c} · oxunmağı gözləyir: {p}', { a: c.scanned, b: c.variants, c: c.graded, p: c.pending })}
         {c.flagged > 0 && <> · <b style={{ color: 'var(--warn)' }}>{tt('baxılmalı: {n}', { n: c.flagged })}</b></>}</p>}
       {d && d.missing.length > 0 && <p className="small muted" style={{ margin: '0 0 6px' }}>{tt('Kartı yoxdur')}: {d.missing.join(', ')}</p>}

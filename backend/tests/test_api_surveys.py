@@ -209,7 +209,7 @@ def test_ai_review(world, monkeypatch):
     sv = admin.post('/api/surveys', json={'title': 'Rəy'}).json()
     admin.post(f'/api/surveys/{sv["id"]}/status', json={'status': 'open'})
     tok = sv['links'][0]['token']
-    monkeypatch.setattr('app.api.lessonplans.ai_config', lambda u: {'provider': 'x', 'model': 'm-1', 'api_key': 'k'})
+    monkeypatch.setattr('app.api.lessonplans.ai_config', lambda u, purpose='plan': {'provider': 'x', 'model': 'm-1', 'api_key': 'k'})
     seen = {}
 
     def fake(cfg, system, user):

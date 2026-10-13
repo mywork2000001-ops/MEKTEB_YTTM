@@ -7,6 +7,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import re
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -42,19 +43,36 @@ def header_school(user: User) -> str:
 DAYS_FULL = ['Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə', 'Bazar']
 
 
-# ---------------------------------------------------------------- müəllimin API açarı
-def _ai_out(user: User) -> dict:
+# ---------------------------------------------------------------- müəllimin API açarları: təyinat üzrə ayrıca (docs/kart-oxuyucu-acarlar-promtu.md)
+# plan – gündəlik plan (ai_settings kök sahələri, geriyə uyğun); review – pedaqoji rəy və sorğu rəyi (ai_settings.review);
+# kart oxuyucusu – api/scan_keys.py (ai_settings.scan_keys, 5 açar)
+Purpose = Literal['plan', 'review']
+AI_FIELDS = ('provider', 'model', 'base_url', 'key')
+
+
+def _ai_part(user: User, purpose: str) -> dict:
     s = user.ai_settings or {}
+    return (s.get('review') or {}) if purpose == 'review' else {k: s.get(k) for k in AI_FIELDS}
+
+
+def _ai_out(user: User, purpose: str = 'plan') -> dict:
+    s = _ai_part(user, purpose)
     key = secret_decrypt(s.get('key'))
-    return {'provider': s.get('provider'), 'model': s.get('model'), 'base_url': s.get('base_url'),
+    plan_key = bool(secret_decrypt((user.ai_settings or {}).get('key')))
+    return {'purpose': purpose, 'provider': s.get('provider'), 'model': s.get('model'), 'base_url': s.get('base_url'),
             'has_key': bool(key), 'key_mask': ('••••' + key[-4:]) if key and len(key) > 8 else ('••••' if key else None),
+            'fallback_plan': purpose == 'review' and not key and plan_key,     # rəy açarı yoxdur – plan açarı işləyir
             'providers': [{'id': k, 'label': v['label'], 'models': v['models'], 'key_url': v.get('key_url'),
                            'hint': v.get('hint'), 'custom': v['base'] is None} for k, v in ai.PROVIDERS.items()]}
 
 
-def ai_config(user: User) -> dict:
-    s = user.ai_settings or {}
+def ai_config(user: User, purpose: str = 'plan') -> dict:
+    """Təyinatın bağlantısı. Rəy açarı yoxdursa – gündəlik plan açarı (ehtiyat, mövcud müəllimlərdə heç nə qırılmasın)."""
+    s = _ai_part(user, purpose)
     key = secret_decrypt(s.get('key'))
+    if purpose == 'review' and not key:
+        s = _ai_part(user, 'plan')
+        key = secret_decrypt(s.get('key'))
     if not s.get('provider') or not key or not s.get('model'):
         raise HTTPException(400, 'Süni intellekt qoşulmayıb: Tənzimləmələr → «Süni intellekt» bölməsində API açarınızı daxil edin')
     if s['provider'] not in ai.PROVIDERS:
@@ -69,16 +87,31 @@ class AiIn(BaseModel):
     base_url: str | None = Field(None, max_length=300)
 
 
+def _ai_save(user: User, purpose: str, part: dict | None) -> None:
+    """Yalnız bu təyinatın sahələri dəyişir – digər təyinatlar, kart açarları və məktəb başlığı toxunulmaz qalır."""
+    s = {k: v for k, v in (user.ai_settings or {}).items()}
+    if purpose == 'review':
+        s.pop('review', None)
+        if part:
+            s['review'] = part
+    else:
+        for k in AI_FIELDS:
+            s.pop(k, None)
+        s.update(part or {})
+    s = {k: v for k, v in s.items() if v not in (None, [], {})}
+    user.ai_settings = s or None
+
+
 @router.get('/ai/settings')
-def get_ai(user: User = Depends(staff)):
-    return _ai_out(user)
+def get_ai(purpose: Purpose = 'plan', user: User = Depends(staff)):
+    return _ai_out(user, purpose)
 
 
 @router.put('/ai/settings')
-def put_ai(body: AiIn, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+def put_ai(body: AiIn, purpose: Purpose = 'plan', user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
     if body.provider not in ai.PROVIDERS:
         raise HTTPException(400, 'Naməlum provayder')
-    old = dict(user.ai_settings or {})
+    old = _ai_part(user, purpose)
     base = None
     if ai.PROVIDERS[body.provider]['base'] is None:
         if not body.base_url:
@@ -96,25 +129,23 @@ def put_ai(body: AiIn, user: User = Depends(settings_unlocked), db: Session = De
     prov, mdl = ai.fix_provider(body.provider, body.model.strip(), key or secret_decrypt(enc))   # açarın növünə görə düzəliş
     if prov != body.provider:
         base = None
-    user.ai_settings = {'provider': prov, 'model': mdl, 'base_url': base, 'key': enc,
-                        'header_school': old.get('header_school')}
-    audit(db, user, 'update', 'ai_settings', user.id, provider=body.provider, model=body.model)
+    _ai_save(user, purpose, {'provider': prov, 'model': mdl, 'base_url': base, 'key': enc})
+    audit(db, user, 'update', 'ai_settings', user.id, purpose=purpose, provider=body.provider, model=body.model)
     db.commit()
-    return _ai_out(user)
+    return _ai_out(user, purpose)
 
 
 @router.delete('/ai/settings')
-def del_ai(user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
-    hs = (user.ai_settings or {}).get('header_school')
-    user.ai_settings = {'header_school': hs} if hs else None
-    audit(db, user, 'delete', 'ai_settings', user.id)
+def del_ai(purpose: Purpose = 'plan', user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    _ai_save(user, purpose, None)
+    audit(db, user, 'delete', 'ai_settings', user.id, purpose=purpose)
     db.commit()
-    return _ai_out(user)
+    return _ai_out(user, purpose)
 
 
 @router.post('/ai/test')
-def test_ai(user: User = Depends(staff)):
-    cfg = ai_config(user)
+def test_ai(purpose: Purpose = 'plan', user: User = Depends(staff)):
+    cfg = ai_config(user, purpose)
     txt = ai.complete(cfg, 'Qısa cavab ver.', 'Yalnız bu sözü yaz: HAZIR', json_mode=False, max_tokens=400)
     return {'ok': True, 'reply': txt.strip()[:80], 'model': cfg['model']}
 

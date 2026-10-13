@@ -142,7 +142,7 @@ def test_claude_reader_flow(world, monkeypatch):
                     for s in key if s != 7]
         return [{'slot': s['slot'], 'value': key[s['slot']], 'confidence': 0.93} for s in slots]     # B: başqa model, açıq suallar
     monkeypatch.setattr(R, 'call', fake_call)
-    monkeypatch.setattr(R, 'api_key_for', lambda db, tid: 'sk-test')
+    monkeypatch.setattr(R, 'key_pool', lambda db, tid: [{'provider': 'anthropic', 'key': 'sk-test', 'model': R.MODEL}])
     r = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([a['qr']], 3), 'image/jpeg'))])
     assert r.status_code == 200 and len(r.json()['found']) == 1
     assert (R.MODEL, (), False) in calls and any(m == R.MODEL_2 and not z for m, _, z in calls)       # A + B (açıq suallar)
@@ -356,7 +356,7 @@ def test_openrouter_reader(world, monkeypatch):
         u.ai_settings = {'provider': 'openrouter', 'model': 'deepseek/deepseek-chat-v3.1', 'key': secret_encrypt('sk-or-test-123456')}
         db.commit()
         c = R.api_key_for(db, u.id)
-    assert c == {'provider': 'openrouter', 'key': 'sk-or-test-123456', 'model': R.OR_DEFAULT}
+    assert {k: c[k] for k in ('provider', 'key', 'model')} == {'provider': 'openrouter', 'key': 'sk-or-test-123456', 'model': R.OR_DEFAULT}
     sent = []
 
     class Resp:
@@ -505,7 +505,7 @@ def test_ai_usage_counter_and_limit(world, monkeypatch):
         R._count({'input_tokens': 1000, 'output_tokens': 200})
         return [{'slot': s['slot'], 'value': '1', 'confidence': 0.99} for s in slots]
     monkeypatch.setattr(R, 'call', fake)
-    monkeypatch.setattr(R, 'api_key_for', lambda db, tid: 'sk-ant-test')
+    monkeypatch.setattr(R, 'key_pool', lambda db, tid: [{'provider': 'anthropic', 'key': 'sk-ant-test', 'model': R.MODEL}])
     monkeypatch.setattr(settings(), 'ksq_monthly_limit', 1)
     admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([a['qr'], b['qr']]), 'image/jpeg'))])
     with world[1]() as db:
@@ -558,7 +558,7 @@ def test_thorough_reading_votes_and_keeps_teacher(world, monkeypatch):
             out.append({'slot': s, 'value': v, 'confidence': 0.95})
         return out
     monkeypatch.setattr(R, 'call', fake)
-    monkeypatch.setattr(R, 'api_key_for', lambda db, tid: 'sk-ant-test')
+    monkeypatch.setattr(R, 'key_pool', lambda db, tid: [{'provider': 'anthropic', 'key': 'sk-ant-test', 'model': R.MODEL}])
     admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([a['qr']]), 'image/jpeg'))])
     sc = admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'][0]
     admin.put(f'/api/exam-scans/{sc["id"]}/slot', json={'slot': 1, 'value': key[1]})          # müəllim düzəlişi
@@ -571,3 +571,76 @@ def test_thorough_reading_votes_and_keeps_teacher(world, monkeypatch):
     assert rd[s1]['value'] == key[s1]
     assert rd[s2]['confidence'] < R.LOW and rd[s2]['alt'] and s2 in sc['flagged']
     assert admin.post(f'/api/exam-scans/{ta}/{e["id"]}/thorough', params={'only_flagged': True}).json()['started'] == 1
+
+
+def test_scan_key_pool_rotation(world, monkeypatch):
+    """Kart oxuyucusu: 5 açara qədər; 1-ci açar limitdə (429) – kart həmin anda 2-ci açarla oxunur; hamısı tükənib – kart gözləyir.
+    Kart açarı varsa gündəlik plan açarı hovuzda yoxdur (docs/kart-oxuyucu-acarlar-promtu.md)."""
+    from app.domain import ksq_reader as R
+    from app.models import User
+    from app.security import secret_encrypt
+    admin, ta, e, pr = ksq(world)
+    _, S = world
+    R.uncool()
+    put = admin.put('/api/ai/scan-keys', json={'keys': [
+        {'provider': 'gemini', 'model': 'gemini-2.5-flash', 'api_key': 'AIza-first-key-0001'},
+        {'provider': 'gemini', 'model': 'gemini-2.5-flash', 'api_key': 'AIza-second-key-002'},
+        {'provider': 'gemini', 'api_key': 'AIza-second-key-002'},                 # təkrar açar – hovuzda bir dəfə
+        {'provider': None}]})
+    assert put.status_code == 200, put.text
+    out = put.json()
+    assert [k['has_key'] for k in out['keys']] == [True, True, True, False, False] and out['keys'][0]['key_mask'] == '••••0001'
+    assert 'AIza' not in put.text                                                   # açar geri göndərilmir
+    with S() as db:
+        u = db.query(User).filter_by(login='admin').first()
+        u.ai_settings = {**u.ai_settings, 'provider': 'openrouter', 'model': 'google/gemini-2.5-flash', 'key': secret_encrypt('sk-or-plan-key-123')}
+        db.commit()
+        pool = R.key_pool(db, u.id)
+    assert [c['key'] for c in pool] == ['AIza-first-key-0001', 'AIza-second-key-002']          # plan açarı yoxdur
+    used = []
+
+    def fake(key, model, jpeg, slots, only=None, text=None):
+        used.append(key)
+        if key == 'AIza-first-key-0001':
+            raise R._ai_error('Gemini', 429, 'Quota exceeded: GenerateRequestsPerMinutePerProjectPerModel-FreeTier', '')
+        return [{'slot': s['slot'], 'value': '1', 'confidence': 0.99} for s in slots]
+    monkeypatch.setattr(R, 'call_gemini', fake)
+    a = pr['sheets'][0]
+    admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([a['qr']]), 'image/jpeg'))])
+    sc = admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()
+    assert sc['scans'][0]['status'] == 'graded' and sc['scans'][0]['read_by'].startswith('gemini#2')
+    assert used[0] == 'AIza-first-key-0001' and 'AIza-second-key-002' in used and sc['ai_error'] is None
+    st = admin.get('/api/ai/scan-keys').json()['keys']
+    assert st[0]['status']['state'] == 'cooldown' and st[0]['status']['code'] == 'ai:rate' and st[1]['status']['today'] == 1
+    # hamısı tükənib – kart gözləyir, banner bir dəfə; sıfırlama – yenidən oxunur
+    monkeypatch.setattr(R, 'call_gemini', lambda *x, **k: (_ for _ in ()).throw(R._ai_error('Gemini', 429, 'GenerateRequestsPerDayPerProjectPerModel', '')))
+    b = pr['sheets'][1]
+    admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('q.jpg', photo([b['qr']]), 'image/jpeg'))])
+    sc = admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()
+    assert sorted(x['status'] for x in sc['scans']) == ['graded', 'pending'] and sc['ai_error'] == 'ai:rate'
+    assert R._cool[R.fingerprint(pool[1])]['day'] is True                         # günlük kvota – uzun fasilə
+    assert admin.post('/api/ai/scan-keys/reset').json()['keys'] == 2
+    R.uncool()
+
+
+def test_ai_purposes_separate(world):
+    """Gündəlik plan və rəy – ayrı açarlar; rəy açarı yoxdursa – plan açarı; bir təyinatı saxlamaq/silmək digərlərinə toxunmur."""
+    from app.api.lessonplans import ai_config
+    from app.models import User
+    admin = world[0]('admin')
+    assert admin.put('/api/ai/scan-keys', json={'keys': [{'provider': 'gemini', 'api_key': 'AIza-scan-key-00001'}]}).status_code == 200
+    assert admin.put('/api/ai/settings', json={'provider': 'gemini', 'model': 'gemini-2.5-flash', 'api_key': 'AIza-plan-key-00001'}).status_code == 200
+    r = admin.get('/api/ai/settings?purpose=review').json()
+    assert r['has_key'] is False and r['fallback_plan'] is True
+    with world[1]() as db:
+        u = db.query(User).filter_by(login='admin').first()
+        assert ai_config(u, 'review')['api_key'] == 'AIza-plan-key-00001'
+    assert admin.put('/api/ai/settings?purpose=review', json={'provider': 'openrouter', 'model': 'google/gemini-2.5-flash',
+                                                              'api_key': 'sk-or-review-key-01'}).status_code == 200
+    assert admin.delete('/api/ai/settings').status_code == 200                       # plan açarı silinir
+    with world[1]() as db:
+        u = db.query(User).filter_by(login='admin').first()
+        assert ai_config(u, 'review')['api_key'] == 'sk-or-review-key-01'
+        assert len(u.ai_settings['scan_keys']) == 1 and not u.ai_settings.get('key')
+    assert admin.get('/api/ai/settings').json()['has_key'] is False
+    assert admin.get('/api/ai/settings?purpose=review').json()['key_mask'] == '••••y-01'
