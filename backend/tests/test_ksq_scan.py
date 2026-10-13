@@ -644,3 +644,89 @@ def test_ai_purposes_separate(world):
         assert len(u.ai_settings['scan_keys']) == 1 and not u.ai_settings.get('key')
     assert admin.get('/api/ai/settings').json()['has_key'] is False
     assert admin.get('/api/ai/settings?purpose=review').json()['key_mask'] == '••••y-01'
+
+
+def _graded(world, monkeypatch):
+    """İki şagirdin kartı skan və qiymətləndirilir (saxta oxuyucu); şagird siyahısı (portal kodu, PIN) ilə."""
+    from app.domain import ksq_reader as R
+    from . import test_api_portal as P
+    orig, box = P.setup, {}
+    monkeypatch.setattr(P, 'setup', lambda w: box.setdefault('r', orig(w)))
+    admin, ta, e, pr = ksq(world)
+    st = box['r'][3]
+    keys = {k['code']: {x['slot']: x['value'] for x in k['answers']} for k in pr['key']}
+
+    def fake(api_key, model, jpeg, slots, only=None, text=None):
+        return [{'slot': s['slot'], 'value': '', 'confidence': 0.99} for s in slots]
+    monkeypatch.setattr(R, 'call', fake)
+    monkeypatch.setattr(R, 'key_pool', lambda db, tid: [{'provider': 'anthropic', 'key': 'sk-ant-test', 'model': R.MODEL}])
+    for sh in pr['sheets'][:2]:
+        admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([sh['qr']]), 'image/jpeg'))])
+    return admin, ta, e, pr, st, keys
+
+
+def test_clear_scans_migration_and_endpoint(world, monkeypatch):
+    """Bütün siniflərdə kağız skanları sil (docs/kart-skanlarini-silme-promtu.md): kağız skan + balı silinir; onlayn yazı və
+    skansız əl balı qalır; əvvəlcə ehtiyat; downgrade – bərpa. Müəllim düyməsi – yalnız öz imtahanı."""
+    import importlib.util
+    from pathlib import Path
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import text
+    from app.models import ExamScan, ExamScore
+    admin, ta, e, pr, st, _ = _graded(world, monkeypatch)
+    _, S = world
+    with S() as db:
+        scans = db.query(ExamScan).filter_by(exam_id=e['id']).order_by(ExamScan.id).all()
+        assert len(scans) == 2 and all(s.status == 'graded' for s in scans)
+        scans[1].read_by = 'online'                                       # onlayn yazı – qalmalıdır
+        paper_sid = scans[0].student_id
+        manual = next(x['id'] for x in st if x['id'] not in {s.student_id for s in scans})
+        db.add(ExamScore(exam_id=e['id'], student_id=manual, points=55))  # skansız əl balı – qalmalıdır
+        db.commit()
+    spec = importlib.util.spec_from_file_location('m', Path(__file__).parents[1] / 'migrations/versions/f9b1d3e5a7c9_skanlari_sil.py')
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    with S() as db:
+        conn = db.connection()
+        with Operations.context(MigrationContext.configure(conn)):
+            m.upgrade()
+        db.commit()
+        assert [s.read_by for s in db.query(ExamScan).all()] == ['online']
+        assert sorted(x.student_id for x in db.query(ExamScore).all()) == sorted([scans[1].student_id, manual])
+        assert db.execute(text('SELECT count(*) FROM exam_scans_backup_20261013')).scalar() == 1
+        assert db.execute(text('SELECT student_id FROM exam_scores_backup_20261013')).scalar() == paper_sid
+        with Operations.context(MigrationContext.configure(db.connection())):
+            m.downgrade()
+        db.commit()
+        assert db.query(ExamScan).count() == 2 and db.get(ExamScore, (e['id'], paper_sid)) is not None
+    # müəllim düyməsi: kağız skan silinir, onlayn qalır; başqa müəllim – 404
+    assert world[0]('yad').delete(f'/api/exam-scans/{ta}/{e["id"]}').status_code == 404
+    r = admin.delete(f'/api/exam-scans/{ta}/{e["id"]}')
+    assert r.json() == {'deleted': 1}
+    lst = admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()
+    assert [s['read_by'] for s in lst['scans']] == ['online'] and lst['counts']['scanned'] == 1
+
+
+def test_student_sees_own_card(world, monkeypatch):
+    """Şagird öz kartının şəklini, sistemin oxuduğu cavabı və düz cavabı görür; başqasının kartı – 404; bildiriş gəlir."""
+    from .test_api_portal import student_client
+    from app.models import ExamScan
+    admin, ta, e, pr, st, keys = _graded(world, monkeypatch)
+    _, S = world
+    with S() as db:
+        mine = {s.student_id: s for s in db.query(ExamScan).filter_by(exam_id=e['id'])}
+    s0 = next(x for x in st if x['id'] in mine)
+    other = next(sc for sid, sc in mine.items() if sid != s0['id'])
+    c = student_client(s0['portal_code'], s0['initial_pin'])
+    ex = c.get('/api/portal/results').json()['subjects'][0]['exams']
+    card = next(x['card'] for x in ex if x['card'])
+    code = next(sh['code'] for sh in pr['sheets'] if sh['student_id'] == s0['id']) if 'student_id' in pr['sheets'][0] else None
+    assert card['image'] is True and card['scan_id'] == mine[s0['id']].id and len(card['rows']) == len(mine[s0['id']].marks)
+    assert all(r['read'] == '' and r['ok'] is False and r['key'] for r in card['rows'])             # boş kart – hamısı ✗, açar görünür
+    if code:
+        assert {r['slot']: r['key'] for r in card['rows']} == keys[code]
+    img = c.get(f'/api/portal/exam-card/{card["scan_id"]}/image')
+    assert img.status_code == 200 and img.headers['content-type'] == 'image/jpeg'
+    assert c.get(f'/api/portal/exam-card/{other.id}/image').status_code == 404                     # başqasının kartı
+    assert any(n['key'].startswith(f'card-{card["scan_id"]}-') for n in c.get('/api/portal/notifications').json())

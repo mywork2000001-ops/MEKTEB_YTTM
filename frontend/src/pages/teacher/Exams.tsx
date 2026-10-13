@@ -5,7 +5,7 @@ import type { MyLesson } from './common'
 import { head, printDoc, SIGN, table } from '../../print'
 import { tt } from '../../i18n'
 import { printKey, printSheets, type KsqPrint } from '../../ksqPrint'
-import ScanCamera from '../../scanCamera'
+import ScanCamera, { aiErrorText } from '../../scanCamera'
 
 type Exam = { id: number; kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; max_points: number; items: { n: number; points: number; standard?: string }[] | null }
 type Planned = { kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; topic: string; created: boolean }
@@ -314,7 +314,7 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
             : <p className="small muted" style={{ margin: 0 }}>{tt('Variantlar hazır olanda.')}</p>}
         </Step>
         <Step no={4} title={tt('Skan və nəticə')} active={has}>
-          {has ? <Scans ta={ta.id} examId={e.id} /> : <p className="small muted" style={{ margin: 0 }}>{tt('Yazıdan sonra kartları skan edin – bal jurnala özü yazılır.')}</p>}
+          {has ? <Scans ta={ta.id} examId={e.id} name={`${e.kind}-${e.no}`} /> : <p className="small muted" style={{ margin: 0 }}>{tt('Yazıdan sonra kartları skan edin – bal jurnala özü yazılır.')}</p>}
         </Step>
         <Step no={5} title={tt('Onlayn yazı')}>
           {has ? <OnlineKsq ta={ta.id} examId={e.id} /> : <p className="small muted" style={{ margin: 0 }}>{tt('Variantlar hazır olanda.')}</p>}
@@ -323,14 +323,6 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
     </Drawer>
   )
 }
-
-/** Süni intellekt xətasının kodu (ai:credit …) – müəllimin dilində bir dəfə (docs/ksq-skan-ekran-ve-onlayn-promtu.md). */
-const aiErrorText = (code: string) => ({
-  'ai:credit': tt('OpenRouter balansı bitib – openrouter.ai-də kredit əlavə edin və ya açarın limitini artırın. Kartlar gözləyir, balans artanda özü oxunacaq.'),
-  'ai:key': tt('Süni intellekt açarı qəbul olunmur – Tənzimləmələr → «Süni intellekt» bölməsində açarı yoxlayın.'),
-  'ai:rate': tt('Bütün kart açarları limitdədir – limit bərpa olunanda kartlar özü oxunacaq. Daha çox açar əlavə edə bilərsiniz (5-ə qədər).'),
-  'ai:limit': tt('Aylıq süni intellekt limiti dolub – kartlar gözləyir (admin limiti artıra bilər).'),
-} as Record<string, string>)[code] || code
 
 type OnlineRow = { student_id: number; full_name: string | null; status: 'none' | 'waiting' | 'open' | 'doing' | 'done' | 'missed'
   opens_at: string | null; closes_at: string | null; duration_min: number | null; submitted_at: string | null; auto: boolean; paper: boolean; online: boolean; points: number | null }
@@ -407,11 +399,12 @@ type ScanList = { scans: Scan[]; missing: string[]; claude: boolean; printed_old
 const SCAN_TONE: Record<string, 'ok' | 'warn' | 'bad'> = { graded: 'ok', pending: 'warn', error: 'bad' }
 
 /** Cavab kartlarının skanı: şəkil / PDF yüklə → QR ilə şagird → oxunuş → bal jurnala özü yazılır; şübhəli xana – sarı, müəllim düzəldir. */
-function Scans({ ta, examId }: { ta: number; examId: number }) {
+function Scans({ ta, examId, name }: { ta: number; examId: number; name: string }) {
   const [d, err, , reload] = useLoad<ScanList>(() => get(`/api/exam-scans/${ta}/${examId}`), [examId])
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
   const [cam, setCam] = useState(false)
+  const [clearAsk, setClearAsk] = useState(false)   // «🗑 Skanları sil» – imtahanın adı yazılmaqla təsdiq
   const [again, setAgain] = useState(false)         // yenidən skan: köhnə skanlar əvəz olunur (bir blank – bir dəfə qaydasından istisna)
   const upUrl = `/api/exam-scans/${ta}/${examId}/upload` + (again ? '?replace=true' : '')
   const send = async (files: FileList | null) => {
@@ -472,8 +465,12 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
           title={tt('Köhnə çapda kəsilmiş və kartda cavabı boş olan suallar şagird üçün sayılmır (⊘); cavabı olan – sayılır')}>⊘ {tt('Kağıza düşməyən suallar')}</AsyncBtn>}
         {d && d.scans.length > 0 && <label className="small row" style={{ gap: 4 }} title={tt('Kartlar yenidən skan olunanda köhnə skan və oxunuş əvəz olunur')}>
           <input type="checkbox" checked={again} onChange={e => setAgain(e.target.checked)} />{tt('Yenidən skan (köhnəni əvəz et)')}</label>}
+        {d && d.scans.some(s => s.read_by !== 'online') && <button type="button" className="btn sm ghost" onClick={() => setClearAsk(true)}
+          title={tt('Kağız skanlar və onların balı silinir – kartları təzədən skan edin. Variantlar, onlayn yazılar və şəkillər qalır.')}>🗑 {tt('Skanları sil')}</button>}
         {busy && <span className="small muted">{tt('Yüklənir…')}</span>}
       </div>
+      {clearAsk && <ConfirmName name={name} action={tt('Skanları sil')} onCancel={() => setClearAsk(false)}
+        onConfirm={async () => { const r = await del<{ deleted: number }>(`/api/exam-scans/${ta}/${examId}`); toast(tt('Silindi: {n} skan – kartları təzədən skan edin', { n: r.deleted })); setClearAsk(false); reload() }} />}
       {cam && <ScanCamera url={`/api/exam-scans/${ta}/${examId}/upload`} replaceAll={again} onClose={() => { setCam(false); reload() }} onSent={reload} />}
       <ErrorBox error={err} />
       {d && !d.claude && <p className="small" style={{ margin: '8px 0 0', color: 'var(--warn)' }}>{tt('Süni intellekt bağlantısı yoxdur: kartlar oxunmağı gözləyəcək. Tənzimləmələr → «Süni intellekt» → Google Gemini (pulsuz açar: aistudio.google.com), OpenRouter və ya Anthropic açarını daxil edin.')}</p>}

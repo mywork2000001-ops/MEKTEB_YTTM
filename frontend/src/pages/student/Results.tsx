@@ -54,7 +54,8 @@ export default function Results() {
               <tbody>{s.exams.map((e: any, j: number) => (
                 <tr key={j}><td>{e.kind}-{e.no} <span className="small muted">({tt('{n}-ci yarımil', { n: e.semester })})</span>
                   {e.items?.length > 0 && <div className="row" style={{ gap: 3, marginTop: 4 }}>{e.items.map((it: any) => <span key={it.n} className="small" title={it.standard ? tt('standart') + ' ' + it.standard : ''} style={{ padding: '1px 5px', borderRadius: 4, background: it.ok ? 'var(--ok-soft)' : 'var(--bad-soft)', color: it.ok ? 'var(--ok)' : 'var(--bad)' }}>{it.n}{it.ok ? '✓' : '✗'}</span>)}</div>}
-                  {e.weak_standards?.length > 0 && <div className="small" style={{ marginTop: 4 }}>{tt('Təkrarla – standart')}: <b>{e.weak_standards.join(', ')}</b></div>}</td>
+                  {e.weak_standards?.length > 0 && <div className="small" style={{ marginTop: 4 }}>{tt('Təkrarla – standart')}: <b>{e.weak_standards.join(', ')}</b></div>}
+                  {e.card && <ExamCard c={e.card} />}</td>
                   <td>{fmtDate(e.date)}{e.taken_on && <div className="small muted">{tt('sonradan')}: {fmtDate(e.taken_on)}</div>}</td>
                   <td className="r num">{e.absent ? tt('yox idi') : e.points != null ? `${fmt(e.points, 1)} / ${e.max_points}` : '—'}</td><td className="r num">{fmt(e.pct)}</td>
                   <td className="r">{e.grade ? <Pill tone={gradeTone(e.grade)}>{e.grade}</Pill> : '—'}</td></tr>))}</tbody></table></div>)}
@@ -118,5 +119,32 @@ export default function Results() {
       </section>
       {review && <Review id={review} onClose={() => setReview(null)} />}
     </>
+  )
+}
+
+type CardRow = { slot: number; kind: string; read: string; key: string; ok: boolean; void: boolean }
+/** Şagirdin öz cavab kartı: şəkil + sistemin oxuduğu cavab + sistemdəki düz cavab (docs/kart-skanlarini-silme-promtu.md) –
+ *  şagird oxunuşun dəqiqliyini özü yoxlayır, fərq görsə müəllimə deyir. */
+function ExamCard({ c }: { c: { scan_id: number; image: boolean; online: boolean; points: number | null; rows: CardRow[] } }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button type="button" className="btn sm" aria-expanded={open} onClick={() => setOpen(o => !o)}>🧾 {tt('Kartım')}</button>
+      {open && <div style={{ marginTop: 6 }}>
+        <p className="small muted" style={{ margin: '0 0 6px' }}>{tt('Kartındakı cavabı sistemin oxuduğu ilə tutuşdur. Fərq görsən – müəllimə de, müəllim düzəldəcək.')}</p>
+        {c.image ? <img src={`/api/portal/exam-card/${c.scan_id}/image`} alt={tt('Cavab kartımın şəkli')} loading="lazy"
+          style={{ width: '100%', maxWidth: 720, border: '1px solid var(--line)', borderRadius: 6, display: 'block' }} />
+          : c.online ? <p className="small">💻 {tt('Onlayn yazmısan – cavabların ekrandan götürülüb.')}</p> : null}
+        <div className="tbl-wrap" style={{ marginTop: 6 }}><table style={{ minWidth: 0 }}>
+          <thead><tr><th className="r">№</th><th>{tt('Sənin cavabın (sistem oxuyub)')}</th><th>{tt('Düz cavab')}</th><th /></tr></thead>
+          <tbody>{c.rows.map(r => (
+            <tr key={r.slot} style={r.void ? { opacity: .55 } : undefined}>
+              <td className="r num">{r.slot}</td>
+              <td className="num">{r.read || <span className="muted">{tt('boş')}</span>}</td>
+              <td className="num">{r.key}</td>
+              <td>{r.void ? <span className="small muted">{tt('sayılmır')}</span> : r.ok ? <span style={{ color: 'var(--ok)' }}>✓</span> : <span style={{ color: 'var(--bad)' }}>✗</span>}</td>
+            </tr>))}</tbody></table></div>
+      </div>}
+    </div>
   )
 }

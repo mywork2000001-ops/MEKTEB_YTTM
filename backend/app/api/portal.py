@@ -476,6 +476,38 @@ def topic_rating(user: User = Depends(student_only), db: Session = Depends(get_d
     return out
 
 
+def _card(db: Session, e: Exam, sid: int) -> dict | None:
+    """Şagirdin öz cavab kartı (docs/kart-skanlarini-silme-promtu.md): kartın şəkli, sistemin oxuduğu cavab və sistemdəki düz
+    cavab – şagird oxunuşun dəqiqliyini özü yoxlayır, səhv görsə müəllimə deyir. Yalnız qiymətləndirilmiş kart."""
+    from ..domain.ksq_card import key_value
+    from ..models import ExamScan, ExamVariant
+    sc = db.scalar(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == sid))
+    v = db.get(ExamVariant, (e.id, sid))
+    if sc is None or v is None or sc.status != 'graded':
+        return None
+    read = {int(r['slot']): r.get('value') for r in sc.reading or [] if r.get('slot') is not None}
+    void = {it['n'] for it in (e.items or []) if it.get('annulled')} | set(sc.lost or [])
+    qs = sorted(v.questions, key=lambda q: q['slot'])
+    rows = [{'slot': q['slot'], 'kind': q['kind'], 'read': read.get(q['slot']) or '', 'key': key_value(q),
+             'ok': bool(m), 'void': q['slot'] in void, 'points': q.get('points')} for q, m in zip(qs, sc.marks or [0] * len(qs))]
+    return {'scan_id': sc.id, 'image': bool(sc.crop_key), 'online': sc.read_by == 'online', 'points': sc.points,
+            'at': sc.updated_at, 'rows': rows}
+
+
+@router.get('/exam-card/{scan_id}/image')
+def card_image(scan_id: int, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Şagirdin ÖZ kartının şəkli (başqasınınkı – 404)."""
+    from fastapi.responses import StreamingResponse
+    from ..models import ExamScan
+    from ..storage import storage_for_key
+    s = me_student(db, user)
+    sc = db.get(ExamScan, scan_id)
+    if sc is None or sc.student_id != s.id or sc.status != 'graded' or not sc.crop_key:
+        raise HTTPException(404, 'Şəkil yoxdur')
+    return StreamingResponse(storage_for_key(sc.crop_key).stream(sc.crop_key, db), media_type='image/jpeg',
+                             headers={'Cache-Control': 'private, max-age=300'})
+
+
 @router.get('/notifications')
 def notifications(user: User = Depends(student_only), db: Session = Depends(get_db)):
     """Bildirişlər (serverdə saxlanmır – hər dəfə hesablanır): açıq və 24 saat ərzində açılacaq testlər,
@@ -505,6 +537,15 @@ def notifications(user: User = Depends(student_only), db: Session = Depends(get_
             out.append({'key': f'exam-{x["batch_id"]}', 'kind': 'nəticə', 'title': f'{x["title"]} – ' + L('nəticə hazırdır', 'результат готов', 'result is ready'),
                         'text': f'{x["pct"]}% · ' + L('sinifdə', 'в классе', 'in class') + f' {x["place_class"]}/{x["class_count"]}', 'link': '/results',
                         'at': x['closes_at']})
+    from ..models import ExamScan
+    for sc in db.scalars(select(ExamScan).where(ExamScan.student_id == s.id, ExamScan.status == 'graded')):   # kartın şəkli və nəticəsi
+        e = db.get(Exam, sc.exam_id)
+        if e and sc.updated_at and at - aware(sc.updated_at) <= dt.timedelta(days=7):
+            out.append({'key': f'card-{sc.id}-{int(aware(sc.updated_at).timestamp())}', 'kind': 'nəticə',
+                        'title': f'{e.kind}-{e.no} – ' + L('kartının şəkli və nəticəsi', 'фото твоего бланка и результат', 'your answer card and result'),
+                        'text': L(f'{sc.points:g} bal · cavablarını düz cavablarla yoxla', f'{sc.points:g} балл · сверь ответы с правильными',
+                                  f'{sc.points:g} points · check your answers against the key') if sc.points is not None else '',
+                        'link': '/results', 'at': aware(sc.updated_at)})
     today = at.astimezone(ZoneInfo(SCHOOL_TZ)).date()
     for c in student_courses(db, s):
         n = c['next']
@@ -550,7 +591,7 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
                             'points': sc.points if sc else None, 'max_points': e.max_points,
                             'pct': round(sc.points * 100 / e.max_points, 1) if g else None, 'grade': g,
                             'absent': bool(sc and sc.absent), 'taken_on': sc.taken_on if sc and g else None,
-                            'items': items, 'weak_standards': weak})
+                            'items': items, 'weak_standards': weak, 'card': _card(db, e, s.id)})
             ks, bs = per_sem[e.semester]
             if g is not None:
                 per_sem[e.semester] = (ks + [g], bs) if e.kind == 'KSQ' else (ks, g)

@@ -347,6 +347,25 @@ def list_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sessio
                                                                              ExamVariant.printed_at < PRINT_FIX_AT).limit(1)))}
 
 
+@router.delete('/{ta_id}/{exam_id}')
+def clear_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«🗑 Skanları sil» (docs/kart-skanlarini-silme-promtu.md): bu imtahanın KAĞIZ skanları və onların balı silinir – kartlar
+    təzədən skan olunur. Onlayn yazılar, variantlar və skansız əl balları qalır. Kəsik şəkilləri saxlanır (ehtiyat)."""
+    _, e = _exam(db, user, ta_id, exam_id)
+    n = 0
+    for sc in list(db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id))):
+        if sc.read_by == 'online':
+            continue
+        score = db.get(ExamScore, (e.id, sc.student_id))
+        if score is not None:
+            db.delete(score)
+        db.delete(sc)
+        n += 1
+    audit(db, user, 'delete', 'exam_scans', e.id, deleted=n)
+    db.commit()
+    return {'deleted': n}
+
+
 @router.post('/{ta_id}/{exam_id}/regrade')
 def regrade(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     """«Yenilə»: bütün kartlar mövcud açarla yenidən hesablanır (açar / variant düzəldilibsə)."""

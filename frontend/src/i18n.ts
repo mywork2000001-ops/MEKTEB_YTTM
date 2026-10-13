@@ -5,6 +5,27 @@ import { createContext, useContext } from 'react'
 export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
+  // Ardıcıl skan – bir şagird, bir nəticə; şagirdin «Kartım»ı; «Skanları sil» (13.10.2026, docs/kart-skanlarini-silme-promtu.md)
+  "Düz: {r}/{t}": ["Correct: {r}/{t}", "Верно: {r}/{t}"],
+  "Sarı xana: {n} – siyahıda şəkilə baxıb yoxlayın": ["Yellow cells: {n} – check them against the image in the list", "Жёлтых клеток: {n} – сверьте со снимком в списке"],
+  "Kart qəbul edildi, amma oxunmadı – nəticə siyahıda görünəcək": ["Card accepted but not read yet – the result will appear in the list", "Бланк принят, но ещё не прочитан – результат появится в списке"],
+  "Kart oxunur… {s} san.": ["Reading the card… {s} s", "Бланк читается… {s} с"],
+  "Nəticə gələnə qədər növbəti kartı çəkməyin": ["Do not photograph the next card until the result appears", "Не снимайте следующий бланк, пока не появится результат"],
+  "Keç – sonra oxunsun": ["Skip – read it later", "Пропустить – прочитать позже"],
+  "Bu kartı yenidən çək": ["Retake this card", "Переснять этот бланк"],
+  "Növbəti şagird": ["Next student", "Следующий ученик"],
+  "qalıb: {n} şagird": ["left: {n} students", "осталось: {n} учеников"],
+  "Kartım": ["My card", "Мой бланк"],
+  "Kartındakı cavabı sistemin oxuduğu ilə tutuşdur. Fərq görsən – müəllimə de, müəllim düzəldəcək.": ["Compare the answers on your card with what the system read. If you see a difference, tell your teacher – they will fix it.", "Сверь ответы на своём бланке с тем, что прочитала система. Если увидишь расхождение – скажи учителю, он исправит."],
+  "Cavab kartımın şəkli": ["Photo of my answer card", "Фото моего бланка ответов"],
+  "Onlayn yazmısan – cavabların ekrandan götürülüb.": ["You wrote it online – your answers were taken from the screen.", "Ты писал(а) онлайн – ответы взяты с экрана."],
+  "Sənin cavabın (sistem oxuyub)": ["Your answer (as read)", "Твой ответ (как прочитан)"],
+  "Düz cavab": ["Correct answer", "Правильный ответ"],
+  "boş": ["empty", "пусто"],
+  "sayılmır": ["not counted", "не засчитывается"],
+  "Kağız skanlar və onların balı silinir – kartları təzədən skan edin. Variantlar, onlayn yazılar və şəkillər qalır.": ["Paper scans and their scores are deleted – scan the cards again. Variants, online sittings and images are kept.", "Сканы бумажных бланков и их баллы удаляются – отсканируйте бланки заново. Варианты, онлайн-работы и снимки сохраняются."],
+  "Skanları sil": ["Delete scans", "Удалить сканы"],
+  "Silindi: {n} skan – kartları təzədən skan edin": ["Deleted: {n} scans – scan the cards again", "Удалено: {n} сканов – отсканируйте бланки заново"],
   // Süni intellekt: təyinat üzrə açarlar – kart oxuyucusu (5), gündəlik plan, rəy (13.10.2026, docs/kart-oxuyucu-acarlar-promtu.md)
   "Süni intellekt": ["Artificial intelligence", "Искусственный интеллект"],
   "Təyinat": ["Purpose", "Назначение"],

@@ -1,8 +1,11 @@
 // KSQ/BSQ telefon skan rejimi (docs/ksq-bsq-kagiz-promtu.md mərhələ 5): kamera açıq qalır, kartlar bir-bir çəkilir;
-// bulanıq / qaranlıq / çox işıqlı şəkil göndərilmir («yenidən çək»), yaxşı şəkil fonda yüklənir – növbəti karta keçmək olar.
+// bulanıq / qaranlıq / çox işıqlı şəkil göndərilmir («yenidən çək»).
 // Brauzer QR tanıyırsa (BarcodeDetector), kart kadra düzgün girəndə özü çəkir.
 // 13.10.2026 (docs/ksq-skan-tam-kart-promtu.md): bir blank – bir dəfə (qəbul edilmiş kart təkrar göndərilmir, yalnız
-// «Yenidən skan et» ilə); kart kadra tam düşməyibsə – «yenidən çək»; bal oxunan kimi dərhal göstərilir.
+// «Yenidən skan et» ilə); kart kadra tam düşməyibsə – «yenidən çək».
+// 13.10.2026 (docs/kart-skanlarini-silme-promtu.md): BİR ŞAGİRD – BİR NƏTİCƏ. Kart oxunub balı göstərilməyincə növbəti kart
+// çəkilmir (avtomatik çəkiliş də dayanır); bal ekranda böyük görünür, müəllim «Növbəti şagird» basır. Oxunuş gecikərsə –
+// «Keç (sonra oxunsun)»; bütün açarlar limitdədirsə – səbəb müəllimin dilində.
 import { useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import { tt } from './i18n'
@@ -12,7 +15,20 @@ type Found = { student_id: number; scan_id: number; full_name: string | null }
 type Res = { scan_id: number; name: string; points: number | null; right?: number; total?: number; check?: number; wait: boolean; queue?: number; late?: boolean; err?: string | null }
 type Up = { found: Found[]; problems: { error: string; kind?: string; full_name?: string | null }[];
   already: { student_id: number; scan_id: number; points: number | null; full_name: string | null }[] }
+type List = { scans: { id: number; status: string; points: number | null; marks: number[] | null; flagged: number[]; error: string | null }[]
+  claude: boolean; ai_error?: string | null; counts: { pending: number; variants: number; scanned: number } }
+// cari şagird: yüklənir → oxunur → nəticə (növbəti şagird yalnız bundan sonra)
+type Cur = { phase: 'upload' } | { phase: 'read'; ids: number[]; since: number } | { phase: 'done'; ids: number[] }
 const buzz = (p: number | number[]) => { try { navigator.vibrate?.(p) } catch { /* noop */ } }
+const SKIP_AFTER = 30                                       // saniyə – bundan sonra «Keç (sonra oxunsun)» görünür
+
+/** Süni intellekt xətasının kodu (ai:credit …) – müəllimin dilində bir dəfə (docs/ksq-skan-ekran-ve-onlayn-promtu.md). */
+export const aiErrorText = (code: string) => ({
+  'ai:credit': tt('OpenRouter balansı bitib – openrouter.ai-də kredit əlavə edin və ya açarın limitini artırın. Kartlar gözləyir, balans artanda özü oxunacaq.'),
+  'ai:key': tt('Süni intellekt açarı qəbul olunmur – Tənzimləmələr → «Süni intellekt» bölməsində açarı yoxlayın.'),
+  'ai:rate': tt('Bütün kart açarları limitdədir – limit bərpa olunanda kartlar özü oxunacaq. Daha çox açar əlavə edə bilərsiniz (5-ə qədər).'),
+  'ai:limit': tt('Aylıq süni intellekt limiti dolub – kartlar gözləyir (admin limiti artıra bilər).'),
+} as Record<string, string>)[code] || code
 
 /** Kiçildilmiş boz şəkildə parlaqlıq və kəskinlik (Laplas dispersiyası). */
 export function quality(c: HTMLCanvasElement): Quality {
@@ -41,32 +57,47 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
   const video = useRef<HTMLVideoElement>(null)
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null)
   const [sent, setSent] = useState(0)
-  const [queue, setQueue] = useState(0)
   const [err, setErr] = useState<string | null>(null)
   const last = useRef(0)
   const accepted = useRef(new Set<string>())        // bu sessiyada qəbul edilmiş QR-lar – avtomatik çəkiliş təkrar göndərmir
   const [replace, setReplace] = useState<{ name: string } | null>(null)
   const replaceRef = useRef(false)
   const [results, setResults] = useState<Res[]>([])
+  const [cur, setCurState] = useState<Cur | null>(null)
+  const curRef = useRef<Cur | null>(null)             // avtomatik çəkiliş (setTimeout dövrü) cari vəziyyəti görsün
+  const setCur = (c: Cur | null) => { curRef.current = c; setCurState(c) }
+  const [left, setLeft] = useState<number | null>(null)   // skan olunmamış şagird sayı
+  const [aiErr, setAiErr] = useState<string | null>(null)
+  const [now, setNow] = useState(Date.now())
   const listUrl = url.replace(/\/upload$/, '')
+  useEffect(() => { if (cur?.phase !== 'read') return; const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id) }, [cur])
+  useEffect(() => { api<List>(listUrl).then(d => setLeft(Math.max(0, d.counts.variants - d.counts.scanned)), () => {}) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // oxunmuş kartların balı: hər 2 saniyədən bir (5 dəqiqəyədək) siyahı yoxlanılır; növbə və xəta göstərilir
+  // oxunmuş kartların balı: hər 2 saniyədən bir (5 dəqiqəyədək) siyahı yoxlanılır; hamısı hazır olanda – nəticə ekranı
   const watch = (ids: number[]) => {
     let n = 0
     const step = async () => {
       n++
       try {
-        const d = await api<{ scans: { id: number; status: string; points: number | null; marks: number[] | null; flagged: number[]; error: string | null }[]; claude: boolean;
-          counts: { pending: number } }>(listUrl)
-        const last = n >= 150
+        const d = await api<List>(listUrl)
+        setLeft(Math.max(0, d.counts.variants - d.counts.scanned))
+        setAiErr(d.ai_error || null)
+        const final = n >= 150
         let open = false
         setResults(rs => rs.map(r => {
           if (!ids.includes(r.scan_id)) return r
           const s = d.scans.find(x => x.id === r.scan_id)
-          if (!s || s.status !== 'graded') { open = true; return { ...r, wait: d.claude && !last, late: last, queue: d.counts.pending, err: s?.error || null } }
+          if (s?.status === 'error') return { ...r, wait: false, err: s.error || tt('xəta') }
+          if (!s || s.status !== 'graded') { open = true; return { ...r, wait: d.claude && !final, late: final, queue: d.counts.pending, err: s?.error && !s.error.startsWith('ai:') ? s.error : null } }
           return { ...r, wait: false, points: s.points, right: (s.marks || []).filter(Boolean).length, total: (s.marks || []).length, check: s.flagged.length }
         }))
-        if (open && d.claude && !last) setTimeout(step, 2000)
+        const c = curRef.current
+        const mine = c && c.phase !== 'upload' && c.ids.join() === ids.join()
+        if (!open || !d.claude) {                                   // hazırdır (və ya açar yoxdur – oxunmayacaq)
+          if (mine && c!.phase === 'read') { setCur({ phase: 'done', ids }); buzz([80, 60, 80]) }
+          return
+        }
+        if (!final) setTimeout(step, 2000)
       } catch { if (n < 150) setTimeout(step, 2000) }
     }
     setTimeout(step, 2000)
@@ -77,12 +108,12 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
     navigator.mediaDevices?.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 2560 }, height: { ideal: 1440 } }, audio: false })
       .then(s => { stream = s; if (video.current) { video.current.srcObject = s; video.current.play().catch(() => {}) } })
       .catch(() => setErr(tt('Kamera açılmadı – brauzerə kamera icazəsi verin və ya «Şəkil / PDF seç» istifadə edin')))
-    // QR görünəndə özü çəkir (yalnız BarcodeDetector olan brauzerlərdə; 3 saniyədə bir dəfədən çox yox)
+    // QR görünəndə özü çəkir (yalnız BarcodeDetector olan brauzerlərdə; 3 saniyədə bir dəfədən çox yox; cari şagird bitməyibsə – yox)
     const BD = (window as any).BarcodeDetector
     const det = BD ? new BD({ formats: ['qr_code'] }) : null
     const tick = async () => {
       if (stop) return
-      if (det && video.current?.readyState === 4 && Date.now() - last.current > 3000) {
+      if (det && !curRef.current && video.current?.readyState === 4 && Date.now() - last.current > 3000) {
         try {
           const r = await det.detect(video.current)
           const mine = r.filter((x: any) => String(x.rawValue).startsWith('MK1|'))
@@ -98,16 +129,16 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
 
   const shoot = (seen: string[] = []) => {
     const v = video.current
-    if (!v || !v.videoWidth) return
+    if (!v || !v.videoWidth || curRef.current) return          // bir şagird bitməmiş digəri çəkilmir
     last.current = Date.now()
     const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight
     c.getContext('2d')!.drawImage(v, 0, 0)
     const q = quality(c)
     if (!q.ok) { setMsg({ text: q.why!, bad: true }); buzz([60, 80, 60]); return }
-    setMsg({ text: tt('Göndərilir…') })
+    setMsg(null)
+    setCur({ phase: 'upload' })
     c.toBlob(async b => {
-      if (!b) return
-      setQueue(n => n + 1)
+      if (!b) { setCur(null); return }
       const form = new FormData(); form.append('files', b, `kart-${Date.now()}.jpg`)
       const again = replaceRef.current || replaceAll
       try {
@@ -117,24 +148,42 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
           seen.forEach(x => accepted.current.add(x))
           replaceRef.current = false; setReplace(null)
           setSent(n => n + r.found.length); buzz(60)
-          setMsg({ text: '✓ ' + r.found.map(f => f.full_name).join(', ') + ' · ' + tt('bal hesablanır…') })
+          const ids = r.found.map(f => f.scan_id)
           setResults(rs => [...r.found.map(f => ({ scan_id: f.scan_id, name: f.full_name || '—', points: null, wait: true })),
-            ...rs.filter(x => !r.found.some(f => f.scan_id === x.scan_id))].slice(0, 5))
-          watch(r.found.map(f => f.scan_id)); onSent()
+            ...rs.filter(x => !ids.includes(x.scan_id))].slice(0, 6))
+          setCur({ phase: 'read', ids, since: Date.now() })
+          watch(ids); onSent()
         } else if (already.length) {
+          setCur(null)
           seen.forEach(x => accepted.current.add(x))
           const a = already[0]
           setMsg({ text: tt('{name} artıq skan olunub', { name: a.full_name || '—' }) + (a.points != null ? ` (${tt('{n} bal', { n: a.points })})` : '') })
           setReplace({ name: a.full_name || '—' })
         } else {
+          setCur(null)
           const p = r.problems[0]
           buzz([60, 80, 60])
           setMsg({ text: p?.kind === 'partial' ? (p.full_name ? p.full_name + ': ' : '') + tt('Kart kadra tam düşməyib – bütün kartı çərçivəyə salıb yenidən çəkin')
             : p?.error || tt('QR kod tapılmadı – yenidən çəkin'), bad: true })
         }
-      } catch (x) { setMsg({ text: (x as Error).message, bad: true }); buzz([60, 80, 60]) } finally { setQueue(n => n - 1) }
+      } catch (x) { setCur(null); setMsg({ text: (x as Error).message, bad: true }); buzz([60, 80, 60]) }
     }, 'image/jpeg', 0.88)
   }
+
+  const curRes = cur && cur.phase !== 'upload' ? results.filter(r => cur.ids.includes(r.scan_id)) : []
+  const secs = cur?.phase === 'read' ? Math.round((now - cur.since) / 1000) : 0
+  const next = () => { setCur(null); setMsg(null); last.current = Date.now() }   // növbəti şagird – avtomatik çəkiliş 3 s sonra
+  const big = (r: Res) => r.points != null
+    ? <div key={r.scan_id} style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: 18, fontWeight: 600 }}>{r.name}</div>
+        <div style={{ fontSize: 44, fontWeight: 800, color: '#86efac', lineHeight: 1.1 }}>{tt('{n} bal', { n: r.points })}</div>
+        <div style={{ fontSize: 14 }}>{tt('Düz: {r}/{t}', { r: r.right ?? 0, t: r.total ?? 0 })}</div>
+        {!!r.check && <div style={{ fontSize: 14, color: '#fde68a' }}>⚠ {tt('Sarı xana: {n} – siyahıda şəkilə baxıb yoxlayın', { n: r.check })}</div>}
+      </div>
+    : <div key={r.scan_id} style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: 18, fontWeight: 600 }}>{r.name}</div>
+        <div style={{ fontSize: 15, color: r.err ? '#fca5a5' : '#fde68a' }}>{r.err || (r.late ? tt('bal hələ hazır deyil – oxunuş növbədədir, nəticə siyahıda görünəcək') : tt('Kart qəbul edildi, amma oxunmadı – nəticə siyahıda görünəcək'))}</div>
+      </div>
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
@@ -144,6 +193,24 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
         <div style={{ position: 'absolute', top: 8, left: 8, right: 8, color: '#fff', fontSize: 14, textShadow: '0 1px 3px #000' }}>
           {tt('Cavab kartını çərçivəyə salın – QR və dörd qara künc görünsün')}</div>
         {err && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', padding: 24, textAlign: 'center' }}>{err}</div>}
+        {cur && <div role="status" aria-live="polite" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.82)', color: '#fff', display: 'flex',
+          flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24 }}>
+          {cur.phase === 'upload' && <div style={{ fontSize: 18 }}>⏳ {tt('Göndərilir…')}</div>}
+          {cur.phase === 'read' && <>
+            <div style={{ fontSize: 18, fontWeight: 600, textAlign: 'center' }}>{curRes.map(r => r.name).join(', ')}</div>
+            <div style={{ fontSize: 16 }}>⏳ {tt('Kart oxunur… {s} san.', { s: secs })}</div>
+            <div style={{ fontSize: 13, opacity: .8, textAlign: 'center' }}>{tt('Nəticə gələnə qədər növbəti kartı çəkməyin')}</div>
+            {aiErr && <div style={{ fontSize: 14, color: '#fde68a', textAlign: 'center', maxWidth: 520 }}>⚠ {aiErrorText(aiErr)}</div>}
+            {(secs >= SKIP_AFTER || aiErr) && <button className="btn" onClick={next}>{tt('Keç – sonra oxunsun')} ▶</button>}
+          </>}
+          {cur.phase === 'done' && <>
+            {curRes.map(big)}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+              <button className="btn" onClick={() => { replaceRef.current = true; setReplace({ name: curRes.map(r => r.name).join(', ') }); next() }}>↻ {tt('Bu kartı yenidən çək')}</button>
+              <button className="btn primary" style={{ minWidth: 160, fontSize: 16 }} autoFocus onClick={next}>{tt('Növbəti şagird')} ▶</button>
+            </div>
+          </>}
+        </div>}
       </div>
       <div style={{ background: '#111', color: '#fff', padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {msg && <div style={{ fontSize: 14, color: msg.bad ? '#fca5a5' : '#86efac' }}>{msg.text}</div>}
@@ -161,9 +228,9 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
           </div>)}
         </div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 13 }} className="grow">{tt('Göndərildi: {n}', { n: sent })}{queue > 0 ? ` · ${tt('yüklənir: {n}', { n: queue })}` : ''}</span>
+          <span style={{ fontSize: 13 }} className="grow">{tt('Göndərildi: {n}', { n: sent })}{left != null ? ` · ${tt('qalıb: {n} şagird', { n: left })}` : ''}</span>
           <button className="btn" onClick={onClose}>{tt('Bitir')}</button>
-          <button className="btn primary" style={{ minWidth: 96 }} onClick={() => shoot()} disabled={!!err}>📷 {tt('Çək')}</button>
+          <button className="btn primary" style={{ minWidth: 96 }} onClick={() => shoot()} disabled={!!err || !!cur}>📷 {tt('Çək')}</button>
         </div>
       </div>
     </div>
