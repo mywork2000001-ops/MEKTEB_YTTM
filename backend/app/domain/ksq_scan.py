@@ -13,8 +13,9 @@ from fractions import Fraction
 from .ksq_card import MCQ_LETTERS, parse_qr
 
 QR_MM = 22.0                       # kartdakı QR-ın tərəfi (ksqPrint.ts: .ctop img 22mm)
-ZONE = (-10.0, 23.0, 184.0, 106.0)  # QR-ın sol üst küncünə görə mm: x0, y0, x1, y1 (kartın eni 194 mm; QR-ın altından)
-PX_MM = 6                          # kəsikdə 1 mm = 6 piksel (~150 dpi)
+ZONE = (-10.0, 23.0, 184.0, 112.0)  # QR-ın sol üst küncünə görə mm: x0, y0, x1, y1 (kartın eni 194 mm; QR-ın altından;
+#                                    y1 106 → 112: çapda sətirlər bir az hündür olur, son sətir (28–30) kəsilirdi – 13.10.2026)
+PX_MM = 8                          # kəsikdə 1 mm = 8 piksel (~200 dpi; 6 px əl yazısı rəqəmlər üçün az idi – 13.10.2026)
 LOW = 0.85                         # bu etibardan aşağı xana – «yoxlanılmalı»
 
 

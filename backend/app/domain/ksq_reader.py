@@ -6,6 +6,7 @@ Açar: MK_ANTHROPIC_API_KEY → müəllimin öz Claude açarı → məktəb admi
 from __future__ import annotations
 
 import base64
+import re
 import logging
 
 import httpx
@@ -37,14 +38,20 @@ TOOL = {
             'type': 'object',
             'properties': {
                 'slot': {'type': 'integer', 'description': 'Sualın nömrəsi'},
-                'value': {'type': 'string', 'description': 'Test: A–E hərfi; açıq: xanalardakı simvollar soldan sağa; boşdursa ""'},
+                'value': {'type': 'string', 'description': 'Test: A–E hərfi (boşdursa "", bir neçə – "*"); açıq sualda – ""'},
+                'cells': {'type': 'array', 'items': {'type': 'string'},
+                          'description': 'Yalnız açıq sual: 8 xananın hər biri ayrıca, soldan sağa; boş xana – "". Xana sərhədi simvol deyil'},
                 'confidence': {'type': 'number', 'description': '0–1: oxunuşa əminlik'}},
             'required': ['slot', 'value', 'confidence']}}},
         'required': ['answers']},
 }
 
 SYSTEM = ('Sən imtahan cavab kartlarını oxuyan diqqətli operatorsan. Yalnız kartda görünəni yaz, heç nəyi təxmin etmə və '
-          'düzəltmə. Cavabın düzgün olub-olmadığını qiymətləndirmə – yalnız oxu.')
+          'düzəltmə. Cavabın düzgün olub-olmadığını qiymətləndirmə – yalnız oxu. Əl yazısı rəqəmləri diqqətlə ayırd et '
+          '(1 və 7, 4 və 9, 0 və 6, 3 və 8, 5 və 6).')
+# 13.10.2026 auditi: model xanaları ayıran şaquli xətləri «/», «,» və «1» kimi oxuyurdu («20» → «2/0», «35» → «3,5»,
+# «16» → «1/3») və sətirləri qarışdırırdı. İndi: açıq sualda hər xana ayrıca (cells), server birləşdirir; mümkün olmayan
+# qiymətlər ikinci oxunuşa və müəllimə (sarı) gedir.
 
 
 def _instructions(slots: list[dict], only: list[int] | None = None) -> str:
@@ -53,9 +60,14 @@ def _instructions(slots: list[dict], only: list[int] | None = None) -> str:
     t = ('Şəkildə şagirdin cavab kartı var.\n'
          f'- Test sualları {mcq[0]}–{mcq[-1]}: hər sətirdə A B C D E dairələri. Tam qaralanmış dairənin hərfini yaz. '
          'Heç biri qaralanmayıbsa – "". İki və daha çox dairə qaralanıbsa – "*" və confidence 1.\n' if mcq else '')
-    t += (f'- Açıq suallar {opn[0]}–{opn[-1]}: nömrənin yanında 8 xana; hər xanada bir simvol (0–9, «-», «,», «/», «;»). '
-          'Simvolları soldan sağa boşluqsuz yaz (məs. "3/7", "-4", "2,5", "1;4"). Boşdursa – "". '
+    t += (f'- Açıq suallar {opn[0]}–{opn[-1]}: nömrənin sağında 8 kvadrat xana. Hər xanaya şagird ən çox BİR simvol yazır: '
+          '0–9, «-», «,», «/», «;». cells massivində 8 xananın hər birini ayrıca yaz (boş xana – ""), value – "". '
+          'XANALARI AYIRAN ŞAQULİ QARA XƏTLƏR SİMVOL DEYİL: onları heç vaxt «/», «1», «,» və ya «|» kimi yazma. '
+          '«/» yalnız bir xananın İÇİNDƏ əl ilə çəkilmiş maili xətdir; «,» xananın içində aşağıda kiçik vergüldür. '
+          'Nümunə: iki xanada «2» və «0» yazılıbsa – ["2","0","","","","","",""] (bu «20»-dir, «2/0» deyil). '
           'Pozulmuş/üstündən yazılmış simvolda son yazılanı oxu, aydın deyilsə confidence aşağı olsun.\n' if opn else '')
+    t += ('Kartda suallar 3 sütunda sətir-sətir düzülüb: hər sətirdə soldan sağa ardıcıl nömrələr (məs. 1, 2, 3; sonra 4, 5, 6). '
+          'Hər cavabı nömrəsinin yanındakı sətirdən oxu – nömrəni şəkildəki rəqəmlə tutuşdur, sətirləri qarışdırma.\n')
     want = only or [s['slot'] for s in slots]
     t += f'Bu sualların hamısı üçün cavab ver: {", ".join(map(str, want))}. submit_card alətini çağır.'
     return t
@@ -79,17 +91,7 @@ def call(key: str, model: str, jpeg: bytes, slots: list[dict], only: list[int] |
     blk = next((b for b in r.json().get('content', []) if b.get('type') == 'tool_use'), None)
     if not blk:
         raise RuntimeError('Claude cavabında oxunuş yoxdur')
-    valid = {s['slot'] for s in slots}
-    out = []
-    for a in blk['input'].get('answers', []):
-        try:
-            slot = int(a['slot'])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if slot in valid:
-            out.append({'slot': slot, 'value': str(a.get('value') or '')[:12],
-                        'confidence': max(0.0, min(1.0, float(a.get('confidence') or 0)))})
-    return out
+    return _clean(blk['input'], slots)
 
 
 OPENROUTER = 'https://openrouter.ai/api/v1/chat/completions'
@@ -98,17 +100,40 @@ VISION = ('claude', 'gemini', 'gpt-4', 'gpt-5', 'vision', '-vl', 'llama-4', 'qwe
 
 
 def _clean(blk_input: dict, slots: list[dict]) -> list[dict]:
-    valid = {s['slot'] for s in slots}
+    kinds = {s['slot']: s['kind'] for s in slots}
     out = []
     for a in blk_input.get('answers', []):
         try:
             slot = int(a['slot'])
         except (KeyError, TypeError, ValueError):
             continue
-        if slot in valid:
-            out.append({'slot': slot, 'value': str(a.get('value') or '')[:12],
-                        'confidence': max(0.0, min(1.0, float(a.get('confidence') or 0)))})
+        if slot not in kinds:
+            continue
+        conf = max(0.0, min(1.0, float(a.get('confidence') or 0)))
+        if kinds[slot] == 'mcq':
+            v = str(a.get('value') or '').strip().upper()[:1]
+            v = v if v in ('A', 'B', 'C', 'D', 'E', '*') else ''
+        else:
+            cells = a.get('cells')
+            v = ''.join(str(c or '').strip()[:1] for c in cells) if isinstance(cells, list) else str(a.get('value') or '')
+            v = v.replace(' ', '').replace('.', ',')[:12]
+        if not plausible(kinds[slot], v):
+            conf = min(conf, LOW / 2)                       # ikinci oxunuş və müəllim (sarı)
+        out.append({'slot': slot, 'value': v, 'confidence': conf})
     return out
+
+
+_NUM = r'-?\d+(?:,\d+)?'
+_OPEN_OK = re.compile(rf'^{_NUM}(?:/{_NUM})?(?:;{_NUM}(?:/{_NUM})?)*$')
+
+
+def plausible(kind: str, v: str) -> bool:
+    """Kartda yazıla bilən cavab formasıdır? «2/0», «7/», «Y/9», «3,» – yox (xana sərhədi və ya səhv oxunuş)."""
+    if kind == 'mcq' or v == '':
+        return True
+    if not _OPEN_OK.match(v):
+        return False
+    return all(p.split('/')[1].lstrip('-').replace(',', '').strip('0') != '' for p in v.split(';') if '/' in p)   # məxrəc 0 deyil
 
 
 def call_openrouter(key: str, model: str, jpeg: bytes, slots: list[dict], only: list[int] | None = None) -> list[dict]:

@@ -56,7 +56,8 @@ body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#000;-webkit-print-co
 .row .no{width:6mm;text-align:right;font-weight:700}
 .bub{width:5mm;height:5mm;border:1.1px solid #000;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:6.5pt;color:#777}
 .open{display:grid;grid-template-columns:repeat(3,1fr);gap:1.8mm 4mm}
-.box{width:5.4mm;height:6mm;border:1.1px solid #000;display:inline-block;margin-left:-1.1px}
+.bx{display:flex}
+.box{width:5.4mm;height:6mm;border:1.1px solid #000;display:block;flex:0 0 auto;margin-left:-1.1px}
 .box:first-of-type{margin-left:0}
 .key table{border-collapse:collapse;width:100%;font-size:8.5pt;margin-bottom:5mm;break-inside:avoid}
 .key td,.key th{border:1px solid #000;padding:.6mm 1mm;text-align:center}
@@ -79,7 +80,7 @@ function card(s: KsqSheet, ex: KsqPrint['exam'], qr: string): string {
         ${esc(ex.class_name)} · ${esc(ex.subject)} · <b>${ex.kind}-${ex.no}</b> · ${fmtD(ex.date)} · variant <b>${esc(s.code)}</b> · 100 bal
         <div class="help">${esc((HELP[s.lang] || HELP.az).replace('1–9', `1–${mcq.length}`).replace('10–30', `${mcq.length + 1}–${s.questions.length}`))}</div></div></div>
     <div class="mcq">${mcq.map(q => `<div class="row"><span class="no">${q.slot}</span>${[...L].map(c => `<span class="bub">${c}</span>`).join('')}</div>`).join('')}</div>
-    <div class="open">${open.map(q => `<div class="row"><span class="no">${q.slot}</span><span>${'<span class="box"></span>'.repeat(CELLS)}</span></div>`).join('')}</div>
+    <div class="open">${open.map(q => `<div class="row"><span class="no">${q.slot}</span><span class="bx">${'<span class="box"></span>'.repeat(CELLS)}</span></div>`).join('')}</div>
   </div>`
 }
 
@@ -136,6 +137,10 @@ async function fit(doc: Document): Promise<{ bad: string[]; moved: string[] }> {
     }
     if (!shrink(bk)) { bk.style.outline = '2px solid red'; bad.push(name) }
     if (over(fr)) { fr.style.outline = '2px solid red' }
+    const cd = sides[i + 1].querySelector<HTMLElement>('.card')                  // cavab kartının bütün sətirləri vərəqdədir?
+    if (cd && (cd.scrollHeight > cd.clientHeight + 2 || cd.getBoundingClientRect().bottom > sides[i + 1].getBoundingClientRect().bottom + 1)) {
+      cd.style.outline = '2px solid red'; bad.push(name + ' – ' + tt('cavab kartı'))
+    }
   }
   return { bad, moved }
 }

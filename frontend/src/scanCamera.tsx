@@ -37,7 +37,7 @@ export function quality(c: HTMLCanvasElement): Quality {
   return { ok: true }
 }
 
-export default function ScanCamera({ url, onClose, onSent }: { url: string; onClose: () => void; onSent: () => void }) {
+export default function ScanCamera({ url, onClose, onSent, replaceAll = false }: { url: string; onClose: () => void; onSent: () => void; replaceAll?: boolean }) {
   const video = useRef<HTMLVideoElement>(null)
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null)
   const [sent, setSent] = useState(0)
@@ -107,7 +107,7 @@ export default function ScanCamera({ url, onClose, onSent }: { url: string; onCl
       if (!b) return
       setQueue(n => n + 1)
       const form = new FormData(); form.append('files', b, `kart-${Date.now()}.jpg`)
-      const again = replaceRef.current
+      const again = replaceRef.current || replaceAll
       try {
         const r = await api<Up>(url + (again ? '?replace=true' : ''), { method: 'POST', form })
         const already = r.already || []

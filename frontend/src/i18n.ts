@@ -5,6 +5,9 @@ import { createContext, useContext } from 'react'
 export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
+  "Kartlar yenidən skan olunanda köhnə skan və oxunuş əvəz olunur": ["When cards are scanned again, the old scan and reading are replaced", "При повторном сканировании старый скан и распознавание заменяются"],
+  "Yenidən skan (köhnəni əvəz et)": ["Rescan (replace old)", "Пересканировать (заменить старое)"],
+  "cavab kartı": ["answer card", "бланк ответов"],
   "Sayılsın (vərəqdə var idi)": ["Count it (it was on the sheet)", "Учитывать (вопрос был на листе)"],
   "Vərəqdə yox idi – sayılmasın": ["Not on the sheet – do not count", "Не было на листе – не учитывать"],
   "Vərəqdə görünməyən suallar sayılmır, bal qalanlar üzrə 100-ə hesablanır: {list}": ["Questions missing from the sheet are not counted, the score is scaled to 100 over the rest: {list}", "Вопросы, которых не было на листе, не учитываются, балл пересчитан из 100 по остальным: {list}"],

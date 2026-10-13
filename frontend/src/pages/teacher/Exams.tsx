@@ -332,6 +332,8 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
   const [cam, setCam] = useState(false)
+  const [again, setAgain] = useState(false)         // yenidən skan: köhnə skanlar əvəz olunur (bir blank – bir dəfə qaydasından istisna)
+  const upUrl = `/api/exam-scans/${ta}/${examId}/upload` + (again ? '?replace=true' : '')
   const send = async (files: FileList | null) => {
     if (!files?.length) return
     const form = new FormData()
@@ -339,7 +341,7 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
     setBusy(true)
     try {
       const r = await api<{ found: { full_name: string | null }[]; problems: { file: string; error: string; kind?: string; full_name?: string | null }[];
-        already?: { full_name: string | null }[] }>(`/api/exam-scans/${ta}/${examId}/upload`, { method: 'POST', form })
+        already?: { full_name: string | null }[] }>(upUrl, { method: 'POST', form })
       const al = r.already || []
       toast(tt('Tapılan kart: {n}', { n: r.found.length })
         + (al.length ? ' · ' + tt('artıq skan olunub (təkrar göndərilmədi): {names}', { names: al.map(x => x.full_name || '—').join(', ') }) : '')
@@ -363,9 +365,11 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
           title={tt('Bütün kartlar mövcud açarla yenidən hesablanır')}>🔄 {tt('Yenilə')}</AsyncBtn>}
         {d && d.scans.length > 0 && d.claude && <AsyncBtn className="btn sm ghost" onClick={async () => { await post(`/api/exam-scans/${ta}/${examId}/reread`); reload() }}
           title={tt('Kartlar Claude-a təzədən göndərilir (əl düzəlişləri də silinir)')}>👁 {tt('Yenidən oxu')}</AsyncBtn>}
+        {d && d.scans.length > 0 && <label className="small row" style={{ gap: 4 }} title={tt('Kartlar yenidən skan olunanda köhnə skan və oxunuş əvəz olunur')}>
+          <input type="checkbox" checked={again} onChange={e => setAgain(e.target.checked)} />{tt('Yenidən skan (köhnəni əvəz et)')}</label>}
         {busy && <span className="small muted">{tt('Yüklənir…')}</span>}
       </div>
-      {cam && <ScanCamera url={`/api/exam-scans/${ta}/${examId}/upload`} onClose={() => { setCam(false); reload() }} onSent={reload} />}
+      {cam && <ScanCamera url={`/api/exam-scans/${ta}/${examId}/upload`} replaceAll={again} onClose={() => { setCam(false); reload() }} onSent={reload} />}
       <ErrorBox error={err} />
       {d && !d.claude && <p className="small" style={{ margin: '8px 0 0', color: 'var(--warn)' }}>{tt('Süni intellekt bağlantısı yoxdur: kartlar oxunmağı gözləyəcək. Tənzimləmələr → «Süni intellekt» → OpenRouter və ya Anthropic açarını daxil edin (OpenRouter-də şəkil oxuyan model: Claude, Gemini, GPT-4o).')}</p>}
       {c && <p className="small" style={{ margin: '8px 0 4px' }}>{tt('Skan: {a}/{b} · yoxlanılıb: {c} · oxunmağı gözləyir: {p}', { a: c.scanned, b: c.variants, c: c.graded, p: c.pending })}
