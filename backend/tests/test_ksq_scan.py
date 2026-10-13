@@ -388,3 +388,37 @@ def test_printed_variants_protected_and_old_cards_accepted(world):
     legacy = qr_payload(e['id'], sid, code)                            # versiyasız (əvvəlki çaplar)
     r = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([legacy]), 'image/jpeg'))]).json()
     assert len(r['found']) == 1 and not r['problems']
+
+
+def test_openrouter_key_saved_as_anthropic(world, monkeypatch):
+    """İstifadəçi xətası (14.10): OpenRouter açarı «Anthropic» seçilərək saxlanıb – sistem açarın növünə görə OpenRouter işlədir."""
+    from app import ai
+    from app.domain import ksq_reader as R
+    from app.models import User
+    from app.security import secret_encrypt
+    assert ai.fix_provider('anthropic', 'claude-sonnet-5-5', 'sk-or-v1-abc') == ('openrouter', ai.OR_CLAUDE)
+    assert ai.fix_provider('openrouter', 'google/gemini-2.5-flash', 'sk-ant-xyz') == ('anthropic', 'claude-sonnet-5-5')
+    assert ai.fix_provider('anthropic', 'claude-sonnet-5-5', 'sk-ant-xyz') == ('anthropic', 'claude-sonnet-5-5')
+    as_, S = world
+    with S() as db:
+        u = db.query(User).filter_by(login='admin').first()
+        u.ai_settings = {'provider': 'anthropic', 'model': 'claude-sonnet-5-5', 'key': secret_encrypt('sk-or-v1-test-key-123')}
+        db.commit()
+        c = R.api_key_for(db, u.id)
+    assert c['provider'] == 'openrouter' and c['key'] == 'sk-or-v1-test-key-123'
+    sent = {}
+
+    class Resp:
+        status_code = 200
+
+        def json(self):
+            return {'choices': [{'message': {'content': 'HAZIR'}}]}
+    monkeypatch.setattr('httpx.Client.post', lambda self, url, headers=None, json=None: sent.update(url=url, model=json['model']) or Resp())
+    out = ai.complete({'provider': 'anthropic', 'model': 'claude-sonnet-5-5', 'base_url': None, 'api_key': 'sk-or-v1-x'}, 's', 'u', json_mode=False)
+    assert out == 'HAZIR' and sent['url'].startswith('https://openrouter.ai/') and sent['model'] == ai.OR_CLAUDE
+    monkeypatch.undo()                                                  # TestClient də httpx işlədir
+    admin = as_('admin')
+    r = admin.put('/api/ai/settings', json={'provider': 'anthropic', 'model': 'claude-sonnet-5-5', 'api_key': 'sk-or-v1-new-key-456789'})
+    assert r.status_code in (200, 403)                                  # 403 – ayarlar kilidi (settings_unlocked) testdə bağlı ola bilər
+    if r.status_code == 200:
+        assert r.json()['provider'] == 'openrouter'

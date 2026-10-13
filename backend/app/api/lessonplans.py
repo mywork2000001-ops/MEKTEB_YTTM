@@ -93,7 +93,10 @@ def put_ai(body: AiIn, user: User = Depends(settings_unlocked), db: Session = De
         enc = old['key']
     else:
         enc = secret_encrypt(key)
-    user.ai_settings = {'provider': body.provider, 'model': body.model.strip(), 'base_url': base, 'key': enc,
+    prov, mdl = ai.fix_provider(body.provider, body.model.strip(), key or secret_decrypt(enc))   # açarın növünə görə düzəliş
+    if prov != body.provider:
+        base = None
+    user.ai_settings = {'provider': prov, 'model': mdl, 'base_url': base, 'key': enc,
                         'header_school': old.get('header_school')}
     audit(db, user, 'update', 'ai_settings', user.id, provider=body.provider, model=body.model)
     db.commit()

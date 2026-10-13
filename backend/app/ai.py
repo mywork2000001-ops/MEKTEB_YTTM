@@ -62,7 +62,7 @@ def _err(provider: str, r: httpx.Response) -> HTTPException:
     msg = str(msg or '')[:300]
     label = PROVIDERS.get(provider, {}).get('label', provider)
     if r.status_code in (401, 403):
-        return HTTPException(400, f'{label}: API açarı yanlışdır və ya icazəsi yoxdur. {msg}'.strip())
+        return HTTPException(400, f'{label}: API açarı yanlışdır və ya icazəsi yoxdur (açar başqa xidmətindirsə – «Xidmət» sahəsini yoxlayın: sk-or-… → OpenRouter, sk-ant-… → Anthropic). {msg}'.strip())
     if r.status_code == 429:
         return HTTPException(429, f'{label}: sorğu limiti və ya kvota bitib – bir az sonra yenidən cəhd edin. {msg}'.strip())
     if r.status_code == 404:
@@ -72,8 +72,25 @@ def _err(provider: str, r: httpx.Response) -> HTTPException:
     return HTTPException(502, f'{label} xətası ({r.status_code}): {msg}')
 
 
+OR_CLAUDE = 'anthropic/claude-sonnet-4.5'
+
+
+def fix_provider(provider: str, model: str, key: str | None) -> tuple[str, str]:
+    """Açarın növünə görə xidmət (istifadəçi xətası 14.10: OpenRouter açarı «Anthropic» seçilərək saxlanmışdı → 401).
+    sk-or-… → OpenRouter (model «anthropic/…» deyilsə – Claude Sonnet 4.5); sk-ant-… → Anthropic."""
+    k = (key or '').strip()
+    if k.startswith('sk-or-') and provider != 'openrouter':
+        return 'openrouter', model if '/' in (model or '') or (model or '').startswith('@preset/') else OR_CLAUDE
+    if k.startswith('sk-ant-') and provider != 'anthropic':
+        return 'anthropic', model if (model or '').startswith('claude') else 'claude-sonnet-5-5'
+    return provider, model
+
+
 def complete(cfg: dict, system: str, user: str, json_mode: bool = True, max_tokens: int = 12000) -> str:
     """Bir sorğu → mətn. cfg: {provider, model, base_url, api_key}."""
+    prov, mdl = fix_provider(cfg['provider'], cfg['model'], cfg.get('api_key'))
+    if (prov, mdl) != (cfg['provider'], cfg['model']):
+        cfg = {**cfg, 'provider': prov, 'model': mdl, 'base_url': None}
     prov = cfg['provider']
     p = PROVIDERS[prov]
     base = cfg.get('base_url') or p['base']

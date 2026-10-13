@@ -180,7 +180,9 @@ def api_key_for(db: Session, teacher_id: int | None) -> dict | None:
         key = secret_decrypt(s.get('key')) if s.get('provider') in ('anthropic', 'openrouter') else None
         if not key:
             return None
-        if s['provider'] == 'anthropic':
+        from ..ai import fix_provider
+        prov, _ = fix_provider(s['provider'], s.get('model') or '', key)       # sk-or- açarı «Anthropic» seçilibsə
+        if prov == 'anthropic':
             return {'provider': 'anthropic', 'key': key, 'model': MODEL}
         m = s.get('model') or ''
         ok = m.startswith('@preset/') or any(v in m.lower() for v in VISION)       # OpenRouter preseti – müəllimin seçimi, olduğu kimi
