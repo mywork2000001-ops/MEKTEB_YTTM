@@ -6,6 +6,7 @@ Açar: MK_ANTHROPIC_API_KEY → müəllimin öz Claude açarı → məktəb admi
 from __future__ import annotations
 
 import base64
+import io
 import re
 import logging
 
@@ -73,12 +74,18 @@ def _instructions(slots: list[dict], only: list[int] | None = None) -> str:
     return t
 
 
-def call(key: str, model: str, jpeg: bytes, slots: list[dict], only: list[int] | None = None) -> list[dict]:
+def _imgs(jpeg: bytes | list[bytes]) -> list[bytes]:
+    return jpeg if isinstance(jpeg, list) else [jpeg]
+
+
+def call(key: str, model: str, jpeg: bytes | list[bytes], slots: list[dict], only: list[int] | None = None,
+         text: str | None = None) -> list[dict]:
     body = {'model': model, 'max_tokens': 4000, 'system': SYSTEM, 'tools': [TOOL],
             'tool_choice': {'type': 'tool', 'name': 'submit_card'},
             'messages': [{'role': 'user', 'content': [
-                {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': base64.b64encode(jpeg).decode()}},
-                {'type': 'text', 'text': _instructions(slots, only)}]}]}
+                *({'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': base64.b64encode(j).decode()}}
+                  for j in _imgs(jpeg)),
+                {'type': 'text', 'text': text or _instructions(slots, only)}]}]}
     with httpx.Client(timeout=TIMEOUT) as c:
         r = c.post(API, json=body, headers={'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'})
     if r.status_code != 200:
@@ -130,21 +137,25 @@ _OPEN_OK = re.compile(rf'^{_NUM}(?:/{_NUM})?(?:;{_NUM}(?:/{_NUM})?)*$')
 
 def plausible(kind: str, v: str) -> bool:
     """Kartda yazıla bilən cavab formasıdır? «2/0», «7/», «Y/9», «3,» – yox (xana sərhədi və ya səhv oxunuş)."""
-    if kind == 'mcq' or v == '':
+    if kind == 'mcq':
+        return v in ('', 'A', 'B', 'C', 'D', 'E', '*')
+    if v == '':
         return True
     if not _OPEN_OK.match(v):
         return False
     return all(p.split('/')[1].lstrip('-').replace(',', '').strip('0') != '' for p in v.split(';') if '/' in p)   # məxrəc 0 deyil
 
 
-def call_openrouter(key: str, model: str, jpeg: bytes, slots: list[dict], only: list[int] | None = None) -> list[dict]:
-    """OpenRouter (OpenAI-uyğun): şəkil data-URI ilə, məcburi funksiya çağırışı submit_card."""
+def call_openrouter(key: str, model: str, jpeg: bytes | list[bytes], slots: list[dict], only: list[int] | None = None,
+                    text: str | None = None) -> list[dict]:
+    """OpenRouter (OpenAI-uyğun): şəkil(lər) data-URI ilə, məcburi funksiya çağırışı submit_card."""
     import json as _json
     body = {'model': model, 'max_tokens': 4000, 'temperature': 0,
             'messages': [{'role': 'system', 'content': SYSTEM},
                          {'role': 'user', 'content': [
-                             {'type': 'text', 'text': _instructions(slots, only)},
-                             {'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,' + base64.b64encode(jpeg).decode()}}]}],
+                             {'type': 'text', 'text': text or _instructions(slots, only)},
+                             *({'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,' + base64.b64encode(j).decode()}}
+                               for j in _imgs(jpeg))]}],
             'tools': [{'type': 'function', 'function': {'name': TOOL['name'], 'description': TOOL['description'], 'parameters': TOOL['input_schema']}}],
             'tool_choice': {'type': 'function', 'function': {'name': TOOL['name']}}}
     with httpx.Client(timeout=TIMEOUT) as c:
@@ -172,52 +183,132 @@ def _conn(c) -> dict:
     return c if isinstance(c, dict) else {'provider': 'anthropic', 'key': c, 'model': MODEL}
 
 
-def read_card(key, jpeg: bytes, slots: list[dict]) -> tuple[list[dict], str]:
+def strips(jpeg: bytes) -> list[bytes]:
+    """Diqqətli oxunuş üçün kartın 3 sütunu ayrıca: böyüdülmüş, kontrastı artırılmış (səliqəsiz əl yazısı – 13.10.2026).
+    Kəsik QR-ın sol kənarından ZONE[0] mm solda başlayır; kartın daxili eni 174 mm, 3 bərabər sütun."""
+    from PIL import Image, ImageFilter, ImageOps
+    from .ksq_scan import ZONE
+    img = Image.open(io.BytesIO(jpeg)).convert('L')
+    pmm = img.width / (ZONE[2] - ZONE[0])
+    out = []
+    for k in range(3):
+        a, b = k * 58 - 5, (k + 1) * 58 + 5                     # mm, QR-ın sol kənarına görə (sütun ± 5 mm)
+        x0, x1 = max(0, int((a - ZONE[0]) * pmm)), min(img.width, int((b - ZONE[0]) * pmm))
+        s = ImageOps.autocontrast(img.crop((x0, 0, x1, img.height)), cutoff=1)
+        f = min(2.0, 1100 / max(1, s.height))
+        s = s.resize((int(s.width * f), int(s.height * f)), Image.LANCZOS).filter(ImageFilter.SHARPEN)
+        buf = io.BytesIO()
+        s.save(buf, 'JPEG', quality=90)
+        out.append(buf.getvalue())
+    return out
+
+
+def _columns(slots: list[dict]) -> list[list[int]]:
+    """Kartda hər sütundakı nömrələr: test və açıq qrupları ayrıca 3 sütunlu cədvəldir, sətir-sətir doldurulur."""
+    cols: list[list[int]] = [[], [], []]
+    for kind in ('mcq', 'open'):
+        for i, s in enumerate([s for s in slots if (s['kind'] == 'mcq') == (kind == 'mcq')]):
+            cols[i % 3].append(s['slot'])
+    return cols
+
+
+def _strip_text(slots: list[dict], only: list[int] | None) -> str:
+    cols = _columns(slots)
+    names = ('sol', 'orta', 'sağ')
+    t = ('Sənə bir cavab kartının 3 şəkli verilib – kartın SOL, ORTA və SAĞ sütunları ayrıca, böyüdülmüş. '
+         'Şagird əl yazısı səliqəsiz ola bilər: hər rəqəmə ayrıca, diqqətlə bax.\n')
+    for k in range(3):
+        t += f'- {k + 1}-ci şəkil ({names[k]} sütun): suallar {", ".join(map(str, cols[k]))}\n'
+    return t + _instructions(slots, only)
+
+
+def _decide(votes: dict[int, list[dict]], kinds: dict[int, str]) -> dict[int, dict]:
+    """Səsvermə: ən azı iki oxunuş eynidirsə – o qəbul (əmin); yoxsa – sarı, alternativlər saxlanır."""
+    out = {}
+    for slot, vs in votes.items():
+        vs = [v for v in vs if plausible(kinds[slot], v['value'])] or vs      # mümkün olmayan oxunuş səs deyil
+        vals = [v['value'] for v in vs]
+        cnt = {x: vals.count(x) for x in vals}
+        zc = {x: sum(1 for v in vs if v['value'] == x and v.get('z')) for x in cnt}   # böyüdülmüş oxunuşların səsi
+        best = max(cnt, key=lambda x: (cnt[x], zc[x], plausible(kinds[slot], x), x != ''))
+        alts = [x for x in dict.fromkeys(vals) if x != best]
+        tie = any(cnt[x] == cnt[best] for x in alts)
+        if len(vs) == 1:
+            out[slot] = dict(vs[0])
+        elif tie and cnt[best] >= 2:                         # bərabər səs (2:2) – böyüdülmüş oxunuş seçilir, amma sarı
+            out[slot] = {'slot': slot, 'value': best, 'confidence': LOW / 2, 'votes': len(vs), 'alt': alts[0]}
+        elif cnt[best] >= 2 and plausible(kinds[slot], best):
+            out[slot] = {'slot': slot, 'value': best, 'confidence': 1.0 if not alts else 0.9, 'votes': len(vs)}
+        else:
+            pick = next((v for v in vs if v.get('z') and v['value']), None) or next((v for v in vs if v['value']), vs[0])   # böyüdülmüş oxunuş üstündür
+            out[slot] = {'slot': slot, 'value': pick['value'], 'confidence': LOW / 2, 'votes': len(vs),
+                         'alt': next((x for x in alts if x != pick['value']), None) if pick['value'] != best else best}
+            if out[slot]['alt'] is None and alts:
+                out[slot]['alt'] = alts[0]
+        if alts and 'alts' not in out[slot]:
+            out[slot]['alts'] = [x for x in dict.fromkeys(vals) if x != out[slot]['value']]
+    return out
+
+
+def read_card(key, jpeg: bytes, slots: list[dict], thorough: bool = False,
+              keep: dict[int, dict] | None = None) -> tuple[list[dict], str]:
+    """Kartın oxunuşu (13.10.2026 auditi – səliqəsiz əl yazısı):
+    A) bütün kart – əsas model; B) açıq suallar – başqa model (müstəqil), A ilə paralel;
+    C) fikir ayrılığı / mümkün olmayan xanalar – kartın böyüdülmüş sütunları ilə əsas model, sonra səsvermə (2 eyni = qəbul).
+    thorough=True (müəllimin «Diqqətli oxu» düyməsi): C bütün suallara + D) sütunlar ikinci modellə – 4 oxunuşdan səsvermə.
+    keep – müəllimin düzəltdiyi xanalar (toxunulmur)."""
+    from concurrent.futures import ThreadPoolExecutor
     c = _conn(key)
-    if c['provider'] == 'openrouter':
-        m = c['model']
-        from concurrent.futures import ThreadPoolExecutor
-        opn = [s for s in slots if s['kind'] != 'mcq']
-        with ThreadPoolExecutor(2) as ex:                  # yoxlama oxunuşu birinci ilə eyni vaxtda – gözləmə yarıya düşür
-            f1 = ex.submit(call_openrouter, c['key'], m, jpeg, slots)
-            fv = ex.submit(call_openrouter, c['key'], VERIFY_MODEL, jpeg, opn) if opn and VERIFY_MODEL and VERIFY_MODEL != m else None
-            first = {a['slot']: a for a in f1.result()}
-            try:
-                verify = fv.result() if fv else None
-            except RuntimeError as e:
-                log.warning('yoxlama oxunuşu: %s', e)
-                verify = None
-        doubt = [s['slot'] for s in slots if s['slot'] not in first or first[s['slot']]['confidence'] < LOW]
-        if doubt:                                            # şübhəli xanalar – eyni modellə ayrıca, diqqətli ikinci oxunuş
-            try:
-                for a in call_openrouter(c['key'], m, jpeg, slots, doubt):
-                    if a['slot'] not in first or a['confidence'] > first[a['slot']]['confidence']:
-                        first[a['slot']] = {**a, 'second': True}
-                m += '+2'
-            except RuntimeError as e:
-                log.warning('ikinci oxunuş: %s', e)
-        # müstəqil yoxlama: açıq cavabları başqa model də oxuyur; fərqli oxunan xana – sarı (müəllim baxır), alternativ saxlanır
-        # (13.10.2026 auditi: əl yazısı «1»/«7», «6»/«3» bir modellə səhv oxunurdu)
-        if verify is not None:
-            for a in verify:
-                cur = first.get(a['slot'])
-                if cur is not None and a['value'] != cur['value']:
-                    first[a['slot']] = {**cur, 'confidence': min(cur['confidence'], LOW / 2), 'alt': a['value']}
-            m += '+v'
-        return [first[k] for k in sorted(first)], m
-    key = c['key']
-    first = {a['slot']: a for a in call(key, MODEL, jpeg, slots)}
-    doubt = [s['slot'] for s in slots if s['slot'] not in first or first[s['slot']]['confidence'] < LOW]
-    by = MODEL
-    if doubt:
+    orr = c['provider'] == 'openrouter'
+    m1 = c['model'] if orr else MODEL
+    m2 = (VERIFY_MODEL if VERIFY_MODEL != m1 else None) if orr else MODEL_2
+
+    def run(model, img, sl, only=None, text=None):
+        return (call_openrouter(c['key'], model, img, sl, only, text) if orr else call(c['key'], model, img, sl, only, text))
+
+    kinds = {s['slot']: s['kind'] for s in slots}
+    opn = [s for s in slots if s['kind'] != 'mcq']
+    votes: dict[int, list[dict]] = {s['slot']: [] for s in slots}
+    by = m1
+    with ThreadPoolExecutor(2) as ex:                        # A və B eyni vaxtda
+        fa = ex.submit(run, m1, jpeg, slots)
+        fb = ex.submit(run, m2, jpeg, opn) if opn and m2 else None
+        for a in fa.result():
+            votes[a['slot']].append(a)
         try:
-            for a in call(key, MODEL_2, jpeg, slots, doubt):
-                if a['slot'] not in first or a['confidence'] > first[a['slot']]['confidence']:
-                    first[a['slot']] = {**a, 'second': True}
-            by = f'{MODEL}+{MODEL_2}'
-        except RuntimeError as e:                            # ikinci oxunuş alınmasa – birincisi qalır (xana sarı)
-            log.warning('ikinci oxunuş: %s', e)
-    return [first[k] for k in sorted(first)], by
+            for a in (fb.result() if fb else []):
+                votes[a['slot']].append(a)
+            by += '+v' if fb else ''
+        except RuntimeError as e:
+            log.warning('yoxlama oxunuşu: %s', e)
+    doubt = [s for s in votes if not votes[s] or len({v['value'] for v in votes[s]}) > 1
+             or any(v['confidence'] < LOW for v in votes[s])]
+    try:
+        sj = strips(jpeg) if (thorough or doubt) else None
+    except Exception as e:                                   # noqa: BLE001 – şəkil açılmadı: böyütmə yoxdur
+        log.warning('sütunlar kəsilmədi: %s', e)
+        sj = None
+    if sj:
+        only = None if thorough else sorted(doubt)
+        text = _strip_text(slots, only)
+        with ThreadPoolExecutor(2) as ex:
+            fc = ex.submit(run, m1, sj, slots, only, text)
+            fd = ex.submit(run, m2, sj, slots, only, text) if thorough and m2 else None
+            for f in (fc, fd):
+                if f is None:
+                    continue
+                try:
+                    for a in f.result():
+                        if thorough or a['slot'] in doubt:
+                            votes[a['slot']].append({**a, 'z': True})
+                    by += '+z'
+                except RuntimeError as e:
+                    log.warning('diqqətli oxunuş: %s', e)
+    res = _decide({k: v for k, v in votes.items() if v}, kinds)
+    for slot, r in (keep or {}).items():                    # müəllimin düzəlişi – toxunulmur
+        if slot in kinds:
+            res[slot] = r
+    return [res[k] for k in sorted(res)], by
 
 
 def api_key_for(db: Session, teacher_id: int | None) -> dict | None:
@@ -308,7 +399,7 @@ def read_pending(db: Session, exam_id: int | None = None, limit: int = 20, ids: 
     return n
 
 
-def _read_one(db, sc, apply, storage_for_key, Exam, ExamVariant, TeachingAssignment) -> int:
+def _read_one(db, sc, apply, storage_for_key, Exam, ExamVariant, TeachingAssignment, thorough: bool = False) -> int:
     """Bir kartın oxunuşu və balı. 1 – oxundu, 0 – keçildi (açar/limit/xəta)."""
     e = db.get(Exam, sc.exam_id)
     ta = db.get(TeachingAssignment, e.assignment_id) if e else None
@@ -324,14 +415,46 @@ def _read_one(db, sc, apply, storage_for_key, Exam, ExamVariant, TeachingAssignm
     try:
         jpeg = b''.join(storage_for_key(sc.crop_key).stream(sc.crop_key, db))
         _usage['in'] = _usage['out'] = 0
-        reading, by = read_card(key, jpeg, slots)
+        keep = {int(r['slot']): r for r in (sc.reading or []) if r.get('by') == 'teacher'} if thorough else None
+        reading, by = read_card(key, jpeg, slots, thorough=thorough, keep=keep)
         _add_usage(db, 1, _usage['in'], _usage['out'])
     except Exception as ex:                              # noqa: BLE001 – şəbəkə/limit: kart gözləməyə qalır
         sc.error = str(ex)[:300]
         db.commit()
         log.warning('kart oxunmadı (scan %s): %s', sc.id, ex)
         return 0
-    sc.reading, sc.read_by = reading, ((('claude' if 'openrouter' != _conn(key)['provider'] else 'openrouter') + ('+2' if '+' in by else '')))[:20]
+    if thorough and sc.reading:                              # əvvəlki oxunuş tarixçəyə
+        sc.history = [*(sc.history or []), {'at': now_iso(), 'reading': sc.reading, 'points': sc.points, 'read_by': sc.read_by}][-5:]
+    sc.reading, sc.error = reading, None
+    sc.read_by = (('claude' if 'openrouter' != _conn(key)['provider'] else 'openrouter') + ('+diq' if thorough else '+2' if '+' in by else ''))[:20]
     apply(db, e, sc)
     db.commit()
     return 1
+
+
+def now_iso() -> str:
+    from ..models import now
+    return now().isoformat()
+
+
+def read_thorough(db: Session, scan_ids: list[int]) -> int:
+    """«Diqqətli oxu» (müəllim düyməsi – bir şagird və ya bütün sinif): böyüdülmüş sütunlar + iki model, 4 oxunuşdan
+    səsvermə; müəllimin düzəltdiyi xanalar saxlanır; əvvəlki oxunuş tarixçəyə. Bir kart eyni anda yalnız bir iş tərəfindən."""
+    from ..api.exam_scans import apply
+    from ..models import Exam, ExamScan, ExamVariant, TeachingAssignment
+    from ..storage import storage_for_key
+    n = 0
+    for sid in scan_ids:
+        with _busy_lock:
+            if sid in _busy:
+                continue
+            _busy.add(sid)
+        try:
+            sc = db.get(ExamScan, sid)
+            if sc is None or not sc.crop_key:
+                continue
+            n += _read_one(db, sc, apply, storage_for_key, Exam, ExamVariant, TeachingAssignment, thorough=True)
+        finally:
+            with _busy_lock:
+                _busy.discard(sid)
+    return n

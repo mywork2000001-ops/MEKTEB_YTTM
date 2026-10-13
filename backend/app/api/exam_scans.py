@@ -186,6 +186,40 @@ def lost_auto(ta_id: int, exam_id: int, body: LostAutoIn, user: User = Depends(s
     return {'changed': [{**x, 'full_name': names.get(x['student_id'])} for x in out]}
 
 
+def _thorough_bg(bind, ids: list[int]) -> None:
+    import logging
+    from ..domain.ksq_reader import read_thorough
+    try:
+        with Session(bind=bind, expire_on_commit=False) as db:
+            read_thorough(db, ids)
+    except Exception:                                          # noqa: BLE001
+        logging.getLogger(__name__).exception('diqqətli oxunuş')
+
+
+@router.post('/{scan_id}/thorough')
+def thorough_one(scan_id: int, bg: BackgroundTasks, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«🔍 Diqqətli oxu» – bir şagirdin kartı (səliqəsiz yazı): böyüdülmüş sütunlar, iki model, səsvermə. Fonda (~1 dəq)."""
+    sc, e = _own_scan(db, user, scan_id)
+    audit(db, user, 'update', 'exam_scan', sc.id, thorough=True)
+    db.commit()
+    bg.add_task(_thorough_bg, db.get_bind(), [sc.id])
+    return {'started': 1}
+
+
+@router.post('/{ta_id}/{exam_id}/thorough')
+def thorough_all(ta_id: int, exam_id: int, bg: BackgroundTasks, only_flagged: bool = False, user: User = Depends(staff),
+                 db: Session = Depends(get_db)):
+    """«🔍 Sinfi diqqətli oxu» – bütün kartlar (only_flagged – yalnız sarı xanası olanlar). Fonda, kart-kart."""
+    _, e = _exam(db, user, ta_id, exam_id)
+    ids = [sc.id for sc in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.crop_key.is_not(None)))
+           if not only_flagged or sc.flagged]
+    audit(db, user, 'update', 'exam_scans', e.id, thorough=len(ids))
+    db.commit()
+    if ids:
+        bg.add_task(_thorough_bg, db.get_bind(), ids)
+    return {'started': len(ids)}
+
+
 # ---------------------------------------------------------------- yükləmə, siyahı, yenilə
 @router.post('/{ta_id}/{exam_id}/upload')
 async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[UploadFile] = File(...), replace: bool = False,

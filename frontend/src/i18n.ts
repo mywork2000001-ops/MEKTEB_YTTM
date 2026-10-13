@@ -5,6 +5,14 @@ import { createContext, useContext } from 'react'
 export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
+  "Səliqəsiz yazı üçün: kartın sütunları böyüdülür, iki model oxuyur, ən azı iki eyni oxunuş qəbul edilir; düzəlişləriniz saxlanır": ["For messy handwriting: the card columns are enlarged, two models read them, a value is accepted when at least two readings agree; your corrections are kept", "Для неаккуратного почерка: колонки бланка увеличиваются, читают две модели, ответ принимается при совпадении хотя бы двух чтений; ваши исправления сохраняются"],
+  "Sinfi diqqətli oxu": ["Careful reading – whole class", "Тщательное чтение – весь класс"],
+  "Yalnız sarı xanası olan kartlar diqqətlə yenidən oxunur": ["Only cards with yellow cells are re-read carefully", "Тщательно перечитываются только бланки с жёлтыми клетками"],
+  "Yalnız baxılmalılar": ["Only to review", "Только проверить"],
+  "Diqqətli oxunuş başladı: {n} kart (hər kart ~1 dəq; nəticə siyahıda yenilənir)": ["Careful reading started: {n} cards (~1 min each; the list updates)", "Тщательное чтение запущено: {n} бланков (~1 мин каждый; список обновляется)"],
+  "Diqqətli oxunuş başladı – ~1 dəqiqə": ["Careful reading started – ~1 minute", "Тщательное чтение запущено – ~1 минута"],
+  "Diqqətli oxu": ["Careful reading", "Тщательно прочитать"],
+  "Sarı xana – oxunuşlar razılaşmayıb, şəkilə baxıb düzəldin": ["Yellow cell – readings disagree, check the image and correct", "Жёлтая клетка – чтения не совпали, сверьте со снимком и исправьте"],
   "bal hələ hazır deyil – oxunuş növbədədir, nəticə siyahıda görünəcək": ["score not ready yet – reading is queued, the result will appear in the list", "балл ещё не готов – распознавание в очереди, результат появится в списке"],
   "(növbədə {n} kart)": ["({n} cards in queue)", "(в очереди {n} бланков)"],
   "Köhnə çapda kəsilmiş və kartda cavabı boş olan suallar şagird üçün sayılmır (⊘); cavabı olan – sayılır": ["Questions cut off in the old print and left blank on the card are not counted (⊘); answered ones are counted", "Вопросы, обрезанные в старой печати и пустые на бланке, не учитываются (⊘); отвеченные учитываются"],

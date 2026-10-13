@@ -131,18 +131,23 @@ def test_claude_reader_flow(world, monkeypatch):
     key = {x['slot']: x['value'] for x in next(k for k in pr['key'] if k['code'] == a['code'])['answers']}
     calls = []
 
-    def fake_call(api_key, model, jpeg, slots, only=None):
-        calls.append((model, only))
+    def fake_call(api_key, model, jpeg, slots, only=None, text=None):
+        calls.append((model, tuple(only or ()), text is not None))
+        if isinstance(jpeg, list):                                            # böyüdülmüş sütunlar (diqqətli oxunuş)
+            assert len(jpeg) == 3 and all(j[:2] == b'\xff\xd8' for j in jpeg)
+            return [{'slot': s, 'value': key[s], 'confidence': 0.93} for s in (only or [x['slot'] for x in slots])]
         assert api_key == 'sk-test' and jpeg[:2] == b'\xff\xd8'               # yalnız JPEG kəsik göndərilir
         if model == R.MODEL:                                                  # birinci: 5-ci xana şübhəli, 7-ci yoxdur
             return [{'slot': s, 'value': key[s] if s != 5 else '?', 'confidence': 0.4 if s == 5 else 0.95}
                     for s in key if s != 7]
-        return [{'slot': s, 'value': key[s], 'confidence': 0.93} for s in only]
+        return [{'slot': s['slot'], 'value': key[s['slot']], 'confidence': 0.93} for s in slots]     # B: başqa model, açıq suallar
     monkeypatch.setattr(R, 'call', fake_call)
     monkeypatch.setattr(R, 'api_key_for', lambda db, tid: 'sk-test')
     r = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([a['qr']], 3), 'image/jpeg'))])
     assert r.status_code == 200 and len(r.json()['found']) == 1
-    assert calls == [(R.MODEL, None), (R.MODEL_2, [5, 7])]
+    assert (R.MODEL, (), False) in calls and any(m == R.MODEL_2 and not z for m, _, z in calls)       # A + B (açıq suallar)
+    zoom = [o for m, o, z in calls if z]                                      # şübhəli xanalar – böyüdülmüş sütunlarla
+    assert len(zoom) == 1 and {5, 7} <= set(zoom[0])
     sc = admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()
     s = sc['scans'][0]
     assert s['status'] == 'graded' and s['points'] == 100 and s['flagged'] == [] and s['read_by'] == 'claude+2' and sc['claude'] is True
@@ -331,7 +336,8 @@ def test_openrouter_reader(world, monkeypatch):
     monkeypatch.setattr(httpx.Client, 'post', post)
     got, by = R.read_card({'provider': 'openrouter', 'key': 'sk-or', 'model': 'google/gemini-2.5-flash'}, b'\xff\xd8x',
                           [{'slot': 1, 'kind': 'mcq'}, {'slot': 2, 'kind': 'open'}])
-    assert [g['value'] for g in got] == ['C', '3/7'] and by.endswith('+2+v') and len(sent) == 3      # şübhəli 2-ci xana – ikinci oxunuş; açıq xanalar – müstəqil yoxlama (başqa model)
+    # A (əsas model) + B (başqa model, açıq suallar) paralel; hər ikisi «3/7» – səsvermə ilə qəbul (2-ci xana sarı deyil)
+    assert [g['value'] for g in got] == ['C', '3/7'] and by.endswith('+v') and len(sent) == 2 and got[1]['confidence'] >= R.LOW
     assert sorted(x[1]['model'] for x in sent).count(R.VERIFY_MODEL) == 1
     url, body, headers = next(x for x in sent if x[1]['model'] != R.VERIFY_MODEL)      # birinci oxunuş və yoxlama paraleldir – sıra təsadüfidir
     assert url == R.OPENROUTER and headers['Authorization'] == 'Bearer sk-or' and body['model'] == 'google/gemini-2.5-flash'
@@ -455,7 +461,7 @@ def test_ai_usage_counter_and_limit(world, monkeypatch):
     admin, ta, e, pr = ksq(world)
     a, b = pr['sheets'][0], pr['sheets'][1]
 
-    def fake(api_key, model, jpeg, slots, only=None):
+    def fake(api_key, model, jpeg, slots, only=None, text=None):
         R._count({'input_tokens': 1000, 'output_tokens': 200})
         return [{'slot': s['slot'], 'value': '1', 'confidence': 0.99} for s in slots]
     monkeypatch.setattr(R, 'call', fake)
@@ -464,7 +470,7 @@ def test_ai_usage_counter_and_limit(world, monkeypatch):
     admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([a['qr'], b['qr']]), 'image/jpeg'))])
     with world[1]() as db:
         u = R.month_usage(db)
-    assert u == {'cards': 1, 'in': 1000, 'out': 200}
+    assert u == {'cards': 1, 'in': 2000, 'out': 400}                     # bir kart: A + B (müstəqil yoxlama) oxunuşları
     scans = admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans']
     assert sorted(x['status'] for x in scans) == ['graded', 'pending'] and any('limit' in (x['error'] or '') for x in scans)
     assert admin.get('/api/admin/resources').json()['ai_usage']['cards'] == 1
@@ -484,3 +490,44 @@ def test_openrouter_model_without_vendor_prefix(world):
         u.ai_settings = {'provider': 'openrouter', 'model': 'claude-sonnet-5-5', 'key': secret_encrypt('sk-or-v1-test-key-123')}
         db.commit()
         assert R.api_key_for(db, u.id)['model'] == R.OR_DEFAULT
+
+
+def test_thorough_reading_votes_and_keeps_teacher(world, monkeypatch):
+    """«Diqqətli oxu» (səliqəsiz yazı): böyüdülmüş 3 sütun + iki model, səsvermə; müəllimin düzəlişi saxlanır."""
+    from app.domain import ksq_reader as R
+    admin, ta, e, pr = ksq(world)
+    a = pr['sheets'][0]
+    key = {x['slot']: x['value'] for x in next(k for k in pr['key'] if k['code'] == a['code'])['answers']}
+    opn = [s for s in key if not key[s].isalpha()]
+    s1, s2 = opn[0], opn[1]
+    zooms = []
+
+    def fake(api_key, model, jpeg, slots, only=None, text=None):
+        z = isinstance(jpeg, list)
+        if z:
+            zooms.append(model)
+            assert len(jpeg) == 3 and 'sütun' in text
+        want = only or [x['slot'] for x in slots]
+        out = []
+        for s in want:
+            v = key[s]
+            if s == s1:                       # iki oxunuş «7», iki oxunuş düz – bərabərlik: böyüdülmüş üstündür
+                v = '7' if not z else key[s]
+            if s == s2:                       # hamısı fərqli – sarı, alternativ
+                v = {R.MODEL: '1', R.MODEL_2: '2'}[model] + ('9' if z else '')
+            out.append({'slot': s, 'value': v, 'confidence': 0.95})
+        return out
+    monkeypatch.setattr(R, 'call', fake)
+    monkeypatch.setattr(R, 'api_key_for', lambda db, tid: 'sk-ant-test')
+    admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p.jpg', photo([a['qr']]), 'image/jpeg'))])
+    sc = admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'][0]
+    admin.put(f'/api/exam-scans/{sc["id"]}/slot', json={'slot': 1, 'value': key[1]})          # müəllim düzəlişi
+    zooms.clear()
+    assert admin.post(f'/api/exam-scans/{sc["id"]}/thorough').json()['started'] == 1
+    sc = admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'][0]
+    rd = {r['slot']: r for r in sc['reading']}
+    assert sorted(zooms) == sorted([R.MODEL, R.MODEL_2]) and sc['read_by'].endswith('+diq') and sc['rescans'] >= 1
+    assert rd[1].get('by') == 'teacher'
+    assert rd[s1]['value'] == key[s1]
+    assert rd[s2]['confidence'] < R.LOW and rd[s2]['alt'] and s2 in sc['flagged']
+    assert admin.post(f'/api/exam-scans/{ta}/{e["id"]}/thorough', params={'only_flagged': True}).json()['started'] == 1

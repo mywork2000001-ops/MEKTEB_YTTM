@@ -322,7 +322,7 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
 }
 
 type Scan = { id: number; student_id: number; full_name: string | null; code: string; status: 'pending' | 'graded' | 'error'; points: number | null
-  flagged: number[]; reading: { slot: number; value: string | null; confidence: number | null; alt?: string | null }[] | null; marks: number[] | null; error: string | null; rescans: number; lost: number[]; n: number | null }
+  flagged: number[]; reading: { slot: number; value: string | null; confidence: number | null; alt?: string | null; alts?: string[] }[] | null; marks: number[] | null; error: string | null; rescans: number; lost: number[]; n: number | null }
 type ScanList = { scans: Scan[]; missing: string[]; claude: boolean; printed_old?: boolean; counts: { variants: number; scanned: number; graded: number; pending: number; flagged: number } }
 const SCAN_TONE: Record<string, 'ok' | 'warn' | 'bad'> = { graded: 'ok', pending: 'warn', error: 'bad' }
 
@@ -360,6 +360,14 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
       : tt('Dəyişiklik yoxdur – kağıza düşməyən boş sual tapılmadı'))
     reload()
   }
+  // diqqətli oxunuş fonda gedir – siyahı bir neçə dəqiqə yenilənir
+  const [watching, setWatching] = useState(0)
+  useEffect(() => { if (!watching) return; const id = setTimeout(() => { reload(); setWatching(w => w - 1) }, 10000); return () => clearTimeout(id) }, [watching])
+  const thorough = async (onlyFlagged: boolean) => {
+    const r = await post<{ started: number }>(`/api/exam-scans/${ta}/${examId}/thorough` + (onlyFlagged ? '?only_flagged=true' : ''))
+    toast(tt('Diqqətli oxunuş başladı: {n} kart (hər kart ~1 dəq; nəticə siyahıda yenilənir)', { n: r.started }))
+    setWatching(Math.min(60, 6 + r.started * 6))
+  }
   const c = d?.counts
   // oxunuş gedir – siyahı özü yenilənir (Claude adətən 10–30 saniyəyə oxuyur)
   useEffect(() => { if (!c?.pending || !d?.claude) return; const id = setTimeout(reload, 8000); return () => clearTimeout(id) }, [d])
@@ -376,6 +384,10 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
           title={tt('Bütün kartlar mövcud açarla yenidən hesablanır')}>🔄 {tt('Yenilə')}</AsyncBtn>}
         {d && d.scans.length > 0 && d.claude && <AsyncBtn className="btn sm ghost" onClick={async () => { await post(`/api/exam-scans/${ta}/${examId}/reread`); reload() }}
           title={tt('Kartlar Claude-a təzədən göndərilir (əl düzəlişləri də silinir)')}>👁 {tt('Yenidən oxu')}</AsyncBtn>}
+        {d && d.scans.length > 0 && d.claude && <AsyncBtn className="btn sm" onClick={() => thorough(false)}
+          title={tt('Səliqəsiz yazı üçün: kartın sütunları böyüdülür, iki model oxuyur, ən azı iki eyni oxunuş qəbul edilir; düzəlişləriniz saxlanır')}>🔍 {tt('Sinfi diqqətli oxu')}</AsyncBtn>}
+        {d && c && c.flagged > 0 && d.claude && <AsyncBtn className="btn sm ghost" onClick={() => thorough(true)}
+          title={tt('Yalnız sarı xanası olan kartlar diqqətlə yenidən oxunur')}>🔍 {tt('Yalnız baxılmalılar')} ({c.flagged})</AsyncBtn>}
         {d?.printed_old && d.scans.length > 0 && <AsyncBtn className="btn sm" onClick={lostAuto}
           title={tt('Köhnə çapda kəsilmiş və kartda cavabı boş olan suallar şagird üçün sayılmır (⊘); cavabı olan – sayılır')}>⊘ {tt('Kağıza düşməyən suallar')}</AsyncBtn>}
         {d && d.scans.length > 0 && <label className="small row" style={{ gap: 4 }} title={tt('Kartlar yenidən skan olunanda köhnə skan və oxunuş əvəz olunur')}>
@@ -397,14 +409,14 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
               {s.flagged.length > 0 && <Pill tone="warn">⚠ {s.flagged.length}</Pill>}
             </div>
             {s.error && <div className="small" style={{ color: 'var(--bad)' }}>{s.error}</div>}
-            {open === s.id && <ScanDetail s={s} onChange={reload} />}
+            {open === s.id && <ScanDetail s={s} onChange={reload} onThorough={() => setWatching(12)} />}
           </div>))}
       </div>
     </section>
   )
 }
 
-function ScanDetail({ s, onChange }: { s: Scan; onChange: () => void }) {
+function ScanDetail({ s, onChange, onThorough }: { s: Scan; onChange: () => void; onThorough?: () => void }) {
   const val = (slot: number) => s.reading?.find(r => r.slot === slot)?.value ?? ''
   const alt = (slot: number) => { const r = s.reading?.find(x => x.slot === slot); return r && r.alt != null && r.alt !== r.value ? r.alt : null }
   const fix = async (slot: number, value: string) => {
@@ -420,6 +432,11 @@ function ScanDetail({ s, onChange }: { s: Scan; onChange: () => void }) {
   return (
     <div style={{ marginTop: 8 }}>
       <img src={`/api/exam-scans/image/${s.id}`} alt="" style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 6 }} />
+      <div className="row" style={{ gap: 6, margin: '4px 0' }}>
+        <AsyncBtn className="btn sm" onClick={async () => { await post(`/api/exam-scans/${s.id}/thorough`); toast(tt('Diqqətli oxunuş başladı – ~1 dəqiqə')); onThorough?.() }}
+          title={tt('Səliqəsiz yazı üçün: kartın sütunları böyüdülür, iki model oxuyur, ən azı iki eyni oxunuş qəbul edilir; düzəlişləriniz saxlanır')}>🔍 {tt('Diqqətli oxu')}</AsyncBtn>
+        <span className="small muted">{tt('Sarı xana – oxunuşlar razılaşmayıb, şəkilə baxıb düzəldin')}</span>
+      </div>
       {s.reading ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(92px,1fr))', gap: 4, marginTop: 6 }}>
           {Array.from({ length: n }, (_, i) => i + 1).map(slot => {
@@ -429,7 +446,7 @@ function ScanDetail({ s, onChange }: { s: Scan; onChange: () => void }) {
                 background: gone ? '#e5e7eb' : flag ? '#fef3c7' : ok ? '#dcfce7' : '#fee2e2', color: '#111', opacity: gone ? .7 : 1 }}>
                 <b style={{ minWidth: 18, textDecoration: gone ? 'line-through' : undefined }}>{slot}</b>
                 <input defaultValue={val(slot)} maxLength={8} disabled={gone} style={{ width: '100%', minWidth: 0, padding: '2px 4px' }}
-                  title={alt(slot) != null ? tt('İkinci oxunuş: {v}', { v: alt(slot) || '—' }) : undefined}
+                  title={alt(slot) != null ? tt('İkinci oxunuş: {v}', { v: (s.reading?.find(r => r.slot === slot)?.alts || [alt(slot)]).map(x => x || '∅').join(' / ') }) : undefined}
                   onBlur={e => { if (e.target.value !== val(slot)) fix(slot, e.target.value) }} />
                 {alt(slot) != null && <button type="button" className="btn sm ghost" style={{ padding: '0 3px', fontSize: 11 }}
                   title={tt('İkinci oxunuşu qəbul et')} onClick={() => fix(slot, alt(slot) || '')}>{alt(slot) || '∅'}</button>}
