@@ -329,7 +329,8 @@ def _history(db: Session, ta, e: Exam, student_ids: list[int]) -> dict[int, set[
     """Şagirdə əvvəl verilmiş suallar: bu dərsin onlayn testləri/sınaqları + digər KSQ/BSQ variantları."""
     hist: dict[int, set[str]] = {sid: set() for sid in student_ids}
     bank_keys: dict[int, str] = {}
-    tasks = list(db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id)))
+    tasks = list(db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id,      # onlayn KSQ – variantın özüdür
+                                                     (OnlineTask.kind.is_(None)) | (OnlineTask.kind != 'ksq'))))
     ids = {q.get('bank_id') for t in tasks for q in (t.questions or []) if isinstance(q, dict) and q.get('bank_id')}
     if ids:
         bank_keys = {q.id: 'b:' + (q.content_hash or str(q.id)) for q in db.scalars(select(BankQuestion).where(BankQuestion.id.in_(ids)))}

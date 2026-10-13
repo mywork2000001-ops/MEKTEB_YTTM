@@ -589,6 +589,8 @@ class OnlineTask(Base, Archivable):
     plan_lesson_id: Mapped[int | None] = mapped_column(ForeignKey('plan_lessons.id', ondelete='SET NULL'))
     journal_auto: Mapped[bool] = mapped_column(Boolean, default=False)  # bağlananda formativ jurnala özü yazılsın
     journal_done_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    # KSQ/BSQ onlayn (kind='ksq'): şagirdin öz variantı; təhvil – ExamScan(read_by='online') + ExamScore (api/ksq_online.py)
+    exam_id: Mapped[int | None] = mapped_column(ForeignKey('exams.id', ondelete='CASCADE'), index=True)
 
 
 class TaskAttempt(Base):

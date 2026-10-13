@@ -185,8 +185,48 @@ def test_claude_call_parsing(monkeypatch):
     try:
         R.call('sk-x', R.MODEL, b'\xff\xd8', [{'slot': 1, 'kind': 'mcq'}])
         raise AssertionError
-    except RuntimeError as ex:
-        assert '429' in str(ex) and 'rate limit' in str(ex)
+    except R.AiError as ex:                               # xəta – qısa kod, mətni interfeys müəllimin dilində göstərir
+        assert str(ex) == R.AI_RATE
+    monkeypatch.setattr(httpx.Client, 'post', lambda self, url, json=None, headers=None: Resp(402, {'error': {'message': 'Insufficient credits'}}))
+    try:
+        R.call_openrouter('sk-or-x', 'google/gemini-2.5-flash', b'\xff\xd8', [{'slot': 1, 'kind': 'mcq'}])
+        raise AssertionError
+    except R.AiError as ex:
+        assert str(ex) == R.AI_CREDIT
+
+
+def test_gemini_call_parsing(monkeypatch):
+    """Google Gemini (AI Studio açarı): şəkil inline_data, məcburi funksiya çağırışı, düşünmə 0; səhv açar – ai:key."""
+    import httpx
+    from app.domain import ksq_reader as R
+    sent = {}
+
+    class Resp:
+        def __init__(self, code, js):
+            self.status_code, self._js, self.text = code, js, str(js)
+
+        def json(self):
+            return self._js
+    out = {'candidates': [{'content': {'parts': [{'functionCall': {'name': 'submit_card', 'args': {'answers': [
+        {'slot': 1, 'value': 'c', 'confidence': 0.95}, {'slot': 2, 'value': '', 'cells': ['1', '2', '', '', '', '', '', ''], 'confidence': 0.9}]}}}]}}],
+        'usageMetadata': {'promptTokenCount': 1000, 'candidatesTokenCount': 50}}
+
+    def post(self, url, json=None, headers=None):
+        sent.update(url=url, body=json, headers=headers)
+        return Resp(200, out)
+    monkeypatch.setattr(httpx.Client, 'post', post)
+    got = R.call_gemini('AIza-x', 'gemini-2.5-flash', b'\xff\xd8jpeg', [{'slot': 1, 'kind': 'mcq'}, {'slot': 2, 'kind': 'open'}])
+    assert got == [{'slot': 1, 'value': 'C', 'confidence': 0.95}, {'slot': 2, 'value': '12', 'confidence': 0.9}]
+    b = sent['body']
+    assert 'gemini-2.5-flash:generateContent' in sent['url'] and sent['headers']['x-goog-api-key'] == 'AIza-x'
+    assert b['toolConfig']['functionCallingConfig']['mode'] == 'ANY' and b['generationConfig']['thinkingConfig']['thinkingBudget'] == 0
+    assert b['contents'][0]['parts'][1]['inline_data']['mime_type'] == 'image/jpeg'
+    monkeypatch.setattr(httpx.Client, 'post', lambda self, url, json=None, headers=None: Resp(400, {'error': {'message': 'API key not valid. Please pass a valid API key.'}}))
+    try:
+        R.call_gemini('bad', 'gemini-2.5-flash', b'\xff\xd8', [{'slot': 1, 'kind': 'mcq'}])
+        raise AssertionError
+    except R.AiError as ex:
+        assert str(ex) == R.AI_KEY
 
 
 def test_variant_sources_plan_and_own(world):

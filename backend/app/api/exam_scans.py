@@ -331,6 +331,8 @@ def list_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sessio
             'counts': {'variants': len(variants), 'scanned': len(scans), 'graded': sum(sc.status == 'graded' for sc in scans),
                        'pending': sum(sc.status == 'pending' for sc in scans), 'flagged': sum(bool(sc.flagged) for sc in scans)},
             'claude': bool(api_key_for(db, ta.teacher_id)),
+            # süni intellekt xətası (ai:credit / ai:key / ai:rate / ai:limit) – interfeysdə BİR dəfə, kart sətrində yox
+            'ai_error': next((sc.error for sc in scans if sc.status == 'pending' and (sc.error or '').startswith('ai:')), None),
             # vərəqlər çap düzəlişindən (13.10.2026) əvvəl çap olunub – suallar kəsilmiş ola bilər
             'printed_old': bool(db.scalar(select(ExamVariant.exam_id).where(ExamVariant.exam_id == e.id, ExamVariant.printed_at.is_not(None),
                                                                              ExamVariant.printed_at < PRINT_FIX_AT).limit(1)))}

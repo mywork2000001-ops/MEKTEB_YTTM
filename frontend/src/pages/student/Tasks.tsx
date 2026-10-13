@@ -180,7 +180,8 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
     try {
       // vaxt bitəndə də son cavablar göndərilir (server 10 san. gecikməni qəbul edir)
       const r = await post(`/api/portal/tasks/${id}/submit`, { answers: { ...ansRef.current } })
-      toast(`${auto ? tt('Vaxt bitdi – təhvil verildi') : tt('Təhvil verildi')}: ${r.pct != null ? `${fmt(r.pct)} ${tt('bal')} / 100` : `${r.correct}/${r.total}`}${r.grade ? ` → ${r.grade}` : ''}`)
+      if (r.ksq) toast((auto ? tt('Vaxt bitdi – təhvil verildi') + ' · ' : '') + tt('Təhvil verildi – nəticəni müəllim yoxlayıb açacaq'))   // KSQ/BSQ onlayn – bal göstərilmir
+      else toast(`${auto ? tt('Vaxt bitdi – təhvil verildi') : tt('Təhvil verildi')}: ${r.pct != null ? `${fmt(r.pct)} ${tt('bal')} / 100` : `${r.correct}/${r.total}`}${r.grade ? ` → ${r.grade}` : ''}`)
       if (r.certificate || (r.pct ?? 0) >= 80) confetti()                           // təbrik
       if (r.certificate) toast(tt('🏆 Yeni sertifikat: {t} – «Uğurlarım»da', { t: r.certificate.title }))
     } catch (e) { if (!(e instanceof ApiError && e.status === 409)) toast(tt('Xəta') + ': ' + (e as Error).message) }

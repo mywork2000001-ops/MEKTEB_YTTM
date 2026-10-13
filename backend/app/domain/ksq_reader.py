@@ -23,9 +23,27 @@ MODEL = 'claude-sonnet-5-5'
 MODEL_2 = 'claude-opus-5-5'                    # ikinci oxunuş (şübhəli xanalar)
 TIMEOUT = httpx.Timeout(120, connect=15)
 MAX_OUT = 2000                               # bir oxunuşun cavabı (30 xana) – 4000 lazımsız idi, kredit tez bitirdi
-CREDIT_MSG = ('OpenRouter balansı bitib – openrouter.ai-də kredit əlavə edin və ya açarın limitini artırın; kartlar gözləyir. / '
-              'OpenRouter credits exhausted – top up or raise the key limit; cards are waiting. / '
-              'Закончился баланс OpenRouter – пополните кредит или увеличьте лимит ключа; бланки ждут.')
+# Süni intellekt xətaları – kartda QISA KOD saxlanılır, müəllimə interfeys öz dilində bir dəfə göstərir (13.10.2026: balans bitəndə
+# hər kartın altında üç dildə uzun mətn çıxırdı). ai:credit / ai:key – növbəti kartlara sorğu göndərilmir (kartlar gözləyir).
+AI_CREDIT, AI_KEY, AI_RATE, AI_LIMIT = 'ai:credit', 'ai:key', 'ai:rate', 'ai:limit'
+AI_STOP = {AI_CREDIT, AI_KEY}
+
+
+class AiError(RuntimeError):
+    """Provayderin cavabı: kodu (ai:credit …) kart xətası kimi yazılır."""
+
+
+def _ai_error(provider: str, status: int, msg: str | None, text: str) -> RuntimeError:
+    low = (msg or text or '').lower()
+    if status == 402 or 'credit balance' in low or 'insufficient credit' in low or 'insufficient_quota' in low:
+        return AiError(AI_CREDIT)
+    if status in (401, 403):
+        return AiError(AI_KEY)
+    if status == 429:
+        return AiError(AI_RATE)
+    return RuntimeError(f'{provider} {status}: {(msg or text[:120])[:160]}')
+
+
 _usage = {'in': 0, 'out': 0}                 # bir kartın oxunuşunda istifadə olunan tokenlər (xərc sayğacı)
 
 
@@ -97,7 +115,7 @@ def call(key: str, model: str, jpeg: bytes | list[bytes], slots: list[dict], onl
             msg = r.json().get('error', {}).get('message')
         except Exception:                                    # noqa: BLE001
             msg = None
-        raise RuntimeError(f'Claude API {r.status_code}: {msg or r.text[:200]}')
+        raise _ai_error('Claude API', r.status_code, msg, r.text)
     _count(r.json().get('usage'))
     blk = next((b for b in r.json().get('content', []) if b.get('type') == 'tool_use'), None)
     if not blk:
@@ -172,9 +190,7 @@ def call_openrouter(key: str, model: str, jpeg: bytes | list[bytes], slots: list
             msg = r.json().get('error', {}).get('message')
         except Exception:                                    # noqa: BLE001
             msg = None
-        if r.status_code == 402:                         # kredit bitib – müəllimə aydın mesaj (açar səhifəsinin linki göstərilmir)
-            raise RuntimeError(CREDIT_MSG)
-        raise RuntimeError(f'OpenRouter {r.status_code}: {msg or r.text[:200]}')
+        raise _ai_error('OpenRouter', r.status_code, msg, r.text)   # 402 – kredit bitib (kod, mətn interfeysdə)
     _count(r.json().get('usage'))
     msg = (r.json().get('choices') or [{}])[0].get('message') or {}
     calls = msg.get('tool_calls') or []
@@ -184,6 +200,50 @@ def call_openrouter(key: str, model: str, jpeg: bytes | list[bytes], slots: list
     except (ValueError, KeyError, IndexError):
         raise RuntimeError('OpenRouter cavabında oxunuş yoxdur (model alət çağırışını dəstəkləmir?)')
     return _clean(data, slots)
+
+
+GEMINI = 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
+GM_DEFAULT = 'gemini-2.5-flash'                    # Google AI Studio – pulsuz açar (aistudio.google.com/apikey)
+GM_VERIFY = 'gemini-2.5-pro'                       # açıq cavabların müstəqil ikinci oxunuşu (əsas model Pro-dursa – Flash)
+
+
+def call_gemini(key: str, model: str, jpeg: bytes | list[bytes], slots: list[dict], only: list[int] | None = None,
+                text: str | None = None) -> list[dict]:
+    """Google Gemini birbaşa (AI Studio açarı, 13.10.2026): şəkil(lər) inline_data, məcburi funksiya çağırışı submit_card.
+    Düşünmə minimumda (Flash – 0, Pro – 128 token): kart oxumaq üçün lazım deyil, pulsuz kvotanı və vaxtı yeyir."""
+    import time
+    gen = {'temperature': 0, 'maxOutputTokens': MAX_OUT, 'thinkingConfig': {'thinkingBudget': 128 if 'pro' in model else 0}}
+    body = {'systemInstruction': {'parts': [{'text': SYSTEM}]},
+            'contents': [{'role': 'user', 'parts': [
+                {'text': text or _instructions(slots, only)},
+                *({'inline_data': {'mime_type': 'image/jpeg', 'data': base64.b64encode(j).decode()}} for j in _imgs(jpeg))]}],
+            'tools': [{'functionDeclarations': [{'name': TOOL['name'], 'description': TOOL['description'],
+                                                 'parameters': TOOL['input_schema']}]}],
+            'toolConfig': {'functionCallingConfig': {'mode': 'ANY', 'allowedFunctionNames': [TOOL['name']]}},
+            'generationConfig': gen}
+    for attempt in range(2):                             # pulsuz kvota: dəqiqəlik limit (429) – bir dəfə gözləyib təkrar
+        with httpx.Client(timeout=TIMEOUT) as c:
+            r = c.post(GEMINI.format(model=model), json=body, headers={'x-goog-api-key': key, 'Content-Type': 'application/json'})
+        if r.status_code == 429 and attempt == 0:
+            time.sleep(20)
+            continue
+        break
+    if r.status_code != 200:
+        try:
+            msg = r.json().get('error', {}).get('message')
+        except Exception:                                    # noqa: BLE001
+            msg = None
+        status = 401 if r.status_code == 400 and 'api key' in (msg or '').lower() else r.status_code   # API_KEY_INVALID – 400 gəlir
+        raise _ai_error('Gemini', status, msg, r.text)
+    j = r.json()
+    um = j.get('usageMetadata') or {}
+    _count({'input_tokens': um.get('promptTokenCount'), 'output_tokens': (um.get('candidatesTokenCount') or 0) + (um.get('thoughtsTokenCount') or 0)})
+    cand = (j.get('candidates') or [{}])[0]
+    parts = (cand.get('content') or {}).get('parts') or []
+    fc = next((p['functionCall'] for p in parts if p.get('functionCall')), None)
+    if not fc:
+        raise RuntimeError(f"Gemini cavabında oxunuş yoxdur ({cand.get('finishReason') or 'boş cavab'})")
+    return _clean(fc.get('args') or {}, slots)
 
 
 def _conn(c) -> dict:
@@ -267,12 +327,19 @@ def read_card(key, jpeg: bytes, slots: list[dict], thorough: bool = False,
     keep – müəllimin düzəltdiyi xanalar (toxunulmur)."""
     from concurrent.futures import ThreadPoolExecutor
     c = _conn(key)
-    orr = c['provider'] == 'openrouter'
-    m1 = c['model'] if orr else MODEL
-    m2 = (VERIFY_MODEL if VERIFY_MODEL != m1 else None) if orr else MODEL_2
+    prov = c['provider']
+    if prov == 'openrouter':
+        m1 = c['model']
+        m2 = VERIFY_MODEL if VERIFY_MODEL != m1 else None
+    elif prov == 'gemini':
+        m1 = c['model']
+        m2 = GM_VERIFY if 'pro' not in m1 else GM_DEFAULT
+    else:
+        m1, m2 = MODEL, MODEL_2
+    fn = {'openrouter': call_openrouter, 'gemini': call_gemini}.get(prov, call)
 
     def run(model, img, sl, only=None, text=None):
-        return (call_openrouter(c['key'], model, img, sl, only, text) if orr else call(c['key'], model, img, sl, only, text))
+        return fn(c['key'], model, img, sl, only, text)
 
     kinds = {s['slot']: s['kind'] for s in slots}
     opn = [s for s in slots if s['kind'] != 'mcq']
@@ -329,11 +396,14 @@ def api_key_for(db: Session, teacher_id: int | None) -> dict | None:
 
     def own(u) -> dict | None:
         s = (u.ai_settings or {}) if u else {}
-        key = secret_decrypt(s.get('key')) if s.get('provider') in ('anthropic', 'openrouter') else None
+        key = secret_decrypt(s.get('key')) if s.get('provider') in ('anthropic', 'openrouter', 'gemini') else None
         if not key:
             return None
         from ..ai import fix_provider
         prov, _ = fix_provider(s['provider'], s.get('model') or '', key)       # sk-or- açarı «Anthropic» seçilibsə
+        if prov == 'gemini':                                                # Google AI Studio açarı (pulsuz kvota)
+            m = s.get('model') or ''
+            return {'provider': 'gemini', 'key': key, 'model': m if m.startswith('gemini-') else GM_DEFAULT}
         if prov == 'anthropic':
             return {'provider': 'anthropic', 'key': key, 'model': MODEL}
         m = s.get('model') or ''
@@ -404,6 +474,8 @@ def read_pending(db: Session, exam_id: int | None = None, limit: int = 20, ids: 
         finally:
             with _busy_lock:
                 _busy.discard(sc.id)
+        if sc.error in AI_STOP or sc.error == AI_LIMIT:     # balans/açar/limit – qalan kartlara boş sorğu getmir, gözləyirlər
+            break
     return n
 
 
@@ -417,7 +489,7 @@ def _read_one(db, sc, apply, storage_for_key, Exam, ExamVariant, TeachingAssignm
         return 0
     slots = [{'slot': x['slot'], 'kind': x['kind']} for x in sorted(v.questions, key=lambda x: x['slot'])]
     if month_usage(db)['cards'] >= settings().ksq_monthly_limit:           # aylıq limit – pul getməsin, kart gözləyir
-        sc.error = f'Aylıq süni intellekt limiti ({settings().ksq_monthly_limit} kart) dolub – gələn ay və ya admin limiti artırsın'
+        sc.error = AI_LIMIT                                                 # aylıq limit dolub (mətn interfeysdə)
         db.commit()
         return 0
     try:
@@ -427,14 +499,14 @@ def _read_one(db, sc, apply, storage_for_key, Exam, ExamVariant, TeachingAssignm
         reading, by = read_card(key, jpeg, slots, thorough=thorough, keep=keep)
         _add_usage(db, 1, _usage['in'], _usage['out'])
     except Exception as ex:                              # noqa: BLE001 – şəbəkə/limit: kart gözləməyə qalır
-        sc.error = str(ex)[:300]
+        sc.error = str(ex)[:300]                         # AiError – qısa kod (ai:credit …)
         db.commit()
         log.warning('kart oxunmadı (scan %s): %s', sc.id, ex)
         return 0
     if thorough and sc.reading:                              # əvvəlki oxunuş tarixçəyə
         sc.history = [*(sc.history or []), {'at': now_iso(), 'reading': sc.reading, 'points': sc.points, 'read_by': sc.read_by}][-5:]
     sc.reading, sc.error = reading, None
-    sc.read_by = (('claude' if 'openrouter' != _conn(key)['provider'] else 'openrouter') + ('+diq' if thorough else '+2' if '+' in by else ''))[:20]
+    sc.read_by = ({'anthropic': 'claude'}.get(_conn(key)['provider'], _conn(key)['provider']) + ('+diq' if thorough else '+2' if '+' in by else ''))[:20]
     apply(db, e, sc)
     db.commit()
     return 1

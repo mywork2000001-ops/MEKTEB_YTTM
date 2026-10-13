@@ -112,6 +112,9 @@ def finalize(db: Session, task: OnlineTask, a: TaskAttempt, at: dt.datetime | No
     at = at or now()
     score(task, a)
     a.submitted_at, a.auto_submitted = min(at, aware(a.deadline)), auto
+    if task.kind == 'ksq':                                 # onlayn KSQ/BSQ – bal kağız kartı kimi jurnala (api/ksq_online.py)
+        from .ksq_online import record
+        record(db, task, a)
     return a
 
 
@@ -299,7 +302,8 @@ def list_tasks(ta_id: int, archived: bool = False, user: User = Depends(staff), 
     ta = own_assignment(db, user, ta_id)
     out = []
     flt = OnlineTask.archived_at.is_not(None) if archived else OnlineTask.archived_at.is_(None)
-    for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, flt)
+    for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, flt,
+                                                 (OnlineTask.kind.is_(None)) | (OnlineTask.kind != 'ksq'))   # onlayn KSQ – KSQ səhifəsində
                         .order_by(OnlineTask.opens_at.desc())):
         expire_due(db, t)
         done = [a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.submitted_at.is_not(None)))

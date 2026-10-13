@@ -281,7 +281,7 @@ def _can_review(db: Session, t: OnlineTask, a: TaskAttempt | None, at: dt.dateti
 
 
 def _shown_grade(t: OnlineTask, a: TaskAttempt) -> int | None:
-    return None if t.kind == 'sinaq' else a.grade           # sınaq formativ qiymətə təsir etmir – qiymət göstərilmir
+    return None if t.kind in ('sinaq', 'ksq') else a.grade   # sınaq formativ qiymətə təsir etmir; KSQ – nəticəni müəllim açır
 
 
 @router.get('/tasks')
@@ -299,7 +299,7 @@ def tasks(user: User = Depends(student_only), db: Session = Depends(get_db)):
                     'duration_min': t.duration_min, 'questions': len(t.questions), 'status': _status(t, a, at),
                     'deadline': aware(a.deadline) if a else None,
                     'result': {'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a),
-                               'pct': attempt_pct(db, t, a)} if a and a.submitted_at else None,
+                               'pct': attempt_pct(db, t, a)} if a and a.submitted_at and t.kind != 'ksq' else None,
                     'can_review': _can_review(db, t, a, at), 'kind': t.kind,
                     'solution_at': a.solution_at if a and a.solution_key else None,
                     'topic_seq': pl.seq if pl else None, 'topic': pl.topic if pl else None})
@@ -398,6 +398,9 @@ def submit(task_id: int, body: AnswersIn | None = None, user: User = Depends(stu
     from ..certificates import for_attempt
     cert = for_attempt(db, t, a)                             # mövzu testi ≥ hədd – sertifikat dərhal
     db.commit()
+    if t.kind == 'ksq':                                      # KSQ/BSQ: bal jurnala yazıldı, şagirdə müəllim açanda görünür
+        return {'ksq': True, 'correct': None, 'total': None, 'grade': None, 'pct': None, 'points': None,
+                'auto_submitted': a.auto_submitted, 'can_review': False, 'certificate': None}
     return {'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a), 'auto_submitted': a.auto_submitted,
             'can_review': _can_review(db, t, a, at), 'pct': attempt_pct(db, t, a), 'points': attempt_pct(db, t, a),
             'certificate': {'code': cert.code, 'title': cert.title} if cert else None}
@@ -558,7 +561,7 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
     done = []
     for t in _my_tasks(db, s):
         a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
-        if a and a.submitted_at:
+        if a and a.submitted_at and t.kind != 'ksq':          # onlayn KSQ – «İmtahanlar» sətrində (müəllim açanda)
             done.append((t, a))
     done.sort(key=lambda x: aware(x[1].submitted_at), reverse=True)          # ən yenisi yuxarıda
     for t, a in done:

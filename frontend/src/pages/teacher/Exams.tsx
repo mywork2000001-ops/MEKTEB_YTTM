@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, del, get, patch, post, put } from '../../api'
-import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, Pill, toast, useLoad } from '../../ui'
+import { AsyncBtn, azDT, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, Pill, toast, useLoad } from '../../ui'
 import type { MyLesson } from './common'
 import { head, printDoc, SIGN, table } from '../../print'
 import { tt } from '../../i18n'
@@ -316,14 +316,94 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
         <Step no={4} title={tt('Skan və nəticə')} active={has}>
           {has ? <Scans ta={ta.id} examId={e.id} /> : <p className="small muted" style={{ margin: 0 }}>{tt('Yazıdan sonra kartları skan edin – bal jurnala özü yazılır.')}</p>}
         </Step>
+        <Step no={5} title={tt('Onlayn yazı')}>
+          {has ? <OnlineKsq ta={ta.id} examId={e.id} /> : <p className="small muted" style={{ margin: 0 }}>{tt('Variantlar hazır olanda.')}</p>}
+        </Step>
       </div>
     </Drawer>
   )
 }
 
+/** Süni intellekt xətasının kodu (ai:credit …) – müəllimin dilində bir dəfə (docs/ksq-skan-ekran-ve-onlayn-promtu.md). */
+const aiErrorText = (code: string) => ({
+  'ai:credit': tt('OpenRouter balansı bitib – openrouter.ai-də kredit əlavə edin və ya açarın limitini artırın. Kartlar gözləyir, balans artanda özü oxunacaq.'),
+  'ai:key': tt('Süni intellekt açarı qəbul olunmur – Tənzimləmələr → «Süni intellekt» bölməsində açarı yoxlayın.'),
+  'ai:rate': tt('Süni intellektə çox sorğu getdi – bir neçə dəqiqədən sonra oxunuş özü davam edəcək.'),
+  'ai:limit': tt('Aylıq süni intellekt limiti dolub – kartlar gözləyir (admin limiti artıra bilər).'),
+} as Record<string, string>)[code] || code
+
+type OnlineRow = { student_id: number; full_name: string | null; status: 'none' | 'waiting' | 'open' | 'doing' | 'done' | 'missed'
+  opens_at: string | null; closes_at: string | null; duration_min: number | null; submitted_at: string | null; auto: boolean; paper: boolean; online: boolean; points: number | null }
+const ONLINE_ST: Record<OnlineRow['status'], [string, 'ok' | 'warn' | 'bad' | 'info' | undefined]> = {
+  none: ['göndərilməyib', undefined], waiting: ['açılmağı gözləyir', 'info'], open: ['açıqdır', 'info'],
+  doing: ['yazır', 'warn'], done: ['təhvil verib', 'ok'], missed: ['yazmayıb', 'bad'] }
+
+/** KSQ/BSQ onlayn: şagirdin öz variantı onlayn test kimi; təhvil – bal kağız kartı kimi jurnala (api/ksq_online.py). */
+function OnlineKsq({ ta, examId }: { ta: number; examId: number }) {
+  const [d, err, , reload] = useLoad<{ rows: OnlineRow[]; counts: Record<string, number> }>(() => get(`/api/ksq-online/${ta}/${examId}`), [examId])
+  const [dur, setDur] = useState(45)
+  const [win, setWin] = useState(24)
+  const [at, setAt] = useState('')                    // boş – indi
+  const [shuffle, setShuffle] = useState(true)
+  const [sel, setSel] = useState<number[]>([])
+  useEffect(() => { if (!d?.counts.doing && !d?.counts.open) return; const id = setTimeout(reload, 20000); return () => clearTimeout(id) }, [d])   // eslint-disable-line react-hooks/exhaustive-deps
+  const send = async (ids: number[] | null, resend = false) => {
+    const r = await post<{ sent: number; updated: number; skipped: string[] }>(`/api/ksq-online/${ta}/${examId}`,
+      { student_ids: ids, opens_at: at ? new Date(at).toISOString() : null, window_hours: win, duration_min: dur, shuffle, resend })
+    toast(tt('Göndərildi: {n}', { n: r.sent }) + (r.updated ? ' · ' + tt('yeniləndi: {n}', { n: r.updated }) : '')
+      + (r.skipped.length ? ' · ' + tt('toxunulmadı (yazır və ya yazıb): {names}', { names: r.skipped.join(', ') }) : ''))
+    setSel([]); reload()
+  }
+  const cancel = async () => {
+    const r = await post<{ cancelled: number }>(`/api/ksq-online/${ta}/${examId}/cancel`, { student_ids: sel.length ? sel : null })
+    toast(tt('Geri götürüldü: {n}', { n: r.cancelled })); setSel([]); reload()
+  }
+  const c = d?.counts
+  return (
+    <section>
+      <p className="small muted" style={{ marginTop: 0 }}>{tt('Kağızı olmayan və ya dərsdə olmayan şagird öz variantını onlayn yazır: eyni suallar, eyni açar, bal jurnala özü yazılır. Şagird balı dərhal görmür.')}</p>
+      <div className="lsel-bar">
+        <label className="lsel"><span>{tt('Müddət (dəq)')}</span>
+          <input className="sel" type="number" min={5} max={240} value={dur} onChange={x => setDur(Math.max(5, Math.min(240, Number(x.target.value) || 45)))} /></label>
+        <label className="lsel"><span>{tt('Açılır')}</span>
+          <input className="sel" type="datetime-local" value={at} onChange={x => setAt(x.target.value)} title={tt('Boş – indi')} /></label>
+        <label className="lsel"><span>{tt('Açıq qalır (saat)')}</span>
+          <select className="sel" value={win} onChange={x => setWin(Number(x.target.value))}>{[1, 2, 3, 6, 12, 24, 48, 72, 168].map(h => <option key={h} value={h}>{h}</option>)}</select></label>
+        <label className="check small" style={{ alignSelf: 'end' }}><input type="checkbox" checked={shuffle} onChange={x => setShuffle(x.target.checked)} />{tt('Sualların sırası qarışsın')}</label>
+      </div>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+        <AsyncBtn className="btn sm primary" onClick={() => send(null)} title={tt('Kartı və ya onlayn nəticəsi olmayan bütün şagirdlər')}>💻 {tt('Nəticəsi olmayanlara göndər')}</AsyncBtn>
+        <AsyncBtn className="btn sm" disabled={!sel.length} onClick={() => send(sel)}>{tt('Seçilənlərə göndər')} ({sel.length})</AsyncBtn>
+        <AsyncBtn className="btn sm ghost" disabled={!sel.length} onClick={() => send(sel, true)}
+          title={tt('Yazmış şagirdə yeni cəhd: köhnə onlayn cavablar silinir, əvvəlki nəticə tarixçədə qalır')}>↻ {tt('Yenidən göndər')}</AsyncBtn>
+        {c && (c.waiting + c.open) > 0 && <AsyncBtn className="btn sm ghost" onClick={cancel}
+          title={tt('Yalnız hələ başlamamış şagirdlər (seçilməyibsə – hamısı)')}>✕ {tt('Geri götür')}</AsyncBtn>}
+      </div>
+      <ErrorBox error={err} />
+      {c && <p className="small" style={{ margin: '8px 0 4px' }}>{tt('Göndərilib: {s} · yazır: {w} · təhvil verib: {d} · yazmayıb: {m}',
+        { s: c.waiting + c.open + c.doing + c.done + c.missed, w: c.doing, d: c.done, m: c.missed })}</p>}
+      <div className="jlist">
+        {d?.rows.map(r => {
+          const [lbl, tone] = ONLINE_ST[r.status]
+          return (
+            <label key={r.student_id} className="jrow row" style={{ gap: 6, flexWrap: 'wrap', cursor: 'pointer' }}>
+              <input type="checkbox" checked={sel.includes(r.student_id)} onChange={x => setSel(p => x.target.checked ? [...p, r.student_id] : p.filter(i => i !== r.student_id))} />
+              <b className="grow">{r.full_name || '—'}</b>
+              {r.paper && <Pill>📄 {tt('kağız')}</Pill>}
+              {r.online && <Pill tone="info">💻 {tt('onlayn')}</Pill>}
+              <Pill tone={tone}>{tt(lbl)}{r.auto && r.status === 'done' ? ' · ' + tt('vaxt bitdi') : ''}</Pill>
+              {r.points != null && <Pill tone="ok">{fmt(r.points)} {tt('bal')}</Pill>}
+              {r.status !== 'none' && r.closes_at && <span className="small muted">{tt('bağlanır')}: {azDT(r.closes_at)}</span>}
+            </label>)
+        })}
+      </div>
+    </section>
+  )
+}
+
 type Scan = { id: number; student_id: number; full_name: string | null; code: string; status: 'pending' | 'graded' | 'error'; points: number | null
-  flagged: number[]; reading: { slot: number; value: string | null; confidence: number | null; alt?: string | null; alts?: string[] }[] | null; marks: number[] | null; error: string | null; rescans: number; lost: number[]; n: number | null }
-type ScanList = { scans: Scan[]; missing: string[]; claude: boolean; printed_old?: boolean; counts: { variants: number; scanned: number; graded: number; pending: number; flagged: number } }
+  flagged: number[]; reading: { slot: number; value: string | null; confidence: number | null; alt?: string | null; alts?: string[] }[] | null; marks: number[] | null; error: string | null; read_by?: string | null; rescans: number; lost: number[]; n: number | null }
+type ScanList = { scans: Scan[]; missing: string[]; claude: boolean; printed_old?: boolean; ai_error?: string | null; counts: { variants: number; scanned: number; graded: number; pending: number; flagged: number } }
 const SCAN_TONE: Record<string, 'ok' | 'warn' | 'bad'> = { graded: 'ok', pending: 'warn', error: 'bad' }
 
 /** Cavab kartlarının skanı: şəkil / PDF yüklə → QR ilə şagird → oxunuş → bal jurnala özü yazılır; şübhəli xana – sarı, müəllim düzəldir. */
@@ -396,7 +476,8 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
       </div>
       {cam && <ScanCamera url={`/api/exam-scans/${ta}/${examId}/upload`} replaceAll={again} onClose={() => { setCam(false); reload() }} onSent={reload} />}
       <ErrorBox error={err} />
-      {d && !d.claude && <p className="small" style={{ margin: '8px 0 0', color: 'var(--warn)' }}>{tt('Süni intellekt bağlantısı yoxdur: kartlar oxunmağı gözləyəcək. Tənzimləmələr → «Süni intellekt» → OpenRouter və ya Anthropic açarını daxil edin (OpenRouter-də şəkil oxuyan model: Claude, Gemini, GPT-4o).')}</p>}
+      {d && !d.claude && <p className="small" style={{ margin: '8px 0 0', color: 'var(--warn)' }}>{tt('Süni intellekt bağlantısı yoxdur: kartlar oxunmağı gözləyəcək. Tənzimləmələr → «Süni intellekt» → Google Gemini (pulsuz açar: aistudio.google.com), OpenRouter və ya Anthropic açarını daxil edin.')}</p>}
+      {d?.ai_error && <div className="kverdict warn">⚠ {aiErrorText(d.ai_error)}</div>}
       {c && <p className="small" style={{ margin: '8px 0 4px' }}>{tt('Skan: {a}/{b} · yoxlanılıb: {c} · oxunmağı gözləyir: {p}', { a: c.scanned, b: c.variants, c: c.graded, p: c.pending })}
         {c.flagged > 0 && <> · <b style={{ color: 'var(--warn)' }}>{tt('baxılmalı: {n}', { n: c.flagged })}</b></>}</p>}
       {d && d.missing.length > 0 && <p className="small muted" style={{ margin: '0 0 6px' }}>{tt('Kartı yoxdur')}: {d.missing.join(', ')}</p>}
@@ -406,9 +487,10 @@ function Scans({ ta, examId }: { ta: number; examId: number }) {
             <div className="row" style={{ gap: 6, flexWrap: 'wrap', cursor: 'pointer' }} onClick={() => setOpen(o => (o === s.id ? null : s.id))}>
               <b className="grow">{s.full_name || '—'} <span className="small muted">{s.code}</span></b>
               <Pill tone={SCAN_TONE[s.status]}>{s.status === 'graded' ? `${fmt(s.points)} ${tt('bal')}` : tt(s.status === 'pending' ? 'oxunmağı gözləyir' : 'xəta')}</Pill>
+              {s.read_by === 'online' && <Pill tone="info">💻 {tt('onlayn')}</Pill>}
               {s.flagged.length > 0 && <Pill tone="warn">⚠ {s.flagged.length}</Pill>}
             </div>
-            {s.error && <div className="small" style={{ color: 'var(--bad)' }}>{s.error}</div>}
+            {s.error && !s.error.startsWith('ai:') && <div className="small" style={{ color: 'var(--bad)' }}>{s.error}</div>}
             {open === s.id && <ScanDetail s={s} onChange={reload} onThorough={() => setWatching(12)} />}
           </div>))}
       </div>
@@ -431,12 +513,13 @@ function ScanDetail({ s, onChange, onThorough }: { s: Scan; onChange: () => void
   }
   return (
     <div style={{ marginTop: 8 }}>
+      {s.read_by === 'online' ? <p className="small muted" style={{ margin: '0 0 4px' }}>💻 {tt('Şagird onlayn yazıb – cavablar ekrandan götürülüb, şəkil yoxdur.')}</p> : <>
       <img src={`/api/exam-scans/image/${s.id}`} alt="" style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 6 }} />
       <div className="row" style={{ gap: 6, margin: '4px 0' }}>
         <AsyncBtn className="btn sm" onClick={async () => { await post(`/api/exam-scans/${s.id}/thorough`); toast(tt('Diqqətli oxunuş başladı – ~1 dəqiqə')); onThorough?.() }}
           title={tt('Səliqəsiz yazı üçün: kartın sütunları böyüdülür, iki model oxuyur, ən azı iki eyni oxunuş qəbul edilir; düzəlişləriniz saxlanır')}>🔍 {tt('Diqqətli oxu')}</AsyncBtn>
         <span className="small muted">{tt('Sarı xana – oxunuşlar razılaşmayıb, şəkilə baxıb düzəldin')}</span>
-      </div>
+      </div></>}
       {s.reading ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(92px,1fr))', gap: 4, marginTop: 6 }}>
           {Array.from({ length: n }, (_, i) => i + 1).map(slot => {
