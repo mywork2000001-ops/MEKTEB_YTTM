@@ -212,7 +212,7 @@ function AiKeyForm({ purpose }: { purpose: 'plan' | 'review' }) {
   )
 }
 
-const SCAN_CODE: Record<string, string> = { 'ai:rate': 'limit', 'ai:credit': 'balans bitib', 'ai:key': 'açar qəbul olunmur', 'ai:limit': 'aylıq limit' }
+const SCAN_CODE: Record<string, string> = { 'ai:rate': 'limit', 'ai:credit': 'balans bitib', 'ai:key': 'açar qəbul olunmur', 'ai:limit': 'aylıq limit', 'ai:model': 'model əlçatan deyil' }
 
 /** Kart oxuyucusu: 5 açar, sıra ilə; limit / balans / açar xətasında oxuyucu özü növbəti açara keçir. */
 function ScanKeysForm() {

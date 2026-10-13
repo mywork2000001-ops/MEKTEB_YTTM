@@ -117,7 +117,7 @@ def test_scan_flow(world):
     still = next(x for x in admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'] if x['student_id'] == a['student_id'])
     assert still['status'] == 'graded' and still['points'] == 98.5
     # yenidən skan (müəllim seçib): köhnə oxunuş arxivə, yenidən gözləyir
-    r2 = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', params={'replace': True}, files=[('files', ('p2.jpg', photo([a['qr']], -4), 'image/jpeg'))]).json()
+    r2 = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', params={'replace': True, 'force': True}, files=[('files', ('p2.jpg', photo([a['qr']], -4), 'image/jpeg'))]).json()
     assert r2['found'][0]['scan_id'] == mine['id']
     again = next(x for x in admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'] if x['student_id'] == a['student_id'])
     assert again['status'] == 'pending' and again['rescans'] == 1
@@ -730,3 +730,69 @@ def test_student_sees_own_card(world, monkeypatch):
     assert img.status_code == 200 and img.headers['content-type'] == 'image/jpeg'
     assert c.get(f'/api/portal/exam-card/{other.id}/image').status_code == 404                     # başqasının kartı
     assert any(n['key'].startswith(f'card-{card["scan_id"]}-') for n in c.get('/api/portal/notifications').json())
+
+
+def test_gemini_model_fallback_and_no_sleep(monkeypatch):
+    """docs/skan-sayac-ve-donma-promtu.md §A–B: köhnəlmiş model → Google-un təklifi; thinkingConfig xətası → parametrsiz;
+    429 → gözləmə yoxdur (açar dincə, növbəti açar); alternativ də yoxdursa → ai:model."""
+    import httpx
+    import time
+    from app import ai
+    from app.domain import ksq_reader as R
+    ai.GEMINI_FIX.clear()
+    ai.GEMINI_NO_THINK.clear()
+
+    class Resp:
+        def __init__(self, code, js):
+            self.status_code, self._js, self.text = code, js, str(js)
+
+        def json(self):
+            return self._js
+    ok = {'candidates': [{'content': {'parts': [{'functionCall': {'name': 'submit_card', 'args': {'answers': [
+        {'slot': 1, 'value': 'A', 'confidence': 0.99}]}}}]}}]}
+    urls = []
+
+    def post(self, url, json=None, headers=None):
+        urls.append((url.split('/models/')[1].split(':')[0], 'thinkingConfig' in json['generationConfig']))
+        m = urls[-1][0]
+        if m == 'gemini-2.5-flash':
+            return Resp(404, {'error': {'message': 'This model models/gemini-2.5-flash is no longer available to new users. '
+                                                   'Please update your code to use models/gemini-3.8-flash for the latest features.'}})
+        if m == 'gemini-3.8-flash' and urls[-1][1]:
+            return Resp(400, {'error': {'message': 'Thinking budget is not supported for this model.'}})
+        return Resp(200, ok)
+    monkeypatch.setattr(httpx.Client, 'post', post)
+    got = R.call_gemini('AIza-x', 'gemini-2.5-flash', b'\xff\xd8', [{'slot': 1, 'kind': 'mcq'}])
+    assert got == [{'slot': 1, 'value': 'A', 'confidence': 0.99}]
+    assert urls == [('gemini-2.5-flash', True), ('gemini-3.8-flash', True), ('gemini-3.8-flash', False)]
+    urls.clear()
+    R.call_gemini('AIza-x', 'gemini-2.5-flash', b'\xff\xd8', [{'slot': 1, 'kind': 'mcq'}])
+    assert urls == [('gemini-3.8-flash', False)]                                  # yadda saxlanıb – birbaşa
+    # 429 – yuxu yoxdur
+    monkeypatch.setattr(time, 'sleep', lambda s: (_ for _ in ()).throw(AssertionError('sleep')))
+    monkeypatch.setattr(httpx.Client, 'post', lambda self, url, json=None, headers=None: Resp(429, {'error': {'message': 'quota'}}))
+    try:
+        R.call_gemini('AIza-y', 'gemini-flash-latest', b'\xff\xd8', [{'slot': 1, 'kind': 'mcq'}])
+        raise AssertionError
+    except R.AiError as ex:
+        assert str(ex) == R.AI_RATE
+    # model yoxdur, alternativ də yoxdur → ai:model (açar 10 dəq dincə)
+    monkeypatch.setattr(httpx.Client, 'post', lambda self, url, json=None, headers=None: Resp(404, {'error': {'message': 'models/x is not found'}}))
+    try:
+        R.call_gemini('AIza-z', 'gemini-flash-latest', b'\xff\xd8', [{'slot': 1, 'kind': 'mcq'}])
+        raise AssertionError
+    except R.AiError as ex:
+        assert str(ex) == R.AI_MODEL and R.COOLDOWN[R.AI_MODEL] == 600
+    ai.GEMINI_FIX.clear()
+    ai.GEMINI_NO_THINK.clear()
+
+
+def test_recent_rescan_guard(world, monkeypatch):
+    """§C: «yenidən skan» açıq olsa belə, son 90 s-də qəbul edilmiş kart təkrar oxunmur (already); force=true – əvəz edir."""
+    admin, ta, e, pr, st, _ = _graded(world, monkeypatch)
+    sh = pr['sheets'][0]
+    up = lambda q: admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload{q}', files=[('files', ('p.jpg', photo([sh['qr']]), 'image/jpeg'))]).json()
+    r = up('?replace=true')
+    assert not r['found'] and len(r['already']) == 1
+    r = up('?replace=true&force=true')
+    assert len(r['found']) == 1

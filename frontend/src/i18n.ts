@@ -5,6 +5,14 @@ import { createContext, useContext } from 'react'
 export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
+  // Skan sayğacı, donmayan kamera, köhnə versiya xəbərdarlığı (13.10.2026, docs/skan-sayac-ve-donma-promtu.md)
+  "Oxunuş uzun çəkir – növbədə {n} kart": ["Reading is taking long – {n} cards in the queue", "Чтение затянулось – в очереди {n} бланков"],
+  "Telefonda köhnə versiya açıqdır – səhifəni yeniləyin": ["An old version is open on this device – reload the page", "На устройстве открыта старая версия – обновите страницу"],
+  "Qəbul edildi: {n} şagird": ["Accepted: {n} students", "Принято: {n} учеников"],
+  "əvəz edildi: {n}": ["replaced: {n}", "заменено: {n}"],
+  "Yeni versiya hazırdır – yeniləyin": ["A new version is available – reload", "Доступна новая версия – обновите"],
+  "model əlçatan deyil": ["model unavailable", "модель недоступна"],
+  "Süni intellekt modeli bu açar üçün əlçatan deyil – Tənzimləmələr → «Kart oxuyucusu»nda modeli «gemini-flash-latest» seçin.": ["The AI model is not available for this key – in Settings → «Card reader» choose the «gemini-flash-latest» model.", "Модель ИИ недоступна для этого ключа – в Настройки → «Чтение бланков» выберите модель «gemini-flash-latest»."],
   // Ardıcıl skan – bir şagird, bir nəticə; şagirdin «Kartım»ı; «Skanları sil» (13.10.2026, docs/kart-skanlarini-silme-promtu.md)
   "Düz: {r}/{t}": ["Correct: {r}/{t}", "Верно: {r}/{t}"],
   "Sarı xana: {n} – siyahıda şəkilə baxıb yoxlayın": ["Yellow cells: {n} – check them against the image in the list", "Жёлтых клеток: {n} – сверьте со снимком в списке"],

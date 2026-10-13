@@ -25,7 +25,7 @@ TIMEOUT = httpx.Timeout(120, connect=15)
 MAX_OUT = 2000                               # bir oxunuşun cavabı (30 xana) – 4000 lazımsız idi, kredit tez bitirdi
 # Süni intellekt xətaları – kartda QISA KOD saxlanılır, müəllimə interfeys öz dilində bir dəfə göstərir (13.10.2026: balans bitəndə
 # hər kartın altında üç dildə uzun mətn çıxırdı). ai:credit / ai:key – növbəti kartlara sorğu göndərilmir (kartlar gözləyir).
-AI_CREDIT, AI_KEY, AI_RATE, AI_LIMIT = 'ai:credit', 'ai:key', 'ai:rate', 'ai:limit'
+AI_CREDIT, AI_KEY, AI_RATE, AI_LIMIT, AI_MODEL = 'ai:credit', 'ai:key', 'ai:rate', 'ai:limit', 'ai:model'
 AI_STOP = {AI_CREDIT, AI_KEY}
 
 
@@ -206,16 +206,20 @@ def call_openrouter(key: str, model: str, jpeg: bytes | list[bytes], slots: list
 
 
 GEMINI = 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
-GM_DEFAULT = 'gemini-2.5-flash'                    # Google AI Studio – pulsuz açar (aistudio.google.com/apikey)
-GM_VERIFY = 'gemini-2.5-pro'                       # açıq cavabların müstəqil ikinci oxunuşu (əsas model Pro-dursa – Flash)
+# Google AI Studio – pulsuz açar (aistudio.google.com/apikey). «-latest» ləqəbləri köhnəlmir (13.10.2026: 2.5 yeni hesablara
+# verilmir); yoxlama – fərqli model, pulsuz kvotada var (Pro pulsuz kvotada 429 verirdi)
+GM_DEFAULT = 'gemini-flash-latest'
+GM_VERIFY = 'gemini-flash-lite-latest'
 
 
 def call_gemini(key: str, model: str, jpeg: bytes | list[bytes], slots: list[dict], only: list[int] | None = None,
                 text: str | None = None) -> list[dict]:
-    """Google Gemini birbaşa (AI Studio açarı, 13.10.2026): şəkil(lər) inline_data, məcburi funksiya çağırışı submit_card.
-    Düşünmə minimumda (Flash – 0, Pro – 128 token): kart oxumaq üçün lazım deyil, pulsuz kvotanı və vaxtı yeyir."""
-    import time
-    gen = {'temperature': 0, 'maxOutputTokens': MAX_OUT, 'thinkingConfig': {'thinkingBudget': 128 if 'pro' in model else 0}}
+    """Google Gemini birbaşa (AI Studio açarı): şəkil(lər) inline_data, məcburi funksiya çağırışı submit_card.
+    Düşünmə minimumda (Flash – 0, Pro – 128 token). Model köhnəlibsə – alternativ (ai.gemini_alt), thinkingConfig qəbul
+    olunmursa – parametrsiz; bir dəfə təkrar. 429-da GÖZLƏMƏ YOXDUR – açar dincə qoyulur, növbəti açar oxuyur (key_pool)."""
+    from ..ai import GEMINI_FIX, GEMINI_NO_THINK, gemini_alt, gemini_model_gone
+    asked = model
+    model = GEMINI_FIX.get(model, model)
     body = {'systemInstruction': {'parts': [{'text': SYSTEM}]},
             'contents': [{'role': 'user', 'parts': [
                 {'text': text or _instructions(slots, only)},
@@ -223,20 +227,33 @@ def call_gemini(key: str, model: str, jpeg: bytes | list[bytes], slots: list[dic
             'tools': [{'functionDeclarations': [{'name': TOOL['name'], 'description': TOOL['description'],
                                                  'parameters': TOOL['input_schema']}]}],
             'toolConfig': {'functionCallingConfig': {'mode': 'ANY', 'allowedFunctionNames': [TOOL['name']]}},
-            'generationConfig': gen}
-    for attempt in range(2):                             # pulsuz kvota: dəqiqəlik limit (429) – bir dəfə gözləyib təkrar
+            'generationConfig': {'temperature': 0, 'maxOutputTokens': MAX_OUT}}
+    tried: set[str] = set()
+    while True:
+        gen = body['generationConfig']
+        gen.pop('thinkingConfig', None)
+        if model not in GEMINI_NO_THINK:
+            gen['thinkingConfig'] = {'thinkingBudget': 128 if 'pro' in model else 0}
         with httpx.Client(timeout=TIMEOUT) as c:
             r = c.post(GEMINI.format(model=model), json=body, headers={'x-goog-api-key': key, 'Content-Type': 'application/json'})
-        if r.status_code == 429 and attempt == 0 and getattr(_ctx, 'solo', True) and 'perday' not in r.text.lower().replace('_', ''):
-            time.sleep(20)                               # başqa açar varsa – gözləmədən növbəti açara (key_pool)
-            continue
-        break
-    if r.status_code != 200:
+        if r.status_code == 200:
+            break
         try:
             msg = r.json().get('error', {}).get('message')
         except Exception:                                    # noqa: BLE001
             msg = None
-        status = 401 if r.status_code == 400 and 'api key' in (msg or '').lower() else r.status_code   # API_KEY_INVALID – 400 gəlir
+        low = (msg or '').lower()
+        if r.status_code == 400 and 'thinking' in low and model not in GEMINI_NO_THINK:
+            GEMINI_NO_THINK.add(model)                       # yeni nəsil model – düşünmə parametri başqadır
+            continue
+        if gemini_model_gone(r.status_code, msg):
+            alt = gemini_alt(model, msg) if 'model' not in tried else None
+            if alt:
+                tried.add('model')
+                GEMINI_FIX[asked] = model = alt
+                continue
+            raise AiError(AI_MODEL)                         # model bu açar üçün əlçatan deyil – açar dincə, növbəti açar
+        status = 401 if r.status_code == 400 and 'api key' in low else r.status_code   # API_KEY_INVALID – 400 gəlir
         raise _ai_error('Gemini', status, msg, r.text)
     j = r.json()
     um = j.get('usageMetadata') or {}
@@ -336,7 +353,7 @@ def read_card(key, jpeg: bytes, slots: list[dict], thorough: bool = False,
         m2 = VERIFY_MODEL if VERIFY_MODEL != m1 else None
     elif prov == 'gemini':
         m1 = c['model']
-        m2 = GM_VERIFY if 'pro' not in m1 else GM_DEFAULT
+        m2 = GM_VERIFY if m1 != GM_VERIFY else GM_DEFAULT
     else:
         m1, m2 = MODEL, MODEL_2
     fn = {'openrouter': call_openrouter, 'gemini': call_gemini}.get(prov, call)
@@ -392,9 +409,8 @@ def read_card(key, jpeg: bytes, slots: list[dict], thorough: bool = False,
 # ---------------------------------------------------------------- açar hovuzu və avtomatik keçid (docs/kart-oxuyucu-acarlar-promtu.md)
 SCAN_PROVIDERS = ('gemini', 'openrouter', 'anthropic')      # şəkil oxuyan və funksiya çağıran provayderlər
 SCAN_KEYS_MAX = 5
-COOLDOWN = {AI_RATE: 65, AI_CREDIT: 6 * 3600, AI_KEY: 24 * 3600}
+COOLDOWN = {AI_RATE: 65, AI_CREDIT: 6 * 3600, AI_KEY: 24 * 3600, AI_MODEL: 600}
 DAY_COOLDOWN = 3 * 3600                                     # Gemini günlük kvota (Sakit okean gecə yarısı yenilənir)
-_ctx = __import__('threading').local()                       # solo – hovuzda başqa açar yoxdur (Gemini 429-da gözlə)
 _cool: dict[str, dict] = {}                                  # açarın izi → {until, code}
 _today: dict[str, list] = {}                                 # açarın izi → [tarix, bu gün oxunan kart]
 
@@ -605,8 +621,7 @@ def _read_one(db, sc, apply, storage_for_key, Exam, ExamVariant, TeachingAssignm
         db.commit()
         return 0
     reading, by, key, err = None, '', None, None
-    for i, c in enumerate(live):                         # avtomatik keçid: limit/balans/açar xətası – növbəti açar
-        _ctx.solo = i == len(live) - 1
+    for c in live:                                       # avtomatik keçid: limit/balans/açar xətası – növbəti açar
         _usage['in'] = _usage['out'] = 0
         try:
             reading, by = read_card(c, jpeg, slots, thorough=thorough, keep=keep)

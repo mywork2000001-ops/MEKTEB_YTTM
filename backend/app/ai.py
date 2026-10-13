@@ -15,7 +15,7 @@ from fastapi import HTTPException
 
 PROVIDERS: dict[str, dict] = {
     'gemini': {'label': 'Google Gemini', 'kind': 'gemini', 'base': 'https://generativelanguage.googleapis.com/v1beta',
-               'models': ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'],
+               'models': ['gemini-flash-latest', 'gemini-pro-latest', 'gemini-flash-lite-latest', 'gemini-2.5-flash'],
                'key_url': 'https://aistudio.google.com/apikey', 'hint': 'Pulsuz açar: Google AI Studio → «Get API key»'},
     'openrouter': {'label': 'OpenRouter', 'kind': 'openai', 'base': 'https://openrouter.ai/api/v1',
                    'models': ['google/gemini-2.5-flash', 'anthropic/claude-sonnet-4.5', 'openai/gpt-4.1-mini',
@@ -74,6 +74,28 @@ def _err(provider: str, r: httpx.Response) -> HTTPException:
 
 OR_CLAUDE = 'anthropic/claude-sonnet-4.5'
 
+# Gemini modelləri köhnəlir (13.10.2026: «gemini-2.5-flash is no longer available to new users») – ən son ləqəblər və
+# avtomatik keçid (docs/skan-sayac-ve-donma-promtu.md §A). Tapılan alternativ proses üzrə yadda saxlanır.
+GEMINI_LATEST = {'lite': 'gemini-flash-lite-latest', 'pro': 'gemini-pro-latest', 'flash': 'gemini-flash-latest'}
+GEMINI_FIX: dict[str, str] = {}            # köhnə model → işləyən model
+GEMINI_NO_THINK: set[str] = set()          # thinkingConfig qəbul etməyən modellər
+
+
+def gemini_model_gone(status: int, msg: str | None) -> bool:
+    low = (msg or '').lower()
+    return status == 404 or (status == 400 and any(x in low for x in ('no longer available', 'not found', 'is not supported for',
+                                                                         'deprecated', 'not available')))
+
+
+def gemini_alt(model: str, msg: str | None) -> str | None:
+    """Google-un təklif etdiyi model («use models/X»), yoxdursa – eyni ailənin «-latest» ləqəbi."""
+    m = re.search(r'use (?:the )?models/([\w.\-]+)', msg or '')
+    if m and m.group(1).rstrip('.') != model:
+        return m.group(1).rstrip('.')
+    fam = 'lite' if 'lite' in model else 'pro' if 'pro' in model else 'flash'
+    alt = GEMINI_LATEST[fam]
+    return alt if alt != model else None
+
 
 def fix_provider(provider: str, model: str, key: str | None) -> tuple[str, str]:
     """Açarın növünə görə xidmət (istifadəçi xətası 14.10: OpenRouter açarı «Anthropic» seçilərək saxlanmışdı → 401).
@@ -103,9 +125,21 @@ def complete(cfg: dict, system: str, user: str, json_mode: bool = True, max_toke
                 gen = {'temperature': 0.4, 'maxOutputTokens': max_tokens}
                 if json_mode:
                     gen['responseMimeType'] = 'application/json'
-                r = c.post(f'{base}/models/{model}:generateContent', headers={'x-goog-api-key': key},
-                           json={'systemInstruction': {'parts': [{'text': system}]},
-                                 'contents': [{'role': 'user', 'parts': [{'text': user}]}], 'generationConfig': gen})
+                model = GEMINI_FIX.get(model, model)
+                for _ in range(2):                            # model köhnəlibsə – bir dəfə alternativlə (gemini_alt)
+                    r = c.post(f'{base}/models/{model}:generateContent', headers={'x-goog-api-key': key},
+                               json={'systemInstruction': {'parts': [{'text': system}]},
+                                     'contents': [{'role': 'user', 'parts': [{'text': user}]}], 'generationConfig': gen})
+                    if r.status_code == 200:
+                        break
+                    try:
+                        gm = (r.json().get('error') or {}).get('message')
+                    except Exception:                                   # noqa: BLE001
+                        gm = None
+                    alt = gemini_alt(model, gm) if gemini_model_gone(r.status_code, gm) else None
+                    if not alt:
+                        break
+                    GEMINI_FIX[cfg['model']] = model = alt
                 if r.status_code != 200:
                     raise _err(prov, r)
                 j = r.json()

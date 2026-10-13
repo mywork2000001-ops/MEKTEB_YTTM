@@ -6,9 +6,12 @@
 // 13.10.2026 (docs/kart-skanlarini-silme-promtu.md): BİR ŞAGİRD – BİR NƏTİCƏ. Kart oxunub balı göstərilməyincə növbəti kart
 // çəkilmir (avtomatik çəkiliş də dayanır); bal ekranda böyük görünür, müəllim «Növbəti şagird» basır. Oxunuş gecikərsə –
 // «Keç (sonra oxunsun)»; bütün açarlar limitdədirsə – səbəb müəllimin dilində.
+// 13.10.2026 (docs/skan-sayac-ve-donma-promtu.md): sayğac – fərqli şagird (əvəzetmə ayrıca); açıq «Bu kartı yenidən çək» –
+// force (serverin 90 s qoruması olmadan); gözləmə 10 dəq + «↻ Yoxla»; köhnə versiya xəbərdarlığı.
 import { useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import { tt } from './i18n'
+import { newVersion } from './version'
 
 type Quality = { ok: boolean; why?: string }
 type Found = { student_id: number; scan_id: number; full_name: string | null }
@@ -28,6 +31,7 @@ export const aiErrorText = (code: string) => ({
   'ai:key': tt('Süni intellekt açarı qəbul olunmur – Tənzimləmələr → «Süni intellekt» bölməsində açarı yoxlayın.'),
   'ai:rate': tt('Bütün kart açarları limitdədir – limit bərpa olunanda kartlar özü oxunacaq. Daha çox açar əlavə edə bilərsiniz (5-ə qədər).'),
   'ai:limit': tt('Aylıq süni intellekt limiti dolub – kartlar gözləyir (admin limiti artıra bilər).'),
+  'ai:model': tt('Süni intellekt modeli bu açar üçün əlçatan deyil – Tənzimləmələr → «Kart oxuyucusu»nda modeli «gemini-flash-latest» seçin.'),
 } as Record<string, string>)[code] || code
 
 /** Kiçildilmiş boz şəkildə parlaqlıq və kəskinlik (Laplas dispersiyası). */
@@ -56,7 +60,12 @@ export function quality(c: HTMLCanvasElement): Quality {
 export default function ScanCamera({ url, onClose, onSent, replaceAll = false }: { url: string; onClose: () => void; onSent: () => void; replaceAll?: boolean }) {
   const video = useRef<HTMLVideoElement>(null)
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null)
+  const got = useRef(new Set<number>())               // bu sessiyada qəbul edilmiş şagirdlər (sayğac – fərqli şagird)
   const [sent, setSent] = useState(0)
+  const [replaced, setReplaced] = useState(0)
+  const [pending, setPending] = useState(0)
+  const [old, setOld] = useState(false)               // telefonda köhnə versiya – yeniləmək lazımdır
+  const poke = useRef<(() => void) | null>(null)       // «↻ Yoxla» – nəticəni dərhal yoxla
   const [err, setErr] = useState<string | null>(null)
   const last = useRef(0)
   const accepted = useRef(new Set<string>())        // bu sessiyada qəbul edilmiş QR-lar – avtomatik çəkiliş təkrar göndərmir
@@ -71,18 +80,20 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
   const [now, setNow] = useState(Date.now())
   const listUrl = url.replace(/\/upload$/, '')
   useEffect(() => { if (cur?.phase !== 'read') return; const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id) }, [cur])
-  useEffect(() => { api<List>(listUrl).then(d => setLeft(Math.max(0, d.counts.variants - d.counts.scanned)), () => {}) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { api<List>(listUrl).then(d => setLeft(Math.max(0, d.counts.variants - d.counts.scanned)), () => {}); newVersion().then(setOld) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // oxunmuş kartların balı: hər 2 saniyədən bir (5 dəqiqəyədək) siyahı yoxlanılır; hamısı hazır olanda – nəticə ekranı
+  // oxunmuş kartların balı: hər 2 saniyədən bir (10 dəqiqəyədək) siyahı yoxlanılır; hamısı hazır olanda – nəticə ekranı
   const watch = (ids: number[]) => {
-    let n = 0
+    let n = 0, timer = 0
     const step = async () => {
       n++
+      clearTimeout(timer)
       try {
         const d = await api<List>(listUrl)
         setLeft(Math.max(0, d.counts.variants - d.counts.scanned))
         setAiErr(d.ai_error || null)
-        const final = n >= 150
+        setPending(d.counts.pending)
+        const final = n >= 300
         let open = false
         setResults(rs => rs.map(r => {
           if (!ids.includes(r.scan_id)) return r
@@ -95,12 +106,14 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
         const mine = c && c.phase !== 'upload' && c.ids.join() === ids.join()
         if (!open || !d.claude) {                                   // hazırdır (və ya açar yoxdur – oxunmayacaq)
           if (mine && c!.phase === 'read') { setCur({ phase: 'done', ids }); buzz([80, 60, 80]) }
+          if (mine) poke.current = null
           return
         }
-        if (!final) setTimeout(step, 2000)
-      } catch { if (n < 150) setTimeout(step, 2000) }
+        if (!final) timer = window.setTimeout(step, 2000)
+      } catch { if (n < 300) timer = window.setTimeout(step, 2000) }
     }
-    setTimeout(step, 2000)
+    poke.current = () => { n = Math.min(n, 299); step() }
+    timer = window.setTimeout(step, 2000)
   }
 
   useEffect(() => {
@@ -140,14 +153,16 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
     c.toBlob(async b => {
       if (!b) { setCur(null); return }
       const form = new FormData(); form.append('files', b, `kart-${Date.now()}.jpg`)
-      const again = replaceRef.current || replaceAll
+      const explicit = replaceRef.current                  // «Bu kartı yenidən çək» / «Yenidən skan et» – açıq əvəz (force)
+      const q = explicit ? '?replace=true&force=true' : replaceAll ? '?replace=true' : ''
       try {
-        const r = await api<Up>(url + (again ? '?replace=true' : ''), { method: 'POST', form })
+        const r = await api<Up>(url + q, { method: 'POST', form })
         const already = r.already || []
         if (r.found.length) {
           seen.forEach(x => accepted.current.add(x))
           replaceRef.current = false; setReplace(null)
-          setSent(n => n + r.found.length); buzz(60)
+          r.found.forEach(f => { if (got.current.has(f.student_id)) setReplaced(n => n + 1); else got.current.add(f.student_id) })
+          setSent(got.current.size); buzz(60)
           const ids = r.found.map(f => f.scan_id)
           setResults(rs => [...r.found.map(f => ({ scan_id: f.scan_id, name: f.full_name || '—', points: null, wait: true })),
             ...rs.filter(x => !ids.includes(x.scan_id))].slice(0, 6))
@@ -201,7 +216,11 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
             <div style={{ fontSize: 16 }}>⏳ {tt('Kart oxunur… {s} san.', { s: secs })}</div>
             <div style={{ fontSize: 13, opacity: .8, textAlign: 'center' }}>{tt('Nəticə gələnə qədər növbəti kartı çəkməyin')}</div>
             {aiErr && <div style={{ fontSize: 14, color: '#fde68a', textAlign: 'center', maxWidth: 520 }}>⚠ {aiErrorText(aiErr)}</div>}
-            {(secs >= SKIP_AFTER || aiErr) && <button className="btn" onClick={next}>{tt('Keç – sonra oxunsun')} ▶</button>}
+            {!aiErr && secs >= 60 && <div style={{ fontSize: 14, color: '#fde68a', textAlign: 'center' }}>{tt('Oxunuş uzun çəkir – növbədə {n} kart', { n: pending })}</div>}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+              <button className="btn" onClick={() => poke.current?.()}>↻ {tt('Yoxla')}</button>
+              {(secs >= SKIP_AFTER || aiErr) && <button className="btn" onClick={next}>{tt('Keç – sonra oxunsun')} ▶</button>}
+            </div>
           </>}
           {cur.phase === 'done' && <>
             {curRes.map(big)}
@@ -213,6 +232,9 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
         </div>}
       </div>
       <div style={{ background: '#111', color: '#fff', padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {old && <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#fde68a' }}>
+          <span className="grow">⚠ {tt('Telefonda köhnə versiya açıqdır – səhifəni yeniləyin')}</span>
+          <button className="btn sm" onClick={() => location.reload()}>↻ {tt('Yenilə')}</button></div>}
         {msg && <div style={{ fontSize: 14, color: msg.bad ? '#fca5a5' : '#86efac' }}>{msg.text}</div>}
         {replace && <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
           <span className="grow">{replaceRef.current ? tt('Növbəti çəkiliş {name} üçün köhnə skanı əvəz edəcək', { name: replace.name }) : tt('Səhv oxunubsa, yenidən skan edin')}</span>
@@ -228,7 +250,7 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
           </div>)}
         </div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 13 }} className="grow">{tt('Göndərildi: {n}', { n: sent })}{left != null ? ` · ${tt('qalıb: {n} şagird', { n: left })}` : ''}</span>
+          <span style={{ fontSize: 13 }} className="grow">{tt('Qəbul edildi: {n} şagird', { n: sent })}{replaced ? ` · ${tt('əvəz edildi: {n}', { n: replaced })}` : ''}{left != null ? ` · ${tt('qalıb: {n} şagird', { n: left })}` : ''}</span>
           <button className="btn" onClick={onClose}>{tt('Bitir')}</button>
           <button className="btn primary" style={{ minWidth: 96 }} onClick={() => shoot()} disabled={!!err || !!cur}>📷 {tt('Çək')}</button>
         </div>

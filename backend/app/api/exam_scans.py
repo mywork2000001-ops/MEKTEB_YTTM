@@ -64,6 +64,13 @@ def _ai_error(db: Session, ta, scans: list[ExamScan]) -> str | None:
     return err if err in (None, AI_LIMIT) else pool_error(db, ta.teacher_id)
 
 
+RECENT_S = 90
+
+
+def _aware(t: dt.datetime) -> dt.datetime:
+    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+
+
 def _out(sc: ExamScan, name: str | None) -> dict:
     return {'id': sc.id, 'student_id': sc.student_id, 'full_name': name, 'code': sc.code, 'status': sc.status, 'points': sc.points,
             'flagged': sc.flagged or [], 'reading': sc.reading, 'marks': sc.marks, 'read_by': sc.read_by, 'error': sc.error,
@@ -229,6 +236,7 @@ def thorough_all(ta_id: int, exam_id: int, bg: BackgroundTasks, only_flagged: bo
 # ---------------------------------------------------------------- yükləmə, siyahı, yenilə
 @router.post('/{ta_id}/{exam_id}/upload')
 async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[UploadFile] = File(...), replace: bool = False,
+                 force: bool = False,             # «↻ Bu kartı yenidən çək» – 90 s qoruması olmadan
                  user: User = Depends(staff), db: Session = Depends(get_db)):
     """Kart şəkilləri və ya skan PDF: QR → şagird; cavab zonası saxlanır. Eyni şagirdin kartı təkrar gəlsə – köhnə oxunuş arxivə."""
     from ..domain.ksq_scan import find_cards, images_from_upload
@@ -270,7 +278,9 @@ async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[Uplo
                 continue
             sc = db.scalar(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == c['student_id']))
             # bir blank – bir dəfə: artıq qəbul edilib (xətasız) – təkrar göndərilmir; yenidən skan – yalnız replace=true ilə
-            if sc is not None and sc.crop_key and sc.status != 'error' and not replace:
+            # təkrar oxunuşdan qorunma (kvota): «yenidən skan» açıq olsa belə, son 90 s-də qəbul edilmiş kart təkrar sayılır
+            recent = sc is not None and sc.updated_at is not None and now() - _aware(sc.updated_at) < dt.timedelta(seconds=RECENT_S)
+            if sc is not None and sc.crop_key and sc.status != 'error' and (not replace or (recent and not force)):
                 if c['student_id'] not in {d['student_id'] for d in dupes}:
                     dupes.append({'student_id': c['student_id'], 'scan_id': sc.id, 'status': sc.status, 'points': sc.points})
                 continue

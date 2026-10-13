@@ -21,7 +21,7 @@ from ..security import secret_decrypt, secret_encrypt
 from .common import audit, settings_unlocked
 
 router = APIRouter(prefix='/api/ai/scan-keys', tags=['ai'])
-MODELS = {'gemini': ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'],
+MODELS = {'gemini': ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-pro-latest', 'gemini-2.5-flash'],   # «-latest» köhnəlmir
           'openrouter': ['google/gemini-2.5-flash', 'anthropic/claude-sonnet-4.5', 'openai/gpt-4o'],
           'anthropic': [R.MODEL]}
 

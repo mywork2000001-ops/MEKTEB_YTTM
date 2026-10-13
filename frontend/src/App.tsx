@@ -9,6 +9,7 @@ import QrLogin from './pages/QrLogin'
 const SurveyPublic = lazy(() => import('./pages/SurveyPublic'))
 const Verify = lazy(() => import('./pages/Verify'))
 import { Loading, ToastHost } from './ui'
+import { UpdateBanner } from './version'
 
 // Yeni yayımdan sonra açıq səhifə köhnə hissəni (chunk) tapmırsa – bir dəfə avtomatik yenilənir (ağ ekran olmasın)
 function lazy<T extends ComponentType<any>>(f: () => Promise<{ default: T }>) {
@@ -139,6 +140,7 @@ export default function App() {
         </Layout>
       )}
       <ToastHost />
+      <UpdateBanner />
     </I18nCtx.Provider>
   )
 }

@@ -406,7 +406,7 @@ function Scans({ ta, examId, name }: { ta: number; examId: number; name: string 
   const [cam, setCam] = useState(false)
   const [clearAsk, setClearAsk] = useState(false)   // «🗑 Skanları sil» – imtahanın adı yazılmaqla təsdiq
   const [again, setAgain] = useState(false)         // yenidən skan: köhnə skanlar əvəz olunur (bir blank – bir dəfə qaydasından istisna)
-  const upUrl = `/api/exam-scans/${ta}/${examId}/upload` + (again ? '?replace=true' : '')
+  const upUrl = `/api/exam-scans/${ta}/${examId}/upload` + (again ? '?replace=true&force=true' : '')   // fayl seçimi – müəllimin açıq qərarı
   const send = async (files: FileList | null) => {
     if (!files?.length) return
     const form = new FormData()
