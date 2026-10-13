@@ -22,6 +22,10 @@ API = 'https://api.anthropic.com/v1/messages'
 MODEL = 'claude-sonnet-5-5'
 MODEL_2 = 'claude-opus-5-5'                    # ikinci oxunuş (şübhəli xanalar)
 TIMEOUT = httpx.Timeout(120, connect=15)
+MAX_OUT = 2000                               # bir oxunuşun cavabı (30 xana) – 4000 lazımsız idi, kredit tez bitirdi
+CREDIT_MSG = ('OpenRouter balansı bitib – openrouter.ai-də kredit əlavə edin və ya açarın limitini artırın; kartlar gözləyir. / '
+              'OpenRouter credits exhausted – top up or raise the key limit; cards are waiting. / '
+              'Закончился баланс OpenRouter – пополните кредит или увеличьте лимит ключа; бланки ждут.')
 _usage = {'in': 0, 'out': 0}                 # bir kartın oxunuşunda istifadə olunan tokenlər (xərc sayğacı)
 
 
@@ -80,7 +84,7 @@ def _imgs(jpeg: bytes | list[bytes]) -> list[bytes]:
 
 def call(key: str, model: str, jpeg: bytes | list[bytes], slots: list[dict], only: list[int] | None = None,
          text: str | None = None) -> list[dict]:
-    body = {'model': model, 'max_tokens': 4000, 'system': SYSTEM, 'tools': [TOOL],
+    body = {'model': model, 'max_tokens': MAX_OUT, 'system': SYSTEM, 'tools': [TOOL],
             'tool_choice': {'type': 'tool', 'name': 'submit_card'},
             'messages': [{'role': 'user', 'content': [
                 *({'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': base64.b64encode(j).decode()}}
@@ -103,7 +107,9 @@ def call(key: str, model: str, jpeg: bytes | list[bytes], slots: list[dict], onl
 
 OPENROUTER = 'https://openrouter.ai/api/v1/chat/completions'
 OR_DEFAULT = 'anthropic/claude-sonnet-4.5'          # şəkli oxuyan model (müəllimin modeli şəkil oxumursa)
-VERIFY_MODEL = 'google/gemini-2.5-pro'               # açıq cavabların müstəqil ikinci oxunuşu (fərq – müəllimə sarı)
+# açıq cavabların müstəqil ikinci oxunuşu (fərq – müəllimə sarı). Pro → Flash: Pro-nun «düşünmə» tokenləri kartı bahalaşdırırdı,
+# 13.10.2026 OpenRouter krediti bitdi (402)
+VERIFY_MODEL = 'google/gemini-2.5-flash'
 VISION = ('claude','gemini', 'gpt-4', 'gpt-5', 'vision', '-vl', 'llama-4', 'qwen2.5-vl', 'pixtral')
 
 
@@ -150,7 +156,7 @@ def call_openrouter(key: str, model: str, jpeg: bytes | list[bytes], slots: list
                     text: str | None = None) -> list[dict]:
     """OpenRouter (OpenAI-uyğun): şəkil(lər) data-URI ilə, məcburi funksiya çağırışı submit_card."""
     import json as _json
-    body = {'model': model, 'max_tokens': 4000, 'temperature': 0,
+    body = {'model': model, 'max_tokens': MAX_OUT, 'temperature': 0, 'reasoning': {'effort': 'low'},
             'messages': [{'role': 'system', 'content': SYSTEM},
                          {'role': 'user', 'content': [
                              {'type': 'text', 'text': text or _instructions(slots, only)},
@@ -166,6 +172,8 @@ def call_openrouter(key: str, model: str, jpeg: bytes | list[bytes], slots: list
             msg = r.json().get('error', {}).get('message')
         except Exception:                                    # noqa: BLE001
             msg = None
+        if r.status_code == 402:                         # kredit bitib – müəllimə aydın mesaj (açar səhifəsinin linki göstərilmir)
+            raise RuntimeError(CREDIT_MSG)
         raise RuntimeError(f'OpenRouter {r.status_code}: {msg or r.text[:200]}')
     _count(r.json().get('usage'))
     msg = (r.json().get('choices') or [{}])[0].get('message') or {}

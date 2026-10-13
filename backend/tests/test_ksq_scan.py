@@ -334,13 +334,13 @@ def test_openrouter_reader(world, monkeypatch):
         args = {'answers': [{'slot': 1, 'value': 'C', 'confidence': 0.97}, {'slot': 2, 'value': '3/7', 'confidence': 0.5}]}
         return Resp({'choices': [{'message': {'tool_calls': [{'function': {'name': 'submit_card', 'arguments': __import__('json').dumps(args)}}]}}]})
     monkeypatch.setattr(httpx.Client, 'post', post)
-    got, by = R.read_card({'provider': 'openrouter', 'key': 'sk-or', 'model': 'google/gemini-2.5-flash'}, b'\xff\xd8x',
+    got, by = R.read_card({'provider': 'openrouter', 'key': 'sk-or', 'model': 'openai/gpt-4o'}, b'\xff\xd8x',
                           [{'slot': 1, 'kind': 'mcq'}, {'slot': 2, 'kind': 'open'}])
     # A (əsas model) + B (başqa model, açıq suallar) paralel; hər ikisi «3/7» – səsvermə ilə qəbul (2-ci xana sarı deyil)
     assert [g['value'] for g in got] == ['C', '3/7'] and by.endswith('+v') and len(sent) == 2 and got[1]['confidence'] >= R.LOW
     assert sorted(x[1]['model'] for x in sent).count(R.VERIFY_MODEL) == 1
     url, body, headers = next(x for x in sent if x[1]['model'] != R.VERIFY_MODEL)      # birinci oxunuş və yoxlama paraleldir – sıra təsadüfidir
-    assert url == R.OPENROUTER and headers['Authorization'] == 'Bearer sk-or' and body['model'] == 'google/gemini-2.5-flash'
+    assert url == R.OPENROUTER and headers['Authorization'] == 'Bearer sk-or' and body['model'] == 'openai/gpt-4o'
     assert body['messages'][1]['content'][1]['image_url']['url'].startswith('data:image/jpeg;base64,')
     assert body['tool_choice']['function']['name'] == 'submit_card'
     _ = json
