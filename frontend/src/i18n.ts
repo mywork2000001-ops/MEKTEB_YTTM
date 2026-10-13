@@ -5,6 +5,12 @@ import { createContext, useContext } from 'react'
 export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
+  "Köhnə çapda kəsilmiş və kartda cavabı boş olan suallar şagird üçün sayılmır (⊘); cavabı olan – sayılır": ["Questions cut off in the old print and left blank on the card are not counted (⊘); answered ones are counted", "Вопросы, обрезанные в старой печати и пустые на бланке, не учитываются (⊘); отвеченные учитываются"],
+  "Kağıza düşməyən suallar": ["Questions missing from the sheet", "Вопросы, не попавшие на лист"],
+  "Kağıza düşməyən suallar nəzərə alındı: {n} şagird": ["Missing questions taken into account: {n} students", "Учтены не попавшие на лист вопросы: {n} учеников"],
+  "Dəyişiklik yoxdur – kağıza düşməyən boş sual tapılmadı": ["No changes – no blank missing questions found", "Изменений нет – пустых не попавших на лист вопросов не найдено"],
+  "İkinci oxunuş: {v}": ["Second reading: {v}", "Второе распознавание: {v}"],
+  "İkinci oxunuşu qəbul et": ["Accept the second reading", "Принять второе распознавание"],
   "Kartlar yenidən skan olunanda köhnə skan və oxunuş əvəz olunur": ["When cards are scanned again, the old scan and reading are replaced", "При повторном сканировании старый скан и распознавание заменяются"],
   "Yenidən skan (köhnəni əvəz et)": ["Rescan (replace old)", "Пересканировать (заменить старое)"],
   "cavab kartı": ["answer card", "бланк ответов"],

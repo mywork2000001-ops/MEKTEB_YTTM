@@ -98,6 +98,14 @@ def test_scan_flow(world):
     lo = admin.put(f'/api/exam-scans/{mine["id"]}/lost', json={'slots': [1, 99]}).json()
     assert lo['lost'] == [1] and lo['points'] == 100 and lo['n'] == 30
     assert admin.put(f'/api/exam-scans/{mine["id"]}/lost', json={'slots': []}).json()['points'] == 98.5
+    # kağıza düşməyən suallar (avtomatik): kəsilmiş ∩ boş → ⊘; cavabı olan kəsilmiş sual – sayılır
+    bid = b['student_id']
+    other = next(x for x in admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'] if x['student_id'] == bid)
+    admin.put(f'/api/exam-scans/{other["id"]}/slot', json={'slot': 30, 'value': None})
+    r = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/lost-auto', json={'cut': {str(bid): [29, 30], str(a['student_id']): [2]}}).json()
+    ch = {x['student_id']: x for x in r['changed']}
+    assert ch[bid]['lost'] == [30] and ch[bid]['after'] == 100 and a['student_id'] not in ch
+    assert admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['printed_old'] in (True, False)
     # bir blank – bir dəfə: təkrar göndərilən kart qəbul edilmir (oxunuş və bal dəyişmir)
     d2 = admin.post(f'/api/exam-scans/{ta}/{e["id"]}/upload', files=[('files', ('p1.jpg', photo([a['qr']], 3), 'image/jpeg'))]).json()
     assert d2['found'] == [] and [x['student_id'] for x in d2['already']] == [a['student_id']] and d2['already'][0]['points'] == 98.5
@@ -323,7 +331,8 @@ def test_openrouter_reader(world, monkeypatch):
     monkeypatch.setattr(httpx.Client, 'post', post)
     got, by = R.read_card({'provider': 'openrouter', 'key': 'sk-or', 'model': 'google/gemini-2.5-flash'}, b'\xff\xd8x',
                           [{'slot': 1, 'kind': 'mcq'}, {'slot': 2, 'kind': 'open'}])
-    assert [g['value'] for g in got] == ['C', '3/7'] and by.endswith('+2') and len(sent) == 2      # şübhəli 2-ci xana – ikinci oxunuş
+    assert [g['value'] for g in got] == ['C', '3/7'] and by.endswith('+2+v') and len(sent) == 3      # şübhəli 2-ci xana – ikinci oxunuş; açıq xanalar – müstəqil yoxlama (başqa model)
+    assert sent[2][1]['model'] == R.VERIFY_MODEL
     url, body, headers = sent[0]
     assert url == R.OPENROUTER and headers['Authorization'] == 'Bearer sk-or' and body['model'] == 'google/gemini-2.5-flash'
     assert body['messages'][1]['content'][1]['image_url']['url'].startswith('data:image/jpeg;base64,')

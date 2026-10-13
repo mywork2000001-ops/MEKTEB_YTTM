@@ -96,7 +96,8 @@ def call(key: str, model: str, jpeg: bytes, slots: list[dict], only: list[int] |
 
 OPENROUTER = 'https://openrouter.ai/api/v1/chat/completions'
 OR_DEFAULT = 'anthropic/claude-sonnet-4.5'          # şəkli oxuyan model (müəllimin modeli şəkil oxumursa)
-VISION = ('claude', 'gemini', 'gpt-4', 'gpt-5', 'vision', '-vl', 'llama-4', 'qwen2.5-vl', 'pixtral')
+VERIFY_MODEL = 'google/gemini-2.5-pro'               # açıq cavabların müstəqil ikinci oxunuşu (fərq – müəllimə sarı)
+VISION = ('claude','gemini', 'gpt-4', 'gpt-5', 'vision', '-vl', 'llama-4', 'qwen2.5-vl', 'pixtral')
 
 
 def _clean(blk_input: dict, slots: list[dict]) -> list[dict]:
@@ -185,6 +186,18 @@ def read_card(key, jpeg: bytes, slots: list[dict]) -> tuple[list[dict], str]:
                 m += '+2'
             except RuntimeError as e:
                 log.warning('ikinci oxunuş: %s', e)
+        # müstəqil yoxlama: açıq cavabları başqa model də oxuyur; fərqli oxunan xana – sarı (müəllim baxır), alternativ saxlanır
+        # (13.10.2026 auditi: əl yazısı «1»/«7», «6»/«3» bir modellə səhv oxunurdu)
+        opn = [s for s in slots if s['kind'] != 'mcq']
+        if opn and VERIFY_MODEL and VERIFY_MODEL != m:
+            try:
+                for a in call_openrouter(c['key'], VERIFY_MODEL, jpeg, opn):
+                    cur = first.get(a['slot'])
+                    if cur is not None and a['value'] != cur['value']:
+                        first[a['slot']] = {**cur, 'confidence': min(cur['confidence'], LOW / 2), 'alt': a['value']}
+                m += '+v'
+            except RuntimeError as e:
+                log.warning('yoxlama oxunuşu: %s', e)
         return [first[k] for k in sorted(first)], m
     key = c['key']
     first = {a['slot']: a for a in call(key, MODEL, jpeg, slots)}

@@ -6,6 +6,7 @@ jurnala (ExamScore) avtomatik yazılır. «Yenilə» – bütün kartlar yenidə
 from __future__ import annotations
 
 import base64
+import datetime as dt
 import io
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
@@ -155,6 +156,36 @@ def set_lost(scan_id: int, body: LostIn, user: User = Depends(staff), db: Sessio
     return _out(sc, None)
 
 
+PRINT_FIX_AT = dt.datetime(2026, 10, 13, 11, 0, tzinfo=dt.timezone.utc)   # bu andan əvvəl çap olunan vərəqlərdə suallar kəsilə bilərdi
+
+
+class LostAutoIn(BaseModel):
+    cut: dict[int, list[int]] = Field(default_factory=dict)       # şagird → köhnə çapda kəsilmiş (təxmini) suallar
+
+
+@router.post('/{ta_id}/{exam_id}/lost-auto')
+def lost_auto(ta_id: int, exam_id: int, body: LostAutoIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Kağıza düşməyən suallar (docs/ksq-dusmeyen-suallar-promtu.md): köhnə çapda kəsilmiş (brauzer təxmini) ∩ kartda boş cavab →
+    «⊘» (sayılmır). Kəsilmiş sayılan, amma cavabı olan sual – görünürmüş, «⊘» götürülür. Müəllimin başqa «⊘»-larına toxunulmur."""
+    ta, e = _exam(db, user, ta_id, exam_id)
+    out = []
+    for sc in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.reading.is_not(None))):
+        cut = set(body.cut.get(sc.student_id, []))
+        filled = {int(r['slot']) for r in sc.reading or [] if r.get('value')}
+        empty = {int(r['slot']) for r in sc.reading or [] if not r.get('value')}
+        old = set(sc.lost or [])
+        new = (old - (cut & filled)) | (cut & empty)
+        if new != old:
+            before = sc.points
+            sc.lost = sorted(new) or None
+            apply(db, e, sc)
+            out.append({'student_id': sc.student_id, 'lost': sc.lost or [], 'before': before, 'after': sc.points})
+    audit(db, user, 'update', 'exam_scans', e.id, lost_auto=len(out))
+    db.commit()
+    names = {s.id: s.full_name for s in roster(db, ta)}
+    return {'changed': [{**x, 'full_name': names.get(x['student_id'])} for x in out]}
+
+
 # ---------------------------------------------------------------- yükləmə, siyahı, yenilə
 @router.post('/{ta_id}/{exam_id}/upload')
 async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[UploadFile] = File(...), replace: bool = False,
@@ -265,7 +296,10 @@ def list_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sessio
             'missing': sorted((names.get(sid) or '—') for sid in variants if sid not in have),
             'counts': {'variants': len(variants), 'scanned': len(scans), 'graded': sum(sc.status == 'graded' for sc in scans),
                        'pending': sum(sc.status == 'pending' for sc in scans), 'flagged': sum(bool(sc.flagged) for sc in scans)},
-            'claude': bool(api_key_for(db, ta.teacher_id))}
+            'claude': bool(api_key_for(db, ta.teacher_id)),
+            # vərəqlər çap düzəlişindən (13.10.2026) əvvəl çap olunub – suallar kəsilmiş ola bilər
+            'printed_old': bool(db.scalar(select(ExamVariant.exam_id).where(ExamVariant.exam_id == e.id, ExamVariant.printed_at.is_not(None),
+                                                                             ExamVariant.printed_at < PRINT_FIX_AT).limit(1)))}
 
 
 @router.post('/{ta_id}/{exam_id}/regrade')

@@ -159,6 +159,33 @@ function open(title: string, body: string, after?: (d: Document) => void) {
   if (after) setTimeout(() => after(w.document), 300)
 }
 
+/** Köhnə çap (13.10.2026-dan əvvəl: 10 pt, şəkillər ölçmədən sonra yüklənirdi) hər vərəqdə hansı sualları kəsərdi –
+ *  gizli çərçivədə vərəqlər qurulur, şəkillər gözlənilir, sütunlardan kənara çıxan suallar sayılır. {student_id: [slot]} */
+export async function estimateOldCut(d: KsqPrint): Promise<Record<number, number[]>> {
+  const fr = document.createElement('iframe')
+  Object.assign(fr.style, { position: 'fixed', left: '-5000px', top: '0', width: '900px', height: '1400px', border: '0' })
+  document.body.appendChild(fr)
+  try {
+    const doc = fr.contentDocument!
+    const qrs = await Promise.all(d.sheets.map(s => QRCode.toDataURL(s.qr, { margin: 0, width: 300, errorCorrectionLevel: 'M' })))
+    doc.open(); doc.write(`<!doctype html><html><head><meta charset="utf-8"><style>${CSS}</style></head><body>${d.sheets.map((s, i) => sheet(s, d.exam, qrs[i])).join('')}</body></html>`); doc.close()
+    await imagesReady(doc)
+    const sides = [...doc.querySelectorAll<HTMLElement>('section.side')]
+    const out: Record<number, number[]> = {}
+    d.sheets.forEach((s, k) => {
+      const cut: number[] = []
+      for (const side of [sides[2 * k], sides[2 * k + 1]]) {
+        const el = side?.querySelector<HTMLElement>('.qs'); if (!el) continue
+        const r = el.getBoundingClientRect()
+        el.querySelectorAll<HTMLElement>('.q').forEach(q => { const b = q.getBoundingClientRect()
+          if (b.bottom > r.bottom + 1 || b.right > r.right + 1) cut.push(Number(q.querySelector('.n')?.textContent)) })
+      }
+      if (cut.length) out[s.student_id] = cut.filter(Boolean)
+    })
+    return out
+  } finally { fr.remove() }
+}
+
 export async function printSheets(d: KsqPrint) {
   const qrs = await Promise.all(d.sheets.map(s => QRCode.toDataURL(s.qr, { margin: 0, width: 300, errorCorrectionLevel: 'M' })))
   const ex = d.exam
