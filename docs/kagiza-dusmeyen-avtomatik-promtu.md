@@ -38,3 +38,15 @@ bal verilib, ancaq sual sayı 28, 29-dur.»
   - müəllimin ⊘ dəyişikliyi saxlanır.
 - `npm run build`, deploy, canlı: X c-də skan siyahısı açılanda təxmin saxlanır.
 - Mətnlər AZ/EN/RU.
+
+## Canlı yoxlama və düzəlişlər (13.10.2026 axşam)
+- Müəllim X c üzrə vərəqləri yoxladı. Sistemin təxmini 7 şagirddə artıq sual tutmuşdu (Nəzrin 21–22, Aynişan 30, Nuray M. 30,
+  Mənsurə 20, Nazlı 30, Rəvan 27–28, Kamal 29–30, Elvira 28) – hamısı müəllimin siyahısına görə düzəldildi.
+- Səhv: müəllim bütün ⊘-ları götürəndə `lost = None` saxlanırdı və avtomatik qayda ⊘-u geri qaytarırdı. İndi boş siyahı da
+  saxlanır (commit 757234d, test `test_teacher_clears_auto_lost`).
+- Müəllim ⊘-u «səhvdir» kimi başa düşüb basırdı: Mahmudlu N. 13 (düz cavab sayılmırdı), Tağıyeva G. 12 (qırmızı əvəzinə
+  boz/sarı görünürdü). Düzəlişlər:
+  - xananın rəngi həmişə nəticəni göstərir: yaşıl – düz, qırmızı – səhv;
+  - şübhəli oxunuş rəngi dəyişmir, yalnız **sarı çərçivə** verir (əvvəl sarı fon səhvi gizlədirdi);
+  - ⊘ **iki addımla** qoyulur: «Vərəqdə yox idi? Təsdiq», 5 saniyə ərzində;
+  - izah sətri: «⊘ boz – vərəqdə yox idi (sayılmır, “səhv” demək deyil)».

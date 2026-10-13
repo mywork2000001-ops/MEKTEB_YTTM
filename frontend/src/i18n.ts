@@ -5,6 +5,9 @@ import { createContext, useContext } from 'react'
 export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
+  // Skan şəbəkəsi: rəng – nəticə, ⊘ iki addımla (13.10.2026)
+  "Yaşıl – düz, qırmızı – səhv; sarı çərçivə – oxunuşu şəkillə yoxlayın; ⊘ boz – vərəqdə yox idi (sayılmır, «səhv» demək deyil)": ["Green – correct, red – wrong; yellow frame – check the reading against the image; ⊘ grey – not on the sheet (not counted, does not mean «wrong»)", "Зелёный – верно, красный – неверно; жёлтая рамка – сверьте чтение со снимком; ⊘ серый – вопроса не было на листе (не засчитывается, это не «неверно»)"],
+  "Vərəqdə yox idi? Təsdiq": ["Not on the sheet? Confirm", "Не было на листе? Подтвердить"],
   "{n} sual vərəqə düşməyib – sayılmır, bal qalanlar üzrə 100-ə": ["{n} questions were not on the sheet – not counted, the score is scaled to 100 over the rest", "{n} вопр. не попали на лист – не засчитываются, балл пересчитан на 100 по остальным"],
   // Müəllim düz cavabı redaktə edir (13.10.2026, docs/skan-sayac-ve-donma-promtu.md)
   "Düz cavab – düzəltmək üçün toxunun": ["Correct answer – tap to edit", "Правильный ответ – нажмите, чтобы исправить"],

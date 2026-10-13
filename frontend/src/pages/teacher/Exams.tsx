@@ -511,7 +511,12 @@ function ScanDetail({ s, ta, examId, onChange, onThorough }: { s: Scan; ta: numb
   // variantın öz sual sayı (10–30) – həmişə 30 deyil
   const n = s.n || Math.max(0, ...(s.reading || []).map(r => r.slot)) || 30
   const lost = new Set(s.lost || [])
+  // ⊘ – «vərəqdə yox idi, sayılmasın»: iki addımla (13.10.2026 müəllim ⊘-u «səhvdir» kimi basırdı – düz cavab sayılmırdı)
+  const [askLost, setAskLost] = useState<number | null>(null)
+  useEffect(() => { if (askLost == null) return; const id = setTimeout(() => setAskLost(null), 5000); return () => clearTimeout(id) }, [askLost])
   const toggleLost = async (slot: number) => {
+    if (!lost.has(slot) && askLost !== slot) { setAskLost(slot); return }
+    setAskLost(null)
     const next = new Set(lost); if (next.has(slot)) next.delete(slot); else next.add(slot)
     try { await put(`/api/exam-scans/${s.id}/lost`, { slots: [...next] }); onChange() } catch (x) { toast((x as Error).message) }
   }
@@ -522,7 +527,7 @@ function ScanDetail({ s, ta, examId, onChange, onThorough }: { s: Scan; ta: numb
       <div className="row" style={{ gap: 6, margin: '4px 0' }}>
         <AsyncBtn className="btn sm" onClick={async () => { await post(`/api/exam-scans/${s.id}/thorough`); toast(tt('Diqqətli oxunuş başladı – ~1 dəqiqə')); onThorough?.() }}
           title={tt('Səliqəsiz yazı üçün: kartın sütunları böyüdülür, iki model oxuyur, ən azı iki eyni oxunuş qəbul edilir; düzəlişləriniz saxlanır')}>🔍 {tt('Diqqətli oxu')}</AsyncBtn>
-        <span className="small muted">{tt('Sarı xana – oxunuşlar razılaşmayıb, şəkilə baxıb düzəldin')} · {tt('✓ – sistemdəki düz cavab')}</span>
+        <span className="small muted">{tt('Yaşıl – düz, qırmızı – səhv; sarı çərçivə – oxunuşu şəkillə yoxlayın; ⊘ boz – vərəqdə yox idi (sayılmır, «səhv» demək deyil)')} · {tt('✓ – sistemdəki düz cavab')}</span>
       </div></>}
       {s.reading ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(138px,1fr))', gap: 4, marginTop: 6 }}>
@@ -530,7 +535,9 @@ function ScanDetail({ s, ta, examId, onChange, onThorough }: { s: Scan; ta: numb
             const ok = s.marks?.[slot - 1] === 1, flag = s.flagged.includes(slot), gone = lost.has(slot)
             return (
               <label key={slot} className="small" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 4px', borderRadius: 6,
-                background: gone ? '#e5e7eb' : flag ? '#fef3c7' : ok ? '#dcfce7' : '#fee2e2', color: '#111', opacity: gone ? .7 : 1 }}>
+                // rəng – nəticə (yaşıl düz, qırmızı səhv); şübhəli oxunuş – sarı çərçivə (rəngi gizlətmir)
+                background: gone ? '#e5e7eb' : ok ? '#dcfce7' : '#fee2e2', color: '#111', opacity: gone ? .7 : 1,
+                border: `2px solid ${flag && !gone ? '#f59e0b' : 'transparent'}` }}>
                 <b style={{ minWidth: 18, textDecoration: gone ? 'line-through' : undefined }}>{slot}</b>
                 <input defaultValue={val(slot)} maxLength={8} disabled={gone} style={{ width: '100%', minWidth: 0, padding: '2px 4px' }}
                   title={alt(slot) != null ? tt('İkinci oxunuş: {v}', { v: (s.reading?.find(r => r.slot === slot)?.alts || [alt(slot)]).map(x => x || '∅').join(' / ') }) : undefined}
@@ -539,8 +546,9 @@ function ScanDetail({ s, ta, examId, onChange, onThorough }: { s: Scan; ta: numb
                   style={{ padding: '0 3px', whiteSpace: 'nowrap', fontWeight: 600, color: '#166534' }} onClick={e => { e.preventDefault(); setKeyEdit(slot) }}>✓{s.keys[slot]}</button>}
                 {alt(slot) != null && <button type="button" className="btn sm ghost" style={{ padding: '0 3px', fontSize: 11 }}
                   title={tt('İkinci oxunuşu qəbul et')} onClick={() => fix(slot, alt(slot) || '')}>{alt(slot) || '∅'}</button>}
-                <button type="button" className="btn sm ghost" style={{ padding: '0 3px' }} onClick={() => toggleLost(slot)}
-                  title={gone ? tt('Sayılsın (vərəqdə var idi)') : tt('Vərəqdə yox idi – sayılmasın')}>⊘</button></label>)
+                <button type="button" className={'btn sm ' + (askLost === slot ? 'danger' : 'ghost')} style={{ padding: '0 3px', marginLeft: 4, whiteSpace: 'nowrap' }}
+                  onClick={e => { e.preventDefault(); toggleLost(slot) }}
+                  title={gone ? tt('Sayılsın (vərəqdə var idi)') : tt('Vərəqdə yox idi – sayılmasın')}>{askLost === slot ? tt('Vərəqdə yox idi? Təsdiq') : '⊘'}</button></label>)
           })}
         </div>) : <p className="small muted">{tt('Kart hələ oxunmayıb.')}</p>}
       {keyEdit != null && <KeyEdit ta={ta} examId={examId} sid={s.student_id} slot={keyEdit} kind={s.kinds?.[keyEdit] || 'open'} cur={s.keys?.[keyEdit] || ''}
