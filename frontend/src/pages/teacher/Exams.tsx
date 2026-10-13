@@ -212,6 +212,7 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   const [n, setN] = useState(30)
   const [src, setSrc] = useState<Sources | null>(null)
   const [mode, setMode] = useState<'plan' | 'add' | 'only'>('plan')
+  const [mcqOnly, setMcqOnly] = useState(false)          // yalnız qapalı (test) suallar – məs. DİM sinif testi
   const [pickd, setPickd] = useState<number[]>([])
   const [projs, setProjs] = useState<string[]>([])           // seçilmiş test layihələri (boş – sinfin əsas layihəsi)
   const [ready, setReady] = useState<Ready | null>(null)
@@ -221,14 +222,14 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   const [also, setAlso] = useState<number[]>([])
   useEffect(() => { get<typeof sibs>(`/api/exams/${ta.id}/${e.id}/siblings`).then(setSibs, () => setSibs([])) }, [e.id])   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { get<Sources>(`/api/exams/${ta.id}/${e.id}/sources`, projs.length ? { sources: projs.join(',') } : undefined).then(setSrc, () => setSrc(null)) }, [e.id, projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
-  const body = () => ({ n, file_ids: mode === 'plan' ? null : pickd, only_mine: mode === 'only', sources: projs.length ? projs : null })
+  const body = () => ({ n, file_ids: mode === 'plan' ? null : pickd, only_mine: mode === 'only', sources: projs.length ? projs : null, mcq_only: mcqOnly })
   // hazırlıq: seçim dəyişəndə hovuz yenidən yoxlanır (kiçik gecikmə ilə)
   useEffect(() => {
     if (mode !== 'plan' && !pickd.length) { setReady(null); return }
     setChecking(true)
     const t = setTimeout(() => { post<Ready>(`/api/exams/${ta.id}/${e.id}/readiness`, body()).then(setReady, () => setReady(null)).finally(() => setChecking(false)) }, 350)
     return () => clearTimeout(t)
-  }, [n, mode, pickd.join(','), projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [n, mode, mcqOnly, pickd.join(','), projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
   const make = async () => {
     setFail(null)
     try {
@@ -260,6 +261,7 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
                 <option value="plan">{tt('Perspektiv plandan (hər mövzunun öz testləri)')}</option>
                 <option value="add">{tt('Plan + özüm əlavə edirəm')}</option>
                 <option value="only">{tt('Yalnız özüm seçdiklərim')}</option></select></label>
+            <label className="check small" style={{ alignSelf: 'end' }}><input type="checkbox" checked={mcqOnly} onChange={x => setMcqOnly(x.target.checked)} />{tt('Yalnız qapalı (test) suallar')}</label>
           </div>
           {src?.projects && src.projects.length > 1 && <div style={{ marginTop: 8 }}>
             <span className="small" style={{ fontWeight: 600 }}>{tt('Test layihələri')}:</span>{' '}

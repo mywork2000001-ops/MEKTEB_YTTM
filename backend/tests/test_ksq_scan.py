@@ -921,3 +921,17 @@ def test_teacher_clears_auto_lost(world, monkeypatch):
     assert admin.put(f'/api/exam-scans/{sc["id"]}/lost', json={'slots': []}).json()['lost'] == []
     admin.post(f'/api/exam-scans/{ta}/{e["id"]}/regrade')
     assert admin.get(f'/api/exam-scans/{ta}/{e["id"]}').json()['scans'][0]['lost'] == []
+
+
+def test_mcq_only_variants(world):
+    """«Sinif testindən 20 qapalı sual» (13.10.2026): mcq_only – bütün slotlar test, cəmi 100 bal, hər şagirdə 20 sual."""
+    admin, ta, e, _ = ksq(world)
+    r = admin.post(f'/api/exams/{ta}/{e["id"]}/variants', json={'n': 20, 'mcq_only': True})
+    assert r.status_code == 200, r.text
+    d = admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()
+    for v in d['variants']:
+        assert len(v['questions']) == 20 and all(q['kind'] == 'mcq' for q in v['questions'])
+        assert abs(sum(q['points'] for q in v['questions']) - 100) < 1e-6
+    items = admin.get(f'/api/exams/{ta}').json()
+    ex = next(x for x in (items if isinstance(items, list) else items.get('exams', [])) if x.get('id') == e['id'])
+    assert len(ex['items']) == 20

@@ -22,6 +22,12 @@ const HELP: Record<string, string> = {
   en: 'Test (1–9): fill the circle of the correct answer completely. Open (10–30): one character per box, from the left: 0–9  -  ,  /  ;   Example: 3/7 · 2,5 · -4 · 1;4',
 }
 
+/** Kartın izahı – sual növlərinə görə; yalnız test olanda açıq hissə yazılmır (DİM sinif testi, 13.10.2026). */
+function help(lang: string, nMcq: number, n: number): string {
+  const h = (HELP[lang] || HELP.az).replace('1–9', `1–${nMcq}`).replace('10–30', `${nMcq + 1}–${n}`)
+  return nMcq >= n ? h.split('.')[0] + '.' : h
+}
+
 const CSS = `
 @page{size:A4;margin:8mm}
 *{box-sizing:border-box}
@@ -78,7 +84,7 @@ function card(s: KsqSheet, ex: KsqPrint['exam'], qr: string): string {
     <div class="ctop"><img src="${qr}" alt="">
       <div class="cinfo"><div class="nm">${esc(s.full_name)}</div>
         ${esc(ex.class_name)} · ${esc(ex.subject)} · <b>${ex.kind}-${ex.no}</b> · ${fmtD(ex.date)} · variant <b>${esc(s.code)}</b> · 100 bal
-        <div class="help">${esc((HELP[s.lang] || HELP.az).replace('1–9', `1–${mcq.length}`).replace('10–30', `${mcq.length + 1}–${s.questions.length}`))}</div></div></div>
+        <div class="help">${esc(help(s.lang, mcq.length, s.questions.length))}</div></div></div>
     <div class="mcq">${mcq.map(q => `<div class="row"><span class="no">${q.slot}</span>${[...L].map(c => `<span class="bub">${c}</span>`).join('')}</div>`).join('')}</div>
     <div class="open">${open.map(q => `<div class="row"><span class="no">${q.slot}</span><span class="bx">${'<span class="box"></span>'.repeat(CELLS)}</span></div>`).join('')}</div>
   </div>`

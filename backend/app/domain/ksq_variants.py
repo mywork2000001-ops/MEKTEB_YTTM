@@ -21,6 +21,8 @@ SLOT_PLAN: list[tuple[str, str, float, int]] = [
     ('mcq', 'asan', 1.5, 5), ('mcq', 'orta', 2.5, 4),
     ('open', 'asan', 2.5, 5), ('open', 'orta', 4.0, 10), ('open', 'çətin', 5.0, 6),
 ]
+# yalnız qapalı (test) suallar – məs. DİM sinif testi (P013) üzrə KSQ, 13.10.2026: «sinif testindən 20 qapalı sual»
+SLOT_PLAN_MCQ: list[tuple[str, str, float, int]] = [('mcq', 'asan', 3.0, 12), ('mcq', 'orta', 3.5, 12), ('mcq', 'çətin', 4.0, 6)]
 LEVELS = ('asan', 'orta', 'çətin')
 NEAR = {'asan': ('orta',), 'orta': ('asan', 'çətin'), 'çətin': ('orta',)}
 CARD_MAX = 8
@@ -33,16 +35,18 @@ RULES_V = 3                    # sual seçimi qaydalarının versiyası (3 – a
 REUSE = 0.2                    # başqa siniflərin eyni imtahan variantları ilə təkrar – ən çox 20% (istifadəçi qaydası, 12.10.2026)
 
 
-def slots(n: int = 30) -> list[dict]:
-    """n sual: slot planı mütənasib kiçilir (növ/çətinlik payı saxlanır), ballar cəmi 100 olacaq şəkildə 0,5-ə yuvarlanır."""
+def slots(n: int = 30, mcq_only: bool = False) -> list[dict]:
+    """n sual: slot planı mütənasib kiçilir (növ/çətinlik payı saxlanır), ballar cəmi 100 olacaq şəkildə 0,5-ə yuvarlanır.
+    mcq_only – yalnız qapalı (test) suallar."""
     n = max(N_MIN, min(N_MAX, int(n)))
-    cnt = [max(1, round(c * n / 30)) for *_, c in SLOT_PLAN]
+    plan_ = SLOT_PLAN_MCQ if mcq_only else SLOT_PLAN
+    cnt = [max(1, round(c * n / 30)) for *_, c in plan_]
     while sum(cnt) != n:                                   # fərq – ən böyük qrupda (açıq orta)
         i = max(range(len(cnt)), key=lambda k: cnt[k])
         cnt[i] += 1 if sum(cnt) < n else -1
-    raw = sum(p * c for (_, _, p, _), c in zip(SLOT_PLAN, cnt))
+    raw = sum(p * c for (_, _, p, _), c in zip(plan_, cnt))
     out = []
-    for (kind, level, pts, _), c in zip(SLOT_PLAN, cnt):
+    for (kind, level, pts, _), c in zip(plan_, cnt):
         out += [{'kind': kind, 'level': level, 'points': max(0.5, round(pts * 100 / raw * 2) / 2)} for _ in range(c)]
     diff = round((100 - sum(s['points'] for s in out)) * 2) / 2        # qalıq – ən çətin suallara 0,5-lik addımla
     k = len(out) - 1
@@ -155,11 +159,11 @@ def bank_candidates(db, topics: list[tuple[str, str | None]], source: str = 'p00
 
 def generate(students: list[int], topics: list[tuple[str, str | None]], cands: list[Cand],
              history: dict[int, set[str]], seed: int, n: int = 30, others: set[str] | None = None,
-             share: int = 1, templates: bool = False) -> dict[int, list[dict]]:
+             share: int = 1, templates: bool = False, mcq_only: bool = False) -> dict[int, list[dict]]:
     """students × n slot → {student_id: [sual surəti]}. others – başqa siniflərin eyni imtahanında işlənmiş suallar:
     əvvəl təzələri seçilir, çatmasa ən çox REUSE (20%) qədəri təkrar ola bilər. Çatışmazlıq olarsa Shortage."""
     rng = random.Random(seed)
-    plan = slots(n)
+    plan = slots(n, mcq_only)
     n = len(plan)
     others = others or set()
     # siniflərarası ≤ 20 % qaydası yalnız hamıya fərqli sual mümkün olanda; təkrar onsuz da lazımdırsa (share > 1) – limit yoxdur
@@ -267,26 +271,26 @@ def pick_one(slot: dict, topics: list[tuple[str, str | None]], cands: list[Cand]
     return None
 
 
-def capacity(cands: list[Cand], n: int) -> tuple[bool, dict]:
+def capacity(cands: list[Cand], n: int, mcq_only: bool = False) -> tuple[bool, dict]:
     """Bir şagirdin variantı ümumiyyətlə dolurmu (növ üzrə fərqli sual sayı ≥ slot sayı)? Tez yoxlama – generasiyasız."""
-    plan = slots(n)
+    plan = slots(n, mcq_only)
     need = {k: sum(s['kind'] == k for s in plan) for k in ('mcq', 'open')}
     have = {k: len({c.key for c in cands if c.kind == k}) for k in ('mcq', 'open')}
     return all(have[k] >= need[k] for k in need), {'need': need, 'have': have}
 
 
-def max_n(cands: list[Cand], upto: int) -> int | None:
+def max_n(cands: list[Cand], upto: int, mcq_only: bool = False) -> int | None:
     """Hovuzun imkan verdiyi ən böyük sual sayı (generasiyasız)."""
-    return next((k for k in range(min(upto, N_MAX), N_MIN - 1, -1) if capacity(cands, k)[0]), None)
+    return next((k for k in range(min(upto, N_MAX), N_MIN - 1, -1) if capacity(cands, k, mcq_only)[0]), None)
 
 
 def generate_auto(students: list[int], topics, cands, history, seed: int, n: int = 30, others: set[str] | None = None,
-                  max_share: int | None = None) -> tuple[dict[int, list[dict]], int]:
+                  max_share: int | None = None, mcq_only: bool = False) -> tuple[dict[int, list[dict]], int]:
     """Ən az təkrarla variantlar (istifadəçi qaydası 13.10): əvvəl hər şagirdə fərqli; bank çatmırsa sistem özü
     «bir sual ən çox k şagirdə» həddini seçir (ən kiçik mümkün k). Şagirdin öz variantında təkrar heç vaxt yoxdur.
     Şablon sualı yoxdur. k hovuzun ölçüsündən hesablanır, sonra cəmi bir neçə generasiya (pulsuz server zəifdir)."""
     import math
-    fits, info = capacity(cands, n)
+    fits, info = capacity(cands, n, mcq_only)
     if not fits:
         raise Shortage([{'slot': 0, 'kind': k, 'level': '—', 'missing': info['need'][k] - info['have'][k]}
                         for k in info['need'] if info['have'][k] < info['need'][k]])
@@ -297,7 +301,7 @@ def generate_auto(students: list[int], topics, cands, history, seed: int, n: int
     while lo <= hi:
         mid = (lo + hi) // 2
         try:
-            best = (generate(students, topics, cands, history, seed=seed, n=n, others=others, share=mid), mid)
+            best = (generate(students, topics, cands, history, seed=seed, n=n, others=others, share=mid, mcq_only=mcq_only), mid)
             hi = mid - 1
         except Shortage as sh:
             last = sh
