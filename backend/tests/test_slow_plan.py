@@ -52,3 +52,23 @@ def test_slow_plan_preview_and_apply(world):
         assert t.program_id == p1.id and p1.level == 'Zəif' and len(p2.data['lessons']) > 0
         n = db.query(PlanLesson).filter_by(assignment_id=ta).count()
         assert n == len(cap['slots'])
+
+
+def test_plan_docx_export(world):
+    """Perspektiv planın Word ixracı: başlıq, 8 sütunlu cədvəl, hər dərs bir sətir, məşq dərsi əsas mövzunun standartını alır."""
+    import io
+    from docx import Document
+    as_, S = world
+    admin, ta, cid, st, _ = setup(world)
+    _plan(S, ta, n1=24, n2=20)
+    admin.post(f'/api/programs/slow/{ta}', json={'keep_until': '2026-09-30', 'apply': True})
+    r = admin.get(f'/api/plan/{ta}/docx')
+    assert r.status_code == 200 and r.headers['content-type'].startswith('application/vnd.openxmlformats')
+    d = Document(io.BytesIO(r.content))
+    assert 'perspektiv plan' in d.paragraphs[1].text
+    main = d.tables[1]
+    assert [c.text for c in main.rows[0].cells][2] == 'Mövzu'
+    with S() as db:
+        n = db.query(PlanLesson).filter_by(assignment_id=ta).count()
+    lesson_rows = [r_ for r_ in main.rows[1:] if r_.cells[0].text.strip().isdigit()]
+    assert len(lesson_rows) == n

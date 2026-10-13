@@ -7,6 +7,7 @@ import { ProgramBox } from './Programs'
 import { head, printDoc, table } from '../../print'
 import TopicTest from './TopicTest'
 import { azDT } from '../../ui'
+import { tt } from '../../i18n'
 
 type TopicTestInfo = { task_id: number; title: string; opens_at: string; closes_at: string; state: 'gözlənilir' | 'açıqdır' | 'bitib'
   questions: number; submitted: number; total: number | null; avg_pct: number | null; journal: 'yazılıb' | 'gözləyir' | 'yox' }
@@ -105,6 +106,7 @@ export default function Plan() {
             <button className="btn sm" onClick={() => setDate(step(date, view, 1))}>›</button>
             <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>Bu gün</button>
             <button className="btn sm right" onClick={() => printDoc({ title: `${cur?.class_name} – perspektiv plan ${fmtDate(d.from)}–${fmtDate(d.to)}`, body: head(`${cur?.class_name} – ${cur?.subject}: perspektiv plan (işçi)`, `${fmtDate(d.from)} – ${fmtDate(d.to)}`) + table(['Tarix', 'Saat', '№', 'Mövzu', 'Qiymətləndirmə'], d.items.map(i => [`${i.weekday} ${fmtDate(i.date)}`, i.period, i.lesson?.seq ?? '', i.lesson?.topic ?? '—', i.lesson && i.lesson.assessment_type !== 'formativ' ? i.lesson.assessment_type + (i.lesson.exam_no ? '-' + i.lesson.exam_no : '') : ''])) })}>Çap / PDF</button>
+            {cur && <a className="btn sm" href={`/api/plan/${cur.id}/docx`} title={tt('Rəsmi perspektiv plan – Word sənədi (yalnız Azərbaycan dilində)')}>📄 Word (.docx)</a>}
             {cur && cur.lag > 0 && <Pill tone="warn">Geriləmə: {cur.lag} dərs</Pill>}
             <label className="check small" title="X–XI sinifdə P0010, «Test toplusu» dərslərində P007 sualları; test dərs günü yaradılır, dərsin sonunda açılır, ertəsi gün 22:00 bağlanır, nəticə formativ jurnala">
               <input type="checkbox" checked={!!d.auto_tests} onChange={async e => {

@@ -175,6 +175,18 @@ def set_auto_tests(ta_id: int, body: AutoTestsIn, user: User = Depends(staff), d
     return {'auto_tests': ta.auto_tests, 'created_today': made}
 
 
+@router.get('/plan/{ta_id}/docx')
+def plan_docx(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Perspektiv plan – Word (.docx), rəsmi forma (yalnız AZ): app/plan_docx.py."""
+    from urllib.parse import quote
+    from fastapi.responses import Response
+    from .. import plan_docx as P
+    from .lessonplans import header_school
+    data, name = P.build(db, own_assignment(db, user, ta_id), user, header_school(user))
+    return Response(data, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    headers={'Content-Disposition': f"attachment; filename=plan.docx; filename*=UTF-8''{quote(name)}"})
+
+
 @router.get('/plan/{ta_id}/official')
 def official(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Rəsmi plan + icrası: hər mövzunun jurnalda keçildiyi tarixlər və işçi plana görə nəzərdə tutulan tarix."""
