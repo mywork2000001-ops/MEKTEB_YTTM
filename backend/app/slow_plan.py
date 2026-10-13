@@ -28,6 +28,12 @@ def _les(sem: int, section: str, topic: str, typ: str = 'formativ', assessment: 
             'tt_pages': None, 'tasks': []}
 
 
+def _az_cap(t: str) -> str:
+    """«TAM CƏBRİ İFADƏLƏR» → «Tam cəbri ifadələr» (Python lower() «İ»-ni «i̇» edir, «I»-ni «i»)."""
+    low = t.replace('İ', 'i').replace('I', 'ı').lower()
+    return low[:1].upper().replace('ı', 'I').replace('i', 'İ') + low[1:] if low else low
+
+
 def _content(l: dict) -> bool:
     return l['assessment_type'] not in SUMMATIVE and not (l.get('section') or '').startswith(('Təkrar', 'Diaqnostik'))
 
@@ -64,7 +70,7 @@ def build(db: Session, ta: TeachingAssignment, keep_until: dt.date) -> tuple[lis
     # axın: mövzu → məşq; ~10 dərsdən bir spiral təkrar (əvvəlki bölmələr); bölmə sonu – bölmə təkrarı; KSQ-dən əvvəl hazırlıq
     ksq_no = max([r['exam_no'] or 0 for r in past if r['assessment_type'] == 'KSQ'] or [0])
     every = max(16, len(y1) * 2 // KSQ_PER_YEAR)
-    short = lambda sec: (sec or '').split(' – ', 1)[-1].capitalize()          # noqa: E731
+    short = lambda sec: _az_cap((sec or '').split(' – ', 1)[-1])               # noqa: E731
 
     def stream(keep: list[bool], spiral: int) -> list[dict]:
         out, since, since_sp, no, done_secs, covered = [], 0, 0, ksq_no, [], []
