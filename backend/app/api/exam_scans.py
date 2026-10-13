@@ -342,7 +342,11 @@ def list_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sessio
     scans = list(db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id)))
     have = {sc.student_id for sc in scans}
     variants = list(db.scalars(select(ExamVariant.student_id).where(ExamVariant.exam_id == e.id)))
-    return {'scans': sorted((_out(sc, names.get(sc.student_id)) for sc in scans), key=lambda x: x['full_name'] or ''),
+    from ..domain.ksq_card import key_value
+    keys = {v.student_id: {q['slot']: key_value(q) for q in v.questions}                # düz cavablar – müəllim xananın yanında görür
+            for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id))}
+    return {'scans': sorted(({**_out(sc, names.get(sc.student_id)), 'keys': keys.get(sc.student_id) or {}} for sc in scans),
+                            key=lambda x: x['full_name'] or ''),
             'missing': sorted((names.get(sid) or '—') for sid in variants if sid not in have),
             'counts': {'variants': len(variants), 'scanned': len(scans), 'graded': sum(sc.status == 'graded' for sc in scans),
                        'pending': sum(sc.status == 'pending' for sc in scans), 'flagged': sum(bool(sc.flagged) for sc in scans)},

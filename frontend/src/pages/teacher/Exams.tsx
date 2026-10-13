@@ -394,7 +394,7 @@ function OnlineKsq({ ta, examId }: { ta: number; examId: number }) {
 }
 
 type Scan = { id: number; student_id: number; full_name: string | null; code: string; status: 'pending' | 'graded' | 'error'; points: number | null
-  flagged: number[]; reading: { slot: number; value: string | null; confidence: number | null; alt?: string | null; alts?: string[] }[] | null; marks: number[] | null; error: string | null; read_by?: string | null; rescans: number; lost: number[]; n: number | null }
+  flagged: number[]; reading: { slot: number; value: string | null; confidence: number | null; alt?: string | null; alts?: string[] }[] | null; marks: number[] | null; error: string | null; read_by?: string | null; keys?: Record<string, string>; rescans: number; lost: number[]; n: number | null }
 type ScanList = { scans: Scan[]; missing: string[]; claude: boolean; printed_old?: boolean; ai_error?: string | null; scan_fallback?: boolean; counts: { variants: number; scanned: number; graded: number; pending: number; flagged: number } }
 const SCAN_TONE: Record<string, 'ok' | 'warn' | 'bad'> = { graded: 'ok', pending: 'warn', error: 'bad' }
 
@@ -516,10 +516,10 @@ function ScanDetail({ s, onChange, onThorough }: { s: Scan; onChange: () => void
       <div className="row" style={{ gap: 6, margin: '4px 0' }}>
         <AsyncBtn className="btn sm" onClick={async () => { await post(`/api/exam-scans/${s.id}/thorough`); toast(tt('Diqqətli oxunuş başladı – ~1 dəqiqə')); onThorough?.() }}
           title={tt('Səliqəsiz yazı üçün: kartın sütunları böyüdülür, iki model oxuyur, ən azı iki eyni oxunuş qəbul edilir; düzəlişləriniz saxlanır')}>🔍 {tt('Diqqətli oxu')}</AsyncBtn>
-        <span className="small muted">{tt('Sarı xana – oxunuşlar razılaşmayıb, şəkilə baxıb düzəldin')}</span>
+        <span className="small muted">{tt('Sarı xana – oxunuşlar razılaşmayıb, şəkilə baxıb düzəldin')} · {tt('✓ – sistemdəki düz cavab')}</span>
       </div></>}
       {s.reading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(92px,1fr))', gap: 4, marginTop: 6 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(138px,1fr))', gap: 4, marginTop: 6 }}>
           {Array.from({ length: n }, (_, i) => i + 1).map(slot => {
             const ok = s.marks?.[slot - 1] === 1, flag = s.flagged.includes(slot), gone = lost.has(slot)
             return (
@@ -529,6 +529,7 @@ function ScanDetail({ s, onChange, onThorough }: { s: Scan; onChange: () => void
                 <input defaultValue={val(slot)} maxLength={8} disabled={gone} style={{ width: '100%', minWidth: 0, padding: '2px 4px' }}
                   title={alt(slot) != null ? tt('İkinci oxunuş: {v}', { v: (s.reading?.find(r => r.slot === slot)?.alts || [alt(slot)]).map(x => x || '∅').join(' / ') }) : undefined}
                   onBlur={e => { if (e.target.value !== val(slot)) fix(slot, e.target.value) }} />
+                {s.keys?.[slot] != null && <span title={tt('Düz cavab')} style={{ whiteSpace: 'nowrap', fontWeight: 600, color: '#166534' }}>✓{s.keys[slot]}</span>}
                 {alt(slot) != null && <button type="button" className="btn sm ghost" style={{ padding: '0 3px', fontSize: 11 }}
                   title={tt('İkinci oxunuşu qəbul et')} onClick={() => fix(slot, alt(slot) || '')}>{alt(slot) || '∅'}</button>}
                 <button type="button" className="btn sm ghost" style={{ padding: '0 3px' }} onClick={() => toggleLost(slot)}

@@ -5,6 +5,10 @@ import { createContext, useContext } from 'react'
 export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
+  // Gemini 503, müəllimdə düz cavab (13.10.2026, docs/skan-sayac-ve-donma-promtu.md §H)
+  "Google məşğuldur": ["Google is busy", "Google перегружен"],
+  "Google serverləri hazırda məşğuldur (503) – oxunuş bir dəqiqədən sonra özü davam edəcək.": ["Google servers are busy right now (503) – reading will resume by itself in a minute.", "Серверы Google сейчас перегружены (503) – чтение само продолжится через минуту."],
+  "✓ – sistemdəki düz cavab": ["✓ – the correct answer in the system", "✓ – правильный ответ в системе"],
   // Skan sayğacı, donmayan kamera, köhnə versiya xəbərdarlığı (13.10.2026, docs/skan-sayac-ve-donma-promtu.md)
   "Oxunuş uzun çəkir – növbədə {n} kart": ["Reading is taking long – {n} cards in the queue", "Чтение затянулось – в очереди {n} бланков"],
   "Telefonda köhnə versiya açıqdır – səhifəni yeniləyin": ["An old version is open on this device – reload the page", "На устройстве открыта старая версия – обновите страницу"],

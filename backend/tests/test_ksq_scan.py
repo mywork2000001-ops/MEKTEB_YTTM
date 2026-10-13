@@ -796,3 +796,47 @@ def test_recent_rescan_guard(world, monkeypatch):
     assert not r['found'] and len(r['already']) == 1
     r = up('?replace=true&force=true')
     assert len(r['found']) == 1
+
+
+def test_gemini_busy_backup_per_key(monkeypatch):
+    """§H: 503 «high demand» – eyni açarda bir ehtiyat model, sonra ai:busy; model keçidi AÇAR ÜZRƏ yadda saxlanır."""
+    import httpx
+    from app import ai
+    from app.domain import ksq_reader as R
+    ai.GEMINI_FIX.clear(); ai.GEMINI_GONE.clear(); ai.GEMINI_NO_THINK.clear()
+
+    class Resp:
+        def __init__(self, code, js):
+            self.status_code, self._js, self.text = code, js, str(js)
+
+        def json(self):
+            return self._js
+    ok = {'candidates': [{'content': {'parts': [{'functionCall': {'name': 'submit_card', 'args': {'answers': [
+        {'slot': 1, 'value': 'B', 'confidence': 0.99}]}}}]}}]}
+    seen = []
+
+    def post(self, url, json=None, headers=None):
+        m = url.split('/models/')[1].split(':')[0]
+        seen.append((headers['x-goog-api-key'], m))
+        if m == 'gemini-flash-latest':
+            return Resp(503, {'error': {'message': 'This model is currently experiencing high demand.'}})
+        if headers['x-goog-api-key'] == 'new-acc' and m == 'gemini-2.5-flash':
+            return Resp(404, {'error': {'message': 'models/gemini-2.5-flash is no longer available to new users'}})
+        return Resp(200, ok)
+    monkeypatch.setattr(httpx.Client, 'post', post)
+    sl = [{'slot': 1, 'kind': 'mcq'}]
+    assert R.call_gemini('old-acc', 'gemini-flash-latest', b'\xff\xd8', sl)[0]['value'] == 'B'
+    assert seen == [('old-acc', 'gemini-flash-latest'), ('old-acc', 'gemini-2.5-flash')]   # 503 → ehtiyat model
+    seen.clear()
+    R.call_gemini('new-acc', 'gemini-2.5-flash', b'\xff\xd8', sl)                            # 404 → alternativ (bu açar üçün)
+    assert ('new-acc', 'gemini-2.5-flash') in seen and ('old-acc', 'gemini-2.5-flash') not in ai.GEMINI_GONE
+    seen.clear()
+    R.call_gemini('old-acc', 'gemini-2.5-flash', b'\xff\xd8', sl)                            # köhnə hesab 2.5-də qalır
+    assert seen == [('old-acc', 'gemini-2.5-flash')]
+    monkeypatch.setattr(httpx.Client, 'post', lambda self, url, json=None, headers=None: Resp(503, {'error': {'message': 'high demand'}}))
+    try:
+        R.call_gemini('x-acc', 'gemini-flash-latest', b'\xff\xd8', sl)
+        raise AssertionError
+    except R.AiError as ex:
+        assert str(ex) == R.AI_BUSY
+    ai.GEMINI_FIX.clear(); ai.GEMINI_GONE.clear(); ai.GEMINI_NO_THINK.clear()

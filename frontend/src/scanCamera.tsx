@@ -31,6 +31,7 @@ export const aiErrorText = (code: string) => ({
   'ai:key': tt('Süni intellekt açarı qəbul olunmur – Tənzimləmələr → «Süni intellekt» bölməsində açarı yoxlayın.'),
   'ai:rate': tt('Bütün kart açarları limitdədir – limit bərpa olunanda kartlar özü oxunacaq. Daha çox açar əlavə edə bilərsiniz (5-ə qədər).'),
   'ai:limit': tt('Aylıq süni intellekt limiti dolub – kartlar gözləyir (admin limiti artıra bilər).'),
+  'ai:busy': tt('Google serverləri hazırda məşğuldur (503) – oxunuş bir dəqiqədən sonra özü davam edəcək.'),
   'ai:model': tt('Süni intellekt modeli bu açar üçün əlçatan deyil – Tənzimləmələr → «Kart oxuyucusu»nda modeli «gemini-flash-latest» seçin.'),
 } as Record<string, string>)[code] || code
 

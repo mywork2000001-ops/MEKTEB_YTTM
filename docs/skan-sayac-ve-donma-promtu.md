@@ -64,3 +64,26 @@
   - 90 saniyəlik təkrar qoruması və `force`.
 - `npm run build`, deploy.
 - Canlı: 5 açarın testi; bir kart → bal ≤ 30 saniyədə.
+
+---
+
+## Deploy-dan sonra canlı yoxlama (13.10.2026 ~20:00)
+- Açar 1: «model tapılmadı» artıq yoxdur, keçid işləyir. Amma Google yeni model üçün **503 «high demand»** qaytarır
+  (müvəqqəti yüklənmə).
+- Səhv: `GEMINI_FIX` **bütün açarlar üçün ortaq** idi. 2.5-in hələ işlədiyi açarlar (3–5) da yüklənmiş yeni modelə keçdi və
+  hamısı 503 verdi.
+
+### Düzəliş H – model seçimi açar üzrə, 503 – ehtiyat model
+- `GEMINI_FIX` açarı = (açarın izi, model). Hər açar öz işləyən modelini saxlayır.
+- 503 / «UNAVAILABLE» / «overloaded» / «high demand» – bir dəfə **eyni açarda ehtiyat model** sınanır, ardıcıllıq belədir:
+  `gemini-flash-latest → gemini-2.5-flash → gemini-flash-lite-latest → gemini-2.5-flash-lite` (cari və köhnəlmiş modellər
+  atlanır). Yenə 503 olarsa → `ai:busy`: açar 60 s dincə, növbəti açar.
+- Plan və rəy (`ai.complete`) üçün də eynidir.
+
+## Əlavə tələb: «Müəllimdə uşağın cavabının qarşısında sistemin (testin) düz cavabı da olsun»
+- Skan → şagird → xana şəbəkəsi: hər xanada **şagirdin cavabı (redaktə olunur)** və onun qarşısında **«✓ düz: X»**
+  (variantın açarı, `key_value`).
+  - Səhv cavab qırmızı fonda, düz cavab yaşıl görünür.
+  - Ləğv edilmiş və ⊘ suallar boz göstərilir.
+- API: `GET /api/exam-scans/{ta}/{exam}` → hər skanda `keys: {slot: düz cavab}` (yalnız müəllim görür).
+- Mətnlər AZ/EN/RU.

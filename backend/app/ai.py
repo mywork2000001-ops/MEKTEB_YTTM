@@ -77,8 +77,26 @@ OR_CLAUDE = 'anthropic/claude-sonnet-4.5'
 # Gemini modelləri köhnəlir (13.10.2026: «gemini-2.5-flash is no longer available to new users») – ən son ləqəblər və
 # avtomatik keçid (docs/skan-sayac-ve-donma-promtu.md §A). Tapılan alternativ proses üzrə yadda saxlanır.
 GEMINI_LATEST = {'lite': 'gemini-flash-lite-latest', 'pro': 'gemini-pro-latest', 'flash': 'gemini-flash-latest'}
-GEMINI_FIX: dict[str, str] = {}            # köhnə model → işləyən model
-GEMINI_NO_THINK: set[str] = set()          # thinkingConfig qəbul etməyən modellər
+GEMINI_FIX: dict[tuple[str, str], str] = {}   # (açarın izi, köhnə model) → işləyən model – AÇAR ÜZRƏ (hesablar fərqlidir)
+GEMINI_GONE: set[tuple[str, str]] = set()      # (açarın izi, model) – bu açara verilmir
+GEMINI_NO_THINK: set[str] = set()              # thinkingConfig qəbul etməyən modellər
+# 503 «high demand» – eyni açarda ehtiyat model (docs/skan-sayac-ve-donma-promtu.md §H)
+GEMINI_CHAIN = ('gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite')
+
+
+def gfp(key: str) -> str:
+    import hashlib
+    return hashlib.sha256(key.encode()).hexdigest()[:12]
+
+
+def gemini_busy(status: int, msg: str | None) -> bool:
+    low = (msg or '').lower()
+    return status in (500, 503) or any(x in low for x in ('high demand', 'overloaded', 'unavailable'))
+
+
+def gemini_backup(model: str, tried: set[str], fp: str) -> str | None:
+    """Növbəti ehtiyat model: zəncirdən, sınanmamış və bu açara verilməyən olmayan."""
+    return next((m for m in GEMINI_CHAIN if m != model and m not in tried and (fp, m) not in GEMINI_GONE), None)
 
 
 def gemini_model_gone(status: int, msg: str | None) -> bool:
@@ -125,8 +143,10 @@ def complete(cfg: dict, system: str, user: str, json_mode: bool = True, max_toke
                 gen = {'temperature': 0.4, 'maxOutputTokens': max_tokens}
                 if json_mode:
                     gen['responseMimeType'] = 'application/json'
-                model = GEMINI_FIX.get(model, model)
-                for _ in range(2):                            # model köhnəlibsə – bir dəfə alternativlə (gemini_alt)
+                fp = gfp(key)
+                model = GEMINI_FIX.get((fp, model), model)
+                tried = {model}
+                for _ in range(3):        # köhnəlmiş model – alternativ (yadda saxlanır); 503 – ehtiyat model (yadda saxlanmır)
                     r = c.post(f'{base}/models/{model}:generateContent', headers={'x-goog-api-key': key},
                                json={'systemInstruction': {'parts': [{'text': system}]},
                                      'contents': [{'role': 'user', 'parts': [{'text': user}]}], 'generationConfig': gen})
@@ -136,10 +156,18 @@ def complete(cfg: dict, system: str, user: str, json_mode: bool = True, max_toke
                         gm = (r.json().get('error') or {}).get('message')
                     except Exception:                                   # noqa: BLE001
                         gm = None
-                    alt = gemini_alt(model, gm) if gemini_model_gone(r.status_code, gm) else None
-                    if not alt:
+                    if gemini_model_gone(r.status_code, gm):
+                        GEMINI_GONE.add((fp, model))
+                        alt = gemini_alt(model, gm)
+                        alt = alt if alt and alt not in tried else gemini_backup(model, tried, fp)
+                        if not alt:
+                            break
+                        GEMINI_FIX[(fp, cfg['model'])] = model = alt
+                    elif gemini_busy(r.status_code, gm) and (alt := gemini_backup(model, tried, fp)):
+                        model = alt
+                    else:
                         break
-                    GEMINI_FIX[cfg['model']] = model = alt
+                    tried.add(model)
                 if r.status_code != 200:
                     raise _err(prov, r)
                 j = r.json()
