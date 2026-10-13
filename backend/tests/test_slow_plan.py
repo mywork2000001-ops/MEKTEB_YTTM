@@ -23,7 +23,7 @@ def _plan(S, ta, n1=60, n2=50):
 def test_slow_plan_preview_and_apply(world):
     as_, S = world
     admin, ta, cid, st, _ = setup(world)
-    _plan(S, ta)
+    _plan(S, ta, n1=24, n2=20)
     keep = dt.date(2026, 9, 30)
     r = admin.post(f'/api/programs/slow/{ta}', json={'keep_until': str(keep)})
     assert r.status_code == 200, r.text
@@ -36,6 +36,10 @@ def test_slow_plan_preview_and_apply(world):
     assert d['kept_past'] == past_n and [x['topic'] for x in d['preview'][:past_n]] == old       # keçmiş toxunulmur
     assert d['lessons'] == len(cap['slots'])                                                       # yuva = dərs
     assert d['practice'] > 0 and d['restore'] > 0 and d['bsq'] == 2
+    assert d['section_review'] > 0 and d['spiral'] > 0 and d['ksq_prep'] == d['ksq'] - sum(1 for x in d['preview'][:past_n] if x['type'] == 'KSQ')
+    for i, x in enumerate(d['preview']):                                            # hər yeni KSQ-dən əvvəl hazırlıq
+        if i >= past_n and x['type'] == 'KSQ':
+            assert d['preview'][i - 1]['topic'].startswith('KSQ-yə hazırlıq')
     types = [x['type'] for x in d['preview']]
     assert d['preview'][-1]['type'] == 'BSQ'
     ksq = [x['topic'] for x in d['preview'] if x['type'] == 'KSQ']

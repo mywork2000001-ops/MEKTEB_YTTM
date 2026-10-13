@@ -38,3 +38,26 @@ dərslər olub, nəzərə al. Öz əlavələrini et, icra elə.»
   - məşq dərsləri var;
   - 2-ci il proqramı yaradılır.
 - Canlı: önbaxış → tətbiq → perspektiv planda 14.10-dan bərpa bloku.
+
+---
+
+## Əlavə tələb: «Planlaşdırmada təkrarlar olsun»
+Zəif qrupda bilik tez unudulur. Təkrar sistemli və **fasiləli** (spaced repetition) olmalıdır, yalnız yarımil sonunda yox.
+
+### Təkrar növləri (1-ci il, 14.10-dan)
+| Növ | Nə vaxt | Məzmun | Qiymətləndirmə |
+|---|---|---|---|
+| **Bazanın bərpası** | 14.10-dan, blok | keçilmiş mövzular (KSQ-1-in zəif yerləri) | 10 dəqiqəlik mini-test |
+| **Məşq və möhkəmləndirmə** | hər mövzu dərsindən sonra | həmin mövzu – asan/orta | mövzu testi |
+| **Bölmə təkrarı** | hər bölmənin sonunda | bölmənin bütün mövzuları | ümumiləşdirici tapşırıqlar |
+| **Spiral təkrar** | hər ~10 mövzu/məşq dərsindən bir | **əvvəlki** bölmələrdən qarışıq tapşırıqlar (unutmaya qarşı) | 10 sual – qarışıq test |
+| **KSQ-yə hazırlıq** | hər KSQ-dən əvvəl | KSQ-nin bölmələri | sınaq testi (KSQ formatında) |
+| **Yarımil təkrarı** | BSQ-dən əvvəl | yarımilin materialı | yekunlaşdırıcı test |
+
+### Yerləşdirmə qaydası
+- Yuva çatmırsa, azaldılma ardıcıllığı belədir:
+  1. məşq dərsləri **bərabər paylanaraq** (hər k-cı) azalır, sonda toplanmış dərslər silinmir;
+  2. sonra spiral təkrar seyrəlir;
+  3. bölmə təkrarı və KSQ-yə hazırlıq **saxlanır**.
+- Yuva artıq qalırsa, əlavə spiral təkrar qoyulur.
+- Hesabatda hər təkrar növünün sayı göstərilir.

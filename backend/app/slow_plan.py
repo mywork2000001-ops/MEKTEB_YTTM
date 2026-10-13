@@ -16,6 +16,7 @@ from .services import class_grade
 
 RESTORE_MAX = 10           # «Bazanın bərpası» – ən çox neçə dərs
 KSQ_PER_YEAR = 8           # yeni tempdə KSQ – ildə təxminən (yarımildə ~4), bölmə sonunda; ən azı 16 dərsdən bir
+SPIRAL_EVERY = 10          # spiral təkrar – təxminən neçə mövzu/məşq dərsindən bir
 PRACTICE = 'Məşq və möhkəmləndirmə'
 SUMMATIVE = ('KSQ', 'BSQ')
 
@@ -60,59 +61,71 @@ def build(db: Session, ta: TeachingAssignment, keep_until: dt.date) -> tuple[lis
     # hər yarımilin sonu: «Təkrar» + BSQ (2 dərs)
     target = max(0, free1 - 2) + max(0, free2 - 2)
 
-    # vahidlər: mövzu dərsi + məşq dərsi; bölmə sonu işarəsi
-    units: list[tuple[dict, bool]] = []                       # (dərs, bu dərs bölmənin sonudur)
-    for i, r in enumerate(y1):
-        last_in_section = i == len(y1) - 1 or y1[i + 1]['section'] != r['section']
-        base = {k: r[k] for k in FIELDS}
-        units.append((base, False))
-        units.append((_les(1, r['section'] or '', f'{PRACTICE}: {r["topic"]}', 'formativ',
-                           'Formativ: mövzu testi (zəif qrup – asan/orta tapşırıqlar), müşahidə'), last_in_section))
+    # axın: mövzu → məşq; ~10 dərsdən bir spiral təkrar (əvvəlki bölmələr); bölmə sonu – bölmə təkrarı; KSQ-dən əvvəl hazırlıq
     ksq_no = max([r['exam_no'] or 0 for r in past if r['assessment_type'] == 'KSQ'] or [0])
-    every = max(16, len(units) // KSQ_PER_YEAR)
+    every = max(16, len(y1) * 2 // KSQ_PER_YEAR)
+    short = lambda sec: (sec or '').split(' – ', 1)[-1].capitalize()          # noqa: E731
 
-    def stream(units_: list[tuple[dict, bool]]) -> list[dict]:
-        out, since, no, done_secs = [], 0, ksq_no, []
-        for les_, sec_end in units_:
-            out.append(les_)
+    def stream(keep: list[bool], spiral: int) -> list[dict]:
+        out, since, since_sp, no, done_secs, covered = [], 0, 0, ksq_no, [], []
+        for i, r in enumerate(y1):
+            sec = r['section'] or ''
+            out.append({k: r[k] for k in FIELDS})
             since += 1
-            if sec_end:
-                done_secs.append(les_['section'])
+            since_sp += 1
+            if keep[i]:
+                out.append(_les(1, sec, f'{PRACTICE}: {r["topic"]}', 'formativ',
+                                'Formativ: mövzu testi (zəif qrup – asan/orta tapşırıqlar), müşahidə'))
+                since += 1
+                since_sp += 1
+            if spiral and since_sp >= spiral and covered:
+                out.append(_les(1, sec, 'Spiral təkrar: ' + ', '.join(short(x) for x in covered[-3:]), 'formativ',
+                                'Formativ: 10 sual – əvvəlki bölmələrdən qarışıq test (unutmaya qarşı)'))
+                since_sp = 0
+            if i == len(y1) - 1 or y1[i + 1]['section'] != r['section']:
+                out.append(_les(1, sec, f'Bölmə təkrarı: {short(sec)}', 'formativ', 'Formativ: ümumiləşdirici tapşırıqlar (zəif qrup)'))
+                covered.append(sec)
+                done_secs.append(sec)
                 if since >= every:
                     no += 1
-                    out.append(_les(1, les_['section'], f'KSQ-{no}: ' + ', '.join(dict.fromkeys(s.split(' – ', 1)[-1] for s in done_secs)),
-                                    'KSQ', 'Kiçik summativ qiymətləndirmə (zəif qrup tempi – keçilmiş bölmələr)', exam_no=no))
+                    names = ', '.join(dict.fromkeys(short(x) for x in done_secs))
+                    out.append(_les(1, sec, f'KSQ-yə hazırlıq: {names}', 'formativ', 'Formativ: sınaq testi (KSQ formatında)'))
+                    out.append(_les(1, sec, f'KSQ-{no}: {names}', 'KSQ',
+                                    'Kiçik summativ qiymətləndirmə (zəif qrup tempi – keçilmiş bölmələr)', exam_no=no))
                     since, done_secs = 0, []
         return out
 
-    seq = restore + stream(units)
-    # uyğunlaşdırma: çoxdursa – sondan məşq dərsləri çıxır; azdırsa – bölmə sonlarına «Təkrar» əlavə olunur
-    if len(seq) > target:
-        drop = len(seq) - target
-        for k in range(len(units) - 1, -1, -1):
-            if drop <= 0:
-                break
-            les_, end_ = units[k]
-            if les_['topic'].startswith(PRACTICE):
-                if end_ and k > 0:                            # bölmə sonu işarəsi əvvəlki dərsə keçir
-                    units[k - 1] = (units[k - 1][0], True)
-                units.pop(k)
-                drop -= 1
-        seq = restore + stream(units)
+    keep, spiral = [True] * len(y1), SPIRAL_EVERY
+    seq = restore + stream(keep, spiral)
+    if len(seq) > target:                                     # 1) məşq dərsləri bərabər paylanaraq azalır
+        over = len(seq) - target
+        if over >= len(y1):
+            keep = [False] * len(y1)
+        else:
+            for j in range(over):
+                keep[min(len(y1) - 1, int((j + 0.5) * len(y1) / over))] = False
+        seq = restore + stream(keep, spiral)
+        while len(seq) > target and spiral < 40:             # 2) spiral təkrar seyrəlir
+            spiral += 5
+            seq = restore + stream(keep, spiral)
         if len(seq) > target:
+            seq = restore + stream(keep, 0)
+        if len(seq) > target:                                 # 3) yenə çatmırsa – son dərslər 2-ci ilə
             over = len(seq) - target
             warnings.append(f'1-ci il üçün yuva çatmır: son {over} dərs 2-ci ilə keçirildi')
             y2 = [{k: v for k, v in l.items()} for l in seq[target:] if l['assessment_type'] != 'KSQ'] + y2
             seq = seq[:target]
-    if len(seq) < target:
-        secs = list(dict.fromkeys(l['section'] for l in seq if l['section'] and l['section'] != 'Bazanın bərpası'))
-        k = 0
-        while len(seq) < target and secs:
-            sec = secs[k % len(secs)]
-            idx = max(i for i, l in enumerate(seq) if l['section'] == sec)
-            seq.insert(idx + 1, _les(1, sec, f'Təkrar: {sec.split(" – ", 1)[-1].capitalize()}', 'formativ',
-                                     'Formativ: ümumiləşdirici tapşırıqlar (zəif qrup)'))
-            k += 1
+    if len(seq) < target:                                     # artıq yuva – bərabər aralıqla əlavə spiral təkrar
+        miss = target - len(seq)
+        start = len(restore)
+        body = seq[start:]
+        step = max(1, len(body) // (miss + 1))
+        for j in range(miss, 0, -1):
+            pos = min(len(body), j * step)
+            sec = body[pos - 1]['section'] if pos and body else 'Təkrar'
+            body.insert(pos, _les(1, sec, 'Spiral təkrar: əvvəlki bölmələr', 'formativ',
+                                  'Formativ: 10 sual – əvvəlki bölmələrdən qarışıq test (unutmaya qarşı)'))
+        seq = seq[:start] + body
     # yarımillər: I yarımil yuvaları + təkrar + BSQ-1, sonra II yarımil + təkrar + BSQ-2
     n1 = max(0, free1 - 2)
     year = list(past)
@@ -150,6 +163,9 @@ def build(db: Session, ta: TeachingAssignment, keep_until: dt.date) -> tuple[lis
     rep = {'slots': len(slots), 'kept_past': past_n, 'restore': len(restore), 'year1_topics': len(y1),
            'practice': sum(1 for l in year if l['topic'].startswith(PRACTICE)),
            'review': sum(1 for l in year[past_n:] if l['topic'].startswith('Təkrar:')),
+           'section_review': sum(1 for l in year if l['topic'].startswith('Bölmə təkrarı')),
+           'spiral': sum(1 for l in year if l['topic'].startswith('Spiral təkrar')),
+           'ksq_prep': sum(1 for l in year if l['topic'].startswith('KSQ-yə hazırlıq')),
            'ksq': sum(1 for l in year if l['assessment_type'] == 'KSQ'), 'bsq': sum(1 for l in year if l['assessment_type'] == 'BSQ'),
            'lessons': len(year), 'year2_lessons': len(y2), 'warnings': warnings,
            'first_new': year[past_n]['topic'] if len(year) > past_n else None}
