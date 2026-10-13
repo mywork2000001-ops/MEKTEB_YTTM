@@ -273,6 +273,77 @@ def pick_one(slot: dict, topics: list[tuple[str, str | None]], cands: list[Cand]
     return None
 
 
+WEIGHT = {('mcq', 'asan'): 1.5, ('mcq', 'orta'): 2.5, ('mcq', 'çətin'): 3.5,
+          ('open', 'asan'): 2.5, ('open', 'orta'): 4.0, ('open', 'çətin'): 5.0}
+
+
+def same_variant(cands: list[Cand], n: int, seed: int, mcq_only: bool = False) -> list[dict]:
+    """HAMIYA EYNİ variant (DİM sinif testi kimi, 13.10.2026: «suallar fərqli olmasın, hər mövzu ayrı-ayrı düşsün»):
+    suallar mövzular (fayllar) arasında növbə ilə bərabər seçilir; kartda əvvəl test, sonra açıq – hər birinin içində mövzu-mövzu;
+    açıq sual çatmasa test ilə tamamlanır; ballar səviyyəyə görə, cəmi 100 (0,5 addım)."""
+    rng = random.Random(seed)
+    files: list[str] = []
+    by: dict[tuple[str, str], list[Cand]] = {}
+    for c in cands:
+        f = str(c.q.get('lesson') or c.topic)
+        if f not in files:
+            files.append(f)
+        by.setdefault((c.kind, f), []).append(c)
+    for lst in by.values():
+        rng.shuffle(lst)
+        lst.sort(key=lambda c: c.key.endswith(':o'))      # əsl açıq sual – testdən çevrilmişdən əvvəl
+    used: set[str] = set()
+    root = lambda c: c.key.removesuffix(':o')          # noqa: E731 – eyni sual həm test, həm açıq kimi düşməsin
+
+    def take(kind: str, k: int) -> list[Cand]:
+        got: list[Cand] = []
+        while len(got) < k:
+            moved = False
+            for f in files:                                # mövzular arasında növbə ilə – hər mövzu təmsil olunur
+                if len(got) >= k:
+                    break
+                lst = by.get((kind, f), [])
+                while lst and root(lst[0]) in used:
+                    lst.pop(0)
+                if lst:
+                    c = lst.pop(0)
+                    used.add(root(c))
+                    got.append(c)
+                    moved = True
+            if not moved:
+                break
+        return got
+
+    n = max(N_MIN, min(N_MAX, int(n)))
+    want_open = 0 if mcq_only else round(n * 21 / 30)
+    opn = take('open', want_open)
+    mcq = take('mcq', n - len(opn))
+    if len(mcq) + len(opn) < n and not mcq_only:          # test çatmır – açıqla tamamla
+        opn += take('open', n - len(mcq) - len(opn))
+    if len(mcq) + len(opn) < n:
+        raise Shortage([{'slot': 0, 'kind': 'mcq/open', 'level': '—', 'missing': n - len(mcq) - len(opn)}])
+    order = {f: i for i, f in enumerate(files)}
+    picked = sorted(mcq, key=lambda c: order[str(c.q.get('lesson') or c.topic)]) + \
+        sorted(opn, key=lambda c: order[str(c.q.get('lesson') or c.topic)])
+    raw = [WEIGHT.get((c.kind, c.level), 2.5) for c in picked]
+    pts = [max(0.5, round(w * 100 / sum(raw) * 2) / 2) for w in raw]
+    diff = round((100 - sum(pts)) * 2) / 2
+    k = len(pts) - 1
+    while abs(diff) >= 0.5:                                 # qalıq – axırdan 0,5-lik addımla
+        step = 0.5 if diff > 0 else -0.5
+        if pts[k] + step >= 0.5:
+            pts[k] += step
+            diff -= step
+        k = k - 1 if k > 0 else len(pts) - 1
+    out = []
+    for i, (c, p_) in enumerate(zip(picked, pts)):
+        out.append({**{k_: v for k_, v in c.q.items() if k_ != 'key'}, 'key': c.key, 'slot': i + 1, 'kind': c.kind,
+                    'level': c.level, 'level_actual': c.level, 'points': p_, 'v': RULES_V,
+                    'topic': str(c.q.get('lesson') or ''), 'topic_actual': str(c.q.get('lesson') or 'seçilmiş test')})
+    assert abs(sum(q['points'] for q in out) - 100) < 1e-9
+    return out
+
+
 def capacity(cands: list[Cand], n: int, mcq_only: bool = False) -> tuple[bool, dict]:
     """Bir şagirdin variantı ümumiyyətlə dolurmu (növ üzrə fərqli sual sayı ≥ slot sayı)? Tez yoxlama – generasiyasız."""
     plan = slots(n, mcq_only)

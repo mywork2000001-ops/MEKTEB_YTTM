@@ -944,3 +944,19 @@ def test_mcq_only_level_fallback():
              for i in range(24)]
     res, share = V.generate_auto([1, 2, 3], [('Mövzu', None)], cands, {}, seed=1, n=20, mcq_only=True)
     assert all(len(v) == 20 and all(q['kind'] == 'mcq' for q in v) for v in res.values())
+
+
+def test_same_for_all_variants(world):
+    """«Suallar fərqli olmasın, hər mövzu ayrı-ayrı düşsün»: hamıya eyni 20 sual (test əvvəl, açıq sonra), təkrarsız, 100 bal."""
+    admin, ta, e, _ = ksq(world)
+    r = admin.post(f'/api/exams/{ta}/{e["id"]}/variants', json={'n': 20, 'same_for_all': True})
+    assert r.status_code == 200, r.text
+    vs = admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()['variants']
+    keys = [[q['key'] for q in v['questions']] for v in vs]
+    assert all(k == keys[0] for k in keys) and len(keys[0]) == 20
+    roots = [k.removesuffix(':o') for k in keys[0]]
+    assert len(set(roots)) == 20                                                   # eyni sual iki dəfə yox
+    kinds = [q['kind'] for q in vs[0]['questions']]
+    assert kinds == sorted(kinds, key=lambda k: k != 'mcq') and kinds.count('open') == 14
+    assert abs(sum(q['points'] for q in vs[0]['questions']) - 100) < 1e-6
+    assert len({v['code'] for v in vs}) == len(vs)                                 # QR kodları fərqli qalır

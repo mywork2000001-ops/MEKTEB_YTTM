@@ -689,6 +689,7 @@ class VariantsIn(BaseModel):
     share: int = Field(1, ge=1, le=2)                          # bir sual sinifdə ən çox neçə şagirdə (çatışmazlıqda 2)
     sources: list[str] | None = Field(None, max_length=20)     # test layihələri (bank mənbələri); boş – sinfin əsas layihəsi
     mcq_only: bool = False                                     # yalnız qapalı (test) suallar – məs. DİM sinif testi
+    same_for_all: bool = False                                 # hamıya eyni variant, mövzu-mövzu (DİM sinif testi kimi)
 
 
 def _prepare(db: Session, ta, e: Exam, body: 'VariantsIn') -> tuple:
@@ -726,7 +727,12 @@ def readiness(ta_id: int, exam_id: int, body: 'VariantsIn', user: User = Depends
     if students and topics:
         mx = cap_n(cands, body.n, body.mcq_only)                          # generasiyasız – hovuzun ölçüsündən
         try:
-            _, share = generate_auto(students, topics, cands, hist, seed=e.id * 7919, n=body.n, others=others, mcq_only=body.mcq_only)
+            if body.same_for_all:                                         # hamıya eyni – bir variant kifayətdir
+                from ..domain.ksq_variants import same_variant
+                same_variant(cands, body.n, seed=e.id * 7919, mcq_only=body.mcq_only)
+                share, mx = len(students), body.n
+            else:
+                _, share = generate_auto(students, topics, cands, hist, seed=e.id * 7919, n=body.n, others=others, mcq_only=body.mcq_only)
             short = None
         except Shortage as sh:
             short = sh.items or [{'missing': 1}]
@@ -785,7 +791,13 @@ def _make(db: Session, user: User, ta, e: Exam, body: 'VariantsIn') -> None:
     if not topics:
         raise HTTPException(400, 'Perspektiv planda bu imtahanın aralığında mövzu tapılmadı')
     try:
-        res, share = generate_auto(students, topics, cands, hist, seed=e.id * 7919, n=body.n, others=others, mcq_only=body.mcq_only)
+        if body.same_for_all:                                             # hamıya eyni variant (DİM sinif testi kimi)
+            import copy
+            from ..domain.ksq_variants import same_variant
+            one = same_variant(cands, body.n, seed=e.id * 7919, mcq_only=body.mcq_only)
+            res, share = {sid: copy.deepcopy(one) for sid in students}, len(students)
+        else:
+            res, share = generate_auto(students, topics, cands, hist, seed=e.id * 7919, n=body.n, others=others, mcq_only=body.mcq_only)
         _guard(db, ta, e, res, body)
     except Shortage as sh:
         raise HTTPException(409, {'message': 'Bu mövzular üzrə layihədə (P0010) sual çatmır – sual sayını azaldın: ' + sh.message(),
@@ -795,7 +807,8 @@ def _make(db: Session, user: User, ta, e: Exam, body: 'VariantsIn') -> None:
     db.flush()
     for i, sid in enumerate(students):
         db.add(ExamVariant(exam_id=e.id, student_id=sid, code=f'{e.kind}{e.no}-{i + 1:02d}', questions=res[sid]))
-    e.items = [{'n': s['slot'], 'points': s['points'], 'standard': None, 'kind': s['kind'], 'level': s['level']} for s in slots(body.n, body.mcq_only)]
+    plan_ = next(iter(res.values())) if body.same_for_all else slots(body.n, body.mcq_only)
+    e.items = [{'n': s['slot'], 'points': s['points'], 'standard': None, 'kind': s['kind'], 'level': s['level']} for s in plan_]
     e.max_points = 100
     from ..domain import ksq_base
     ksq_base.remember(db, ta, e, topics, files, user.id if user else None)

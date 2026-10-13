@@ -5,6 +5,8 @@ import { createContext, useContext } from 'react'
 export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
+  "Hamıya eyni suallar (mövzu-mövzu)": ["Same questions for everyone (topic by topic)", "Одинаковые вопросы для всех (по темам)"],
+  "DİM sinif testi kimi: hamıya eyni suallar, hər mövzudan bərabər, mövzu-mövzu düzülür": ["Like the DIM class test: the same questions for everyone, evenly from each topic, ordered topic by topic", "Как классный тест ГЭЦ: одинаковые вопросы для всех, поровну из каждой темы, по порядку тем"],
   "Yalnız qapalı (test) suallar": ["Closed (multiple-choice) questions only", "Только закрытые (тестовые) вопросы"],
   // Skan şəbəkəsi: rəng – nəticə, ⊘ iki addımla (13.10.2026)
   "Yaşıl – düz, qırmızı – səhv; sarı çərçivə – oxunuşu şəkillə yoxlayın; ⊘ boz – vərəqdə yox idi (sayılmır, «səhv» demək deyil)": ["Green – correct, red – wrong; yellow frame – check the reading against the image; ⊘ grey – not on the sheet (not counted, does not mean «wrong»)", "Зелёный – верно, красный – неверно; жёлтая рамка – сверьте чтение со снимком; ⊘ серый – вопроса не было на листе (не засчитывается, это не «неверно»)"],
