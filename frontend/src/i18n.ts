@@ -817,6 +817,8 @@ const D: Record<string, [string, string]> = {
   "Köçürmə şübhəsi ilə yeni variant verilənlər: {n}": ["Given a new variant for suspected cheating: {n}", "Выдан новый вариант из-за подозрения на списывание: {n}"],
   "silinmiş bal: {n}": ["deleted score: {n}", "удалённый балл: {n}"],
   "{n} dəfə": ["{n} times", "{n} раз(а)"],
+  "Şübhəli şagird yoxdur.": ["No suspected students.", "Подозреваемых учеников нет."],
+  "Köçürmədən şübhələnirsinizsə: aşağıda şagirdin adına toxunun → «🚩 Köçürmə şübhəsi – yeni variant».": ["If you suspect cheating: tap the student's name below → «🚩 Suspected cheating – new variant».", "Если подозреваете списывание: нажмите на имя ученика ниже → «🚩 Подозрение на списывание – новый вариант»."],
   "kart": ["cards", "бланков"],
   "{n} token": ["{n} tokens", "токенов: {n}"],
 }

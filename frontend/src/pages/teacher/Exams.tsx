@@ -304,6 +304,7 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
         <Step no={2} title={tt('Variantlar')} active={has} state={has ? tt('{n} şagird', { n: d!.variants.length }) : undefined}>
           {has ? <>
             <p className="small muted" style={{ margin: '0 0 6px' }}>{tt('Şagirdə toxunun – sualları görün, əvəz edin, düzəldin və ya ləğv edin.')}</p>
+            {!d!.suspects?.length && <p className="small" style={{ margin: '0 0 6px' }}>🚩 <b>{tt('Şübhəli şagird yoxdur.')}</b> <span className="muted">{tt('Köçürmədən şübhələnirsinizsə: aşağıda şagirdin adına toxunun → «🚩 Köçürmə şübhəsi – yeni variant».')}</span></p>}
             {!!d!.suspects?.length && <div className="kverdict warn" style={{ marginTop: 0 }}>
               <b>🚩 {tt('Köçürmə şübhəsi ilə yeni variant verilənlər: {n}', { n: d!.suspects.length })}</b>
               <ul className="small" style={{ margin: '4px 0 0', paddingLeft: 18 }}>{d!.suspects.map(x => <li key={x.student_id}>
