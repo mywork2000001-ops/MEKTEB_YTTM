@@ -336,3 +336,14 @@ def test_retake_after_cheating(world):
     assert admin.post(f'/api/exams/{ta}/{e["id"]}/variants/{sid}/retake').json()['code'] == old['code'] + 'R2'
     sus = admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()['suspects']
     assert [(x['student_id'], x['times'], x['old_score'], x['code']) for x in sus] == [(sid, 2, 90, old['code'] + 'R2')]
+    h = sus[0]['history']
+    assert len(h) == 2 and h[1]['deleted']['scan_points'] == 90 and h[1]['deleted']['score'] == 90 and h[0]['deleted']['score'] is None
+    assert h[1]['old_code'] == old['code'] and h[0]['new_code'] == old['code'] + 'R2' and h[1]['note'] == 'köçürmə şübhəsi'
+    assert sus[0]['printed_at'] is None and sus[0]['now']['status'] == 'waiting'
+    admin.get(f'/api/exams/{ta}/{e["id"]}/variants/print', params={'students': str(sid)})
+    with S() as db:
+        db.add(ExamScan(exam_id=e['id'], student_id=sid, code=old['code'] + 'R2', status='graded', reading=[], points=55))
+        db.add(ExamScore(exam_id=e['id'], student_id=sid, points=55))
+        db.commit()
+    x = admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()['suspects'][0]
+    assert x['printed_at'] and x['now'] == {'status': 'done', 'points': 55, 'online': 'none', 'read_by': None}

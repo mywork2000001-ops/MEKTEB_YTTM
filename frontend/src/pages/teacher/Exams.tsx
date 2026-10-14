@@ -189,7 +189,30 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
 
 type Sources = { source: string; projects?: { key: string; label: string; default: boolean; files: number }[]; plan: { seq: number; topic: string; files: { file_id: number; label: string; questions: number }[] }[]
   all: { file_id: number; label: string; questions: number }[] }
-type Suspect = { student_id: number; full_name: string | null; times: number; old_score: number | null; at: string; code: string | null }
+type Suspect = { student_id: number; full_name: string | null; times: number; old_score: number | null; at: string; code: string | null
+  history: { at: string; by: string | null; old_code: string | null; new_code: string | null; note: string | null
+    deleted: { scan_points: number | null; read_by: string | null; online: boolean | null; score: number | null } }[]
+  printed_at: string | null; now: { status: 'done' | 'reading' | 'online' | 'missed' | 'waiting'; points: number | null; online: string; read_by: string | null } }
+const num = (x: number | null | undefined) => (x == null ? '—' : String(Math.round(x * 10) / 10).replace('.', ','))
+const dtm = (s: string) => `${fmtDate(s)} ${azDT(new Date(s), { hour: '2-digit', minute: '2-digit' })}`
+/** Nə silindi: kağız skan (bal), onlayn yazı, jurnal balı – tt: ekranda tərcümə, az: çapda (rəsmi sənəd, yalnız AZ). */
+const deletedText = (d: Suspect['history'][0]['deleted'], tr: (s: string, v?: Record<string, string | number>) => string) => [
+  d.scan_points != null || d.read_by ? (d.read_by === 'online' ? tr('onlayn yazı ({n} bal)', { n: num(d.scan_points) }) : tr('kağız kartın skanı ({n} bal)', { n: num(d.scan_points) })) : '',
+  d.online && d.read_by !== 'online' ? tr('onlayn tapşırıq') : '',
+  d.score != null ? tr('jurnal balı: {n}', { n: num(d.score) }) : ''].filter(Boolean).join(', ') || tr('yazı yox idi')
+const execText = (x: Suspect, tr: (s: string, v?: Record<string, string | number>) => string) => [
+  x.printed_at ? tr('vərəq çap olunub ({d})', { d: fmtDate(x.printed_at) }) : tr('vərəq çap olunmayıb'),
+  x.now.status === 'done' ? tr('yenidən yazıb: {n} bal', { n: num(x.now.points) }) + (x.old_score != null && x.now.points != null ? ` (${tr('əvvəl')}: ${num(x.old_score)})` : '')
+    : x.now.status === 'reading' ? tr('kart oxunur') : x.now.status === 'online' ? tr('onlayn göndərilib') : x.now.status === 'missed' ? tr('onlayn yazmayıb')
+    : tr('yeni yazı gözlənilir')].join(' · ')
+const azTr = (s: string, v?: Record<string, string | number>) => Object.entries(v || {}).reduce((o, [k, x]) => o.split(`{${k}}`).join(String(x)), s)
+function printSuspects(ta: MyLesson, e: Exam, list: Suspect[]) {
+  printDoc({ signers: [{ role: 'Fənn müəllimi' }], title: `${ta.class_name} – ${e.kind}-${e.no}: köçürmə şübhəsi`,
+    body: head(`${ta.class_name} – ${e.kind}-${e.no}: köçürmə şübhəsi ilə yeni variant`, `${fmtDate(e.date)} · ${ta.subject} · ${list.length} şagird`)
+      + table(['№', 'Şagird', 'Tarix, kim', 'Kod', 'Silinib', 'İcra'], list.flatMap((x, i) => x.history.map((h, k) => [
+        k ? '' : i + 1, k ? '' : x.full_name || '—', `${dtm(h.at)}${h.by ? ' · ' + h.by : ''}`, `${h.old_code || ''} → ${h.new_code || ''}`,
+        deletedText(h.deleted, azTr), k ? '' : execText(x, azTr)]))) })
+}
 type VarRes = { exam: Exam; variants: { student_id: number; full_name: string | null; code: string }[]; suspects?: Suspect[]
   report: { open_pct: number; [k: string]: unknown } | null; stale?: boolean }
 type Ready = { students: number; n: number; need: number; ok: boolean; max_n: number | null; share: number | null
@@ -306,11 +329,16 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
             <p className="small muted" style={{ margin: '0 0 6px' }}>{tt('Şagirdə toxunun – sualları görün, əvəz edin, düzəldin və ya ləğv edin.')}</p>
             {!d!.suspects?.length && <p className="small" style={{ margin: '0 0 6px' }}>🚩 <b>{tt('Şübhəli şagird yoxdur.')}</b> <span className="muted">{tt('Köçürmədən şübhələnirsinizsə: aşağıda şagirdin adına toxunun → «🚩 Köçürmə şübhəsi – yeni variant».')}</span></p>}
             {!!d!.suspects?.length && <div className="kverdict warn" style={{ marginTop: 0 }}>
-              <b>🚩 {tt('Köçürmə şübhəsi ilə yeni variant verilənlər: {n}', { n: d!.suspects.length })}</b>
-              <ul className="small" style={{ margin: '4px 0 0', paddingLeft: 18 }}>{d!.suspects.map(x => <li key={x.student_id}>
-                <button className="btn sm ghost" style={{ padding: "0 4px", minHeight: 0 }} onClick={() => setOpenV(x.student_id)}>{x.full_name || '—'}</button>
-                {' · '}{x.code}{' · '}{fmtDate(x.at)}{x.old_score != null ? ' · ' + tt('silinmiş bal: {n}', { n: String(x.old_score).replace('.', ',') }) : ''}
-                {x.times > 1 ? ' · ' + tt('{n} dəfə', { n: x.times }) : ''}</li>)}</ul></div>}
+              <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}><b className="grow">🚩 {tt('Köçürmə şübhəsi ilə yeni variant verilənlər: {n}', { n: d!.suspects.length })}</b>
+                <button className="btn sm" onClick={() => printSuspects(ta, e, d!.suspects!)}>🖨 {tt('Hesabatı çap et')}</button></div>
+              {d!.suspects.map(x => <div key={x.student_id} className="small" style={{ marginTop: 8, paddingTop: 6, borderTop: '1px dashed var(--line)' }}>
+                <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <button className="btn sm ghost" style={{ padding: '0 4px', minHeight: 0, fontWeight: 700 }} onClick={() => setOpenV(x.student_id)}>{x.full_name || '—'}</button>
+                  <span className="muted">{x.code}</span>{x.times > 1 && <span className="muted">· {tt('{n} dəfə', { n: x.times })}</span>}
+                  {!x.printed_at && <AsyncBtn className="btn sm primary" onClick={async () => printSheets(await get<KsqPrint>(`/api/exams/${ta.id}/${e.id}/variants/print`, { students: String(x.student_id) }).finally(reload))}>🖨 {tt('Yeni vərəqi çap et')}</AsyncBtn>}</div>
+                {x.history.map((h, k) => <div key={k}><b>{tt('Silinib')}:</b> {dtm(h.at)}{h.by ? ' · ' + h.by : ''} · {h.old_code} → {h.new_code} · {deletedText(h.deleted, tt)}</div>)}
+                <div><b>{tt('İcra')}:</b> {execText(x, tt)}</div>
+              </div>)}</div>}
             <div className="kvars2">{d!.variants.map(v => <button key={v.student_id} className={'chip' + (openV === v.student_id ? ' on' : '')} aria-pressed={openV === v.student_id}
               onClick={() => setOpenV(openV === v.student_id ? null : v.student_id)}>{d!.suspects?.some(x => x.student_id === v.student_id) ? '🚩 ' : ''}{v.full_name || '—'} <span className="muted">{v.code}</span></button>)}</div>
             {openV && <VariantView ta={ta.id} examId={e.id} sid={openV} name={d!.variants.find(v => v.student_id === openV)?.full_name || ''}

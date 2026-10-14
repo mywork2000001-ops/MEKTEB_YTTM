@@ -371,19 +371,41 @@ def _variants_out(db: Session, ta, e: Exam) -> dict:
 
 
 def _suspects(db: Session, e: Exam, names: dict[int, str]) -> list[dict]:
-    """Köçürmə şübhəsi ilə yeni variant verilmiş şagirdlər (audit jurnalından): son tarix, neçə dəfə, silinmiş bal."""
-    from ..models import AuditLog
+    """Köçürmə şübhəsi ilə yeni variant verilmiş şagirdlər (docs/kocurme-subhesi-hesabat-promtu.md): audit jurnalından
+    silinmə tarixçəsi (kim, nə vaxt, kod, nə silindi) + yeni yazının icrası (çap, skan/onlayn, yeni bal)."""
+    from ..models import AuditLog, ExamScan, now
+    from .ksq_online import _attempt, _status, _tasks
     out: dict[int, dict] = {}
+    who: dict[int, str] = {}
     for a in db.scalars(select(AuditLog).where(AuditLog.entity == 'exam_variant', AuditLog.entity_id == str(e.id)).order_by(AuditLog.at)):
         d = a.details or {}
         if d.get('op') != 'retake' or d.get('student_id') is None:
             continue
         sid = d['student_id']
-        x = out.setdefault(sid, {'student_id': sid, 'full_name': names.get(sid), 'times': 0, 'old_score': None})
+        if a.user_id and a.user_id not in who:
+            u = db.get(User, a.user_id)
+            who[a.user_id] = u.full_name if u else ''
+        x = out.setdefault(sid, {'student_id': sid, 'full_name': names.get(sid), 'times': 0, 'old_score': None, 'history': []})
         x['times'] += 1
         x['at'], x['code'], x['note'] = a.at, d.get('new_code'), d.get('note')
         if x['old_score'] is None:
             x['old_score'] = d.get('score')                    # ilk (şübhəli) yazının balı
+        x['history'].insert(0, {'at': a.at, 'by': who.get(a.user_id), 'old_code': d.get('old_code'), 'new_code': d.get('new_code'),
+                                'note': d.get('note'), 'deleted': {k: d.get(k) for k in ('scan_points', 'read_by', 'online', 'score')}})
+    if out:
+        tasks, at = _tasks(db, e), now()
+        for sid, x in out.items():
+            v = db.get(ExamVariant, (e.id, sid))
+            sc = db.scalar(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == sid))
+            score = db.get(ExamScore, (e.id, sid))
+            t = tasks.get(sid)
+            online = _status(t, _attempt(db, t, sid) if t else None, at)
+            x['printed_at'] = v.printed_at if v else None
+            # icra: yazıb (bal) → kart oxunur → onlayn göndərilib → gözlənilir
+            st = ('done' if score is not None and score.points is not None else 'reading' if sc is not None
+                  else 'online' if online in ('waiting', 'open', 'doing') else 'missed' if online == 'missed' else 'waiting')
+            x['now'] = {'status': st, 'points': score.points if score is not None else None,
+                        'online': online, 'read_by': sc.read_by if sc is not None else None}
     return sorted(out.values(), key=lambda x: x['full_name'] or '')
 
 
