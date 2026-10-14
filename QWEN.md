@@ -16,6 +16,19 @@
 - Личные данные (`data/`, `*.docx`, `*.xlsx`, `.env`) в git не хранятся, поэтому в worktree их нет.
   Тесты, которым нужны эти файлы (например `test_importers`), в worktree могут падать — это нормально, так и сообщи.
 
+## Кто может быть «вторым агентом»
+Эти правила действуют для любого второго агента: Qwen Code или Claude Code, запущенный командой `claude-ds`
+(Claude Code через OpenRouter с моделями DeepSeek / Gemini / Qwen). Основной Claude (подписка) работает в основной папке.
+
+Какую модель брать (OpenRouter, один ключ):
+| Работа | Модель | `claude-ds …` |
+|---|---|---|
+| Код: функции, исправления, переводы интерфейса | deepseek/deepseek-v4-pro | `claude-ds` |
+| Мелкие и однотипные правки | deepseek/deepseek-v4-flash | `claude-ds flash` |
+| Материалы: PDF DİM, Word-программы, картинки заданий | google/gemini-3.1-flash-lite | `claude-ds gemini` |
+| Запасная, если DeepSeek ошибается | qwen/qwen3-coder | `claude-ds qwen` |
+Сложное (сканер, миграции живой БД, крупные аудиты) и слияние в main — основному Claude.
+
 ## Проект
 - backend/  — Python (FastAPI, SQLAlchemy, Alembic: backend/migrations), тесты: pytest в backend/tests
 - frontend/ — React + TypeScript (Vite). Проверка: `npm run build` в frontend/ (это `tsc -b && vite build`).

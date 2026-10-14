@@ -30,4 +30,11 @@ powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\.qwen\qwen-acar.ps1" 
 cd ..\mk-qwen  →  qwen   (model dəyişmək: /model)
 ```
 Qiymət (14.10.2026, 1M token): qwen3-coder 0.30 $ / 1 $; coder-next 0.12 / 0.80; 30b-a3b 0.07 / 0.28.
+## Claude Code + OpenRouter (`claude-ds`) – 14.10.2026
+İstifadəçi: «если есть возможность то пусть будет у нас в клауде». OpenRouter Anthropic-uyğun API verir
+(`ANTHROPIC_BASE_URL=https://openrouter.ai/api`, `ANTHROPIC_AUTH_TOKEN=<açar>`, `ANTHROPIC_API_KEY=""`).
+Skript `%USERPROFILE%\.qwen\claude-ds.ps1` + əmr `claude-ds` (`%APPDATA%\npm\claude-ds.cmd`): mk-qwen papkasında
+Claude Code-u deepseek-v4-pro (default) / `flash` / `gemini` / `qwen` ilə açır, QWEN.md qaydalarını sistem promtuna əlavə edir.
+Yoxlandı: `claude -p` deepseek-v4-pro ilə CLAUDE.md-ni oxuyub düzgün cavab verdi. Qiymət (1M): v4-pro 0.40/0.79 $, keş 0.033 $.
+
 Tətbiqin öz OpenRouter açarı (kart oxuyucu) ilə Qwen açarını AYRI saxlayın – biri digərinin limitini yeməsin.
