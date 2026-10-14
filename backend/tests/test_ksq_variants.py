@@ -334,3 +334,5 @@ def test_retake_after_cheating(world):
     pr = admin.get(f'/api/exams/{ta}/{e["id"]}/variants/print', params={'students': str(sid)}).json()
     assert [s['student_id'] for s in pr['sheets']] == [sid] and pr['sheets'][0]['code'] == old['code'] + 'R1' and len(pr['key']) == 1
     assert admin.post(f'/api/exams/{ta}/{e["id"]}/variants/{sid}/retake').json()['code'] == old['code'] + 'R2'
+    sus = admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()['suspects']
+    assert [(x['student_id'], x['times'], x['old_score'], x['code']) for x in sus] == [(sid, 2, 90, old['code'] + 'R2')]

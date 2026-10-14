@@ -14,6 +14,7 @@ Sən «Müəllim köməkçisi»nin baş mühəndisisən. Müəllim KSQ/BSQ-da ş
   - silinir: `ExamScan`, `ExamScore`, onlayn KSQ tapşırığı və cəhdi; kəsik şəkli storage-da qalır, köhnə bal/kod audit jurnalına;
   - `printed_at`, `unprinted` sıfırlanır.
 - Çap: `GET …/variants/print?students=5` – yalnız seçilən şagirdlərin vərəqi və açarı (yalnız onlar «çap olunub» işarələnir).
+- Şübhəlilər: 2-ci addımda «🚩 Köçürmə şübhəsi ilə yeni variant verilənlər» siyahısı (ad, yeni kod, tarix, silinmiş bal, neçə dəfə) və şagird düyməsində 🚩 – mənbə audit jurnalı (`_suspects`).
 - UI: İmtahanlar → KSQ → «Kağız variantlar» → 2-ci addım → şagirdə toxun → «🚩 Köçürmə şübhəsi – yeni variant» →
   təsdiq (iki addım) → «🖨 Yeni vərəqi çap et» / «🔑 Müəllim açarı». Mətnlər AZ/EN/RU.
 - Onlayn yazmaq lazımdırsa: 5-ci addımda şagirdi seçib yenidən göndər (yeni variant gedir).

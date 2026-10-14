@@ -189,7 +189,8 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
 
 type Sources = { source: string; projects?: { key: string; label: string; default: boolean; files: number }[]; plan: { seq: number; topic: string; files: { file_id: number; label: string; questions: number }[] }[]
   all: { file_id: number; label: string; questions: number }[] }
-type VarRes = { exam: Exam; variants: { student_id: number; full_name: string | null; code: string }[]
+type Suspect = { student_id: number; full_name: string | null; times: number; old_score: number | null; at: string; code: string | null }
+type VarRes = { exam: Exam; variants: { student_id: number; full_name: string | null; code: string }[]; suspects?: Suspect[]
   report: { open_pct: number; [k: string]: unknown } | null; stale?: boolean }
 type Ready = { students: number; n: number; need: number; ok: boolean; max_n: number | null; share: number | null
   topics: { topic: string; files: number; mcq: number; open: number; templates: number }[]; selected: { mcq: number; open: number }
@@ -303,8 +304,14 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
         <Step no={2} title={tt('Variantlar')} active={has} state={has ? tt('{n} şagird', { n: d!.variants.length }) : undefined}>
           {has ? <>
             <p className="small muted" style={{ margin: '0 0 6px' }}>{tt('Şagirdə toxunun – sualları görün, əvəz edin, düzəldin və ya ləğv edin.')}</p>
+            {!!d!.suspects?.length && <div className="kverdict warn" style={{ marginTop: 0 }}>
+              <b>🚩 {tt('Köçürmə şübhəsi ilə yeni variant verilənlər: {n}', { n: d!.suspects.length })}</b>
+              <ul className="small" style={{ margin: '4px 0 0', paddingLeft: 18 }}>{d!.suspects.map(x => <li key={x.student_id}>
+                <button className="btn sm ghost" style={{ padding: "0 4px", minHeight: 0 }} onClick={() => setOpenV(x.student_id)}>{x.full_name || '—'}</button>
+                {' · '}{x.code}{' · '}{fmtDate(x.at)}{x.old_score != null ? ' · ' + tt('silinmiş bal: {n}', { n: String(x.old_score).replace('.', ',') }) : ''}
+                {x.times > 1 ? ' · ' + tt('{n} dəfə', { n: x.times }) : ''}</li>)}</ul></div>}
             <div className="kvars2">{d!.variants.map(v => <button key={v.student_id} className={'chip' + (openV === v.student_id ? ' on' : '')} aria-pressed={openV === v.student_id}
-              onClick={() => setOpenV(openV === v.student_id ? null : v.student_id)}>{v.full_name || '—'} <span className="muted">{v.code}</span></button>)}</div>
+              onClick={() => setOpenV(openV === v.student_id ? null : v.student_id)}>{d!.suspects?.some(x => x.student_id === v.student_id) ? '🚩 ' : ''}{v.full_name || '—'} <span className="muted">{v.code}</span></button>)}</div>
             {openV && <VariantView ta={ta.id} examId={e.id} sid={openV} name={d!.variants.find(v => v.student_id === openV)?.full_name || ''}
               annulled={new Set(((d!.exam.items || []) as any[]).filter(it => it.annulled).map(it => it.n))} onChange={reload} />}
           </>

@@ -366,7 +366,25 @@ def _variants_out(db: Session, ta, e: Exam) -> dict:
             'stale': any(q.get('v', 0) < RULES_V or q.get('template') for v in vs for q in v.questions if not q.get('edited')),
             'share': max(Counter(q.get('key') for v in vs for q in v.questions).values(), default=0),
             'base': _base_info(db, ta, e),
-            'printed_at': max((v.printed_at for v in vs if v.printed_at), default=None)}
+            'printed_at': max((v.printed_at for v in vs if v.printed_at), default=None),
+            'suspects': _suspects(db, e, names)}
+
+
+def _suspects(db: Session, e: Exam, names: dict[int, str]) -> list[dict]:
+    """Köçürmə şübhəsi ilə yeni variant verilmiş şagirdlər (audit jurnalından): son tarix, neçə dəfə, silinmiş bal."""
+    from ..models import AuditLog
+    out: dict[int, dict] = {}
+    for a in db.scalars(select(AuditLog).where(AuditLog.entity == 'exam_variant', AuditLog.entity_id == str(e.id)).order_by(AuditLog.at)):
+        d = a.details or {}
+        if d.get('op') != 'retake' or d.get('student_id') is None:
+            continue
+        sid = d['student_id']
+        x = out.setdefault(sid, {'student_id': sid, 'full_name': names.get(sid), 'times': 0, 'old_score': None})
+        x['times'] += 1
+        x['at'], x['code'], x['note'] = a.at, d.get('new_code'), d.get('note')
+        if x['old_score'] is None:
+            x['old_score'] = d.get('score')                    # ilk (şübhəli) yazının balı
+    return sorted(out.values(), key=lambda x: x['full_name'] or '')
 
 
 @router.get('/{ta_id}/{exam_id}/variants')

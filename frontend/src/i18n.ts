@@ -814,6 +814,9 @@ const D: Record<string, [string, string]> = {
   "Cavablar silindi, yeni variant hazırdır": ["Answers deleted, the new variant is ready", "Ответы удалены, новый вариант готов"],
   "{name}: yeni variant {code} – köhnə vərəq və kart artıq qəbul olunmur": ["{name}: new variant {code} – the old sheet and card are no longer accepted", "{name}: новый вариант {code} – старый лист и бланк больше не принимаются"],
   "Yeni vərəqi çap et": ["Print the new sheet", "Печатать новый лист"],
+  "Köçürmə şübhəsi ilə yeni variant verilənlər: {n}": ["Given a new variant for suspected cheating: {n}", "Выдан новый вариант из-за подозрения на списывание: {n}"],
+  "silinmiş bal: {n}": ["deleted score: {n}", "удалённый балл: {n}"],
+  "{n} dəfə": ["{n} times", "{n} раз(а)"],
   "kart": ["cards", "бланков"],
   "{n} token": ["{n} tokens", "токенов: {n}"],
 }
