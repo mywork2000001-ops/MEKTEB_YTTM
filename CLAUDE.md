@@ -16,4 +16,5 @@ ayrıca xahiş gözlənilmir:
 - **Rəhbər** = Claude (Pro abunə, limit həftəlik): plan, tapşırıq kartı (`docs/tasks/`), riskli iş (skan, miqrasiya, canlı DB, deploy), review, main-ə birləşmə.
 - **İcraçılar** (`claude-ds pro|flash|gemini|check|qwen`, OpenRouter, `mk-qwen` papkası, `qwen/*` budağı) – kod, tərcümə, materiallar; qaydalar QWEN.md.
 - **Pro limitinə qənaət:** Rəhbər kodu özü yazmır – dəqiq kart yazır; fayl hissə-hissə (Grep), i18n.ts heç vaxt tam; pytest yalnız aid testlər; uzun çıxış `tail`; ekran şəkli scale 0.5.
+- **Tokenlər təyinatı üzrə (istifadəçi tələbi, 14.10.2026):** Pro limiti yalnız kart, review və riskli işə; kod → `claude-ds pro`, tərcümə/təkrar düzəliş → `flash`, PDF/Word/şəkil → `gemini`, cavab açarı yoxlaması → `check`. Təkrar oxu, təkrar yoxlama və uzun izah yoxdur; kartda yalnız lazımi fayl və testlər – OpenRouter balansı da qorunur.
 - Sessiya əvvəli: `docs/HANDOFF.md` (son sətirlər) + `git branch -r | grep qwen/`.
