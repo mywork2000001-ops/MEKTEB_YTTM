@@ -289,3 +289,48 @@ def test_shared_file_goes_to_best_topic(world):
         assert tops == {'Natural — Toplama': 0, 'Natural — Qalıqlı bölmə': 1}
         qb = next(c for c in cs if c.q['lesson'] == 'Natural — Qalıqlı bölmə')
         assert qb.on(0) and qb.on(1)                                       # ortaq fayl – hər iki mövzuda sayılır və istifadə olunur
+
+
+def test_retake_after_cheating(world):
+    """Köçürmə şübhəsi: cavablar və bal silinir, şagirdə tam yeni variant (yeni kod), yalnız onun vərəqi çap olunur
+    (docs/kocurme-subhesi-yeni-variant-promtu.md)."""
+    from app.models import ExamScan, ExamScore
+    as_, S = world
+    from .test_api_portal import setup
+    admin, ta, cid, st, _ = setup(world)
+    with S() as db:
+        db.add(BankSource(key='p003', label='P0010'))
+        db.flush()
+        f = BankFile(source_key='p003', lesson='t/faiz.html', label='Faiz — Faiz', url='http://x', kind='movzu', question_count=300)
+        db.add(f)
+        db.flush()
+        for i in range(300):
+            kind = 'mcq' if i < 90 else 'open'
+            db.add(BankQuestion(file_id=f.id, n=i + 1, kind=kind, text={'az': f'Faiz sualı {i}'}, content_hash=f'h{i}',
+                                options=[{'az': '1'}, {'az': '2'}] if kind == 'mcq' else None, correct=0 if kind == 'mcq' else None,
+                                answer=None if kind == 'mcq' else str(i), diff_auto=['asan', 'orta', 'çətin'][i % 3] if kind == 'open' else ['asan', 'orta'][i % 2]))
+        pl = db.query(PlanLesson).filter_by(assignment_id=ta, seq=3).one()
+        pl.topic = 'Faiz'
+        db.add(PlanLesson(assignment_id=ta, seq=9, semester=1, assessment_type='KSQ', exam_no=1, topic='KSQ-1', date=dt.date(2026, 10, 20)))
+        db.commit()
+    e = admin.post(f'/api/exams/{ta}', json={'kind': 'KSQ', 'no': 1, 'semester': 1, 'date': '2026-10-20', 'max_points': 20}).json()
+    d = admin.post(f'/api/exams/{ta}/{e["id"]}/variants').json()
+    sid = st[0]['id']
+    old = next(v for v in d['variants'] if v['student_id'] == sid)
+    with S() as db:
+        db.add(ExamScan(exam_id=e['id'], student_id=sid, code=old['code'], status='graded', reading=[], points=90))
+        db.add(ExamScore(exam_id=e['id'], student_id=sid, points=90))
+        db.commit()
+    r = admin.post(f'/api/exams/{ta}/{e["id"]}/variants/{sid}/retake', json={'note': 'köçürmə şübhəsi'})
+    assert r.status_code == 200, r.text
+    assert r.json()['code'] == old['code'] + 'R1' and r.json()['deleted']['score'] == 90
+    d2 = admin.get(f'/api/exams/{ta}/{e["id"]}/variants').json()
+    new = next(v for v in d2['variants'] if v['student_id'] == sid)
+    assert not {q['key'] for q in new['questions']} & {q['key'] for v in d['variants'] for q in v['questions']}   # hamısı yeni
+    assert [(q['slot'], q['kind'], q['points']) for q in new['questions']] == [(q['slot'], q['kind'], q['points']) for q in sorted(old['questions'], key=lambda q: q['slot'])]
+    with S() as db:
+        assert db.query(ExamScan).filter_by(exam_id=e['id'], student_id=sid).count() == 0
+        assert db.get(ExamScore, (e['id'], sid)) is None
+    pr = admin.get(f'/api/exams/{ta}/{e["id"]}/variants/print', params={'students': str(sid)}).json()
+    assert [s['student_id'] for s in pr['sheets']] == [sid] and pr['sheets'][0]['code'] == old['code'] + 'R1' and len(pr['key']) == 1
+    assert admin.post(f'/api/exams/{ta}/{e["id"]}/variants/{sid}/retake').json()['code'] == old['code'] + 'R2'

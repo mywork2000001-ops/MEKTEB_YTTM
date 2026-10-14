@@ -437,6 +437,69 @@ def replace_question(ta_id: int, exam_id: int, student_id: int, slot: int, body:
     return qs[i]
 
 
+class RetakeIn(BaseModel):
+    note: str | None = Field(None, max_length=300)             # müəllimin qeydi (məs. «köçürmə şübhəsi») – audit jurnalına
+
+
+@router.post('/{ta_id}/{exam_id}/variants/{student_id}/retake')
+def retake(ta_id: int, exam_id: int, student_id: int, body: RetakeIn | None = None, user: User = Depends(staff),
+           db: Session = Depends(get_db)):
+    """Köçürmə şübhəsi (docs/kocurme-subhesi-yeni-variant-promtu.md): şagirdin cavabları (kağız skan, onlayn cəhd) və balı
+    silinir, ona TAM YENİ variant verilir – hər slot eyni növ/çətinlik/bal, amma sinifdə və şagirdin tarixçəsində olmayan sual;
+    kod dəyişir (KSQ1-05 → KSQ1-05R1), ona görə köhnə vərəqin kartı artıq qəbul olunmur. Vərəq yenidən çap olunmalıdır."""
+    import random
+    import re
+    from ..domain.ksq_variants import norm_text, pick_one
+    from ..models import ExamScan, TaskAttempt, now
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    v = db.get(ExamVariant, (e.id, student_id))
+    if v is None:
+        raise HTTPException(404, 'Variant tapılmadı')
+    students, topics, cands, hist, others, _ = _prepare(db, ta, e, VariantsIn(n=len(v.questions)))
+    all_vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
+    taken = {q.get('key') for x in all_vs for q in x.questions} | others
+    used = taken | {norm_text(q.get('text')) for x in all_vs for q in x.questions} | hist.get(student_id, set())
+    rnd = random.Random()
+    qs, missing = [], []
+    for old in sorted(v.questions, key=lambda q: q['slot']):
+        got = pick_one(old, topics, cands, used, rnd.randrange(10 ** 9))
+        if got is None:
+            missing.append(old['slot'])
+            continue
+        used |= {got.get('key'), norm_text(got.get('text'))}
+        qs.append({**got, 'slot': old['slot'], 'kind': old['kind'], 'level': old['level'], 'topic': old.get('topic'), 'points': old['points']})
+    if missing:
+        raise HTTPException(409, f'Yeni variant üçün sual çatmır (slotlar: {", ".join(map(str, missing))}) – heç nə dəyişmədi')
+    old_code = v.code
+    base = re.sub(r'R\d+$', '', old_code)
+    k = int(m.group(1)) + 1 if (m := re.search(r'R(\d+)$', old_code)) else 1
+    codes = {x.code for x in all_vs}
+    while f'{base}R{k}' in codes:
+        k += 1
+    v.code, v.questions, v.printed_at, v.unprinted, v.created_at = f'{base}R{k}', qs, None, None, now()
+    # cavablar və bal silinir (kəsik şəkli storage-da qalır – sübut kimi; açarı audit jurnalında)
+    gone = {}
+    sc = db.scalar(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == student_id))
+    if sc is not None:
+        gone = {'scan_points': sc.points, 'read_by': sc.read_by, 'crop_key': sc.crop_key}
+        db.delete(sc)
+    score = db.get(ExamScore, (e.id, student_id))
+    if score is not None:
+        gone['score'] = score.points
+        db.delete(score)
+    for t in list(db.scalars(select(OnlineTask).where(OnlineTask.exam_id == e.id))):
+        if student_id in (t.student_ids or []):
+            for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id)):
+                db.delete(a)
+            db.delete(t)
+            gone['online'] = True
+    audit(db, user, 'update', 'exam_variant', e.id, student_id=student_id, op='retake', old_code=old_code, new_code=v.code,
+          note=(body.note if body else None), **gone)
+    db.commit()
+    return {'student_id': student_id, 'code': v.code, 'old_code': old_code, 'questions': len(qs), 'deleted': gone}
+
+
 class ReplaceAllIn(BaseModel):
     file_ids: list[int] | None = Field(None, max_length=60)    # bu slot üçün başqa test(lər); boş – plan testləri
 
@@ -648,9 +711,9 @@ def annul_slot(ta_id: int, exam_id: int, slot: int, body: AnnulIn, user: User = 
 
 
 @router.get('/{ta_id}/{exam_id}/variants/print')
-def print_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+def print_variants(ta_id: int, exam_id: int, students: str | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Çap üçün: hər şagirdə bir A4 (iki üz) – suallar şagirdin dilində (yoxdursa AZ), cavab kartı üçün imzalı QR; müəllim açarı.
-    Düzgün cavablar yalnız açarda (vərəqdə yox)."""
+    Düzgün cavablar yalnız açarda (vərəqdə yox). students="5,7" – yalnız bu şagirdlərin vərəqi (məs. köçürmə şübhəsindən sonra)."""
     from ..domain.ksq_card import key_value, pick_lang, qr_payload, variant_rev
     from ..models import now as _now
     from ..models import SchoolClass, Student
@@ -660,6 +723,11 @@ def print_variants(ta_id: int, exam_id: int, user: User = Depends(staff), db: Se
     vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
     if not vs:
         raise HTTPException(409, 'Əvvəl variantları yaradın')
+    if students:
+        only = {int(x) for x in students.split(',') if x.strip().isdigit()}
+        vs = [v for v in vs if v.student_id in only]
+        if not vs:
+            raise HTTPException(404, 'Bu şagirdin variantı yoxdur')
     vs.sort(key=lambda v: v.code)
     studs = {s.id: s for s in db.scalars(select(Student).where(Student.id.in_([v.student_id for v in vs])))}
     langs = {u.id: u.language for u in db.scalars(select(User).where(User.id.in_([s.user_id for s in studs.values() if s.user_id] or [0])))}

@@ -806,6 +806,14 @@ const D: Record<string, [string, string]> = {
   "{d}-dək": ["until {d}", "до {d}"],
   "bitib": ["finished", "завершён"],
   "jurnalda": ["in the journal", "в журнале"],
+  // Köçürmə şübhəsi – yeni variant (14.10.2026, docs/kocurme-subhesi-yeni-variant-promtu.md)
+  "Köçürmə şübhəsi – yeni variant": ["Suspected cheating – new variant", "Подозрение на списывание – новый вариант"],
+  "Cavablar və bal silinir, şagirdə tam yeni suallar verilir": ["Answers and score are deleted, the student gets completely new questions", "Ответы и балл удаляются, ученик получает полностью новые вопросы"],
+  "{name}: cavabları (kağız skan, onlayn yazı) və balı silinsin, tam yeni variant verilsin? Köhnə vərəq etibarsız olacaq.": ["{name}: delete the answers (paper scan, online attempt) and the score and give a completely new variant? The old sheet will become invalid.", "{name}: удалить ответы (скан бланка, онлайн-попытку) и балл и выдать полностью новый вариант? Старый лист станет недействительным."],
+  "Bəli, sil və yeni variant ver": ["Yes, delete and give a new variant", "Да, удалить и выдать новый вариант"],
+  "Cavablar silindi, yeni variant hazırdır": ["Answers deleted, the new variant is ready", "Ответы удалены, новый вариант готов"],
+  "{name}: yeni variant {code} – köhnə vərəq və kart artıq qəbul olunmur": ["{name}: new variant {code} – the old sheet and card are no longer accepted", "{name}: новый вариант {code} – старый лист и бланк больше не принимаются"],
+  "Yeni vərəqi çap et": ["Print the new sheet", "Печатать новый лист"],
   "kart": ["cards", "бланков"],
   "{n} token": ["{n} tokens", "токенов: {n}"],
 }

@@ -598,6 +598,7 @@ function VariantView({ ta, examId, sid, name, annulled, onChange }: { ta: number
   return (
     <div className="vview">
       <p className="small muted" style={{ margin: '4px 0 8px' }}>{name}: {tt('{n} sual', { n: qs.length })}</p>
+      <Retake ta={ta} examId={examId} sid={sid} name={name} onDone={async () => { await load(); onChange() }} />
       {qs.sort((a, b) => a.slot - b.slot).map(q => (
         <div key={q.slot} className={'vq' + (annulled.has(q.slot) ? ' off' : '')}>
           <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -621,6 +622,31 @@ function VariantView({ ta, examId, sid, name, annulled, onChange }: { ta: number
         </div>))}
     </div>
   )
+}
+
+/** Köçürmə şübhəsi: şagirdin cavabları və balı silinir, ona tam yeni variant (yeni kod) – yalnız onun vərəqi yenidən çap olunur
+ *  (POST …/variants/{sid}/retake; docs/kocurme-subhesi-yeni-variant-promtu.md). İki addım – səhvən basılmasın. */
+function Retake({ ta, examId, sid, name, onDone }: { ta: number; examId: number; sid: number; name: string; onDone: () => Promise<void> }) {
+  const [ask, setAsk] = useState(false)
+  const [code, setCode] = useState<string | null>(null)
+  const sheet = () => get<KsqPrint>(`/api/exams/${ta}/${examId}/variants/print`, { students: String(sid) })
+  if (code) return (
+    <div className="kverdict ok" style={{ marginTop: 0 }}>✓ {tt('{name}: yeni variant {code} – köhnə vərəq və kart artıq qəbul olunmur', { name, code })}
+      <div className="row" style={{ gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+        <AsyncBtn className="btn sm primary" onClick={async () => printSheets(await sheet())}>🖨 {tt('Yeni vərəqi çap et')}</AsyncBtn>
+        <AsyncBtn className="btn sm" onClick={async () => printKey(await sheet())}>🔑 {tt('Müəllim açarı')}</AsyncBtn></div></div>)
+  if (!ask) return <button className="btn sm ghost" style={{ marginBottom: 8 }} title={tt('Cavablar və bal silinir, şagirdə tam yeni suallar verilir')}
+    onClick={() => setAsk(true)}>🚩 {tt('Köçürmə şübhəsi – yeni variant')}</button>
+  return (
+    <div className="kverdict warn" style={{ marginTop: 0 }}>{tt('{name}: cavabları (kağız skan, onlayn yazı) və balı silinsin, tam yeni variant verilsin? Köhnə vərəq etibarsız olacaq.', { name })}
+      <div className="row" style={{ gap: 6, marginTop: 6 }}>
+        <AsyncBtn className="btn sm danger" onClick={async () => {
+          try {
+            const r = await post<{ code: string }>(`/api/exams/${ta}/${examId}/variants/${sid}/retake`, { note: 'köçürmə şübhəsi' })
+            setCode(r.code); toast(tt('Cavablar silindi, yeni variant hazırdır')); await onDone()
+          } catch (x) { toast((x as Error).message) }
+        }}>{tt('Bəli, sil və yeni variant ver')}</AsyncBtn>
+        <button className="btn sm" onClick={() => setAsk(false)}>{tt('Ləğv et')}</button></div></div>)
 }
 
 function QEdit({ q, onSave }: { q: VQ; onSave: (b: any) => Promise<void> }) {
