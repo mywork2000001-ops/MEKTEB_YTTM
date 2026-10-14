@@ -12,7 +12,8 @@ ayrıca xahiş gözlənilmir:
 
 Ətraflı: `docs/rus-dili-promtu.md`.
 
-## İkinci agent (Qwen Code / `claude-ds` – OpenRouter modelləri)
-Əgər `mk-qwen` papkasında, `qwen/*` budağında və ya OpenRouter modeli (DeepSeek/Gemini/Qwen) ilə işləyirsənsə –
-sən ikinci agentsən: **QWEN.md** qaydalarına əməl et (main-ə push yox, `docs/HANDOFF.md` jurnalı).
-Əsas Claude sessiyanın əvvəlində `docs/HANDOFF.md` və `git branch -r | grep qwen/` yoxlayır.
+## Agent sistemi (rollar, qənaət) – `docs/agent-sistemi-promtu.md`
+- **Rəhbər** = Claude (Pro abunə, limit həftəlik): plan, tapşırıq kartı (`docs/tasks/`), riskli iş (skan, miqrasiya, canlı DB, deploy), review, main-ə birləşmə.
+- **İcraçılar** (`claude-ds pro|flash|gemini|check|qwen`, OpenRouter, `mk-qwen` papkası, `qwen/*` budağı) – kod, tərcümə, materiallar; qaydalar QWEN.md.
+- **Pro limitinə qənaət:** Rəhbər kodu özü yazmır – dəqiq kart yazır; fayl hissə-hissə (Grep), i18n.ts heç vaxt tam; pytest yalnız aid testlər; uzun çıxış `tail`; ekran şəkli scale 0.5.
+- Sessiya əvvəli: `docs/HANDOFF.md` (son sətirlər) + `git branch -r | grep qwen/`.
