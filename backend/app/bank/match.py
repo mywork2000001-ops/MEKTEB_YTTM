@@ -31,6 +31,30 @@ _STOP = {'ve', 'ile', 'onun', 'onlar', 'ucun', 'bezi', 'sinif', 'iki', 'hiss', '
 _PREFIX = re.compile(r'^\s*[IVX]+\s+sinif\s*:\s*', re.I)
 
 
+# zəif qrup tempinin törəmə dərsləri (app/slow_plan.py; docs/zeif-plan-test-linkleri-promtu.md)
+_BASE = ('Məşq və möhkəmləndirmə:', 'Təkrar və bərpa:')             # → əsas mövzunun testi
+_MIXED = ('Bölmə təkrarı:', 'Spiral təkrar:', 'KSQ-yə hazırlıq:')       # qarışıq təkrar – tək fayl yoxdur
+_GENERIC_SEC = {'Bazanın bərpası', 'Təkrar'}
+
+
+def lesson_query(topic: str | None, section: str | None) -> tuple[str, str | None] | None:
+    """Plan dərsi → uyğunluq üçün (mövzu, bölmə); None – bu dərsə mövzu testi verilmir."""
+    t = (topic or '').strip()
+    sec = None if (section or '').strip() in _GENERIC_SEC else section
+    for p in _BASE:
+        if t.startswith(p):
+            return t[len(p):].strip(), sec
+    if t.startswith(_MIXED) or (t.startswith('Təkrar:') and 'yekunlaşdırıcı' in t):
+        return None
+    return t, sec
+
+
+def derived(topic: str | None) -> bool:
+    """Törəmə dərs (məşq, bərpa, təkrar) – KSQ aralığında ayrıca mövzu sayılmır."""
+    t = (topic or '').strip()
+    return t.startswith(_BASE + _MIXED) or (t.startswith('Təkrar:') and 'yekunlaşdırıcı' in t)
+
+
 def _norm(s: str) -> str:
     s = (s or '').lower().replace('ə', 'e').replace('i̇', 'i').replace('ı', 'i').replace('ö', 'o').replace('ü', 'u')
     s = s.replace('ğ', 'g').replace('ş', 's').replace('ç', 'c')
@@ -73,6 +97,10 @@ class Matcher:
         self.idf = {w: math.log((n + 1) / (c + 1)) + 0.1 for w, c in df.items()}
 
     def matches(self, topic: str, section: str | None = None, limit: int = 6, rel: float = 0.0) -> list[tuple[BankFile, float]]:
+        q = lesson_query(topic, section)
+        if q is None:
+            return []
+        topic, section = q
         t = stems(topic)
         sec = stems(re.sub(r'^\s*\d+\.\s*', '', section or '')) - t
         sraw = _raw(section or '')

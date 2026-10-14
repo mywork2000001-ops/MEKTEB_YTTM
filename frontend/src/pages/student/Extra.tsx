@@ -9,7 +9,7 @@ const MY: Record<string, [string, any]> = { var: ['iştirak etdim', 'ok'], gecik
 export function NextExtra({ x, onJoined }: { x: any; onJoined?: () => void }) {
   return (
     <div className="row" style={{ gap: 6 }}>
-      <b>{fmtDate(x.date)} {x.weekday} {x.start}–{x.end}</b>
+      <b>{fmtDate(x.date)} {tt(x.weekday)} {x.start}–{x.end}</b>
       <Pill tone={x.format === 'onlayn' ? 'info' : undefined}>{x.format === 'onlayn' ? tt('onlayn') : `${tt('əyani')}${x.room ? ` · ${tt('otaq')} ` + x.room : ''}`}</Pill>
       {x.topics?.length > 0 && <span className="small">{x.topics.join(' · ')}</span>}
       {x.format === 'onlayn' && (x.live
@@ -38,7 +38,7 @@ export default function Extra() {
           <div className="jlist">
             {c.sessions.map((x: any, i: number) => (
               <div key={x.id} className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 4, opacity: x.status === 'cancelled' ? 0.6 : 1 }}>
-                <div className="row"><b>№{i + 1} · {fmtDate(x.date)} {x.weekday} {x.start}–{x.end}</b>
+                <div className="row"><b>№{i + 1} · {fmtDate(x.date)} {tt(x.weekday)} {x.start}–{x.end}</b>
                   <Pill tone={x.format === 'onlayn' ? 'info' : undefined}>{x.format}{x.room ? ` · ${x.room}` : ''}</Pill>
                   {x.status === 'cancelled' && <Pill tone="bad">{tt('ləğv edildi')}{x.note ? ` – ${x.note}` : ''}</Pill>}
                   {x.my_status && <Pill tone={MY[x.my_status]?.[1]}>{tt(MY[x.my_status]?.[0] || '')}</Pill>}

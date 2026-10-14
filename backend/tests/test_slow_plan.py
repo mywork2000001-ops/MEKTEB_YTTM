@@ -72,3 +72,39 @@ def test_plan_docx_export(world):
         n = db.query(PlanLesson).filter_by(assignment_id=ta).count()
     lesson_rows = [r_ for r_ in main.rows[1:] if r_.cells[0].text.strip().isdigit()]
     assert len(lesson_rows) == n
+
+
+def test_lesson_query_derived():
+    """Zəif tempin törəmə dərsləri: məşq/bərpa → əsas mövzunun testi, qarışıq təkrar → link yoxdur (docs/zeif-plan-test-linkleri-promtu.md)."""
+    from app.bank.match import derived, lesson_query
+    assert lesson_query('Məşq və möhkəmləndirmə: Kəsrlər', 'II BÖLMƏ – Kəsrlər') == ('Kəsrlər', 'II BÖLMƏ – Kəsrlər')
+    assert lesson_query('Təkrar və bərpa: Faiz', 'Bazanın bərpası') == ('Faiz', None)
+    for t in ('Bölmə təkrarı: Kəsrlər', 'Spiral təkrar: əvvəlki bölmələr', 'KSQ-yə hazırlıq: Kəsrlər',
+              'Təkrar: I yarımil üzrə yekunlaşdırıcı tapşırıqlar (zəif qrup)'):
+        assert lesson_query(t, 'X') is None and derived(t)
+    assert lesson_query('Kəsrlər', 'II') == ('Kəsrlər', 'II') and not derived('Kəsrlər')
+
+
+def test_apply_drops_stale_bank_link(world):
+    """Proqram tətbiq olunanda mövzusu dəyişən dərsin köhnə test faylı seçimi silinir, dəyişməyənin seçimi qalır."""
+    from app.models import LessonBankLink
+    from app.programs import apply
+    as_, S = world
+    admin, ta, cid, st, _ = setup(world)
+    _plan(S, ta, n1=6, n2=0)
+    with S() as db:
+        pls = db.query(PlanLesson).filter_by(assignment_id=ta).order_by(PlanLesson.seq).all()
+        for pl in pls[:2]:
+            db.add(LessonBankLink(plan_lesson_id=pl.id, file_id=None))
+        lessons = [{'semester': 1, 'section': pl.section, 'topic': pl.topic if pl.seq == 1 else 'Yeni mövzu', 'standards': [],
+                    'integration': None, 'resources': None, 'assessment': None, 'assessment_type': 'formativ', 'exam_no': None,
+                    'tt_pages': None, 'tasks': []} for pl in pls]
+        p = PlanProgram(school_id=1, owner_id=None, subject='Riyaziyyat', kind='fixed', weekly_hours=5, title='t',
+                        data={'lessons': lessons})
+        db.add(p)
+        db.flush()
+        user = db.get(__import__('app.models', fromlist=['User']).User, 1)
+        apply(db, p, db.get(TeachingAssignment, ta), user)
+        db.commit()
+        kept = {k.plan_lesson_id for k in db.query(LessonBankLink)}
+        assert kept == {pls[0].id}

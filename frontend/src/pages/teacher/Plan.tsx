@@ -7,7 +7,7 @@ import { ProgramBox } from './Programs'
 import { head, printDoc, table } from '../../print'
 import TopicTest from './TopicTest'
 import { azDT } from '../../ui'
-import { tt } from '../../i18n'
+import { tt, useT } from '../../i18n'
 
 type TopicTestInfo = { task_id: number; title: string; opens_at: string; closes_at: string; state: 'gözlənilir' | 'açıqdır' | 'bitib'
   questions: number; submitted: number; total: number | null; avg_pct: number | null; journal: 'yazılıb' | 'gözləyir' | 'yox' }
@@ -52,31 +52,32 @@ function P0010Edit({ ta, l, onDone }: { ta: number; l: { id: number; p0010?: { f
     try {
       const [m, all] = await Promise.all([get<any>(`/api/plan/${ta}/topics/${l.id}/p0010`, { n: 1 }), p0010All[src]!])
       setOpts({ match: m.matches || [], all })
-    } catch (e: any) { toast(e?.message || `${NAME} siyahısı açılmadı`) }
+    } catch (e: any) { toast(e?.message || tt('{s} siyahısı açılmadı', { s: NAME })) }
   }
   const save = async (v: string) => {
     setBusy(true)
     try {
       await put(`/api/plan/${ta}/topics/${l.id}/p0010`, v === 'auto' || v === 'none' ? { mode: v } : { mode: 'file', file_id: Number(v) })
-      toast(v === 'auto' ? 'Avtomatik uyğunluğa qaytarıldı' : v === 'none' ? `${NAME} bağlantısı götürüldü` : `${NAME} faylı dəyişdi`)
+      toast(v === 'auto' ? tt('Avtomatik uyğunluğa qaytarıldı') : v === 'none' ? tt('{s} bağlantısı götürüldü', { s: NAME }) : tt('{s} faylı dəyişdi', { s: NAME }))
       setOpts(null); onDone()
-    } catch (e: any) { toast(e?.message || 'Saxlanmadı') } finally { setBusy(false) }
+    } catch (e: any) { toast(e?.message || tt('Saxlanmadı')) } finally { setBusy(false) }
   }
-  if (!opts) return <button type="button" className="btn sm ghost" style={{ padding: '0 6px', minHeight: 0 }} title={`${NAME} faylını dəyiş`} onClick={open}>✎</button>
+  if (!opts) return <button type="button" className="btn sm ghost" style={{ padding: '0 6px', minHeight: 0 }} title={tt('{s} faylını dəyiş', { s: NAME })} onClick={open}>✎</button>
   const groups: Record<string, BankFileRow[]> = {}
   for (const f of opts.all) (groups[f.label.split(' — ')[0]] ||= []).push(f)
   return (
     <select className="sel" autoFocus disabled={busy} value={l.p0010_manual ? (l.p0010 ? String(l.p0010.file_id) : 'none') : 'auto'}
       onChange={e => save(e.target.value)} onBlur={() => !busy && setOpts(null)} style={{ maxWidth: '100%' }}>
-      <option value="auto">Avtomatik (mövzuya görə)</option>
-      <option value="none">{NAME} bağlantısı yoxdur</option>
-      {opts.match.length > 0 && <optgroup label="Mövzuya uyğun">{opts.match.map(m => <option key={'m' + m.file_id} value={m.file_id}>{m.label}</option>)}</optgroup>}
+      <option value="auto">{tt('Avtomatik (mövzuya görə)')}</option>
+      <option value="none">{tt('{s} bağlantısı yoxdur', { s: NAME })}</option>
+      {opts.match.length > 0 && <optgroup label={tt('Mövzuya uyğun')}>{opts.match.map(m => <option key={'m' + m.file_id} value={m.file_id}>{m.label}</option>)}</optgroup>}
       {Object.entries(groups).map(([g, fs]) => <optgroup key={g} label={g}>{fs.map(f => <option key={f.id} value={f.id}>{f.label.split(' — ').slice(1).join(' — ') || f.label} ({f.questions})</option>)}</optgroup>)}
     </select>
   )
 }
 
 export default function Plan() {
+  const t = useT()
   const [lessons, err0, , reloadLessons] = useMyLessons()
   const [ta, setTa] = usePick('plan')
   // görünüş – açılan siyahı: gün, həftə, ay, I / II yarımil, bütün il (əvvəl «Yarımil» yalnız cari yarımili göstərirdi)
@@ -89,63 +90,62 @@ export default function Plan() {
   let lastDate = ''
   return (
     <>
-      <Top title="Perspektiv plan" sub={cur ? `${cur.class_name} · ${cur.program ? 'proqram: ' + cur.program : 'işçi plan'}${cur.extra_programs ? ` · əlavə proqram: ${cur.extra_programs}` : ''}` : 'Əvvəlcə sinif seçin'} />
+      <Top title={t('Perspektiv plan')} sub={cur ? `${cur.class_name} · ${cur.program ? t('proqram') + ': ' + cur.program : t('işçi plan')}${cur.extra_programs ? ` · ${t('əlavə proqram')}: ${cur.extra_programs}` : ''}` : t('Əvvəlcə sinif seçin')} />
       <ErrorBox error={err0 || err} />
       <div className="toolbar">
         <LessonSelect lessons={lessons} value={ta} onChange={setTa} />
-        {ta && <select className="sel" value={view} aria-label={tt('Görünüş')} onChange={e => setView(e.target.value as typeof view)}>
-          {([['day', 'Gün'], ['week', 'Həftə'], ['month', 'Ay'], ['sem1', 'I yarımil'], ['sem2', 'II yarımil'], ['year', 'Bütün il']] as const).map(([k, l]) => <option key={k} value={k}>{tt(l)}</option>)}</select>}
+        {ta && <select className="sel" value={view} aria-label={t('Dövr')} onChange={e => setView(e.target.value as typeof view)}>
+          {([['day', 'Gün'], ['week', 'Həftə'], ['month', 'Ay'], ['sem1', 'I yarımil'], ['sem2', 'II yarımil'], ['year', 'Bütün il']] as const).map(([k, l]) => <option key={k} value={k}>{t(l)}</option>)}</select>}
       </div>
-      {lessons && lessons.length === 0 && <div className="empty"><p>Bu məkanda heç bir sinif və ya qrupa qoşulmamısınız. Perspektiv plan qoşulduğunuz sinfə təyin olunur:
-          <b> Tənzimləmələr → Siniflər</b> → sinfin kartında <b>«Qoşul»</b> – orada əsas proqramı da seçə bilərsiniz.</p></div>}
-      {ta && <details className="prog-details no-print" open={cur ? !cur.program : undefined}><summary>Proqramlar: <b>{cur?.program || 'əsas proqram seçilməyib'}</b>{cur?.extra_programs ? ` · əlavə: ${cur.extra_programs}` : ''} <span className="small muted">– seç / dəyiş</span></summary>
+      {lessons && lessons.length === 0 && <div className="empty"><p>{t('Bu məkanda heç bir sinif və ya qrupa qoşulmamısınız. Perspektiv plan qoşulduğunuz sinfə təyin olunur: Tənzimləmələr → Siniflər → sinfin kartında «Qoşul» – orada əsas proqramı da seçə bilərsiniz.')}</p></div>}
+      {ta && <details className="prog-details no-print" open={cur ? !cur.program : undefined}><summary>{t('Proqramlar')}: <b>{cur?.program || t('əsas proqram seçilməyib')}</b>{cur?.extra_programs ? ` · ${t('əlavə')}: ${cur.extra_programs}` : ''} <span className="small muted">– {t('seç / dəyiş')}</span></summary>
         <ProgramBox ta={ta} onChanged={() => { reload(); reloadLessons() }} /></details>}
-      {!ta ? (lessons?.length === 0 ? null : <PickFirst text="Yuxarıda sinif və ya qrupu seçin" />) : loading && !d ? <Loading /> : d && (
+      {!ta ? (lessons?.length === 0 ? null : <PickFirst text={t('Yuxarıda sinif və ya qrupu seçin')} />) : loading && !d ? <Loading /> : d && (
         <>
           <div className="row" style={{ marginBottom: 12 }}>
             {!['sem1', 'sem2', 'year'].includes(view) && <button className="btn sm" onClick={() => setDate(step(date, view, -1))}>‹</button>}
             <b>{fmtDate(d.from)} – {fmtDate(d.to)}</b>
             {!['sem1', 'sem2', 'year'].includes(view) && <button className="btn sm" onClick={() => setDate(step(date, view, 1))}>›</button>}
-            <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>Bu gün</button>
-            <button className="btn sm right" onClick={() => printDoc({ title: `${cur?.class_name} – perspektiv plan ${fmtDate(d.from)}–${fmtDate(d.to)}`, body: head(`${cur?.class_name} – ${cur?.subject}: perspektiv plan (işçi)`, `${fmtDate(d.from)} – ${fmtDate(d.to)}`) + table(['Tarix', 'Saat', '№', 'Mövzu', 'Qiymətləndirmə'], d.items.map(i => [`${i.weekday} ${fmtDate(i.date)}`, i.period, i.lesson?.seq ?? '', i.lesson?.topic ?? '—', i.lesson && i.lesson.assessment_type !== 'formativ' ? i.lesson.assessment_type + (i.lesson.exam_no ? '-' + i.lesson.exam_no : '') : ''])) })}>Çap / PDF</button>
-            {cur && <a className="btn sm" href={`/api/plan/${cur.id}/docx`} title={tt('Rəsmi perspektiv plan – Word sənədi (yalnız Azərbaycan dilində)')}>📄 Word (.docx)</a>}
-            {cur && cur.lag > 0 && <Pill tone="warn">Geriləmə: {cur.lag} dərs</Pill>}
-            <label className="check small" title="X–XI sinifdə P0010, «Test toplusu» dərslərində P007 sualları; test dərs günü yaradılır, dərsin sonunda açılır, ertəsi gün 22:00 bağlanır, nəticə formativ jurnala">
+            <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>{t('Bu gün')}</button>
+            <button className="btn sm right" onClick={() => printDoc({ title: `${cur?.class_name} – perspektiv plan ${fmtDate(d.from)}–${fmtDate(d.to)}`, body: head(`${cur?.class_name} – ${cur?.subject}: perspektiv plan (işçi)`, `${fmtDate(d.from)} – ${fmtDate(d.to)}`) + table(['Tarix', 'Saat', '№', 'Mövzu', 'Qiymətləndirmə'], d.items.map(i => [`${i.weekday} ${fmtDate(i.date)}`, i.period, i.lesson?.seq ?? '', i.lesson?.topic ?? '—', i.lesson && i.lesson.assessment_type !== 'formativ' ? i.lesson.assessment_type + (i.lesson.exam_no ? '-' + i.lesson.exam_no : '') : ''])) })}>{t('Çap / PDF')}</button>
+            {cur && <a className="btn sm" href={`/api/plan/${cur.id}/docx`} title={t('Rəsmi perspektiv plan – Word sənədi (yalnız Azərbaycan dilində)')}>📄 Word (.docx)</a>}
+            {cur && cur.lag > 0 && <Pill tone="warn">{t('Geriləmə: {n} dərs', { n: cur.lag })}</Pill>}
+            <label className="check small" title={t('X–XI sinifdə P0010, «Test toplusu» dərslərində P007 sualları; test dərs günü yaradılır, dərsin sonunda açılır, ertəsi gün 22:00 bağlanır, nəticə formativ jurnala')}>
               <input type="checkbox" checked={!!d.auto_tests} onChange={async e => {
                 try {
                   const r = await put<{ created_today: number }>(`/api/plan/${ta}/auto-tests`, { on: e.target.checked })
-                  toast(e.target.checked ? `Avtomatik mövzu testi açıldı${r.created_today ? ` · bu gün ${r.created_today} test yaradıldı` : ''}` : 'Avtomatik mövzu testi bağlandı'); reload()
-                } catch (x: any) { toast(x?.message || 'Saxlanmadı') }
-              }} /> Hər dərsə avtomatik mövzu testi</label>
+                  toast(e.target.checked ? tt('Avtomatik mövzu testi açıldı') + (r.created_today ? ' · ' + tt('bu gün {n} test yaradıldı', { n: r.created_today }) : '') : tt('Avtomatik mövzu testi bağlandı')); reload()
+                } catch (x: any) { toast(x?.message || tt('Saxlanmadı')) }
+              }} /> {t('Hər dərsə avtomatik mövzu testi')}</label>
           </div>
-          {!d.has_plan && <div className="banner">Bu sinif üçün plan yoxdur – yuxarıdakı <b>«Proqramlar: seç / dəyiş»</b> bölməsində «Əsas proqramı seç» düyməsi ilə kitabxanadan proqram seçin (Word planınızı Tənzimləmələr → Proqramlar → «Word planını yüklə» ilə əlavə edə bilərsiniz).</div>}
-          {d.unfit.length > 0 && <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>İlin sonuna {d.unfit.length} dərs sığmır – geriləməni aradan qaldırmaq lazımdır.</div>}
+          {!d.has_plan && <div className="banner">{t('Bu sinif üçün plan yoxdur – yuxarıdakı «Proqramlar: seç / dəyiş» bölməsində «Əsas proqramı seç» düyməsi ilə kitabxanadan proqram seçin (Word planınızı Tənzimləmələr → Proqramlar → «Word planını yüklə» ilə əlavə edə bilərsiniz).')}</div>}
+          {d.unfit.length > 0 && <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>{t('İlin sonuna {n} dərs sığmır – geriləməni aradan qaldırmaq lazımdır.', { n: d.unfit.length })}</div>}
           <div className="jlist">
-            {d.items.length === 0 && <div className="empty">Bu dövrdə dərs yoxdur.</div>}
+            {d.items.length === 0 && <div className="empty">{t('Bu dövrdə dərs yoxdur.')}</div>}
             {d.items.map(i => {
               const showDate = i.date !== lastDate
               lastDate = i.date
               const today = i.date === isoDate(new Date())
               const l = i.lesson
-              const meta = l ? [`№${l.seq}`, l.section && sectionText(l.section), l.standards?.length ? 'altst. ' + l.standards.join(', ') : '',
-                l.tt_pages || '', tasksText(l.tasks), i.shift ? `rəsmi tarix ${fmtDate(l.official_date)}` : ''].filter(Boolean) : []
+              const meta = l ? [`№${l.seq}`, l.section && sectionText(l.section), l.standards?.length ? t('altst.') + ' ' + l.standards.join(', ') : '',
+                l.tt_pages || '', tasksText(l.tasks), i.shift ? `${t('rəsmi tarix')} ${fmtDate(l.official_date)}` : ''].filter(Boolean) : []
               return (
                 <div key={i.date + i.period}>
-                  {showDate && <div className={'plan-day' + (today ? ' today' : '')}>{DAYS[new Date(i.date + 'T00:00').getDay()]}, {fmtDate(i.date)}{today ? ' · bu gün' : ''}</div>}
+                  {showDate && <div className={'plan-day' + (today ? ' today' : '')}>{t(DAYS[new Date(i.date + 'T00:00').getDay()])}, {fmtDate(i.date)}{today ? ' · ' + t('bu gün') : ''}</div>}
                   <div className="plan-row">
                     <span className="plan-when"><b>{lessonWhen(i.period, i.time)}</b>{i.time && !docCtx.private && <span className="muted">{i.time}</span>}</span>
                     <span className="plan-what">
                       {l ? <><span className="plan-topic">{l.topic}</span><span className="plan-meta">{meta.join(' · ')}</span>
-                        {(l.p0010 !== undefined || l.p0010_manual) && <span className="plan-meta">{SRC_NAME(l.p0010_src)}{l.p0010_manual ? ' (seçilib)' : ''}: {l.p0010
-                          ? <a href={l.p0010.url} target="_blank" rel="noreferrer" title={`${SRC_NAME(l.p0010_src)} test faylını aç`}>{l.p0010.label}</a> : <span className="muted">yoxdur</span>}
-                          {ta && <P0010Edit ta={ta} l={l} onDone={reload} />}</span>}</> : <span className="muted">Perspektiv planda mövzu yoxdur</span>}
+                        {(l.p0010 !== undefined || l.p0010_manual) && <span className="plan-meta">{SRC_NAME(l.p0010_src)}{l.p0010_manual ? ` (${t('seçilib')})` : ''}: {l.p0010
+                          ? <a href={l.p0010.url} target="_blank" rel="noreferrer" title={t('{s} test faylını aç', { s: SRC_NAME(l.p0010_src) })}>{l.p0010.label}</a> : <span className="muted">{t('yoxdur')}</span>}
+                          {ta && <P0010Edit ta={ta} l={l} onDone={reload} />}</span>}</> : <span className="muted">{t('Perspektiv planda mövzu yoxdur')}</span>}
                     </span>
                     {l && <span className="plan-tags">
                       {l.assessment_type !== 'formativ' && <Pill tone="warn">{l.assessment_type}{l.exam_no ? '-' + l.exam_no : ''}</Pill>}
-                      {i.held && <Pill tone="info">mövzu davam edir</Pill>}
+                      {i.held && <Pill tone="info">{t('mövzu davam edir')}</Pill>}
                       {l.tests?.map(t => <TestPill key={t.task_id} t={t} />)}
                       {!['KSQ', 'BSQ'].includes(l.assessment_type) && (
-                        <button className="btn sm" onClick={() => setTestFor(l.id)} title={l.p0010 ? `${SRC_NAME(l.p0010_src)} sualları özü əlavə olunur` : 'Bu mövzuya onlayn test təyin et'}>🧪 Test{l.p0010 ? ` (${SRC_NAME(l.p0010_src)})` : ''}</button>)}
+                        <button className="btn sm" onClick={() => setTestFor(l.id)} title={l.p0010 ? t('{s} sualları özü əlavə olunur', { s: SRC_NAME(l.p0010_src) }) : t('Bu mövzuya onlayn test təyin et')}>🧪 {t('Test')}{l.p0010 ? ` (${SRC_NAME(l.p0010_src)})` : ''}</button>)}
                     </span>}
                   </div>
                 </div>)
@@ -166,6 +166,6 @@ function TestPill({ t }: { t: TopicTestInfo }) {
   const when = `${dm(t.opens_at)} ${hm(t.opens_at)}–${dm(t.closes_at)} ${hm(t.closes_at)}`
   const done = `${t.submitted}${t.total != null ? '/' + t.total : ''}`
   if (t.state === 'gözlənilir') return <Pill>🧪 {when}</Pill>
-  if (t.state === 'açıqdır') return <Pill tone="ok">🧪 açıqdır · {done} · {dm(t.closes_at)} {hm(t.closes_at)}-dək</Pill>
-  return <Pill tone={t.journal === 'yazılıb' ? 'info' : undefined}>🧪 bitib · {done}{t.avg_pct != null ? ` · ${t.avg_pct}%` : ''}{t.journal === 'yazılıb' ? ' · jurnalda' : ''}</Pill>
+  if (t.state === 'açıqdır') return <Pill tone="ok">🧪 {tt('açıqdır')} · {done} · {tt('{d}-dək', { d: `${dm(t.closes_at)} ${hm(t.closes_at)}` })}</Pill>
+  return <Pill tone={t.journal === 'yazılıb' ? 'info' : undefined}>🧪 {tt('bitib')} · {done}{t.avg_pct != null ? ` · ${t.avg_pct}%` : ''}{t.journal === 'yazılıb' ? ' · ' + tt('jurnalda') : ''}</Pill>
 }

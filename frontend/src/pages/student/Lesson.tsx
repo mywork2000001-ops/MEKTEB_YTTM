@@ -18,7 +18,7 @@ export default function Lesson() {
     <>
       <Top title={t('Dərs')} sub={t('Gündəlik: mövzu, ev tapşırığı, davamiyyət, qiymət')} />
       <div className="row" style={{ marginBottom: 12 }}>
-        <button className="btn sm" onClick={() => step(-1)}>‹</button><b>{d?.weekday ? d.weekday + ' · ' : ''}{fmtDate(date)}</b>
+        <button className="btn sm" onClick={() => step(-1)}>‹</button><b>{d?.weekday ? t(d.weekday) + ' · ' : ''}{fmtDate(date)}</b>
         <button className="btn sm" onClick={() => step(1)}>›</button><button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>{t('Bu gün')}</button>
         <button className="btn sm right" disabled={!d} onClick={() => d && printDay(d, me, date, examLabel)}>{t('Çap et')}</button>
       </div>

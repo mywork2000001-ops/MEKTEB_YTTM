@@ -14,11 +14,11 @@ import datetime as dt
 import json
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .domain.calendar import lesson_slots
-from .models import (Holiday, JournalEntry, PlanLesson, PlanProgram, SchoolClass, TeachingAssignment, User, now)
+from .models import (Holiday, JournalEntry, LessonBankLink, PlanLesson, PlanProgram, SchoolClass, TeachingAssignment, User, now)
 from .services import class_grade
 
 DATA = Path(__file__).parent / 'program_data'
@@ -586,6 +586,8 @@ def apply(db: Session, program: PlanProgram, ta: TeachingAssignment, user: User,
         vals['tasks'] = vals['tasks'] or []
         pl = existing.get(i)
         if pl:
+            if (pl.topic, pl.section) != (vals['topic'], vals['section']):     # köhnə test faylı seçimi yeni mövzuya keçmir
+                db.execute(delete(LessonBankLink).where(LessonBankLink.plan_lesson_id == pl.id))
             for k, v in vals.items():
                 setattr(pl, k, v)
         else:

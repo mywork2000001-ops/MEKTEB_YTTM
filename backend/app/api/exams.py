@@ -265,6 +265,7 @@ def semester(ta_id: int, sem: int, user: User = Depends(staff), db: Session = De
 # ---------------------------------------------------------------- kağız variantları (docs/ksq-bsq-kagiz-promtu.md)
 def _range_lessons(db: Session, ta, e: Exam) -> list:
     """İmtahanın aralığındakı plan dərsləri (mövzu təkrarlanmır) – _range_topics ilə eyni qayda."""
+    from ..bank.match import derived                      # zəif tempin məşq/təkrar dərsləri ayrıca mövzu deyil
     lessons = [pl for pl in plan_ctx(db, ta).lessons if pl.semester == e.semester]
     lessons.sort(key=lambda pl: pl.seq)
     me = next((pl for pl in lessons if pl.assessment_type == e.kind and pl.exam_no == e.no), None)
@@ -272,7 +273,7 @@ def _range_lessons(db: Session, ta, e: Exam) -> list:
     start = max((pl.seq for pl in lessons if pl.assessment_type in ('KSQ', 'BSQ') and pl.seq < end), default=0) if e.kind == 'KSQ' else 0
     out, seen = [], set()
     for pl in lessons:
-        if start < pl.seq < end and pl.assessment_type not in ('KSQ', 'BSQ') and pl.topic and pl.topic not in seen:
+        if start < pl.seq < end and pl.assessment_type not in ('KSQ', 'BSQ') and pl.topic and pl.topic not in seen and not derived(pl.topic):
             seen.add(pl.topic)
             out.append(pl)
     return out
@@ -310,6 +311,7 @@ def _source(db: Session, ta) -> str:
 
 def _range_topics(db: Session, ta, e: Exam) -> list[tuple[str, str | None]]:
     """KSQ: əvvəlki KSQ/BSQ-dan bu imtahana qədər keçilmiş dərslərin mövzuları; BSQ: yarımilin bütün mövzuları (təkrarsız, ardıcıl)."""
+    from ..bank.match import derived                      # zəif tempin məşq/təkrar dərsləri ayrıca mövzu deyil
     lessons = [pl for pl in plan_ctx(db, ta).lessons if pl.semester == e.semester]
     lessons.sort(key=lambda pl: pl.seq)
     me = next((pl for pl in lessons if pl.assessment_type == e.kind and pl.exam_no == e.no), None)
@@ -319,7 +321,7 @@ def _range_topics(db: Session, ta, e: Exam) -> list[tuple[str, str | None]]:
         start = max((pl.seq for pl in lessons if pl.assessment_type in ('KSQ', 'BSQ') and pl.seq < end), default=0)
     out, seen = [], set()
     for pl in lessons:
-        if start < pl.seq < end and pl.assessment_type not in ('KSQ', 'BSQ') and pl.topic and pl.topic not in seen:
+        if start < pl.seq < end and pl.assessment_type not in ('KSQ', 'BSQ') and pl.topic and pl.topic not in seen and not derived(pl.topic):
             seen.add(pl.topic)
             out.append((pl.topic, pl.section))
     return out
