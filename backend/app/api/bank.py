@@ -12,7 +12,7 @@ from ..bank.sync import run_sync
 from ..config import settings
 from ..db import SessionLocal, get_db
 from ..deps import admin_only, staff
-from ..models import BankFile, BankQuestion, BankSource, BankSync, User
+from ..models import BankFile, BankQuestion, BankSource, BankSync, ExamAppeal, User
 from .common import audit
 
 router = APIRouter(prefix='/api/bank', tags=['bank'])
@@ -135,21 +135,45 @@ def patch_file(file_id: int, body: FilePatch, db: Session = Depends(get_db), use
 
 @router.get('/questions')
 def questions(file_id: int | None = None, source: str | None = None, q: str | None = None,
-              kind: str | None = Query(None, pattern='^(mcq|open)$'), offset: int = 0,
-              limit: int = Query(50, le=200), db: Session = Depends(get_db), _: User = Depends(staff)):
-    st = (select(BankQuestion, BankFile).join(BankFile).join(BankSource, BankSource.key == BankFile.source_key)
-          .where(BankQuestion.active.is_(True), BankSource.enabled.is_(True)))
+              kind: str | None = Query(None, pattern='^(mcq|open)$'), offset: int = 0, id: int | None = None,
+              review: bool = False, limit: int = Query(50, le=200), db: Session = Depends(get_db), _: User = Depends(staff)):
+    st = select(BankQuestion, BankFile).join(BankFile)
+    if id:                                   # apelyasiya paneli: konkret sual (aktivlik/mənbə süzgəci yoxdur)
+        st = st.where(BankQuestion.id == id)
+    else:
+        st = (st.join(BankSource, BankSource.key == BankFile.source_key).where(BankQuestion.active.is_(True), BankSource.enabled.is_(True)))
     if file_id:
         st = st.where(BankQuestion.file_id == file_id)
     if source:
         st = st.where(BankFile.source_key == source)
     if kind:
         st = st.where(BankQuestion.kind == kind)
+    if review:
+        st = st.where(BankQuestion.needs_review.is_(True))
     if q:
         st = st.where(BankQuestion.text['az'].as_string().ilike(f'%{q}%'))
     total = db.scalar(select(func.count()).select_from(st.subquery()))
-    rows = db.execute(st.order_by(BankFile.id, BankQuestion.n).offset(offset).limit(limit))
+    rows = db.execute(st.order_by(BankFile.id, BankQuestion.n).offset(offset).limit(limit)).all()
+    notes: dict[int, str] = {}               # yoxlanmalı sualın səbəbi: ən son qəbul edilmiş apelyasiyanın şərhi
+    ids = [x.id for x, _f in rows if x.needs_review]
+    if ids:
+        for a in db.scalars(select(ExamAppeal).where(ExamAppeal.bank_id.in_(ids), ExamAppeal.status == 'accepted')
+                            .order_by(ExamAppeal.decided_at.asc(), ExamAppeal.id.asc())):
+            notes[a.bank_id] = (a.teacher_reply or a.reason or '').strip()
     return {'total': total, 'items': [{
         'id': x.id, 'source': f.source_key, 'lesson': f.label, 'n': x.n, 'kind': x.kind, 'text': x.text,
         'options': x.options, 'correct': x.correct, 'answer': x.answer, 'explanation': x.explanation,
-        'image': x.image} for x, f in rows]}
+        'image': x.image, 'needs_review': x.needs_review, 'review_note': notes.get(x.id) or None} for x, f in rows]}
+
+
+@router.post('/questions/{qid}/reviewed')
+def mark_reviewed(qid: int, db: Session = Depends(get_db), user: User = Depends(admin_only)):
+    """Admin: «yoxlanmalı» işarəsini götürür (bankı özü düzəldikdən sonra)."""
+    bq = db.get(BankQuestion, qid)
+    if not bq:
+        raise HTTPException(404, 'Sual tapılmadı')
+    was = bq.needs_review
+    bq.needs_review = False
+    audit(db, user, 'update', 'bank_question', bq.id, needs_review=False, was=was)
+    db.commit()
+    return {'id': bq.id, 'needs_review': False}
