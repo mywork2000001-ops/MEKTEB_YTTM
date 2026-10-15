@@ -860,6 +860,17 @@ const D: Record<string, [string, string]> = {
   "Jurnala": ["To journal", "В журнал"],
   "Ən yüksək": ["Highest", "Наивысший"],
   "Əl ilə": ["Manual", "Вручную"],
+  // Şagirdə cavab kartı (15.10.2026)
+  "Nəticələri geri al": ["Withdraw results", "Отозвать результаты"],
+  "Şagirdlər öz cavab kartını (sual, cavab, düz cavab, bal) görəcək. Göndərilsin?": ["Students will see their own answer card (question, answer, correct answer, score). Send?", "Ученики увидят свой бланк ответов (вопрос, ответ, верный ответ, балл). Отправить?"],
+  "Nəticələri şagirdlərə göndər": ["Send results to students", "Отправить результаты ученикам"],
+  "Şagirdlər görür": ["Visible to students", "Ученики видят"],
+  "Cavab kartlarını çap et": ["Print answer cards", "Печатать бланки ответов"],
+  "Cavab kartı olan şagird yoxdur": ["No student has an answer card", "Нет учеников с бланком ответов"],
+  "variant": ["variant", "вариант"],
+  "Cavabın": ["Answer", "Ответ"],
+  "Cavab kartı": ["Answer card", "Бланк ответов"],
+  "Sənin cavabın": ["Your answer", "Твой ответ"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

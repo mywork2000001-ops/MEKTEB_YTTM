@@ -444,6 +444,8 @@ class Exam(Base):
     extra_of: Mapped[int | None] = mapped_column(ForeignKey('exams.id', ondelete='SET NULL'))
     extra_seq: Mapped[int] = mapped_column(Integer, default=0, server_default='0')
     extra_students: Mapped[list | None] = mapped_column(JSON)
+    # müəllim «nəticəni şagirdlərə göstər» dedikdən sonra şagird öz cavab kartını görür (variant sualları əvvəl heç vaxt)
+    results_published_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (UniqueConstraint('assignment_id', 'kind', 'semester', 'no', 'extra_seq'),)
 
 

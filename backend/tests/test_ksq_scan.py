@@ -720,6 +720,10 @@ def test_student_sees_own_card(world, monkeypatch):
     other = next(sc for sid, sc in mine.items() if sid != s0['id'])
     c = student_client(s0['portal_code'], s0['initial_pin'])
     ex = c.get('/api/portal/results').json()['subjects'][0]['exams']
+    pre = next(x['card'] for x in ex if x['card'])                       # nəşrdən əvvəl: düz cavab və ✓/✗ gizlidir
+    assert all(r['key'] == '' and r['ok'] is None for r in pre['rows']) and pre['points'] is None
+    assert admin.put(f'/api/exams/{ta}/{e["id"]}/publish', json={'published': True}).status_code == 200
+    ex = c.get('/api/portal/results').json()['subjects'][0]['exams']
     card = next(x['card'] for x in ex if x['card'])
     code = next(sh['code'] for sh in pr['sheets'] if sh['student_id'] == s0['id']) if 'student_id' in pr['sheets'][0] else None
     assert card['image'] is True and card['scan_id'] == mine[s0['id']].id and len(card['rows']) == len(mine[s0['id']].marks)

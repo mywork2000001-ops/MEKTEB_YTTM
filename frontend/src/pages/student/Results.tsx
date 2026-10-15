@@ -3,7 +3,7 @@ import { tt } from '../../i18n'
 import { ml } from '../../i18n'
 import { get } from '../../api'
 import { useT } from '../../i18n'
-import { ErrorBox, fmt, fmtDate, gradeTone, Loading, Pill, Stat, Top, useLoad } from '../../ui'
+import { Drawer, ErrorBox, fmt, fmtDate, gradeTone, Loading, Pill, Stat, Top, useLoad } from '../../ui'
 import { MathText } from '../../MathText'
 import { useAuth } from '../../auth'
 import { printMistakes, printResults } from './studentPrint'
@@ -55,7 +55,8 @@ export default function Results() {
                 <tr key={j}><td>{e.kind}-{e.no} <span className="small muted">({tt('{n}-ci yarımil', { n: e.semester })})</span>
                   {e.items?.length > 0 && <div className="row" style={{ gap: 3, marginTop: 4 }}>{e.items.map((it: any) => <span key={it.n} className="small" title={it.standard ? tt('standart') + ' ' + it.standard : ''} style={{ padding: '1px 5px', borderRadius: 4, background: it.ok ? 'var(--ok-soft)' : 'var(--bad-soft)', color: it.ok ? 'var(--ok)' : 'var(--bad)' }}>{it.n}{it.ok ? '✓' : '✗'}</span>)}</div>}
                   {e.weak_standards?.length > 0 && <div className="small" style={{ marginTop: 4 }}>{tt('Təkrarla – standart')}: <b>{e.weak_standards.join(', ')}</b></div>}
-                  {e.card && <ExamCard c={e.card} />}</td>
+                  {e.card && <ExamCard c={e.card} />}
+                  {e.published && e.exam_id && <AnswerCard examId={e.exam_id} />}</td>
                   <td>{fmtDate(e.date)}{e.taken_on && <div className="small muted">{tt('sonradan')}: {fmtDate(e.taken_on)}</div>}</td>
                   <td className="r num">{e.absent ? tt('yox idi') : e.points != null ? `${fmt(e.points, 1)} / ${e.max_points}` : '—'}</td><td className="r num">{fmt(e.pct)}</td>
                   <td className="r">{e.grade ? <Pill tone={gradeTone(e.grade)}>{e.grade}</Pill> : '—'}</td></tr>))}</tbody></table></div>)}
@@ -122,7 +123,7 @@ export default function Results() {
   )
 }
 
-type CardRow = { slot: number; kind: string; read: string; key: string; ok: boolean; void: boolean }
+type CardRow = { slot: number; kind: string; read: string; key: string; ok: boolean | null; void: boolean }
 /** Şagirdin öz cavab kartı: şəkil + sistemin oxuduğu cavab + sistemdəki düz cavab (docs/kart-skanlarini-silme-promtu.md) –
  *  şagird oxunuşun dəqiqliyini özü yoxlayır, fərq görsə müəllimə deyir. */
 function ExamCard({ c }: { c: { scan_id: number; image: boolean; online: boolean; points: number | null; rows: CardRow[] } }) {
@@ -141,10 +142,57 @@ function ExamCard({ c }: { c: { scan_id: number; image: boolean; online: boolean
             <tr key={r.slot} style={r.void ? { opacity: .55 } : undefined}>
               <td className="r num">{r.slot}</td>
               <td className="num">{r.read || <span className="muted">{tt('boş')}</span>}</td>
-              <td className="num">{r.key}</td>
-              <td>{r.void ? <span className="small muted">{tt('sayılmır')}</span> : r.ok ? <span style={{ color: 'var(--ok)' }}>✓</span> : <span style={{ color: 'var(--bad)' }}>✗</span>}</td>
+              <td className="num">{r.key || '—'}</td>
+              <td>{r.void ? <span className="small muted">{tt('sayılmır')}</span> : r.ok == null ? '' : r.ok ? <span style={{ color: 'var(--ok)' }}>✓</span> : <span style={{ color: 'var(--bad)' }}>✗</span>}</td>
             </tr>))}</tbody></table></div>
       </div>}
     </div>
+  )
+}
+
+/** Nəticə göndərildikdən sonra: hər sual – öz cavabın, düz cavab, bal (onlayn və yazılı ayrıca) və jurnala gedən yekun. */
+function AnswerCard({ examId }: { examId: number }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button type="button" className="btn sm primary" onClick={() => setOpen(true)}>📋 {tt('Cavab kartı')}</button>
+      {open && <AnswerCardView examId={examId} onClose={() => setOpen(false)} />}
+    </div>
+  )
+}
+
+function AnswerCardView({ examId, onClose }: { examId: number; onClose: () => void }) {
+  const [c, err] = useLoad<any>(() => get(`/api/portal/exams/${examId}/card`), [examId])
+  const srcName: Record<string, string> = { online: tt('Onlayn'), paper: tt('Yazılı') }
+  return (
+    <Drawer title={c ? `${c.exam.kind}-${c.exam.no}${c.exam.extra_seq ? ' · ' + tt('əlavə {n}', { n: c.exam.extra_seq }) : ''} · ${tt('cavab kartı')}` : tt('Cavab kartı')} onClose={onClose}>
+      <ErrorBox error={err} />
+      {!c && !err && <Loading />}
+      {c && <>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+          <Pill tone={gradeTone(c.final.grade)}>{tt('Jurnala')}: {c.final.points != null ? fmt(c.final.points, 1) : '—'}{c.final.grade ? ` → ${c.final.grade}` : ''}</Pill>
+          {Object.entries(c.sources).map(([k, s]: [string, any]) => <span key={k} className="small">{srcName[k] || k}: <b>{fmt(s.points, 1)}</b></span>)}
+        </div>
+        {Object.entries(c.sources).map(([k, s]: [string, any]) => (
+          <section key={k} style={{ marginBottom: 14 }}>
+            {Object.keys(c.sources).length > 1 && <h3 style={{ margin: '8px 0 4px' }}>{srcName[k] || k}</h3>}
+            <div className="tbl-wrap"><table style={{ minWidth: 0 }}>
+              <thead><tr><th className="r">№</th><th>{tt('Sual')}</th><th>{tt('Sənin cavabın')}</th><th>{tt('Düz cavab')}</th><th /><th className="r">{tt('Bal')}</th></tr></thead>
+              <tbody>{c.questions.map((q: any) => {
+                const a = s.answers[q.slot]
+                return (
+                  <tr key={q.slot} style={a?.void ? { opacity: .55 } : undefined}>
+                    <td className="r num">{q.slot}</td>
+                    <td><MathText text={String(ml(q.text) ?? '')} />
+                      {q.explanation && <div className="small muted" style={{ marginTop: 3 }}>{tt('İzah')}: <MathText text={String(ml(q.explanation) ?? '')} /></div>}</td>
+                    <td className="num">{a?.value || <span className="muted">{tt('boş')}</span>}</td>
+                    <td className="num">{q.key}</td>
+                    <td>{a?.void ? <span className="small muted">{tt('sayılmır')}</span> : a?.ok ? <span style={{ color: 'var(--ok)' }}>✓</span> : <span style={{ color: 'var(--bad)' }}>✗</span>}</td>
+                    <td className="r num">{a?.void ? '' : `${fmt(a?.earned ?? 0, 1)} / ${q.points}`}</td>
+                  </tr>)
+              })}</tbody></table></div>
+          </section>))}
+      </>}
+    </Drawer>
   )
 }

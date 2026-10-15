@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import staff
 from ..domain.rules import grade_from_points, semester_grade
-from ..models import BankQuestion, Exam, ExamScan, ExamScore, ExamVariant, OnlineTask, TeachingAssignment, User
+from ..models import BankQuestion, Exam, ExamScan, ExamScore, ExamVariant, OnlineTask, SchoolClass, TeachingAssignment, User, now
 from ..exam_logic import exam_label, exam_roster, final_grades, recompute_score, scan_of
 from ..services import own_assignment, plan_ctx, roster, today
 from .common import audit, get_or_404
@@ -53,7 +53,8 @@ class ExamIn(BaseModel):
 def exam_out(e: Exam) -> dict:
     return {'id': e.id, 'kind': e.kind, 'no': e.no, 'semester': e.semester, 'date': e.date,
             'max_points': e.max_points, 'items': e.items, 'title': e.title,
-            'extra_of': e.extra_of, 'extra_seq': e.extra_seq or 0, 'extra_students': e.extra_students, 'label': exam_label(e)}
+            'extra_of': e.extra_of, 'extra_seq': e.extra_seq or 0, 'extra_students': e.extra_students, 'label': exam_label(e),
+            'results_published_at': e.results_published_at}
 
 
 def _exam(db: Session, ta_id: int, exam_id: int) -> Exam:
@@ -260,6 +261,36 @@ def _sources(e: Exam, scans: dict, sid: int) -> dict:
     a, b = out['online'], out['paper']
     out['differs'] = bool(a and b and abs(a['grade'] - b['grade']) >= 1)
     return out
+
+
+class PublishIn(BaseModel):
+    published: bool = True
+
+
+@router.put('/{ta_id}/{exam_id}/publish')
+def publish_results(ta_id: int, exam_id: int, body: PublishIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«📤 Nəticələri şagirdlərə göndər» / geri al: şagird yalnız bundan sonra öz cavab kartını (sual, cavab, düz cavab, bal) görür."""
+    own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    e.results_published_at = now() if body.published else None
+    audit(db, user, 'update', 'exam_publish', e.id, published=body.published)
+    db.commit()
+    return exam_out(e)
+
+
+@router.get('/{ta_id}/{exam_id}/cards')
+def exam_cards_print(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«🖨 Cavab kartlarını çap et»: hər şagird üçün cavab kartı (ad, variant, sual cədvəli, bal, qiymət) – müəllim üçün, nəşrdən asılı deyil."""
+    from ..exam_cards import exam_card
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    out = []
+    for s in exam_roster(db, ta, e):
+        c = exam_card(db, e, s.id)
+        if c is not None and (c['sources'] or c['final']['points'] is not None):
+            out.append({'student_id': s.id, 'full_name': s.full_name, **c})
+    cls = db.get(SchoolClass, ta.class_id)
+    return {'exam': exam_out(e), 'class_name': cls.name if cls else '', 'subject': ta.subject, 'cards': out}
 
 
 class ChoiceIn(BaseModel):

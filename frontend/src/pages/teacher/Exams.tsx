@@ -6,6 +6,7 @@ import { head, printDoc, SIGN, table } from '../../print'
 import { tt } from '../../i18n'
 import { printKey, printSheets, type KsqPrint } from '../../ksqPrint'
 import ScanCamera, { aiErrorText } from '../../scanCamera'
+import { printCards } from '../../examCardPrint'
 
 type Exam = { id: number; kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; max_points: number; items: { n: number; points: number; standard?: string }[] | null; extra_of?: number | null; extra_seq?: number; extra_students?: number[] | null }
 type Planned = { kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; topic: string; created: boolean }
@@ -204,6 +205,13 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
             <div className="kpi"><b>{d.summary.written}</b><span>yazıb</span></div>
             <div className="kpi"><b>{fmt(d.summary.avg_pct)}%</b><span>orta</span></div>
             <div className="kpi"><b>{[5, 4, 3, 2].map(g => d.summary.distribution[g]).join(' / ')}</b><span>5 / 4 / 3 / 2</span></div>
+          </div>
+          <div className="row" style={{ marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
+            {d.exam.results_published_at
+              ? <AsyncBtn className="btn sm" onClick={async () => { await put(`/api/exams/${ta.id}/${examId}/publish`, { published: false }); reload() }}>↩ {tt('Nəticələri geri al')}</AsyncBtn>
+              : <AsyncBtn className="btn sm primary" onClick={async () => { if (!window.confirm(tt('Şagirdlər öz cavab kartını (sual, cavab, düz cavab, bal) görəcək. Göndərilsin?'))) return; await put(`/api/exams/${ta.id}/${examId}/publish`, { published: true }); reload() }}>📤 {tt('Nəticələri şagirdlərə göndər')}</AsyncBtn>}
+            {d.exam.results_published_at && <Pill tone="ok">{tt('Şagirdlər görür')}</Pill>}
+            <AsyncBtn className="btn sm" onClick={async () => { const r = await get<any>(`/api/exams/${ta.id}/${examId}/cards`); if (!r.cards.length) { toast(tt('Cavab kartı olan şagird yoxdur')); return } printCards(exLabel(r.exam), r.class_name, r.cards) }}>🖨 {tt('Cavab kartlarını çap et')}</AsyncBtn>
           </div>
           {d.rows.some((r: any) => r.online || r.paper) && <div className="row" style={{ marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
             <AsyncBtn className="btn sm" onClick={async () => { await put(`/api/exams/${ta.id}/${examId}/choice`, { chosen: 'max' }); reload() }}

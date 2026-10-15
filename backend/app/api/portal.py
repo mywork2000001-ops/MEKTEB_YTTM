@@ -490,10 +490,11 @@ def _card(db: Session, e: Exam, sid: int) -> dict | None:
     read = {int(r['slot']): r.get('value') for r in sc.reading or [] if r.get('slot') is not None}
     void = {it['n'] for it in (e.items or []) if it.get('annulled')} | set(sc.lost or [])
     qs = sorted(v.questions, key=lambda q: q['slot'])
-    rows = [{'slot': q['slot'], 'kind': q['kind'], 'read': read.get(q['slot']) or '', 'key': key_value(q),
-             'ok': bool(m), 'void': q['slot'] in void, 'points': q.get('points')} for q, m in zip(qs, sc.marks or [0] * len(qs))]
-    return {'scan_id': sc.id, 'image': bool(sc.crop_key), 'online': sc.read_by == 'online', 'points': sc.points,
-            'at': sc.updated_at, 'rows': rows}
+    pub = e.results_published_at is not None             # nəşrdən əvvəl: yalnız şəkil və oxunuş (düz cavab, ✓/✗ və bal gizlidir)
+    rows = [{'slot': q['slot'], 'kind': q['kind'], 'read': read.get(q['slot']) or '', 'key': key_value(q) if pub else '',
+             'ok': bool(m) if pub else None, 'void': q['slot'] in void, 'points': q.get('points')} for q, m in zip(qs, sc.marks or [0] * len(qs))]
+    return {'scan_id': sc.id, 'image': bool(sc.crop_key), 'online': sc.read_by == 'online', 'points': sc.points if pub else None,
+            'at': sc.updated_at, 'rows': rows, 'published': pub}
 
 
 @router.get('/exam-card/{scan_id}/image')
@@ -574,6 +575,35 @@ def join_extra(sid: int, user: User = Depends(student_only), db: Session = Depen
     return join(db, me_student(db, user), sid)
 
 
+def _L(user: User, az: str, ru: str, en: str) -> str:
+    """Şagirdə görünən server mesajı istifadəçinin dilində (rus dili promtu)."""
+    return {'ru': ru, 'en': en}.get(user.language, az)
+
+
+def my_exam(db: Session, user: User, exam_id: int) -> tuple[Student, Exam]:
+    """Şagirdin ÖZ imtahanı: başqa sinfin və ya əlavə imtahanda seçilməyən şagirdin imtahanı – 403."""
+    s = me_student(db, user)
+    e = db.get(Exam, exam_id)
+    if e is None:
+        raise HTTPException(404, _L(user, 'İmtahan tapılmadı', 'Работа не найдена', 'Exam not found'))
+    if e.assignment_id not in {ta.id for ta, _ in my_assignments(db, s)} or (e.extra_students is not None and s.id not in e.extra_students):
+        raise HTTPException(403, _L(user, 'Bu imtahan sizin deyil', 'Эта работа не ваша', 'This exam is not yours'))
+    return s, e
+
+
+@router.get('/exams/{exam_id}/card')
+def exam_card_view(exam_id: int, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Şagirdin öz cavab kartı: yalnız müəllim «nəticəni şagirdlərə göstər» etdikdən sonra; variant sualları əvvəl heç vaxt göstərilmir."""
+    from ..exam_cards import exam_card
+    s, e = my_exam(db, user, exam_id)
+    if e.results_published_at is None:
+        raise HTTPException(403, _L(user, 'Nəticələr hələ şagirdlərə göstərilməyib', 'Результаты ещё не опубликованы', 'Results have not been published yet'))
+    c = exam_card(db, e, s.id)
+    if c is None or not c['sources']:                 # yazmayan şagirdə sual və düz cavablar göstərilmir
+        raise HTTPException(404, _L(user, 'Cavab kartı yoxdur', 'Бланка ответов нет', 'No answer card'))
+    return c
+
+
 def _sem_args(exams: list, gmap: dict, sem: int) -> tuple:
     """Yarımil qiyməti üçün (KSQ qiymətləri, BSQ) – əlavə imtahan ayrıca sayılmır (exam_logic.final_grades)."""
     from ..exam_logic import final_grades
@@ -598,7 +628,8 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
                      for it, m in zip(e.items or [], (sc.item_marks or []) if g else [])]
             weak = sorted({i['standard'] for i in items if i['standard'] and not i['ok']})
             gmap[e.id] = g
-            ex_rows.append({'kind': e.kind, 'no': e.no, 'semester': e.semester, 'date': e.date, 'extra_seq': e.extra_seq or 0,
+            ex_rows.append({'exam_id': e.id, 'published': e.results_published_at is not None,
+                            'kind': e.kind, 'no': e.no, 'semester': e.semester, 'date': e.date, 'extra_seq': e.extra_seq or 0,
                             'points': sc.points if sc else None, 'max_points': e.max_points,
                             'pct': round(sc.points * 100 / e.max_points, 1) if g else None, 'grade': g,
                             'absent': bool(sc and sc.absent), 'taken_on': sc.taken_on if sc and g else None,
