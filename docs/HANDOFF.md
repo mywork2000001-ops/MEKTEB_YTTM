@@ -10,3 +10,4 @@ Qaydalar: QWEN.md (Qwen), CLAUDE.md (hər ikisi). Eyni faylı eyni vaxtda iki ag
 [2026-10-14 21:20] CLAUDE — bitirdi: Qwen Code quraşdırıldı, QWEN.md + bu jurnal yaradıldı, Qwen worktree `..\mk-qwen`; budaq: main
 [2026-10-14 23:00] CLAUDE — bitirdi: agent sistemi (docs/agent-sistemi-promtu.md, docs/tasks/_shablon.md, claude-ds pro|flash|gemini|check|qwen). Pro limiti həftə sonuna qədər qənaətlə – yeni işlər kartla icraçılara.
 [2026-10-14 21:20] CLAUDE — açıq işlər (yaddaşdan): Programs.tsx hələ yalnız AZ (EN/RU lazımdır); köçürmə şübhəsi (retake) canlı sınanmayıb; XI peşə KSQ-1 (P013) qərar gözləyir.
+[2026-10-15] CLAUDE — bitirdi: əlavə KSQ/BSQ, onlayn+yazılı nəticə yanaşı (seçim), cavab kartı, bank ünvanı + apelyasiya (docs/tasks/ksq-bsq-elave-ve-iki-netice.md); main dcf72d1, Render deploy success; açıq: şagird vərəqində altmövzu adı, bankda needs_review nişanı, bank sualına keçid
