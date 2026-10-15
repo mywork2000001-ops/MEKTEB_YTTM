@@ -929,7 +929,7 @@ def print_variants(ta_id: int, exam_id: int, students: str | None = None, user: 
                        'qr': qr_payload(e.id, v.student_id, f'{v.code}~{variant_rev(v.questions)}'),   # kart variantın versiyasına bağlı
                        'questions': [{'slot': q['slot'], 'kind': q['kind'], 'points': q['points'], 'text': pick_lang(q.get('text'), lang),
                                       'options': [pick_lang(o, lang) for o in q.get('options') or []] if q['kind'] == 'mcq' else None,
-                                      'image': q.get('image'), 'topic': q.get('topic_actual') or q.get('topic')} for q in qs]})
+                                      'image': q.get('image')} for q in qs]})   # altmövzu şagird vərəqində yoxdur (açarda var)
         key.append({'code': v.code, 'full_name': st.full_name if st else '—',      # bank ünvanı (ref) yalnız müəllim açarında – şagird vərəqində yox
                     'answers': [{'slot': q['slot'], 'value': key_value(q), 'points': q['points'], 'topic': q.get('topic_actual') or q.get('topic'),
                                  'ref': (ref_of(db, q) or {}).get('text')} for q in qs]})

@@ -60,11 +60,12 @@ def test_ref_frozen_teacher_only_and_hidden_from_students(world, monkeypatch):
     # çap: ref yalnız müəllim açarında; şagird vərəqində yoxdur
     pr2 = admin.get(f'/api/exams/{ta}/{e["id"]}/variants/print').json()
     assert 'ref' not in json.dumps(pr2['sheets']) and '№' not in json.dumps(pr2['sheets'])
+    assert all('topic' not in q for sh in pr2['sheets'] for q in sh['questions'])   # altmövzu şagird vərəqində yoxdur
     assert all(a_['ref'] for k in pr2['key'] for a_ in k['answers'])
     # şagirdə gedən onlayn test: ref yoxdur
     from app.api.ksq_online import _questions
     with S() as db:
-        assert all('ref' not in q for q in _questions(db.get(ExamVariant, (e['id'], a))))
+        assert all('ref' not in q and 'topic' not in q for q in _questions(db.get(ExamVariant, (e['id'], a))))
     assert admin.post(f'/api/ksq-online/{ta}/{e["id"]}', json={'student_ids': [a, b, c]}).status_code == 200
     with S() as db:
         from app.models import OnlineTask

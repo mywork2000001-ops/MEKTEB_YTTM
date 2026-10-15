@@ -6,7 +6,7 @@ import { esc, fmtD, mathHtml } from './print'
 import { toast } from './ui'
 import { tt } from './i18n'
 
-export type KsqQ = { slot: number; kind: 'mcq' | 'open'; points: number; text: string; options: string[] | null; image?: string | null; topic?: string | null }
+export type KsqQ = { slot: number; kind: 'mcq' | 'open'; points: number; text: string; options: string[] | null; image?: string | null }
 export type KsqSheet = { student_id: number; full_name: string; code: string; lang: string; qr: string; questions: KsqQ[] }
 export type KsqPrint = {
   exam: { id: number; kind: string; no: number; semester: number; date: string; class_name: string; subject: string; school: string; teacher: string }
@@ -45,7 +45,6 @@ body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#000;-webkit-print-co
 .qs{flex:1 1 0;min-height:0;column-count:2;column-gap:6mm;column-fill:balance;column-rule:.5px solid #bbb;font-size:10pt;line-height:1.28;overflow:hidden}
 .q{break-inside:avoid;margin:0 0 2.2mm}
 .q .n{display:inline-flex;align-items:center;justify-content:center;min-width:5.2mm;height:5.2mm;border-radius:50%;background:#1f2937;color:#fff;font-weight:700;font-size:.8em;margin-right:1.2mm;padding:0 .8mm}
-.q .tp{display:block;font-size:.7em;color:#6b7280;margin:.3mm 0 0 6.4mm;text-transform:uppercase;letter-spacing:.03em}
 .q .p{float:right;font-size:.8em;border:1px solid #000;border-radius:2mm;padding:0 1.2mm;margin-left:1.5mm}
 .q ol{margin:.6mm 0 0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:.4mm 4mm}
 .q img{max-width:100%;max-height:30mm;display:block;margin:1mm 0}
@@ -74,7 +73,7 @@ function question(q: KsqQ): string {
   const opts = q.kind === 'mcq' && q.options?.length
     ? `<ol>${q.options.map((o, i) => `<li><b>${L[i]})</b> ${mathHtml(o)}</li>`).join('')}</ol>` : ''
   const pts = String(q.points).replace('.', ',')
-  return `<div class="q"><span class="p">${pts} b</span><span class="n">${q.slot}</span>${mathHtml(q.text)}${q.image ? `<img src="${esc(q.image)}" alt="">` : ''}${opts}${q.topic ? `<span class="tp">${esc(q.topic)}</span>` : ''}</div>`
+  return `<div class="q"><span class="p">${pts} b</span><span class="n">${q.slot}</span>${mathHtml(q.text)}${q.image ? `<img src="${esc(q.image)}" alt="">` : ''}${opts}</div>`
 }
 
 function card(s: KsqSheet, ex: KsqPrint['exam'], qr: string): string {
