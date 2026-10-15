@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import staff
 from ..models import Exam, ExamScan, ExamScore, ExamVariant, OnlineTask, TaskAttempt, User, now
-from ..services import own_assignment, roster
+from ..exam_logic import exam_roster
+from ..services import own_assignment
 from .common import audit, get_or_404
 from .tasks import aware
 
@@ -97,7 +98,7 @@ def record(db: Session, t: OnlineTask, a: TaskAttempt) -> None:
 def status(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     from .tasks import expire_due
     ta, e = _exam(db, user, ta_id, exam_id)
-    names = {s.id: s.full_name for s in roster(db, ta)}
+    names = {s.id: s.full_name for s in exam_roster(db, ta, e)}
     tasks = _tasks(db, e)
     for t in {t.id: t for t in tasks.values()}.values():
         expire_due(db, t)
@@ -133,7 +134,7 @@ class SendIn(BaseModel):
 @router.post('/{ta_id}/{exam_id}')
 def send(ta_id: int, exam_id: int, body: SendIn, user: User = Depends(staff), db: Session = Depends(get_db)):
     ta, e = _exam(db, user, ta_id, exam_id)
-    names = {s.id: s.full_name for s in roster(db, ta)}
+    names = {s.id: s.full_name for s in exam_roster(db, ta, e)}
     variants = {v.student_id: v for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)) if v.student_id in names}
     if not variants:
         raise HTTPException(409, 'Əvvəl variantları yaradın (1-ci addım)')

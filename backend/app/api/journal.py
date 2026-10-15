@@ -193,7 +193,7 @@ def grid(ta_id: int, month: str | None = None, user: User = Depends(staff), db: 
         col = ex_first.get(ex.date)
         for sc in db.scalars(select(ExamScore).where(ExamScore.exam_id == ex.id)):
             if col and sc.points is not None and not sc.absent:
-                ex_cell[(col, sc.student_id)] = f'{ex.kind}-{ex.no}: {grade_from_points(sc.points, ex.max_points)}'
+                ex_cell[(col, sc.student_id)] = f'{ex.kind}-{ex.no}{" əlavə " + str(ex.extra_seq) if ex.extra_seq else ""}: {grade_from_points(sc.points, ex.max_points)}'
     from .exams_online import class_exams
     exs = class_exams(db, ta, a, b)                    # sınaq – keçirildiyi günün ayrıca sütunu (ortaya daxil deyil)
     order = sorted([(k[0], 0, k[1], k) for k in keys] + [(x['date'], 1, i, x) for i, x in enumerate(exs)],

@@ -837,6 +837,19 @@ const D: Record<string, [string, string]> = {
   "Köçürmədən şübhələnirsinizsə: aşağıda şagirdin adına toxunun → «🚩 Köçürmə şübhəsi – yeni variant».": ["If you suspect cheating: tap the student's name below → «🚩 Suspected cheating – new variant».", "Если подозреваете списывание: нажмите на имя ученика ниже → «🚩 Подозрение на списывание – новый вариант»."],
   "kart": ["cards", "бланков"],
   "{n} token": ["{n} tokens", "токенов: {n}"],
+  // Əlavə KSQ/BSQ (15.10.2026)
+  "əlavə {n}": ["extra {n}", "дополнительная {n}"],
+  "bütün sinif": ["whole class", "весь класс"],
+  "Əlavə {kind}": ["Extra {kind}", "Дополнительная {kind}"],
+  "Buraxan, zəif yazan və ya qiymətini yaxşılaşdırmaq istəyən şagirdlər üçün": ["For students who missed it, did poorly or want to improve their grade", "Для учеников, которые пропустили, написали слабо или хотят улучшить оценку"],
+  "Ən azı bir şagird seçin": ["Select at least one student", "Выберите хотя бы одного ученика"],
+  "Əlavə imtahan hazırlandı": ["Extra exam created", "Дополнительная работа создана"],
+  "əsas imtahandan sonra": ["after the main exam", "после основной работы"],
+  "hamısı": ["all", "все"],
+  "buraxanlar": ["absent", "пропустившие"],
+  "2 alanlar": ["got 2", "получившие 2"],
+  "heç biri": ["none", "никто"],
+  "Seçilib: {n}": ["Selected: {n}", "Выбрано: {n}"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

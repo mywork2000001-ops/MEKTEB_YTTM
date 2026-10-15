@@ -572,14 +572,22 @@ def join_extra(sid: int, user: User = Depends(student_only), db: Session = Depen
     return join(db, me_student(db, user), sid)
 
 
+def _sem_args(exams: list, gmap: dict, sem: int) -> tuple:
+    """Yarımil qiyməti üçün (KSQ qiymətləri, BSQ) – əlavə imtahan ayrıca sayılmır (exam_logic.final_grades)."""
+    from ..exam_logic import final_grades
+    ksq, bsq = final_grades([x for x in exams if x.semester == sem], lambda x: gmap.get(x.id))
+    return [g for _, g in ksq if g is not None], bsq
+
+
 @router.get('/results')
 def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
     s = me_student(db, user)
     at = now()
     subjects = []
     for ta, c in my_assignments(db, s):
-        exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id).order_by(Exam.semester, Exam.date)))
-        ex_rows, per_sem = [], {1: ([], None), 2: ([], None)}
+        exams = [x for x in db.scalars(select(Exam).where(Exam.assignment_id == ta.id).order_by(Exam.semester, Exam.date))
+                 if x.extra_students is None or s.id in x.extra_students]      # əlavə imtahan – yalnız seçilən şagirdə
+        ex_rows, gmap = [], {}
         for e in exams:
             sc = db.get(ExamScore, (e.id, s.id))
             g = grade_from_points(sc.points, e.max_points) if sc and sc.points is not None and not sc.absent else None
@@ -587,17 +595,15 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
             items = [{'n': it['n'], 'points': it['points'], 'standard': it.get('standard'), 'ok': bool(m)}
                      for it, m in zip(e.items or [], (sc.item_marks or []) if g else [])]
             weak = sorted({i['standard'] for i in items if i['standard'] and not i['ok']})
-            ex_rows.append({'kind': e.kind, 'no': e.no, 'semester': e.semester, 'date': e.date,
+            gmap[e.id] = g
+            ex_rows.append({'kind': e.kind, 'no': e.no, 'semester': e.semester, 'date': e.date, 'extra_seq': e.extra_seq or 0,
                             'points': sc.points if sc else None, 'max_points': e.max_points,
                             'pct': round(sc.points * 100 / e.max_points, 1) if g else None, 'grade': g,
                             'absent': bool(sc and sc.absent), 'taken_on': sc.taken_on if sc and g else None,
                             'items': items, 'weak_standards': weak, 'card': _card(db, e, s.id)})
-            ks, bs = per_sem[e.semester]
-            if g is not None:
-                per_sem[e.semester] = (ks + [g], bs) if e.kind == 'KSQ' else (ks, g)
         subjects.append({'subject': ta.subject, 'class_name': c.name, 'teacher': _teacher(db, ta),
                          'exams': ex_rows, **_stats(db, _entries(db, ta.id), s.id),
-                         'semester_grades': {k: semester_grade(*v) for k, v in per_sem.items()}})
+                         'semester_grades': {k: semester_grade(*_sem_args(exams, gmap, k)) for k in (1, 2)}})
     task_rows, mistakes = [], []
     done = []
     for t in _my_tasks(db, s):

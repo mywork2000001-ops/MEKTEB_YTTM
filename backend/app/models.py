@@ -440,7 +440,11 @@ class Exam(Base):
     max_points: Mapped[float] = mapped_column(Float)
     items: Mapped[list | None] = mapped_column(JSON)                   # [{"n":1,"points":1,"standard":"1.2.3"}]
     title: Mapped[str | None] = mapped_column(Text)
-    __table_args__ = (UniqueConstraint('assignment_id', 'kind', 'semester', 'no'),)
+    # əlavə KSQ/BSQ: extra_of – əsas imtahanın id-si, extra_seq – 1, 2, … (əsasda 0), extra_students – yalnız seçilən şagirdlər (None – hamı)
+    extra_of: Mapped[int | None] = mapped_column(ForeignKey('exams.id', ondelete='SET NULL'))
+    extra_seq: Mapped[int] = mapped_column(Integer, default=0, server_default='0')
+    extra_students: Mapped[list | None] = mapped_column(JSON)
+    __table_args__ = (UniqueConstraint('assignment_id', 'kind', 'semester', 'no', 'extra_seq'),)
 
 
 class ExamVariant(Base):

@@ -7,13 +7,14 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import staff
 from ..domain.rules import grade_from_points, semester_grade
 from ..models import BankQuestion, Exam, ExamScore, ExamVariant, OnlineTask, TeachingAssignment, User
+from ..exam_logic import exam_label, exam_roster, final_grades
 from ..services import own_assignment, plan_ctx, roster, today
 from .common import audit, get_or_404
 
@@ -34,6 +35,8 @@ class ExamIn(BaseModel):
     max_points: float | None = Field(None, gt=0, le=1000)
     items: list[ItemIn] | None = None
     title: str | None = Field(None, max_length=3000)
+    extra_of: int | None = None                    # əlavə KSQ/BSQ: əsas imtahanın id-si
+    extra_students: list[int] | None = None        # əlavə imtahan: yalnız bu şagirdlər (None – bütün sinif)
 
     @model_validator(mode='after')
     def _max(self):
@@ -49,7 +52,8 @@ class ExamIn(BaseModel):
 
 def exam_out(e: Exam) -> dict:
     return {'id': e.id, 'kind': e.kind, 'no': e.no, 'semester': e.semester, 'date': e.date,
-            'max_points': e.max_points, 'items': e.items, 'title': e.title}
+            'max_points': e.max_points, 'items': e.items, 'title': e.title,
+            'extra_of': e.extra_of, 'extra_seq': e.extra_seq or 0, 'extra_students': e.extra_students, 'label': exam_label(e)}
 
 
 def _exam(db: Session, ta_id: int, exam_id: int) -> Exam:
@@ -63,8 +67,8 @@ def _exam(db: Session, ta_id: int, exam_id: int) -> Exam:
 def list_exams(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)
     created = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id)
-                              .order_by(Exam.semester, Exam.date, Exam.kind)))
-    have = {(e.kind, e.semester, e.no) for e in created}
+                              .order_by(Exam.semester, Exam.date, Exam.kind, Exam.extra_seq)))
+    have = {(e.kind, e.semester, e.no) for e in created if not e.extra_seq}
     planned = [{'kind': pl.assessment_type, 'no': pl.exam_no, 'semester': pl.semester, 'date': pl.date,
                 'topic': pl.topic, 'created': (pl.assessment_type, pl.semester, pl.exam_no) in have}
                for pl in plan_ctx(db, ta).lessons if pl.assessment_type in ('KSQ', 'BSQ')]
@@ -84,11 +88,25 @@ def _check_exam(db: Session, ta, body: ExamIn, exam_id: int | None = None):
     a, b = (y.start, y.sem1_end) if body.semester == 1 else (y.sem2_start, y.end)
     if not a <= body.date <= b:
         raise HTTPException(400, f'{body.semester}-ci yarımil {a:%d.%m.%Y} – {b:%d.%m.%Y}: tarix bu aralıqda olmalıdır')
+    if body.extra_students is not None:
+        if not body.extra_students:
+            raise HTTPException(400, 'Əlavə imtahan üçün ən azı bir şagird seçin')
+        if set(body.extra_students) - {s.id for s in roster(db, ta)}:
+            raise HTTPException(400, 'Seçilən şagirdlərdən biri bu sinifdə deyil')
+    if body.extra_of is not None:
+        base = db.get(Exam, body.extra_of)
+        if base is None or base.assignment_id != ta.id or base.extra_seq:
+            raise HTTPException(404, 'Əsas imtahan tapılmadı')
+        if (base.kind, base.semester, base.no) != (body.kind, body.semester, body.no):
+            raise HTTPException(400, 'Əlavə imtahan əsasla eyni növ, nömrə və yarımildə olmalıdır')
+        if body.date <= base.date:
+            raise HTTPException(400, f'Əlavə imtahanın tarixi əsas imtahandan ({base.date:%d.%m.%Y}) sonra olmalıdır')
+        return                                         # «yarımildə bir BSQ» qaydası yalnız əsas BSQ-yə aiddir
     if body.kind == 'BSQ':
         if body.no != body.semester:
             raise HTTPException(400, f'{body.semester}-ci yarımilin BSQ-si BSQ-{body.semester} olmalıdır')
         other = db.scalar(select(Exam).where(Exam.assignment_id == ta.id, Exam.kind == 'BSQ', Exam.semester == body.semester,
-                                             Exam.id != (exam_id or 0)))
+                                             Exam.extra_seq == 0, Exam.id != (exam_id or 0)))
         if other:
             raise HTTPException(409, f'{body.semester}-ci yarımildə BSQ artıq var')
 
@@ -99,15 +117,23 @@ def create_exam(ta_id: int, body: ExamIn, user: User = Depends(staff), db: Sessi
     _check_exam(db, ta, body)
     if not ta.has_summative:
         raise HTTPException(400, 'Bu qrupda KSQ/BSQ keçirilmir (bütöv sinifdə keçirilir)')
-    if db.scalar(select(Exam).where(Exam.assignment_id == ta.id, Exam.kind == body.kind,
-                                    Exam.semester == body.semester, Exam.no == body.no)):
-        raise HTTPException(409, f'{body.kind}-{body.no} ({body.semester}-ci yarımil) artıq var')
-    e = Exam(assignment_id=ta.id, kind=body.kind, no=body.no, semester=body.semester, date=body.date,
+    seq = 0
+    if body.extra_of is None:
+        if body.extra_students is not None:
+            raise HTTPException(400, 'Şagird seçimi yalnız əlavə imtahan üçündür')
+        if db.scalar(select(Exam).where(Exam.assignment_id == ta.id, Exam.kind == body.kind, Exam.extra_seq == 0,
+                                        Exam.semester == body.semester, Exam.no == body.no)):
+            raise HTTPException(409, f'{body.kind}-{body.no} ({body.semester}-ci yarımil) artıq var')
+    else:                                              # əlavə: sıra nömrəsi max+1 (əlavə 1, 2, …)
+        seq = 1 + (db.scalar(select(func.max(Exam.extra_seq)).where(
+            Exam.assignment_id == ta.id, Exam.kind == body.kind, Exam.semester == body.semester, Exam.no == body.no)) or 0)
+    e = Exam(extra_of=body.extra_of, extra_seq=seq, extra_students=sorted(set(body.extra_students)) if body.extra_students is not None else None,
+             assignment_id=ta.id, kind=body.kind, no=body.no, semester=body.semester, date=body.date,
              max_points=body.max_points, items=[i.model_dump() for i in body.items] if body.items else None,
              title=body.title)
     db.add(e)
     db.flush()
-    audit(db, user, 'create', 'exam', e.id, kind=e.kind, no=e.no)
+    audit(db, user, 'create', 'exam', e.id, kind=e.kind, no=e.no, extra_seq=seq)
     db.commit()
     return exam_out(e)
 
@@ -116,6 +142,14 @@ def create_exam(ta_id: int, body: ExamIn, user: User = Depends(staff), db: Sessi
 def update_exam(ta_id: int, exam_id: int, body: ExamIn, user: User = Depends(staff), db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)
     e = _exam(db, ta_id, exam_id)
+    if e.extra_seq:                                    # əlavə imtahan: növ/nömrə/yarımil əsasla bağlıdır, yalnız tarix, bal, şagirdlər
+        if (body.kind, body.no, body.semester) != (e.kind, e.no, e.semester):
+            raise HTTPException(400, 'Əlavə imtahanın növü, nömrəsi və yarımili dəyişdirilə bilməz')
+        body.extra_of = e.extra_of
+        if body.extra_students is None and e.extra_students is not None:
+            body.extra_students = e.extra_students
+    elif body.extra_of is not None or body.extra_students is not None:
+        raise HTTPException(400, 'Əsas imtahan əlavəyə çevrilə bilməz')
     _check_exam(db, ta, body, e.id)
     has_scores = db.scalar(select(ExamScore).where(ExamScore.exam_id == e.id, ExamScore.points.is_not(None)))
     if has_scores and (body.max_points != e.max_points or (body.items and len(body.items) != len(e.items or []))):
@@ -123,6 +157,8 @@ def update_exam(ta_id: int, exam_id: int, body: ExamIn, user: User = Depends(sta
     e.kind, e.no, e.semester, e.date, e.title = body.kind, body.no, body.semester, body.date, body.title
     e.max_points = body.max_points
     e.items = [i.model_dump() for i in body.items] if body.items else None
+    if e.extra_seq:
+        e.extra_students = sorted(set(body.extra_students)) if body.extra_students is not None else None
     audit(db, user, 'update', 'exam', e.id)
     db.commit()
     return exam_out(e)
@@ -135,6 +171,8 @@ def delete_exam(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sessi
     from ..storage import DbStorage
     own_assignment(db, user, ta_id)
     e = _exam(db, ta_id, exam_id)
+    if db.scalar(select(Exam.id).where(Exam.extra_of == e.id).limit(1)):
+        raise HTTPException(409, 'Bu imtahanın əlavələri var – əvvəlcə əlavə imtahanları silin')
     n = {'scores': 0, 'variants': 0, 'scans': 0}
     for sc in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id)):
         if sc.crop_key and sc.crop_key.startswith('db:'):
@@ -188,7 +226,7 @@ def save_scores(ta_id: int, exam_id: int, body: list[ScoreIn], user: User = Depe
                 db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)
     e = _exam(db, ta_id, exam_id)
-    ids = {s.id for s in roster(db, ta)}
+    ids = {s.id for s in exam_roster(db, ta, e)}
     for s in body:
         if s.student_id not in ids:
             raise HTTPException(400, f'Şagird {s.student_id} bu sinifdə deyil')
@@ -214,7 +252,7 @@ def exam_result(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sessi
     ta = own_assignment(db, user, ta_id)
     e = _exam(db, ta_id, exam_id)
     scores = {sc.student_id: sc for sc in db.scalars(select(ExamScore).where(ExamScore.exam_id == e.id))}
-    rows = [{'student_id': s.id, 'full_name': s.full_name, **_row(e, scores.get(s.id))} for s in roster(db, ta)]
+    rows = [{'student_id': s.id, 'full_name': s.full_name, **_row(e, scores.get(s.id))} for s in exam_roster(db, ta, e)]
     done = [r for r in rows if r['grade'] is not None]
     dist = {g: sum(r['grade'] == g for r in done) for g in (5, 4, 3, 2)}
     items, standards = [], {}
@@ -252,8 +290,8 @@ def semester(ta_id: int, sem: int, user: User = Depends(staff), db: Session = De
     exs = class_exams(db, ta, None if sem == 1 else y.sem2_start, y.sem1_end if sem == 1 else None)
     out = []
     for s in roster(db, ta):
-        ksq = [(e.no, _row(e, scores.get((e.id, s.id)))['grade']) for e in exams if e.kind == 'KSQ']
-        bsq = next((_row(e, scores.get((e.id, s.id)))['grade'] for e in exams if e.kind == 'BSQ'), None)
+        mine = [e for e in exams if e.extra_students is None or s.id in e.extra_students]
+        ksq, bsq = final_grades(mine, lambda e: _row(e, scores.get((e.id, s.id)))['grade'])
         ksq_grades = [g for _, g in ksq if g is not None]
         out.append({'student_id': s.id, 'full_name': s.full_name, 'ksq': ksq, 'bsq': bsq,
                     'ksq_avg': round(sum(ksq_grades) / len(ksq_grades), 2) if ksq_grades else None,
@@ -356,7 +394,7 @@ def _base_info(db: Session, ta, e: Exam) -> dict | None:
 def _variants_out(db: Session, ta, e: Exam) -> dict:
     from collections import Counter
     from ..domain.ksq_variants import RULES_V, fairness
-    names = {s.id: s.full_name for s in roster(db, ta)}
+    names = {s.id: s.full_name for s in exam_roster(db, ta, e)}
     vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
     vs.sort(key=lambda v: v.code)
     return {'exam': exam_out(e), 'variants': [{'student_id': v.student_id, 'full_name': names.get(v.student_id), 'code': v.code,
@@ -805,7 +843,7 @@ class VariantsIn(BaseModel):
 def _prepare(db: Session, ta, e: Exam, body: 'VariantsIn') -> tuple:
     """Generator üçün hər şey: şagirdlər, mövzular, namizədlər, tarixçə, başqa siniflərin sualları."""
     from ..domain.ksq_variants import bank_candidates
-    students = [s.id for s in roster(db, ta)]
+    students = [s.id for s in exam_roster(db, ta, e)]
     topics = _range_topics(db, ta, e)
     src = _source(db, ta)
     _, files = _plan_files(db, ta, e, body.sources or [src])

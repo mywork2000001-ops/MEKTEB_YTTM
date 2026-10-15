@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .domain.rules import grade_from_points, round_half_up, semester_grade
+from .exam_logic import final_grades
 from .models import Exam, ExamScore, JournalEntry, Mark
 from .services import PlanCtx, roster
 
@@ -80,8 +81,8 @@ def semester_grades(db: Session, ta_id: int, sem: int, sids: list[int]) -> dict[
         return None if not sc or sc.absent or sc.points is None else grade_from_points(sc.points, e.max_points)
     out = {}
     for sid in sids:
-        ksq = [x for x in (g(e, sid) for e in exams if e.kind == 'KSQ') if x is not None]
-        bsq = next((g(e, sid) for e in exams if e.kind == 'BSQ'), None)
+        ksq_p, bsq = final_grades(exams, lambda e: g(e, sid))          # əlavə imtahan ayrıca sayılmır
+        ksq = [x for _, x in ksq_p if x is not None]
         out[sid] = {'ksq': ksq, 'bsq': bsq, 'semester_grade': semester_grade(ksq, bsq)}
     return out
 

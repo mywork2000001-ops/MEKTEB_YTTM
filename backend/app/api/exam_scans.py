@@ -18,7 +18,8 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import staff
 from ..models import Exam, ExamScan, ExamScore, ExamVariant, User, now
-from ..services import own_assignment, roster
+from ..exam_logic import exam_roster
+from ..services import own_assignment
 from .common import audit, get_or_404
 
 router = APIRouter(prefix='/api/exam-scans', tags=['exam-scans'])
@@ -202,7 +203,7 @@ def lost_auto(ta_id: int, exam_id: int, body: LostAutoIn, user: User = Depends(s
             out.append({'student_id': sc.student_id, 'lost': sc.lost or [], 'before': before, 'after': sc.points})
     audit(db, user, 'update', 'exam_scans', e.id, lost_auto=len(out))
     db.commit()
-    names = {s.id: s.full_name for s in roster(db, ta)}
+    names = {s.id: s.full_name for s in exam_roster(db, ta, e)}
     return {'changed': [{**x, 'full_name': names.get(x['student_id'])} for x in out]}
 
 
@@ -308,7 +309,7 @@ async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[Uplo
     db.commit()
     if found:
         bg.add_task(_read_now, db.get_bind(), e.id, [x['scan_id'] for x in found])   # yeni kartlar növbəsiz, dərhal (kamera balı gözləyir)
-    names = {s.id: s.full_name for s in roster(db, ta)}
+    names = {s.id: s.full_name for s in exam_roster(db, ta, e)}
     return {'found': [{**x, 'full_name': names.get(x['student_id'])} for x in found],
             'problems': [{**p, 'full_name': names.get(p['student_id'])} if p.get('student_id') else p for p in problems],
             'already': [{**x, 'full_name': names.get(x['student_id'])} for x in dupes]}
@@ -345,7 +346,7 @@ def reread(ta_id: int, exam_id: int, bg: BackgroundTasks, user: User = Depends(s
 def list_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     from ..domain.ksq_reader import key_pool
     ta, e = _exam(db, user, ta_id, exam_id)
-    names = {s.id: s.full_name for s in roster(db, ta)}
+    names = {s.id: s.full_name for s in exam_roster(db, ta, e)}
     scans = list(db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id)))
     have = {sc.student_id for sc in scans}
     variants = list(db.scalars(select(ExamVariant.student_id).where(ExamVariant.exam_id == e.id)))

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { api, del, get, patch, post, put } from '../../api'
 import { AsyncBtn, azDT, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, Pill, toast, useLoad } from '../../ui'
 import type { MyLesson } from './common'
@@ -7,8 +7,11 @@ import { tt } from '../../i18n'
 import { printKey, printSheets, type KsqPrint } from '../../ksqPrint'
 import ScanCamera, { aiErrorText } from '../../scanCamera'
 
-type Exam = { id: number; kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; max_points: number; items: { n: number; points: number; standard?: string }[] | null }
+type Exam = { id: number; kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; max_points: number; items: { n: number; points: number; standard?: string }[] | null; extra_of?: number | null; extra_seq?: number; extra_students?: number[] | null }
 type Planned = { kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; topic: string; created: boolean }
+
+/** KSQ-2 · əlavə 1 – əlavə imtahanın adı (dil: istifadəçinin dili) */
+export const exLabel = (e: { kind: string; no: number; extra_seq?: number }) => `${e.kind}-${e.no}` + (e.extra_seq ? ` · ${tt('əlavə {n}', { n: e.extra_seq })}` : '')
 
 export default function Exams({ ta }: { ta: MyLesson }) {
   const [d, err, , reload] = useLoad<{ has_summative: boolean; exams: Exam[]; planned: Planned[] }>(() => get(`/api/exams/${ta.id}`), [ta.id])
@@ -17,8 +20,20 @@ export default function Exams({ ta }: { ta: MyLesson }) {
   const [vars, setVars] = useState<Exam | null>(null)
   const [edit, setEdit] = useState<Exam | null>(null)
   const [delAsk, setDelAsk] = useState<Exam | null>(null)
+  const [extra, setExtra] = useState<Exam | null>(null)
   if (d && !d.has_summative) return <div className="empty">Bu qrupda KSQ/BSQ keçirilmir – bütöv sinifdə keçirilir.</div>
-  const byKey = new Map((d?.exams || []).map(e => [`${e.kind}-${e.semester}-${e.no}`, e]))
+  const byKey = new Map((d?.exams || []).filter(e => !e.extra_seq).map(e => [`${e.kind}-${e.semester}-${e.no}`, e]))
+  const extrasOf = (id: number) => (d?.exams || []).filter(x => x.extra_of === id).sort((a, b) => (a.extra_seq || 0) - (b.extra_seq || 0))
+  // əlavə imtahan – əsasın altında, eyni əməliyyatlarla (variant, skan, onlayn, nəticələr)
+  const extraRows = (e: Exam) => extrasOf(e.id).map(x => (
+    <div className="jrow cols" key={'ex' + x.id} style={{ ['--cols' as any]: 'minmax(0,1fr) auto auto', ['--mcols' as any]: 'minmax(0,1fr) auto', paddingLeft: 18 }}>
+      <span>↳ <b>{exLabel(x)}</b> <span className="muted small">· {fmtDate(x.date)}</span><span className="sub small muted"><br />{x.extra_students ? tt('{n} şagird', { n: x.extra_students.length }) : tt('bütün sinif')}</span></span>
+      <Pill tone="ok">{x.max_points} bal{x.items ? ` · ${x.items.length} tapşırıq` : ''}</Pill>
+      <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}><button className="btn sm ghost" onClick={() => setEdit(x)} title={tt('Tarixi və başlığı dəyiş')}>✏</button>
+        <button className="btn sm ghost" onClick={() => setDelAsk(x)} title={tt('Sil')}>🗑</button>
+        <button className="btn sm" onClick={() => setVars(x)}>🖨 {tt('Kağız variantlar')}</button>
+        <button className="btn sm primary" onClick={() => setOpen(x.id)}>Nəticələr</button></span>
+    </div>))
   return (
     <>
       <ErrorBox error={err} />
@@ -34,34 +49,84 @@ export default function Exams({ ta }: { ta: MyLesson }) {
         {(d?.planned || []).map(p => {
           const e = byKey.get(`${p.kind}-${p.semester}-${p.no}`)
           return (
-            <div className="jrow cols" key={`${p.kind}${p.semester}${p.no}`} style={{ ['--cols' as any]: 'minmax(0,1fr) auto auto', ['--mcols' as any]: 'minmax(0,1fr) auto' }}>
+            <Fragment key={`${p.kind}${p.semester}${p.no}`}>
+            <div className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr) auto auto', ['--mcols' as any]: 'minmax(0,1fr) auto' }}>
               <span><b>{p.kind}-{p.no}</b> <span className="muted small">({p.semester}-ci yarımil) · {fmtDate(p.date)}</span><span className="sub small muted"><br />{p.topic}</span></span>
               {e ? <Pill tone="ok">{e.max_points} bal{e.items ? ` · ${e.items.length} tapşırıq` : ''}</Pill> : <Pill>yaradılmayıb</Pill>}
               {e ? <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}><button className="btn sm ghost" onClick={() => setEdit(e)} title={tt('Tarixi və başlığı dəyiş')}>✏</button>
                 <button className="btn sm ghost" onClick={() => setDelAsk(e)} title={tt('Sil')}>🗑</button>
                 <button className="btn sm" onClick={() => setVars(e)} title={tt('Hər şagirdə fərqli 30 sual · bir A4 + cavab kartı')}>🖨 {tt('Kağız variantlar')}</button>
+                <button className="btn sm ghost" onClick={() => setExtra(e)} title={tt('Buraxan, zəif yazan və ya qiymətini yaxşılaşdırmaq istəyən şagirdlər üçün')}>➕ {tt('Əlavə {kind}', { kind: e.kind })}</button>
                 <button className="btn sm primary" onClick={() => setOpen(e.id)}>Nəticələr</button></span> : <button className="btn sm" onClick={() => setCreate(p)}>Hazırla</button>}
-            </div>)
+              </div>
+              {e && extraRows(e)}
+            </Fragment>)
         })}
         {/* yaradılmış, amma planda olmayan imtahanlar da görünsün (plan dəyişib və ya plansız yaradılıb) */}
-        {(d?.exams || []).filter(e => !(d?.planned || []).some(p => p.kind === e.kind && p.semester === e.semester && p.no === e.no)).map(e => (
-          <div className="jrow cols" key={'x' + e.id} style={{ ['--cols' as any]: 'minmax(0,1fr) auto auto', ['--mcols' as any]: 'minmax(0,1fr) auto' }}>
+        {(d?.exams || []).filter(e => !e.extra_seq && !(d?.planned || []).some(p => p.kind === e.kind && p.semester === e.semester && p.no === e.no)).map(e => (
+          <Fragment key={'x' + e.id}><div className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr) auto auto', ['--mcols' as any]: 'minmax(0,1fr) auto' }}>
             <span><b>{e.kind}-{e.no}</b> <span className="muted small">({e.semester}-ci yarımil) · {fmtDate(e.date)}</span><span className="sub small muted"><br />{tt('planda yoxdur')}</span></span>
             <Pill tone="ok">{e.max_points} bal{e.items ? ` · ${e.items.length} tapşırıq` : ''}</Pill>
             <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}><button className="btn sm ghost" onClick={() => setEdit(e)} title={tt('Tarixi və başlığı dəyiş')}>✏</button>
               <button className="btn sm ghost" onClick={() => setDelAsk(e)} title={tt('Sil')}>🗑</button>
               <button className="btn sm" onClick={() => setVars(e)}>🖨 {tt('Kağız variantlar')}</button>
+              <button className="btn sm ghost" onClick={() => setExtra(e)}>➕ {tt('Əlavə {kind}', { kind: e.kind })}</button>
               <button className="btn sm primary" onClick={() => setOpen(e.id)}>Nəticələr</button></span>
-          </div>))}
+          </div>{extraRows(e)}</Fragment>))}
         {d && !d.planned.length && !d.exams.length && <div className="empty">Planda KSQ/BSQ yoxdur (plan yüklənməyib?).</div>}
       </div>
       {create && <CreateExam ta={ta} p={create} prev={(d?.planned || []).filter(x => x.semester === create.semester && x.date < create.date).map(x => x.date).sort().pop() || null} onClose={() => setCreate(null)} onDone={id => { setCreate(null); reload(); setOpen(id) }} />}
       {open && <Scores ta={ta} examId={open} onClose={() => { setOpen(null); reload() }} />}
       {vars && <Variants ta={ta} e={vars} onClose={() => { setVars(null); reload() }} />}
       {edit && <EditExam ta={ta} e={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
-      {delAsk && <ConfirmName name={`${delAsk.kind}-${delAsk.no}`} action={tt('Birdəfəlik sil (nəticələr, variantlar və skanlar da)')} onCancel={() => setDelAsk(null)}
+      {extra && <ExtraExam ta={ta} base={extra} onClose={() => setExtra(null)} onDone={id => { setExtra(null); reload(); setOpen(id) }} />}
+      {delAsk && <ConfirmName name={`${delAsk.kind}-${delAsk.no}${delAsk.extra_seq ? ` ${delAsk.extra_seq}` : ''}`} action={tt('Birdəfəlik sil (nəticələr, variantlar və skanlar da)')} onCancel={() => setDelAsk(null)}
         onConfirm={async () => { const r = await del<{ scores: number; variants: number; scans: number }>(`/api/exams/${ta.id}/${delAsk.id}`); toast(tt('Silindi: nəticə {a}, variant {b}, skan {c}', { a: r.scores, b: r.variants, c: r.scans })); setDelAsk(null); reload() }} />}
     </>
+  )
+}
+
+/** Əlavə KSQ/BSQ: yalnız seçilən şagirdlər üçün (buraxanlar, 2 alanlar, qiymətini yaxşılaşdırmaq istəyənlər); tarix əsasdan sonra. */
+function ExtraExam({ ta, base, onClose, onDone }: { ta: MyLesson; base: Exam; onClose: () => void; onDone: (id: number) => void }) {
+  const [d, err] = useLoad<any>(() => get(`/api/exams/${ta.id}/${base.id}`), [ta.id, base.id])
+  const [date, setDate] = useState('')
+  const [sel, setSel] = useState<number[]>([])
+  const [er2, setEr2] = useState<unknown>()
+  const rows: any[] = d?.rows || []
+  const pick = (f: (r: any) => boolean) => setSel(rows.filter(f).map(r => r.student_id))
+  const toggle = (id: number) => setSel(sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id])
+  const submit = async () => {
+    if (!sel.length) { setEr2(new Error(tt('Ən azı bir şagird seçin'))); return }
+    try {
+      const body: any = { kind: base.kind, no: base.no, semester: base.semester, date, max_points: base.max_points, extra_of: base.id, extra_students: sel,
+        items: base.items || undefined }
+      if (base.items) delete body.max_points
+      const e = await post<Exam>(`/api/exams/${ta.id}`, body)
+      toast(tt('Əlavə imtahan hazırlandı'))
+      onDone(e.id)
+    } catch (x) { setEr2(x) }
+  }
+  return (
+    <Drawer title={tt('Əlavə {kind}', { kind: `${base.kind}-${base.no}` })} onClose={onClose} footer={<><button className="btn" onClick={onClose}>{tt('Ləğv et')}</button><button className="btn primary" onClick={submit}>{tt('Yadda saxla')}</button></>}>
+      <div className="stack">
+        <ErrorBox error={err} />
+        <Field label={tt('Tarix') + ' (' + tt('əsas imtahandan sonra') + ')'}><input type="date" min={base.date} value={date} onChange={e => setDate(e.target.value)} /></Field>
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+          <button className="btn sm ghost" onClick={() => pick(() => true)}>{tt('hamısı')}</button>
+          <button className="btn sm ghost" onClick={() => pick(r => r.absent || r.points == null)}>{tt('buraxanlar')}</button>
+          <button className="btn sm ghost" onClick={() => pick(r => r.grade === 2)}>{tt('2 alanlar')}</button>
+          <button className="btn sm ghost" onClick={() => setSel([])}>{tt('heç biri')}</button>
+          <span className="small muted">{tt('Seçilib: {n}', { n: sel.length })}</span>
+        </div>
+        <div className="jlist">{rows.map(r => (
+          <label key={r.student_id} className="jrow check" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="checkbox" checked={sel.includes(r.student_id)} onChange={() => toggle(r.student_id)} />
+            <span className="grow">{r.full_name}</span>
+            {r.absent ? <Pill>{tt('yox idi')}</Pill> : r.grade != null ? <Pill tone={gradeTone(r.grade)}>{fmt(r.pct)}% → {r.grade}</Pill> : <Pill>—</Pill>}
+          </label>))}</div>
+        <ErrorBox error={er2} />
+      </div>
+    </Drawer>
   )
 }
 
@@ -130,7 +195,7 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
     reload()
   }
   return (
-    <Drawer title={d ? `${d.exam.kind}-${d.exam.no} · ${fmtDate(d.exam.date)} · ${d.exam.max_points} bal` : 'Nəticələr'} onClose={onClose}
+    <Drawer title={d ? `${exLabel(d.exam)} · ${fmtDate(d.exam.date)} · ${d.exam.max_points} bal` : 'Nəticələr'} onClose={onClose}
       footer={<>{d && <button className="btn" onClick={() => printDoc({ signers: [{ role: 'Fənn müəllimi' }, SIGN.deputy()], title: `${ta.class_name} – ${d.exam.kind}-${d.exam.no} nəticələri`, body: head(`${ta.class_name} – ${d.exam.kind}-${d.exam.no} (${d.exam.semester}-ci yarımil)`, `${fmtDate(d.exam.date)} · maksimal bal ${d.exam.max_points} · orta ${fmt(d.summary.avg_pct)}%`) + table(['№', 'Şagird', 'Bal', '%', 'Qiymət'], d.rows.map((r: any, i: number) => [i + 1, r.full_name + (r.taken_on ? ` (sonradan: ${fmtDate(r.taken_on)})` : ''), r.absent ? 'yox idi' : fmt(r.points), fmt(r.pct), r.grade ?? '—']), [2, 3, 4]) + (d.items?.length ? '<h2>Tapşırıq təhlili</h2>' + table(['Tapşırıq', 'Bal', 'Standart', 'Həll %'], d.items.map((it: any) => [it.n, it.points, it.standard || '', fmt(it.pct, 0)]), [1, 3]) : '') })}>Çap / PDF</button>}<AsyncBtn className="btn primary" onClick={save} ok="Nəticələr yadda saxlanıldı">Yadda saxla</AsyncBtn></>}>
       <ErrorBox error={err} />
       {d && (
