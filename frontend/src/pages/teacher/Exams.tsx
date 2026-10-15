@@ -307,6 +307,7 @@ function Appeals({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClos
             <Pill>{a.source === 'online' ? tt('Onlayn') : tt('Yazılı')}</Pill><Pill tone={stTone[a.status]}>{stName[a.status]}</Pill></div>
           {a.question && <p style={{ margin: '6px 0' }}>{String(ml(a.question.text) ?? '')}{a.question.image && <img src={a.question.image} alt="" style={{ maxWidth: '100%', display: 'block' }} />}</p>}
           <div className="small">{tt('Şagirdin cavabı')}: <b>{a.my_answer || '—'}</b> · {tt('Açar')}: <b>{a.key_now ?? a.correct_at_time}</b></div>
+          {a.topic && <div className="small">{tt('Altmövzu')}: <b>{a.topic}</b></div>}
           <div className="small muted">{tt('Bank ünvanı')}: <b>{a.bank_ref?.text || '—'}</b>{a.bank_id && me?.role === 'admin' && <> · <a href={`/settings?tab=bank&q=${a.bank_id}`} target="_blank" rel="noreferrer">{tt('Bankda aç')}</a></>}{a.bank?.needs_review && <> · <Pill tone="warn">{tt('bank yoxlanmalıdır')}</Pill></>}</div>
           {a.bank && <div className="small muted">{tt('Bankda indi')}: {String(ml(a.bank.text) ?? '').slice(0, 120)} → {a.bank.answer ?? a.bank.correct}</div>}
           <p className="small" style={{ margin: '6px 0' }}>💬 {a.reason}</p>

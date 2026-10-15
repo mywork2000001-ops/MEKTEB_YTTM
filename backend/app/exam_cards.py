@@ -16,12 +16,12 @@ def exam_card(db: Session, e: Exam, sid: int) -> dict | None:
     v = db.get(ExamVariant, (e.id, sid))
     if v is None:
         return None
-    from .appeals import ref_of
+    from .appeals import ref_of, topic_of
     qs = sorted(v.questions, key=lambda q: q['slot'])
     expl = {b.id: b.explanation for b in db.scalars(select(BankQuestion).where(BankQuestion.id.in_([q['bank_id'] for q in qs if q.get('bank_id')] or [0])))}
     questions = [{'slot': q['slot'], 'kind': q['kind'], 'text': q.get('text'), 'options': q.get('options') if q['kind'] == 'mcq' else None,
                   'image': q.get('image'), 'key': key_value(q), 'points': q['points'], 'explanation': expl.get(q.get('bank_id')),
-                  'ref': (ref_of(db, q) or {}).get('text')} for q in qs]
+                  'topic': topic_of(db, q), 'ref': (ref_of(db, q) or {}).get('text')} for q in qs]
     annulled = {it['n'] for it in (e.items or []) if it.get('annulled')}
     sources = {}
     for sc in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == sid, ExamScan.status == 'graded')):

@@ -218,6 +218,7 @@ const D: Record<string, [string, string]> = {
   'Şagirdlər': ['Students', 'Ученики'],
   'Tarix': ['Date', 'Дата'],
   'Mövzu': ['Topic', 'Тема'],
+  'Altmövzu': ['Subtopic', 'Подтема'],
   'Ev tapşırığı': ['Homework', 'Домашнее задание'],
   'Davamiyyət': ['Attendance', 'Посещаемость'],
   'Qiymət': ['Grade', 'Оценка'],

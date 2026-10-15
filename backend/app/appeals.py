@@ -41,6 +41,13 @@ def ref_of(db: Session, q: dict) -> dict | None:
     return q.get('ref') or bank_ref(db, q)
 
 
+def topic_of(db: Session, q: dict) -> str | None:
+    """Sualın altmövzu adı (şagirdə və müəllimə göstərilir; texniki kod B<id> / file_id YOX): ünvanın ilk hissəsi, yoxdursa variantdakı mövzu."""
+    r = ref_of(db, q)
+    name = (r['text'].split(' · ')[0].strip() if r and r.get('text') else '') or q.get('topic_actual') or q.get('topic') or q.get('lesson')
+    return str(name).strip() or None if name else None
+
+
 def norm(v) -> str:
     return re.sub(r'\s+', '', str(v or '')).lower().replace(',', '.')
 

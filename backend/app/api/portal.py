@@ -600,6 +600,8 @@ def exam_card_view(exam_id: int, user: User = Depends(student_only), db: Session
         raise HTTPException(403, _L(user, 'Nəticələr hələ şagirdlərə göstərilməyib', 'Результаты ещё не опубликованы', 'Results have not been published yet'))
     c = exam_card(db, e, s.id)
     if c is not None:
+        for q in c['questions']:
+            q.pop('ref', None)                       # «altmövzu · №n · B<id>» texniki ünvan yalnız müəllimə; şagird yalnız altmövzu adını (topic) görür
         c['appeal_until'] = e.appeal_until
         c['appeals'] = [{'id': a.id, 'slot': a.slot, 'source': a.source, 'status': a.status, 'reason': a.reason, 'teacher_reply': a.teacher_reply,
                          'apply_all': a.apply_all} for a in db.scalars(select(ExamAppeal).where(ExamAppeal.exam_id == e.id, ExamAppeal.student_id == s.id))]

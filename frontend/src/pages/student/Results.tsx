@@ -195,6 +195,7 @@ function AnswerCardView({ examId, onClose }: { examId: number; onClose: () => vo
                   <tr key={q.slot} style={a?.void ? { opacity: .55 } : undefined}>
                     <td className="r num">{q.slot}</td>
                     <td><MathText text={String(ml(q.text) ?? '')} />
+                      {q.topic && <div className="small muted" style={{ marginTop: 3 }}>{tt('Altmövzu')}: {q.topic}</div>}
                       {q.explanation && <div className="small muted" style={{ marginTop: 3 }}>{tt('İzah')}: <MathText text={String(ml(q.explanation) ?? '')} /></div>}</td>
                     <td className="num">{a?.value || <span className="muted">{tt('boş')}</span>}</td>
                     <td className="num">{q.key}</td>
@@ -213,6 +214,8 @@ function AnswerCardView({ examId, onClose }: { examId: number; onClose: () => vo
       </>}
       {form && <div className="panel" style={{ position: 'sticky', bottom: 0, background: 'var(--bg, #fff)' }}>
         <b>⚖ {tt('Apelyasiya')} · №{form.slot}</b>
+        {(() => { const fq = c.questions.find((x: any) => x.slot === form.slot); return fq && <div className="small" style={{ margin: '4px 0' }}>
+          {fq.topic && <div className="muted">{tt('Altmövzu')}: {fq.topic}</div>}<MathText text={String(ml(fq.text) ?? '').slice(0, 200)} /></div> })()}
         <textarea className="sel" style={{ width: '100%', marginTop: 6 }} rows={3} maxLength={1000} value={reason} onChange={e => setReason(e.target.value)} placeholder={tt('Niyə cavabın düz olduğunu düşünürsən?')} />
         <ErrorBox error={er2} />
         <div className="row" style={{ gap: 6, marginTop: 6 }}><button className="btn sm primary" disabled={reason.trim().length < 3} onClick={send}>{tt('Göndər')}</button>
