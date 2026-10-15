@@ -49,6 +49,7 @@ def _out(db: Session, e: Exam, a: ExamAppeal, names: dict, variants: dict, scans
             'key_now': key_value(q) if q else None, 'teacher_reply': a.teacher_reply, 'apply_all': a.apply_all,
             'created_at': a.created_at, 'decided_at': a.decided_at,
             'question': {'text': q.get('text'), 'options': q.get('options'), 'image': q.get('image'), 'kind': q.get('kind')} if q else None,
+            'bank_id': a.bank_id,
             'bank_ref': a.bank_ref or (ref_of(db, q) if q else None),
             # bankdakı sualın indiki halı: açar sonradan dəyişibsə – müəllim fərqi görür
             'bank': {'text': bq.text, 'answer': bq.answer, 'correct': bq.correct, 'needs_review': bq.needs_review} if bq else None,

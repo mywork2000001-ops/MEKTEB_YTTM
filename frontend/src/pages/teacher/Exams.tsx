@@ -3,6 +3,7 @@ import { api, del, get, patch, post, put } from '../../api'
 import { AsyncBtn, azDT, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, Pill, toast, useLoad } from '../../ui'
 import type { MyLesson } from './common'
 import { head, printDoc, SIGN, table } from '../../print'
+import { useAuth } from '../../auth'
 import { ml, tt } from '../../i18n'
 import { printKey, printSheets, type KsqPrint } from '../../ksqPrint'
 import ScanCamera, { aiErrorText } from '../../scanCamera'
@@ -279,6 +280,7 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
 
 /** ⚖ Apelyasiyalar: sual, şagirdin cavabı, açar, bankdakı ünvan, skan kəsiyi; qərar – qəbul / hamıya tətbiq / rədd. */
 function Appeals({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose: () => void }) {
+  const { me } = useAuth()
   const [d, err, , reload] = useLoad<any>(() => get(`/api/exam-appeals/${ta.id}/${examId}`), [ta.id, examId])
   const [reply, setReply] = useState<Record<number, string>>({})
   const [msg, setMsg] = useState<string | null>(null)
@@ -305,7 +307,7 @@ function Appeals({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClos
             <Pill>{a.source === 'online' ? tt('Onlayn') : tt('Yazılı')}</Pill><Pill tone={stTone[a.status]}>{stName[a.status]}</Pill></div>
           {a.question && <p style={{ margin: '6px 0' }}>{String(ml(a.question.text) ?? '')}{a.question.image && <img src={a.question.image} alt="" style={{ maxWidth: '100%', display: 'block' }} />}</p>}
           <div className="small">{tt('Şagirdin cavabı')}: <b>{a.my_answer || '—'}</b> · {tt('Açar')}: <b>{a.key_now ?? a.correct_at_time}</b></div>
-          <div className="small muted">{tt('Bank ünvanı')}: <b>{a.bank_ref?.text || '—'}</b>{a.bank?.needs_review && <> · <Pill tone="warn">{tt('bank yoxlanmalıdır')}</Pill></>}</div>
+          <div className="small muted">{tt('Bank ünvanı')}: <b>{a.bank_ref?.text || '—'}</b>{a.bank_id && me?.role === 'admin' && <> · <a href={`/settings?tab=bank&q=${a.bank_id}`} target="_blank" rel="noreferrer">{tt('Bankda aç')}</a></>}{a.bank?.needs_review && <> · <Pill tone="warn">{tt('bank yoxlanmalıdır')}</Pill></>}</div>
           {a.bank && <div className="small muted">{tt('Bankda indi')}: {String(ml(a.bank.text) ?? '').slice(0, 120)} → {a.bank.answer ?? a.bank.correct}</div>}
           <p className="small" style={{ margin: '6px 0' }}>💬 {a.reason}</p>
           {a.crop && <img src={`/api/exam-scans/image/${a.scan_id}`} alt={tt('Skan kəsiyi')} loading="lazy" style={{ width: '100%', maxWidth: 560, border: '1px solid var(--line)', borderRadius: 6 }} />}
