@@ -55,7 +55,13 @@ def apply(db: Session, e: Exam, sc: ExamScan) -> None:
     if sc.lost is None and v.unprinted:                     # köhnə çap: kağıza düşməyən + boş cavab – avtomatik ⊘ (bir dəfə)
         empty = {int(r['slot']) for r in sc.reading if r.get('slot') is not None and not r.get('value')}
         sc.lost = sorted(set(v.unprinted) & empty)
-    g = grade(v.questions, sc.reading, {it['n'] for it in (e.items or []) if it.get('annulled')} | set(sc.lost or []))
+    void = {it['n'] for it in (e.items or []) if it.get('annulled')} | set(sc.lost or [])
+    g = grade(v.questions, sc.reading, void)
+    from ..appeals import accepted_slots, apply_accepted               # qəbul olunmuş apelyasiyalar yenilənmədə itmir
+    acc = accepted_slots(db, e.id, sc.student_id, sc.source, v.questions,
+                         {int(r['slot']): r.get('value') for r in sc.reading if r.get('slot') is not None})
+    if acc:
+        g = apply_accepted(g, v.questions, acc, void)
     sc.marks, sc.points, sc.flagged, sc.status, sc.error = g['marks'], g['points'], g['flagged'], 'graded', None
     db.flush()
     recompute_score(db, e, sc.student_id)                   # jurnal balı: seçimə görə (onlayn / yazılı / ən yüksək / əl ilə)

@@ -10,7 +10,7 @@ export type KsqQ = { slot: number; kind: 'mcq' | 'open'; points: number; text: s
 export type KsqSheet = { student_id: number; full_name: string; code: string; lang: string; qr: string; questions: KsqQ[] }
 export type KsqPrint = {
   exam: { id: number; kind: string; no: number; semester: number; date: string; class_name: string; subject: string; school: string; teacher: string }
-  sheets: KsqSheet[]; key: { code: string; full_name: string; answers: { slot: number; value: string; points: number; topic?: string | null }[] }[]
+  sheets: KsqSheet[]; key: { code: string; full_name: string; answers: { slot: number; value: string; points: number; topic?: string | null; ref?: string | null }[] }[]
 }
 
 const L = 'ABCDE'
@@ -213,6 +213,7 @@ export function printKey(d: KsqPrint) {
   const body = `<div class="key" style="padding:4mm"><h2 style="margin:0 0 3mm">${ex.kind}-${ex.no} · ${esc(ex.class_name)} · ${fmtD(ex.date)} — müəllim açarı</h2>
     ${d.key.map(k => `<table><tr><th colspan="15" style="text-align:left">${esc(k.code)} · ${esc(k.full_name)}<span style="font-weight:400;color:#555"> — ${esc([...new Set(k.answers.map(a => a.topic).filter(Boolean))].join(' · '))}</span></th></tr>
       ${[0, 15].map(o => `<tr>${k.answers.slice(o, o + 15).map(a => `<th>${a.slot}</th>`).join('')}</tr><tr>${k.answers.slice(o, o + 15).map(a => `<td><b>${esc(a.value)}</b></td>`).join('')}</tr>`).join('')}
+      ${k.answers.some(a => a.ref) ? `<tr><td colspan="15" style="font-size:7pt;color:#555;text-align:left">${k.answers.map(a => `${a.slot}) ${esc(a.ref || '')}`).join(' · ')}</td></tr>` : ''}
     </table>`).join('')}</div>`
   open(`${ex.class_name} – ${ex.kind}-${ex.no} açar`, body)
 }

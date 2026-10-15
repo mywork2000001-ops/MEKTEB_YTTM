@@ -25,6 +25,7 @@ export default function Home() {
   const [tt, err1] = useLoad<TT>(() => get('/api/timetable', { date: today }), [today])
   const [ov, err2] = useLoad<any[]>(() => get('/api/overview'), [])
   const [prog] = useLoad<any[]>(() => get('/api/my/progress'), [])
+  const [ap] = useLoad<{ open: number }>(() => get('/api/exam-appeals/open-count'), [])      // cavabsız KSQ/BSQ apelyasiyaları
 
   const lessons = useMemo(() => {
     const d = tt?.days.find(x => x.date === today)
@@ -50,6 +51,7 @@ export default function Home() {
           <div className="hero-chips">
             <button className="hchip solid" onClick={() => nav('/journal')}>{t('Jurnal')}</button>
             <button className="hchip" onClick={() => nav('/timetable')}>{t('Həftəlik cədvəl')}</button>
+            {(ap?.open || 0) > 0 && <button className="hchip solid" onClick={() => nav('/journal')} title={t('KSQ/BSQ üzrə cavabsız apelyasiyalar')}>⚖ {t('Apelyasiyalar')}: {ap!.open}</button>}
           </div>
         </div>
         <div className="clock" aria-live="off">

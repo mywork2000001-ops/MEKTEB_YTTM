@@ -264,6 +264,8 @@ class BankQuestion(Base):
     diff_auto: Mapped[str | None] = mapped_column(String(6))           # statistikaya görə çətinlik: asan | orta | çətin
     stat_n: Mapped[int | None] = mapped_column(Integer)                # cavab sayı (təhvil verilmiş testlərdən)
     stat_ok: Mapped[int | None] = mapped_column(Integer)               # düz cavab sayı
+    # apelyasiyada açar səhv çıxdı («hamıya tətbiq et») – bankı müəllim/admin düzəldir, avtomatik dəyişmə yoxdur
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     __table_args__ = (UniqueConstraint('file_id', 'n'),)
 
 
@@ -446,6 +448,7 @@ class Exam(Base):
     extra_students: Mapped[list | None] = mapped_column(JSON)
     # müəllim «nəticəni şagirdlərə göstər» dedikdən sonra şagird öz cavab kartını görür (variant sualları əvvəl heç vaxt)
     results_published_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    appeal_until: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))      # apelyasiya müddəti (göndərişdən 3 gün)
     __table_args__ = (UniqueConstraint('assignment_id', 'kind', 'semester', 'no', 'extra_seq'),)
 
 
@@ -502,6 +505,29 @@ class ExamScan(Base):
     # nəticənin mənbəyi: paper (kağız skan) | online (onlayn təhvil) – ikisi yanaşı saxlanılır, jurnala seçilən gedir (ExamScore.chosen)
     source: Mapped[str] = mapped_column(String(10), default='paper', server_default='paper')
     __table_args__ = (UniqueConstraint('exam_id', 'student_id', 'source'),)
+
+
+class ExamAppeal(Base):
+    """Şagirdin sual üzrə apelyasiyası (nəşrdən sonra, appeal_until-dək): bir sual – bir apelyasiya (mənbə üzrə). bank_ref –
+    variantda dondurulmuş bank ünvanı; qərar: accepted (həmin slot düz sayılır; apply_all – eyni bank sualı alan hamıda) | rejected."""
+    __tablename__ = 'exam_appeals'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    exam_id: Mapped[int] = mapped_column(ForeignKey('exams.id', ondelete='CASCADE'), index=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'))
+    slot: Mapped[int] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(String(10), default='paper')          # paper | online
+    bank_id: Mapped[int | None] = mapped_column(Integer)
+    bank_ref: Mapped[dict | None] = mapped_column(JSON)
+    my_answer: Mapped[str | None] = mapped_column(Text)
+    correct_at_time: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(10), default='open')           # open | accepted | rejected
+    teacher_reply: Mapped[str | None] = mapped_column(Text)
+    apply_all: Mapped[bool] = mapped_column(Boolean, default=False)
+    decided_by: Mapped[int | None] = mapped_column(ForeignKey('users.id', ondelete='SET NULL'))
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('exam_id', 'student_id', 'slot', 'source'),)
 
 
 class ExamScore(Base):

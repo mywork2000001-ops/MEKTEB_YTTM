@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import staff
 from ..domain.rules import grade_from_points, semester_grade
-from ..models import BankQuestion, Exam, ExamScan, ExamScore, ExamVariant, OnlineTask, SchoolClass, TeachingAssignment, User, now
+from ..models import BankQuestion, Exam, ExamAppeal, ExamScan, ExamScore, ExamVariant, OnlineTask, SchoolClass, TeachingAssignment, User, now
+from ..appeals import freeze_refs, ref_of
 from ..exam_logic import exam_label, exam_roster, final_grades, recompute_score, scan_of
 from ..services import own_assignment, plan_ctx, roster, today
 from .common import audit, get_or_404
@@ -54,7 +55,7 @@ def exam_out(e: Exam) -> dict:
     return {'id': e.id, 'kind': e.kind, 'no': e.no, 'semester': e.semester, 'date': e.date,
             'max_points': e.max_points, 'items': e.items, 'title': e.title,
             'extra_of': e.extra_of, 'extra_seq': e.extra_seq or 0, 'extra_students': e.extra_students, 'label': exam_label(e),
-            'results_published_at': e.results_published_at}
+            'results_published_at': e.results_published_at, 'appeal_until': e.appeal_until}
 
 
 def _exam(db: Session, ta_id: int, exam_id: int) -> Exam:
@@ -265,6 +266,7 @@ def _sources(e: Exam, scans: dict, sid: int) -> dict:
 
 class PublishIn(BaseModel):
     published: bool = True
+    appeal_days: int = Field(3, ge=1, le=30)           # apelyasiya müddəti (göndərişdən gün); təkrar göndərmə müddəti yeniləyir
 
 
 @router.put('/{ta_id}/{exam_id}/publish')
@@ -272,7 +274,8 @@ def publish_results(ta_id: int, exam_id: int, body: PublishIn, user: User = Depe
     """«📤 Nəticələri şagirdlərə göndər» / geri al: şagird yalnız bundan sonra öz cavab kartını (sual, cavab, düz cavab, bal) görür."""
     own_assignment(db, user, ta_id)
     e = _exam(db, ta_id, exam_id)
-    e.results_published_at = now() if body.published else None
+    e.results_published_at = (e.results_published_at or now()) if body.published else None
+    e.appeal_until = (now() + dt.timedelta(days=body.appeal_days)) if body.published else None
     audit(db, user, 'update', 'exam_publish', e.id, published=body.published)
     db.commit()
     return exam_out(e)
@@ -373,6 +376,7 @@ def exam_result(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sessi
                 st[0] += ok
                 st[1] += len(marked)
     return {'exam': exam_out(e), 'rows': rows,
+            'appeals_open': db.scalar(select(func.count()).select_from(ExamAppeal).where(ExamAppeal.exam_id == e.id, ExamAppeal.status == 'open')) or 0,
             'summary': {'written': len(done), 'absent': sum(r['absent'] for r in rows),
                         'avg_pct': round(sum(r['pct'] for r in done) / len(done), 1) if done else None,
                         'distribution': dist},
@@ -504,7 +508,7 @@ def _variants_out(db: Session, ta, e: Exam) -> dict:
     vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
     vs.sort(key=lambda v: v.code)
     return {'exam': exam_out(e), 'variants': [{'student_id': v.student_id, 'full_name': names.get(v.student_id), 'code': v.code,
-                                               'questions': v.questions} for v in vs],
+                                               'questions': [{**q, 'ref': ref_of(db, q)} for q in v.questions]} for v in vs],
             'report': fairness({v.student_id: v.questions for v in vs}) if vs else None,
             # köhnə qaydalarla yaradılıb (mövzudan kənar sual ola bilər) – müəllimə «Yenidən yarat» təklif olunur
             'stale': any(q.get('v', 0) < RULES_V or q.get('template') for v in vs for q in v.questions if not q.get('edited')),
@@ -612,7 +616,7 @@ def replace_question(ta_id: int, exam_id: int, student_id: int, slot: int, body:
     new = {**got, 'slot': slot, 'kind': old['kind'], 'level': old['level'], 'topic': old.get('topic')}
     qs = list(v.questions)
     qs[i] = {**new, 'points': old['points'], 'replaced': True}
-    v.questions = qs
+    v.questions = freeze_refs(db, qs)
     from ..domain import ksq_base
     ksq_base.exclude(db, ta, e, old.get('key'))                  # gələn il bu sual seçilməsin
     _rescore(db, e, [student_id])
@@ -719,7 +723,7 @@ def replace_slot_all(ta_id: int, exam_id: int, slot: int, body: ReplaceAllIn | N
         qs = list(v.questions)
         qs[i] = {**got, 'slot': slot, 'kind': old['kind'], 'level': old['level'], 'topic': old.get('topic'),
                  'points': old['points'], 'replaced': True}
-        v.questions = qs
+        v.questions = freeze_refs(db, qs)
         done += 1
     from ..domain import ksq_base
     for k in olds:
@@ -781,7 +785,7 @@ def _fix_offtopic(db: Session, ta, e: Exam, user: User | None = None) -> dict:
             file_of.update({b.id: b.file_id for b in db.scalars(select(BankQuestion).where(BankQuestion.id.in_(new_ids)))})
         if not any(bad(x) and not x.get('edited') for x in qs):
             qs = [{**x, 'v': max(x.get('v', 0), RULES_V)} for x in qs]
-        v.questions = qs
+        v.questions = freeze_refs(db, qs)
         if changed:
             touched.append(v.student_id)
     _rescore(db, e, touched)
@@ -853,7 +857,7 @@ def edit_question(ta_id: int, exam_id: int, student_id: int, slot: int, body: Qu
     q = _edit_q(base, body, key_only=False)
     qs = list(v.questions)
     qs[i] = q
-    v.questions = qs
+    v.questions = freeze_refs(db, qs)
     students = [student_id]
     if body.all_same and base.get('key'):
         for o in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id, ExamVariant.student_id != student_id)):
@@ -862,7 +866,7 @@ def edit_question(ta_id: int, exam_id: int, student_id: int, slot: int, body: Qu
                 oq = list(o.questions)
                 for k in hit:
                     oq[k] = _edit_q(oq[k], body, key_only=True)
-                o.questions = oq
+                o.questions = freeze_refs(db, oq)
                 students.append(o.student_id)
     from ..domain import ksq_base
     ksq_base.note_edit(db, db.get(TeachingAssignment, e.assignment_id), e, q.get('key'),
@@ -926,8 +930,9 @@ def print_variants(ta_id: int, exam_id: int, students: str | None = None, user: 
                        'questions': [{'slot': q['slot'], 'kind': q['kind'], 'points': q['points'], 'text': pick_lang(q.get('text'), lang),
                                       'options': [pick_lang(o, lang) for o in q.get('options') or []] if q['kind'] == 'mcq' else None,
                                       'image': q.get('image'), 'topic': q.get('topic_actual') or q.get('topic')} for q in qs]})
-        key.append({'code': v.code, 'full_name': st.full_name if st else '—',
-                    'answers': [{'slot': q['slot'], 'value': key_value(q), 'points': q['points'], 'topic': q.get('topic_actual') or q.get('topic')} for q in qs]})
+        key.append({'code': v.code, 'full_name': st.full_name if st else '—',      # bank ünvanı (ref) yalnız müəllim açarında – şagird vərəqində yox
+                    'answers': [{'slot': q['slot'], 'value': key_value(q), 'points': q['points'], 'topic': q.get('topic_actual') or q.get('topic'),
+                                 'ref': (ref_of(db, q) or {}).get('text')} for q in qs]})
     for v in vs:
         v.printed_at = v.printed_at or _now()                 # çap olunub – fon işi bu variantlara toxunmur
     db.commit()
@@ -1060,7 +1065,7 @@ def _make(db: Session, user: User, ta, e: Exam, body: 'VariantsIn') -> None:
         db.delete(v)
     db.flush()
     for i, sid in enumerate(students):
-        db.add(ExamVariant(exam_id=e.id, student_id=sid, code=f'{e.kind}{e.no}-{i + 1:02d}', questions=res[sid]))
+        db.add(ExamVariant(exam_id=e.id, student_id=sid, code=f'{e.kind}{e.no}-{i + 1:02d}', questions=freeze_refs(db, res[sid])))
     plan_ = next(iter(res.values())) if body.same_for_all else slots(body.n, body.mcq_only)
     e.items = [{'n': s['slot'], 'points': s['points'], 'standard': None, 'kind': s['kind'], 'level': s['level']} for s in plan_]
     e.max_points = 100

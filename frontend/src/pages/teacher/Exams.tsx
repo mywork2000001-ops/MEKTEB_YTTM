@@ -3,7 +3,7 @@ import { api, del, get, patch, post, put } from '../../api'
 import { AsyncBtn, azDT, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, Pill, toast, useLoad } from '../../ui'
 import type { MyLesson } from './common'
 import { head, printDoc, SIGN, table } from '../../print'
-import { tt } from '../../i18n'
+import { ml, tt } from '../../i18n'
 import { printKey, printSheets, type KsqPrint } from '../../ksqPrint'
 import ScanCamera, { aiErrorText } from '../../scanCamera'
 import { printCards } from '../../examCardPrint'
@@ -180,6 +180,8 @@ function CreateExam({ ta, p, prev, onClose, onDone }: { ta: MyLesson; p: Planned
 function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose: () => void }) {
   const [d, err, , reload] = useLoad<any>(() => get(`/api/exams/${ta.id}/${examId}`), [ta.id, examId])
   const [rows, setRows] = useState<Record<number, { points: string; marks: number[] | null; absent: boolean; later: boolean; taken_on: string }>>({})
+  const [days, setDays] = useState(3)                     // apelyasiya müddəti (gün)
+  const [appeals, setAppeals] = useState(false)
   useEffect(() => {
     if (!d) return
     setRows(Object.fromEntries(d.rows.map((r: any) => [r.student_id, {
@@ -196,6 +198,7 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
     reload()
   }
   return (
+    <>{appeals && <Appeals ta={ta} examId={examId} onClose={() => { setAppeals(false); reload() }} />}
     <Drawer title={d ? `${exLabel(d.exam)} · ${fmtDate(d.exam.date)} · ${d.exam.max_points} bal` : 'Nəticələr'} onClose={onClose}
       footer={<>{d && <button className="btn" onClick={() => printDoc({ signers: [{ role: 'Fənn müəllimi' }, SIGN.deputy()], title: `${ta.class_name} – ${d.exam.kind}-${d.exam.no} nəticələri`, body: head(`${ta.class_name} – ${d.exam.kind}-${d.exam.no} (${d.exam.semester}-ci yarımil)`, `${fmtDate(d.exam.date)} · maksimal bal ${d.exam.max_points} · orta ${fmt(d.summary.avg_pct)}%`) + table(['№', 'Şagird', 'Bal', '%', 'Qiymət'], d.rows.map((r: any, i: number) => [i + 1, r.full_name + (r.taken_on ? ` (sonradan: ${fmtDate(r.taken_on)})` : ''), r.absent ? 'yox idi' : fmt(r.points), fmt(r.pct), r.grade ?? '—']), [2, 3, 4]) + (d.items?.length ? '<h2>Tapşırıq təhlili</h2>' + table(['Tapşırıq', 'Bal', 'Standart', 'Həll %'], d.items.map((it: any) => [it.n, it.points, it.standard || '', fmt(it.pct, 0)]), [1, 3]) : '') })}>Çap / PDF</button>}<AsyncBtn className="btn primary" onClick={save} ok="Nəticələr yadda saxlanıldı">Yadda saxla</AsyncBtn></>}>
       <ErrorBox error={err} />
@@ -209,7 +212,9 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
           <div className="row" style={{ marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
             {d.exam.results_published_at
               ? <AsyncBtn className="btn sm" onClick={async () => { await put(`/api/exams/${ta.id}/${examId}/publish`, { published: false }); reload() }}>↩ {tt('Nəticələri geri al')}</AsyncBtn>
-              : <AsyncBtn className="btn sm primary" onClick={async () => { if (!window.confirm(tt('Şagirdlər öz cavab kartını (sual, cavab, düz cavab, bal) görəcək. Göndərilsin?'))) return; await put(`/api/exams/${ta.id}/${examId}/publish`, { published: true }); reload() }}>📤 {tt('Nəticələri şagirdlərə göndər')}</AsyncBtn>}
+              : <AsyncBtn className="btn sm primary" onClick={async () => { if (!window.confirm(tt('Şagirdlər öz cavab kartını (sual, cavab, düz cavab, bal) görəcək. Göndərilsin?'))) return; await put(`/api/exams/${ta.id}/${examId}/publish`, { published: true, appeal_days: days }); reload() }}>📤 {tt('Nəticələri şagirdlərə göndər')}</AsyncBtn>}
+            <label className="small" title={tt('Apelyasiya müddəti')}>⚖ <select className="sel" value={days} onChange={e => setDays(Number(e.target.value))} aria-label={tt('Apelyasiya müddəti')}>{[1, 3, 5, 7, 14].map(n => <option key={n} value={n}>{tt('{n} gün', { n })}</option>)}</select></label>
+            <button className="btn sm" onClick={() => setAppeals(true)}>⚖ {tt('Apelyasiyalar')} ({d.appeals_open || 0})</button>
             {d.exam.results_published_at && <Pill tone="ok">{tt('Şagirdlər görür')}</Pill>}
             <AsyncBtn className="btn sm" onClick={async () => { const r = await get<any>(`/api/exams/${ta.id}/${examId}/cards`); if (!r.cards.length) { toast(tt('Cavab kartı olan şagird yoxdur')); return } printCards(exLabel(r.exam), r.class_name, r.cards) }}>🖨 {tt('Cavab kartlarını çap et')}</AsyncBtn>
           </div>
@@ -268,6 +273,50 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
             </section>)}
         </>
       )}
+    </Drawer></>
+  )
+}
+
+/** ⚖ Apelyasiyalar: sual, şagirdin cavabı, açar, bankdakı ünvan, skan kəsiyi; qərar – qəbul / hamıya tətbiq / rədd. */
+function Appeals({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose: () => void }) {
+  const [d, err, , reload] = useLoad<any>(() => get(`/api/exam-appeals/${ta.id}/${examId}`), [ta.id, examId])
+  const [reply, setReply] = useState<Record<number, string>>({})
+  const [msg, setMsg] = useState<string | null>(null)
+  const [er2, setEr2] = useState<unknown>()
+  const decide = async (a: any, decision: 'accept' | 'reject', apply_all = false) => {
+    setEr2(undefined)
+    try {
+      const r = await put<any>(`/api/exam-appeals/${ta.id}/${examId}/${a.id}`, { decision, apply_all, reply: reply[a.id] || null })
+      const ch = (r.changes || []).map((c: any) => `${c.full_name}: ${fmt(c.old)} → ${fmt(c.new)}`).join('; ')
+      setMsg([ch, r.manual_students?.length ? tt('«Əl ilə» seçilmiş şagirdlərin jurnal balı dəyişmədi: {n}', { n: r.manual_students.join(', ') }) : ''].filter(Boolean).join(' · ') || null)
+      reload()
+    } catch (x) { setEr2(x) }
+  }
+  const stTone: Record<string, 'warn' | 'ok' | 'bad'> = { open: 'warn', accepted: 'ok', rejected: 'bad' }
+  const stName: Record<string, string> = { open: tt('gözləyir'), accepted: tt('qəbul'), rejected: tt('rədd') }
+  return (
+    <Drawer title={`⚖ ${tt('Apelyasiyalar')}`} onClose={onClose}>
+      <ErrorBox error={err} /><ErrorBox error={er2} />
+      {msg && <div className="banner">{msg}</div>}
+      {d && d.appeals.length === 0 && <div className="empty">{tt('Apelyasiya yoxdur')}</div>}
+      {d?.appeals.map((a: any) => (
+        <section key={a.id} className="panel" style={{ marginBottom: 10 }}>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><b className="grow">{a.full_name} · №{a.slot}</b>
+            <Pill>{a.source === 'online' ? tt('Onlayn') : tt('Yazılı')}</Pill><Pill tone={stTone[a.status]}>{stName[a.status]}</Pill></div>
+          {a.question && <p style={{ margin: '6px 0' }}>{String(ml(a.question.text) ?? '')}{a.question.image && <img src={a.question.image} alt="" style={{ maxWidth: '100%', display: 'block' }} />}</p>}
+          <div className="small">{tt('Şagirdin cavabı')}: <b>{a.my_answer || '—'}</b> · {tt('Açar')}: <b>{a.key_now ?? a.correct_at_time}</b></div>
+          <div className="small muted">{tt('Bank ünvanı')}: <b>{a.bank_ref?.text || '—'}</b>{a.bank?.needs_review && <> · <Pill tone="warn">{tt('bank yoxlanmalıdır')}</Pill></>}</div>
+          {a.bank && <div className="small muted">{tt('Bankda indi')}: {String(ml(a.bank.text) ?? '').slice(0, 120)} → {a.bank.answer ?? a.bank.correct}</div>}
+          <p className="small" style={{ margin: '6px 0' }}>💬 {a.reason}</p>
+          {a.crop && <img src={`/api/exam-scans/image/${a.scan_id}`} alt={tt('Skan kəsiyi')} loading="lazy" style={{ width: '100%', maxWidth: 560, border: '1px solid var(--line)', borderRadius: 6 }} />}
+          {a.teacher_reply && <p className="small">↪ {a.teacher_reply}</p>}
+          <textarea className="sel" style={{ width: '100%', marginTop: 6 }} rows={2} placeholder={tt('Şagirdə cavab (rədd üçün məcburi)')} value={reply[a.id] ?? ''} onChange={e => setReply({ ...reply, [a.id]: e.target.value })} />
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+            <button className="btn sm primary" onClick={() => decide(a, 'accept')}>✓ {tt('Qəbul')}</button>
+            <button className="btn sm" title={tt('Açar səhv idi: bu bank sualını alan hamıda eyni cavab düz sayılır')} onClick={() => { if (window.confirm(tt('Bu bank sualını alan bütün şagirdlərin balı yenidən hesablanacaq. Davam?'))) decide(a, 'accept', true) }}>✓ {tt('Qəbul + hamıya tətbiq et')}</button>
+            <button className="btn sm ghost" onClick={() => decide(a, 'reject')}>✗ {tt('Rədd')}</button>
+          </div>
+        </section>))}
     </Drawer>
   )
 }

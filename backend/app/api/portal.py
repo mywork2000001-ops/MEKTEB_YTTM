@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import random
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field, StringConstraints
@@ -16,7 +16,7 @@ from ..db import get_db
 from ..deps import require
 from ..domain.plan import view_range
 from ..domain.rules import grade_from_points, semester_grade
-from ..models import (Attendance, Exam, ExamScore, GroupMember, HomeworkCheck, JournalEntry, Mark, OnlineTask, PlanLesson,
+from ..models import (Attendance, Exam, ExamAppeal, ExamScore, GroupMember, HomeworkCheck, JournalEntry, Mark, OnlineTask, PlanLesson,
                       Role, SchoolClass, Student, TaskAttempt, TeachingAssignment, User, now)
 from ..services import SCHOOL_TZ, journal_entries, plan_ctx, roster, taught_lesson, today
 from .plan import WEEKDAYS, bell
@@ -543,7 +543,7 @@ def notifications(user: User = Depends(student_only), db: Session = Depends(get_
     from ..models import ExamScan
     for sc in db.scalars(select(ExamScan).where(ExamScan.student_id == s.id, ExamScan.status == 'graded')):   # kartın şəkli və nəticəsi
         e = db.get(Exam, sc.exam_id)
-        if e and sc.updated_at and at - aware(sc.updated_at) <= dt.timedelta(days=7):
+        if e and e.results_published_at and sc.updated_at and at - aware(sc.updated_at) <= dt.timedelta(days=7):   # nəşrdən əvvəl bal bildirilmir
             out.append({'key': f'card-{sc.id}-{int(aware(sc.updated_at).timestamp())}', 'kind': 'nəticə',
                         'title': f'{e.kind}-{e.no} – ' + L('kartının şəkli və nəticəsi', 'фото твоего бланка и результат', 'your answer card and result'),
                         'text': L(f'{sc.points:g} bal · cavablarını düz cavablarla yoxla', f'{sc.points:g} балл · сверь ответы с правильными',
@@ -599,9 +599,68 @@ def exam_card_view(exam_id: int, user: User = Depends(student_only), db: Session
     if e.results_published_at is None:
         raise HTTPException(403, _L(user, 'Nəticələr hələ şagirdlərə göstərilməyib', 'Результаты ещё не опубликованы', 'Results have not been published yet'))
     c = exam_card(db, e, s.id)
+    if c is not None:
+        c['appeal_until'] = e.appeal_until
+        c['appeals'] = [{'id': a.id, 'slot': a.slot, 'source': a.source, 'status': a.status, 'reason': a.reason, 'teacher_reply': a.teacher_reply,
+                         'apply_all': a.apply_all} for a in db.scalars(select(ExamAppeal).where(ExamAppeal.exam_id == e.id, ExamAppeal.student_id == s.id))]
     if c is None or not c['sources']:                 # yazmayan şagirdə sual və düz cavablar göstərilmir
         raise HTTPException(404, _L(user, 'Cavab kartı yoxdur', 'Бланка ответов нет', 'No answer card'))
     return c
+
+
+class AppealIn(BaseModel):
+    slot: int = Field(ge=1)
+    source: Literal['paper', 'online'] = 'paper'
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)]
+
+
+@router.post('/exams/{exam_id}/appeals')
+def create_appeal(exam_id: int, body: AppealIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Sual üzrə apelyasiya: yalnız nəşrdən sonra və müddət (appeal_until) bitənədək; bir sual (mənbə üzrə) – bir apelyasiya."""
+    from ..appeals import ref_of
+    from ..domain.ksq_card import key_value
+    from ..models import ExamScan, ExamVariant
+    s, e = my_exam(db, user, exam_id)
+    if e.results_published_at is None:
+        raise HTTPException(403, _L(user, 'Nəticələr hələ şagirdlərə göstərilməyib', 'Результаты ещё не опубликованы', 'Results have not been published yet'))
+    if e.appeal_until is not None and now() > aware(e.appeal_until):
+        raise HTTPException(400, _L(user, 'Apelyasiya müddəti bitib', 'Срок подачи апелляции истёк', 'The appeal period has ended'))
+    sc = db.scalar(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == s.id, ExamScan.source == body.source,
+                                          ExamScan.status == 'graded'))
+    v = db.get(ExamVariant, (e.id, s.id))
+    q = next((x for x in (v.questions if v else []) if x['slot'] == body.slot), None)
+    if sc is None or q is None:
+        raise HTTPException(404, _L(user, 'Bu sual üçün nəticə tapılmadı', 'Результат по этому вопросу не найден', 'No result found for this question'))
+    if body.slot in ({it['n'] for it in (e.items or []) if it.get('annulled')} | set(sc.lost or [])):
+        raise HTTPException(400, _L(user, 'Bu sual sayılmayıb – apelyasiya lazım deyil', 'Этот вопрос не засчитывался – апелляция не нужна', 'This question was not counted – no appeal needed'))
+    if db.scalar(select(ExamAppeal.id).where(ExamAppeal.exam_id == e.id, ExamAppeal.student_id == s.id, ExamAppeal.slot == body.slot,
+                                             ExamAppeal.source == body.source)):
+        raise HTTPException(409, _L(user, 'Bu sual üzrə apelyasiya artıq verilib', 'Апелляция по этому вопросу уже подана', 'An appeal for this question has already been submitted'))
+    read = next((r.get('value') for r in sc.reading or [] if r.get('slot') == body.slot), None)
+    a = ExamAppeal(exam_id=e.id, student_id=s.id, slot=body.slot, source=body.source, bank_id=q.get('bank_id'), bank_ref=ref_of(db, q),
+                   my_answer=read or '', correct_at_time=key_value(q), reason=body.reason)
+    db.add(a)
+    db.flush()
+    from .common import audit
+    audit(db, user, 'create', 'exam_appeal', a.id, exam_id=e.id, slot=body.slot, source=body.source)
+    db.commit()
+    return {'id': a.id, 'status': a.status}
+
+
+@router.delete('/exam-appeals/{appeal_id}')
+def withdraw_appeal(appeal_id: int, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Cavablanmamış öz apelyasiyanı geri götür; başqasının apelyasiyası – 403."""
+    s = me_student(db, user)
+    a = db.get(ExamAppeal, appeal_id)
+    if a is None:
+        raise HTTPException(404, _L(user, 'Apelyasiya tapılmadı', 'Апелляция не найдена', 'Appeal not found'))
+    if a.student_id != s.id:
+        raise HTTPException(403, _L(user, 'Bu apelyasiya sizin deyil', 'Эта апелляция не ваша', 'This appeal is not yours'))
+    if a.status != 'open':
+        raise HTTPException(409, _L(user, 'Qərar verilib – geri götürmək olmaz', 'Решение принято – отозвать нельзя', 'A decision has been made – cannot withdraw'))
+    db.delete(a)
+    db.commit()
+    return {'ok': True}
 
 
 def _sem_args(exams: list, gmap: dict, sem: int) -> tuple:

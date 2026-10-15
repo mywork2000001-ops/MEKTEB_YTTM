@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { tt } from '../../i18n'
 import { ml } from '../../i18n'
-import { get } from '../../api'
+import { del, get, post } from '../../api'
 import { useT } from '../../i18n'
 import { Drawer, ErrorBox, fmt, fmtDate, gradeTone, Loading, Pill, Stat, Top, useLoad } from '../../ui'
 import { MathText } from '../../MathText'
@@ -162,13 +162,24 @@ function AnswerCard({ examId }: { examId: number }) {
 }
 
 function AnswerCardView({ examId, onClose }: { examId: number; onClose: () => void }) {
-  const [c, err] = useLoad<any>(() => get(`/api/portal/exams/${examId}/card`), [examId])
+  const [c, err, , reload] = useLoad<any>(() => get(`/api/portal/exams/${examId}/card`), [examId])
+  const [form, setForm] = useState<{ slot: number; source: string } | null>(null)
+  const [reason, setReason] = useState('')
+  const [er2, setEr2] = useState<unknown>()
+  const open = c && (!c.appeal_until || Date.now() <= new Date(c.appeal_until).getTime())      // apelyasiya müddəti
+  const send = async () => {
+    if (!form) return
+    setEr2(undefined)
+    try { await post(`/api/portal/exams/${examId}/appeals`, { ...form, reason }); setForm(null); setReason(''); reload() } catch (x) { setEr2(x) }
+  }
+  const stName: Record<string, string> = { open: tt('gözləyir'), accepted: tt('qəbul olundu'), rejected: tt('rədd edildi') }
   const srcName: Record<string, string> = { online: tt('Onlayn'), paper: tt('Yazılı') }
   return (
     <Drawer title={c ? `${c.exam.kind}-${c.exam.no}${c.exam.extra_seq ? ' · ' + tt('əlavə {n}', { n: c.exam.extra_seq }) : ''} · ${tt('cavab kartı')}` : tt('Cavab kartı')} onClose={onClose}>
       <ErrorBox error={err} />
       {!c && !err && <Loading />}
       {c && <>
+        {c.appeal_until && <p className="small muted">⚖ {open ? tt('Apelyasiya müddəti: {d}-dək', { d: fmtDate(c.appeal_until) }) : tt('Apelyasiya müddəti bitib')}</p>}
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
           <Pill tone={gradeTone(c.final.grade)}>{tt('Jurnala')}: {c.final.points != null ? fmt(c.final.points, 1) : '—'}{c.final.grade ? ` → ${c.final.grade}` : ''}</Pill>
           {Object.entries(c.sources).map(([k, s]: [string, any]) => <span key={k} className="small">{srcName[k] || k}: <b>{fmt(s.points, 1)}</b></span>)}
@@ -177,7 +188,7 @@ function AnswerCardView({ examId, onClose }: { examId: number; onClose: () => vo
           <section key={k} style={{ marginBottom: 14 }}>
             {Object.keys(c.sources).length > 1 && <h3 style={{ margin: '8px 0 4px' }}>{srcName[k] || k}</h3>}
             <div className="tbl-wrap"><table style={{ minWidth: 0 }}>
-              <thead><tr><th className="r">№</th><th>{tt('Sual')}</th><th>{tt('Sənin cavabın')}</th><th>{tt('Düz cavab')}</th><th /><th className="r">{tt('Bal')}</th></tr></thead>
+              <thead><tr><th className="r">№</th><th>{tt('Sual')}</th><th>{tt('Sənin cavabın')}</th><th>{tt('Düz cavab')}</th><th /><th className="r">{tt('Bal')}</th><th /></tr></thead>
               <tbody>{c.questions.map((q: any) => {
                 const a = s.answers[q.slot]
                 return (
@@ -189,10 +200,24 @@ function AnswerCardView({ examId, onClose }: { examId: number; onClose: () => vo
                     <td className="num">{q.key}</td>
                     <td>{a?.void ? <span className="small muted">{tt('sayılmır')}</span> : a?.ok ? <span style={{ color: 'var(--ok)' }}>✓</span> : <span style={{ color: 'var(--bad)' }}>✗</span>}</td>
                     <td className="r num">{a?.void ? '' : `${fmt(a?.earned ?? 0, 1)} / ${q.points}`}</td>
+                    <td>{(() => {
+                      const ap = (c.appeals || []).find((x: any) => x.slot === q.slot && x.source === k)
+                      if (ap) return <span className="small"><Pill tone={ap.status === 'accepted' ? 'ok' : ap.status === 'rejected' ? 'bad' : 'warn'}>⚖ {stName[ap.status]}</Pill>
+                        {ap.teacher_reply && <span className="muted"> {ap.teacher_reply}</span>}
+                        {ap.status === 'open' && <button type="button" className="btn sm ghost" onClick={async () => { await del(`/api/portal/exam-appeals/${ap.id}`); reload() }}>{tt('Geri götür')}</button>}</span>
+                      return open && !a?.void ? <button type="button" className="btn sm ghost" onClick={() => setForm({ slot: q.slot, source: k })}>⚖ {tt('Apelyasiya')}</button> : null
+                    })()}</td>
                   </tr>)
               })}</tbody></table></div>
           </section>))}
       </>}
+      {form && <div className="panel" style={{ position: 'sticky', bottom: 0, background: 'var(--bg, #fff)' }}>
+        <b>⚖ {tt('Apelyasiya')} · №{form.slot}</b>
+        <textarea className="sel" style={{ width: '100%', marginTop: 6 }} rows={3} maxLength={1000} value={reason} onChange={e => setReason(e.target.value)} placeholder={tt('Niyə cavabın düz olduğunu düşünürsən?')} />
+        <ErrorBox error={er2} />
+        <div className="row" style={{ gap: 6, marginTop: 6 }}><button className="btn sm primary" disabled={reason.trim().length < 3} onClick={send}>{tt('Göndər')}</button>
+          <button className="btn sm ghost" onClick={() => { setForm(null); setEr2(undefined) }}>{tt('Ləğv et')}</button></div>
+      </div>}
     </Drawer>
   )
 }
