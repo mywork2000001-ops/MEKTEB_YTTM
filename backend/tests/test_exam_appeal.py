@@ -143,6 +143,20 @@ def test_accept_single_and_apply_all(world, monkeypatch):
         assert db.get(ExamScore, (e['id'], b)).points == 0                       # «əl ilə» bal toxunulmaz
         assert db.query(AuditLog).filter_by(entity='exam_appeal', action='update').count() == 2
         assert db.query(AuditLog).filter_by(entity='exam_appeal', action='create').count() == 1
+    # bank ekranı: «yoxlanmalı» işarəsi, süzgəc, səbəb (qəbul şərhi), konkret sual (?id), «yoxlandı»
+    only = admin.get('/api/bank/questions', params={'review': True}).json()
+    assert [x['id'] for x in only['items']] == [bid] and only['items'][0]['needs_review'] and only['items'][0]['review_note']
+    assert admin.get('/api/bank/questions', params={'id': bid}).json()['items'][0]['id'] == bid
+    teacher = world[0]('ilqar')
+    assert teacher.post(f'/api/bank/questions/{bid}/reviewed').status_code == 403           # redaktə qaydası: yalnız admin
+    assert admin.post(f'/api/bank/questions/{bid}/reviewed').json()['needs_review'] is False
+    assert admin.post('/api/bank/questions/99999999/reviewed').status_code == 404
+    assert admin.get('/api/bank/questions', params={'review': True}).json()['items'] == []
+    with S() as db:
+        assert db.get(BankQuestion, bid).needs_review is False
+        assert db.query(AuditLog).filter_by(entity='bank_question', action='update').count() == 1
+        db.get(BankQuestion, bid).needs_review = True
+        db.commit()
     # 3) rədd edəndə hamıya tətbiq geri alınır
     admin.put(d, json={'decision': 'reject', 'reply': 'Səhv idi'})
     assert _pts(S, e['id'], a) == 0 and _pts(S, e['id'], b) == 0

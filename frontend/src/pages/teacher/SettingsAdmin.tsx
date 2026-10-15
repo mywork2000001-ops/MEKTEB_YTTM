@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { get, patch, post } from '../../api'
 import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, Loading, Pill, toast, useLoad } from '../../ui'
 import { azDT } from '../../ui'
-import { tt } from '../../i18n'
+import { ml, tt } from '../../i18n'
 
 export default function SettingsAdmin({ tab }: { tab: 'teachers' | 'bank' | 'audit' }) {
   if (tab === 'teachers') return <Teachers />
@@ -105,6 +105,7 @@ function Bank() {
         <p className="small muted">Söndürülən mənbənin sualları tapşırıq yaradarkən görünmür.</p>
       </section>
       <BankFiles sources={sources || []} />
+      <BankQuestions sources={sources || []} />
     </div>
   )
 }
@@ -131,6 +132,47 @@ function BankFiles({ sources }: { sources: any[] }) {
               onBlur={e => { const g = e.target.value.split(/[ ,;]+/).map(Number).filter(n => n >= 1 && n <= 12); if (g.join() !== (f.grades || []).join()) save(f.id, { grades: g }) }} />
             {f.meta_locked ? <button className="btn sm ghost" title="Əl ilə düzəlişi götür" onClick={() => save(f.id, { auto: true })}>avtomatik</button> : <span className="small muted">avto</span>}
           </div>))}
+      </div>}
+    </section>
+  )
+}
+
+/** Bank sualları: «yoxlanmalı» işarəsi, süzgəc, «yoxlandı»; apelyasiyadan keçid `?tab=bank&q=<bank_id>` sualı açıb vurğulayır. */
+function BankQuestions({ sources }: { sources: any[] }) {
+  const focusId = Number(new URLSearchParams(location.search).get('q')) || 0
+  const [src, setSrc] = useState('')
+  const [text, setText] = useState('')
+  const [onlyReview, setOnlyReview] = useState(false)
+  const [focus, , , reloadF] = useLoad<any>(() => (focusId ? get('/api/bank/questions', { id: focusId }).then((r: any) => r.items[0] || null) : Promise.resolve(null)), [focusId])
+  const [list, err, , reload] = useLoad<any>(() => (src || text || onlyReview ? get('/api/bank/questions', { source: src || undefined, q: text || undefined, review: onlyReview || undefined, limit: 100 }) : Promise.resolve(null)), [src, text, onlyReview])
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (focus) ref.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, [focus])
+  const done = async (id: number) => { await post(`/api/bank/questions/${id}/reviewed`); toast(tt('Yoxlandı')); reload(); reloadF() }
+  const row = (x: any, hl: boolean) => (
+    <div key={x.id} ref={hl ? ref : undefined} className="jrow" style={{ display: 'block', ...(hl ? { outline: '2px solid var(--accent, #2563eb)', borderRadius: 6 } : {}) }}>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <span className="small muted grow">{x.lesson} · №{x.n} · B{x.id}</span>
+        {x.needs_review && <Pill tone="warn">⚠ {tt('Yoxlanmalı')}</Pill>}
+        {x.needs_review && <AsyncBtn className="btn sm" onClick={() => done(x.id)}>✓ {tt('Yoxlandı')}</AsyncBtn>}
+      </div>
+      <div className="small">{String(ml(x.text) ?? '')}</div>
+      {x.image && <img src={x.image} alt="" style={{ maxWidth: 320, display: 'block' }} />}
+      <div className="small muted">{tt('Açar')}: <b>{x.answer ?? x.correct ?? '—'}</b></div>
+      {x.needs_review && x.review_note && <div className="small">💬 {tt('Apelyasiya şərhi')}: {x.review_note}</div>}
+    </div>)
+  return (
+    <section className="panel" style={{ gridColumn: '1 / -1' }}>
+      <h2>{tt('Bank sualları')} <small>{tt('apelyasiyadan sonra «yoxlanmalı» işarələnənlər')}</small></h2>
+      {focus && <div style={{ marginBottom: 8 }}>{row(focus, true)}</div>}
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <select className="sel" value={src} onChange={e => setSrc(e.target.value)}>
+          <option value="">{tt('Bütün mənbələr')}</option>{sources.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}</select>
+        <input className="sel" value={text} placeholder={tt('Mətnə görə axtar')} onChange={e => setText(e.target.value)} />
+        <label className="small"><input type="checkbox" checked={onlyReview} onChange={e => setOnlyReview(e.target.checked)} /> {tt('yalnız yoxlanmalılar')}</label>
+      </div>
+      <ErrorBox error={err} />
+      {list && <div className="jlist" style={{ marginTop: 8, maxHeight: 520, overflow: 'auto' }}>
+        {list.items.length === 0 ? <div className="empty">{tt('Sual tapılmadı')}</div> : list.items.filter((x: any) => x.id !== focusId).map((x: any) => row(x, false))}
       </div>}
     </section>
   )
