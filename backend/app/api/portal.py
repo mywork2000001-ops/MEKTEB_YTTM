@@ -481,7 +481,9 @@ def _card(db: Session, e: Exam, sid: int) -> dict | None:
     cavab – şagird oxunuşun dəqiqliyini özü yoxlayır, səhv görsə müəllimə deyir. Yalnız qiymətləndirilmiş kart."""
     from ..domain.ksq_card import key_value
     from ..models import ExamScan, ExamVariant
-    sc = db.scalar(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == sid))
+    scs = list(db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == sid, ExamScan.status == 'graded')))
+    score = db.get(ExamScore, (e.id, sid))                 # onlayn və kağız yanaşıdır – jurnala gedən balı verən (yoxdursa kağız) göstərilir
+    sc = next(iter(sorted(scs, key=lambda x: (score is None or x.points != score.points, x.source != 'paper'))), None)
     v = db.get(ExamVariant, (e.id, sid))
     if sc is None or v is None or sc.status != 'graded':
         return None

@@ -837,7 +837,7 @@ const D: Record<string, [string, string]> = {
   "Köçürmədən şübhələnirsinizsə: aşağıda şagirdin adına toxunun → «🚩 Köçürmə şübhəsi – yeni variant».": ["If you suspect cheating: tap the student's name below → «🚩 Suspected cheating – new variant».", "Если подозреваете списывание: нажмите на имя ученика ниже → «🚩 Подозрение на списывание – новый вариант»."],
   "kart": ["cards", "бланков"],
   "{n} token": ["{n} tokens", "токенов: {n}"],
-  // Əlavə KSQ/BSQ (15.10.2026)
+  // Əlavə KSQ/BSQ + onlayn və yazılı nəticə yanaşı (15.10.2026)
   "əlavə {n}": ["extra {n}", "дополнительная {n}"],
   "bütün sinif": ["whole class", "весь класс"],
   "Əlavə {kind}": ["Extra {kind}", "Дополнительная {kind}"],
@@ -850,6 +850,16 @@ const D: Record<string, [string, string]> = {
   "2 alanlar": ["got 2", "получившие 2"],
   "heç biri": ["none", "никто"],
   "Seçilib: {n}": ["Selected: {n}", "Выбрано: {n}"],
+  "Hamıya: ən yüksək": ["All: highest", "Всем: наивысший"],
+  "«Əl ilə» seçilmiş şagirdlərə toxunulmur": ["Students set to «Manual» are not changed", "Ученики с выбором «Вручную» не затрагиваются"],
+  "Onlayn və yazılı nəticə yanaşı saxlanılır; jurnala seçilən gedir.": ["Online and written results are kept side by side; the selected one goes to the journal.", "Онлайн и письменный результаты хранятся рядом; в журнал идёт выбранный."],
+  "Onlayn": ["Online", "Онлайн"],
+  "Yazılı": ["Written", "Письменно"],
+  "fərq": ["difference", "разница"],
+  "Onlayn və yazılı qiymət fərqlidir – köçürmə şübhəsi ola bilər": ["Online and written grades differ – possible copying", "Онлайн и письменная оценки различаются – возможно списывание"],
+  "Jurnala": ["To journal", "В журнал"],
+  "Ən yüksək": ["Highest", "Наивысший"],
+  "Əl ilə": ["Manual", "Вручную"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

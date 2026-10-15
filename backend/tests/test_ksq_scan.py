@@ -679,7 +679,7 @@ def test_clear_scans_migration_and_endpoint(world, monkeypatch):
     with S() as db:
         scans = db.query(ExamScan).filter_by(exam_id=e['id']).order_by(ExamScan.id).all()
         assert len(scans) == 2 and all(s.status == 'graded' for s in scans)
-        scans[1].read_by = 'online'                                       # onlayn yazı – qalmalıdır
+        scans[1].read_by, scans[1].source = 'online', 'online'            # onlayn yazı – qalmalıdır
         paper_sid = scans[0].student_id
         manual = next(x['id'] for x in st if x['id'] not in {s.student_id for s in scans})
         db.add(ExamScore(exam_id=e['id'], student_id=manual, points=55))  # skansız əl balı – qalmalıdır

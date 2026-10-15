@@ -497,7 +497,9 @@ class ExamScan(Base):
     lost: Mapped[list | None] = mapped_column(JSON)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
-    __table_args__ = (UniqueConstraint('exam_id', 'student_id'),)
+    # nəticənin mənbəyi: paper (kağız skan) | online (onlayn təhvil) – ikisi yanaşı saxlanılır, jurnala seçilən gedir (ExamScore.chosen)
+    source: Mapped[str] = mapped_column(String(10), default='paper', server_default='paper')
+    __table_args__ = (UniqueConstraint('exam_id', 'student_id', 'source'),)
 
 
 class ExamScore(Base):
@@ -508,6 +510,8 @@ class ExamScore(Base):
     item_marks: Mapped[list | None] = mapped_column(JSON)              # [1, 0, 1, …] – tapşırıq üzrə ✓/✗
     absent: Mapped[bool] = mapped_column(Boolean, default=False)
     taken_on: Mapped[dt.date | None] = mapped_column(Date)             # üzrlü səbəbdən sonradan yazdığı tarix
+    # jurnala gedən bal haradandır: online | paper | max (ən yüksək) | manual (müəllim əl ilə – skan/təhvil toxunmur)
+    chosen: Mapped[str] = mapped_column(String(10), default='max', server_default='max')
 
 
 # ---------------------------------------------------------------- onlayn tapşırıqlar (vaxtlı testlər)

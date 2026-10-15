@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import staff
 from ..domain.rules import grade_from_points, semester_grade
-from ..models import BankQuestion, Exam, ExamScore, ExamVariant, OnlineTask, TeachingAssignment, User
-from ..exam_logic import exam_label, exam_roster, final_grades
+from ..models import BankQuestion, Exam, ExamScan, ExamScore, ExamVariant, OnlineTask, TeachingAssignment, User
+from ..exam_logic import exam_label, exam_roster, final_grades, recompute_score, scan_of
 from ..services import own_assignment, plan_ctx, roster, today
 from .common import audit, get_or_404
 
@@ -167,7 +167,6 @@ def update_exam(ta_id: int, exam_id: int, body: ExamIn, user: User = Depends(sta
 @router.delete('/{ta_id}/{exam_id}')
 def delete_exam(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     """KSQ/BSQ-ni silir: nəticələr, kağız variantlar, kart skanları (şəkillər daxil) birlikdə. Plan sətri qalır («Hazırla»)."""
-    from ..models import ExamScan
     from ..storage import DbStorage
     own_assignment(db, user, ta_id)
     e = _exam(db, ta_id, exam_id)
@@ -239,6 +238,10 @@ def save_scores(ta_id: int, exam_id: int, body: list[ScoreIn], user: User = Depe
             raise HTTPException(400, f'Bal maksimal baldan ({e.max_points}) çox ola bilməz')
         _check_taken_on(db, ta, e, s, pts)
         sc = db.get(ExamScore, (e.id, s.student_id)) or ExamScore(exam_id=e.id, student_id=s.student_id)
+        new_pts = None if s.absent else pts
+        same = (sc.points is None and new_pts is None) or (sc.points is not None and new_pts is not None and abs(sc.points - new_pts) < 1e-6)
+        if sc.chosen != 'manual' and not (same and bool(sc.absent) == s.absent):
+            sc.chosen = 'manual'                       # müəllim balı əl ilə dəyişdi – sonrakı skan/təhvil üstələmir
         sc.points, sc.item_marks, sc.absent = (None if s.absent else pts), (None if s.absent else s.item_marks), s.absent
         sc.taken_on = s.taken_on
         db.merge(sc)
@@ -247,12 +250,84 @@ def save_scores(ta_id: int, exam_id: int, body: list[ScoreIn], user: User = Depe
     return exam_result(ta_id, exam_id, user, db)
 
 
+def _sources(e: Exam, scans: dict, sid: int) -> dict:
+    """Onlayn və yazılı (kağız) nəticə yanaşı + «⚠ fərq» (qiymət fərqi ≥ 1)."""
+    out = {}
+    for src in ('online', 'paper'):
+        sc = scans.get((sid, src))
+        ok = sc is not None and sc.status == 'graded' and sc.points is not None
+        out[src] = {'points': sc.points, 'grade': grade_from_points(sc.points, e.max_points)} if ok else None
+    a, b = out['online'], out['paper']
+    out['differs'] = bool(a and b and abs(a['grade'] - b['grade']) >= 1)
+    return out
+
+
+class ChoiceIn(BaseModel):
+    chosen: Literal['online', 'paper', 'max', 'manual']
+    points: float | None = Field(None, ge=0)         # yalnız «manual» üçün: jurnala əl ilə yazılan bal
+
+
+class ChoiceAllIn(BaseModel):
+    chosen: Literal['online', 'paper', 'max']
+
+
+@router.put('/{ta_id}/{exam_id}/choice/{student_id}')
+def set_choice(ta_id: int, exam_id: int, student_id: int, body: ChoiceIn, user: User = Depends(staff),
+               db: Session = Depends(get_db)):
+    """Müəllim jurnala gedəcək nəticəni seçir: onlayn / yazılı / ən yüksək / əl ilə (bal). «Əl ilə» – sonrakı skan və təhvil üstələmir."""
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    if student_id not in {s.id for s in exam_roster(db, ta, e)}:
+        raise HTTPException(400, f'Şagird {student_id} bu imtahana aid deyil')
+    if body.points is not None and (body.chosen != 'manual' or body.points > e.max_points):
+        raise HTTPException(400, 'Bal yalnız «əl ilə» seçimində və maksimal baldan çox olmayaraq yazılır')
+    score = db.get(ExamScore, (e.id, student_id)) or ExamScore(exam_id=e.id, student_id=student_id)
+    old = {'chosen': score.chosen or 'max', 'points': score.points}
+    score.chosen = body.chosen
+    if body.chosen == 'manual':
+        if body.points is not None:
+            score.points, score.item_marks, score.absent = body.points, None, False
+    db.add(score)
+    db.flush()
+    recompute_score(db, e, student_id)
+    audit(db, user, 'update', 'exam_choice', e.id, student_id=student_id, old=old, new={'chosen': score.chosen, 'points': score.points})
+    db.commit()
+    return exam_result(ta_id, exam_id, user, db)
+
+
+@router.put('/{ta_id}/{exam_id}/choice')
+def set_choice_all(ta_id: int, exam_id: int, body: ChoiceAllIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Hamı üçün birdən («hamıya: ən yüksək»). «Əl ilə» seçilmiş şagirdlərə toxunulmur."""
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    changed = skipped = 0
+    for s in exam_roster(db, ta, e):
+        score = db.get(ExamScore, (e.id, s.id))
+        if score is None and not any(scan_of(db, e.id, s.id, src) for src in ('online', 'paper')):
+            continue
+        if score is not None and score.chosen == 'manual':
+            skipped += 1
+            continue
+        score = score or ExamScore(exam_id=e.id, student_id=s.id)
+        score.chosen = body.chosen
+        db.add(score)
+        db.flush()
+        recompute_score(db, e, s.id)
+        changed += 1
+    audit(db, user, 'update', 'exam_choice', e.id, all=body.chosen, changed=changed, skipped_manual=skipped)
+    db.commit()
+    return {**exam_result(ta_id, exam_id, user, db), 'changed': changed, 'skipped_manual': skipped}
+
+
 @router.get('/{ta_id}/{exam_id}')
 def exam_result(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)
     e = _exam(db, ta_id, exam_id)
     scores = {sc.student_id: sc for sc in db.scalars(select(ExamScore).where(ExamScore.exam_id == e.id))}
-    rows = [{'student_id': s.id, 'full_name': s.full_name, **_row(e, scores.get(s.id))} for s in exam_roster(db, ta, e)]
+    scans = {(x.student_id, x.source): x for x in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id))}
+    rows = [{'student_id': s.id, 'full_name': s.full_name, **_row(e, scores.get(s.id)),
+             'chosen': scores[s.id].chosen if s.id in scores else 'max', **_sources(e, scans, s.id)}
+            for s in exam_roster(db, ta, e)]
     done = [r for r in rows if r['grade'] is not None]
     dist = {g: sum(r['grade'] == g for r in done) for g in (5, 4, 3, 2)}
     items, standards = [], {}
@@ -434,7 +509,7 @@ def _suspects(db: Session, e: Exam, names: dict[int, str]) -> list[dict]:
         tasks, at = _tasks(db, e), now()
         for sid, x in out.items():
             v = db.get(ExamVariant, (e.id, sid))
-            sc = db.scalar(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == sid))
+            sc = db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == sid).order_by(ExamScan.source.desc())).first()
             score = db.get(ExamScore, (e.id, sid))
             t = tasks.get(sid)
             online = _status(t, _attempt(db, t, sid) if t else None, at)
@@ -558,9 +633,9 @@ def retake(ta_id: int, exam_id: int, student_id: int, body: RetakeIn | None = No
     v.code, v.questions, v.printed_at, v.unprinted, v.created_at = f'{base}R{k}', qs, None, None, now()
     # cavablar və bal silinir (kəsik şəkli storage-da qalır – sübut kimi; açarı audit jurnalında)
     gone = {}
-    sc = db.scalar(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == student_id))
-    if sc is not None:
-        gone = {'scan_points': sc.points, 'read_by': sc.read_by, 'crop_key': sc.crop_key}
+    for sc in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == student_id).order_by(ExamScan.source.desc())):
+        if not gone:
+            gone = {'scan_points': sc.points, 'read_by': sc.read_by, 'crop_key': sc.crop_key}
         db.delete(sc)
     score = db.get(ExamScore, (e.id, student_id))
     if score is not None:

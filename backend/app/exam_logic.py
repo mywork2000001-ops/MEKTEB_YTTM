@@ -1,12 +1,16 @@
-"""KSQ/BSQ ortaq məntiq: imtahanın şagird siyahısı (əlavə imtahan – seçilmiş şagirdlər), yarımil üçün əsas + əlavə imtahan qiyməti."""
+"""KSQ/BSQ ortaq məntiq: imtahanın şagird siyahısı (əlavə imtahan – seçilmiş şagirdlər), onlayn və kağız nəticənin yanaşı
+saxlanması və jurnala gedən yekun balın hesablanması (recompute_score), yarımil üçün əsas + əlavə imtahan qiyməti."""
 from __future__ import annotations
 
 from typing import Callable
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Exam, Student, TeachingAssignment
+from .models import Exam, ExamScan, ExamScore, Student, TeachingAssignment
 from .services import roster
+
+CHOICES = ('online', 'paper', 'max', 'manual')
 
 
 def exam_roster(db: Session, ta: TeachingAssignment, e: Exam) -> list[Student]:
@@ -20,6 +24,39 @@ def exam_roster(db: Session, ta: TeachingAssignment, e: Exam) -> list[Student]:
 
 def exam_label(e: Exam) -> str:
     return f'{e.kind}-{e.no}' + (f' · əlavə {e.extra_seq}' if e.extra_seq else '')
+
+
+def scan_of(db: Session, exam_id: int, student_id: int, source: str) -> ExamScan | None:
+    return db.scalar(select(ExamScan).where(ExamScan.exam_id == exam_id, ExamScan.student_id == student_id,
+                                            ExamScan.source == source))
+
+
+def recompute_score(db: Session, e: Exam, student_id: int) -> ExamScore | None:
+    """Jurnala gedən yekun bal (ExamScore.points) – seçimə (chosen) görə. «manual» olanda toxunmur. Seçilən mənbədə nəticə
+    yoxdursa – digərindən götürülür; heç bir qiymətləndirilmiş skan yoxdursa – bal olduğu kimi qalır (əl ilə yazılıb)."""
+    score = db.get(ExamScore, (e.id, student_id))
+    if score is not None and score.chosen == 'manual':
+        return score
+    got = {}
+    for src in ('online', 'paper'):
+        sc = scan_of(db, e.id, student_id, src)
+        if sc is not None and sc.status == 'graded' and sc.points is not None:
+            got[src] = sc
+    if not got:
+        return score
+    if score is None:
+        score = ExamScore(exam_id=e.id, student_id=student_id, chosen='max')
+        db.add(score)
+    ch = score.chosen if score.chosen in CHOICES else 'max'
+    if ch in got:
+        pick = got[ch]
+    elif ch in ('online', 'paper'):
+        pick = next(iter(got.values()))
+    else:
+        pick = max(got.values(), key=lambda x: x.points)
+    score.points, score.item_marks, score.absent = pick.points, pick.marks, False
+    db.flush()
+    return score
 
 
 def final_grades(exams: list[Exam], grade_of: Callable[[Exam], int | None]) -> tuple[list[tuple[int, int | None]], int | None]:

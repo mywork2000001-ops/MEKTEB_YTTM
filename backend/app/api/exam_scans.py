@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import staff
 from ..models import Exam, ExamScan, ExamScore, ExamVariant, User, now
-from ..exam_logic import exam_roster
+from ..exam_logic import exam_roster, recompute_score, scan_of
 from ..services import own_assignment
 from .common import audit, get_or_404
 
@@ -57,9 +57,8 @@ def apply(db: Session, e: Exam, sc: ExamScan) -> None:
         sc.lost = sorted(set(v.unprinted) & empty)
     g = grade(v.questions, sc.reading, {it['n'] for it in (e.items or []) if it.get('annulled')} | set(sc.lost or []))
     sc.marks, sc.points, sc.flagged, sc.status, sc.error = g['marks'], g['points'], g['flagged'], 'graded', None
-    score = db.get(ExamScore, (e.id, sc.student_id)) or ExamScore(exam_id=e.id, student_id=sc.student_id)
-    score.points, score.item_marks, score.absent = g['points'], g['marks'], False
-    db.add(score)
+    db.flush()
+    recompute_score(db, e, sc.student_id)                   # jurnal balı: seçimə görə (onlayn / yazılı / ən yüksək / əl ilə)
 
 
 def _ai_error(db: Session, ta, scans: list[ExamScan]) -> str | None:
@@ -77,7 +76,7 @@ def _aware(t: dt.datetime) -> dt.datetime:
 
 def _out(sc: ExamScan, name: str | None) -> dict:
     return {'id': sc.id, 'student_id': sc.student_id, 'full_name': name, 'code': sc.code, 'status': sc.status, 'points': sc.points,
-            'flagged': sc.flagged or [], 'reading': sc.reading, 'marks': sc.marks, 'read_by': sc.read_by, 'error': sc.error,
+            'flagged': sc.flagged or [], 'reading': sc.reading, 'marks': sc.marks, 'read_by': sc.read_by, 'source': sc.source, 'error': sc.error,
             'updated_at': sc.updated_at, 'rescans': len(sc.history or []), 'lost': sc.lost or [],
             'n': len(sc.marks or []) or None}
 
@@ -190,7 +189,7 @@ def lost_auto(ta_id: int, exam_id: int, body: LostAutoIn, user: User = Depends(s
         old_print = v.printed_at is not None and _aware(v.printed_at) < PRINT_FIX_AT
         v.unprinted = sorted(set(body.cut.get(v.student_id, []))) if old_print else None
     out = []
-    for sc in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.reading.is_not(None))):
+    for sc in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.source == 'paper', ExamScan.reading.is_not(None))):
         cut = set(body.cut.get(sc.student_id, []))
         filled = {int(r['slot']) for r in sc.reading or [] if r.get('value')}
         empty = {int(r['slot']) for r in sc.reading or [] if not r.get('value')}
@@ -284,7 +283,7 @@ async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[Uplo
             if c['exam_id'] != e.id or v is None or v.code != c['code']:
                 problems.append({'file': f.filename, 'error': f'Kart başqa imtahanın və ya köhnə variantındır ({c["code"]})'})
                 continue
-            sc = db.scalar(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == c['student_id']))
+            sc = scan_of(db, e.id, c['student_id'], 'paper')       # kağız nəticə onlayn nəticədən ayrıdır
             # bir blank – bir dəfə: artıq qəbul edilib (xətasız) – təkrar göndərilmir; yenidən skan – yalnız replace=true ilə
             # təkrar oxunuşdan qorunma (kvota): «yenidən skan» açıq olsa belə, son 90 s-də qəbul edilmiş kart təkrar sayılır
             recent = sc is not None and sc.updated_at is not None and now() - _aware(sc.updated_at) < dt.timedelta(seconds=RECENT_S)
@@ -293,7 +292,7 @@ async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[Uplo
                     dupes.append({'student_id': c['student_id'], 'scan_id': sc.id, 'status': sc.status, 'points': sc.points})
                 continue
             if sc is None:
-                sc = ExamScan(exam_id=e.id, student_id=c['student_id'], code=c['code'], history=[])
+                sc = ExamScan(exam_id=e.id, student_id=c['student_id'], code=c['code'], history=[], source='paper')
                 db.add(sc)
             elif sc.reading or sc.crop_key:
                 sc.history = [*(sc.history or []), {'at': now().isoformat(), 'reading': sc.reading, 'points': sc.points,
@@ -347,7 +346,7 @@ def list_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sessio
     from ..domain.ksq_reader import key_pool
     ta, e = _exam(db, user, ta_id, exam_id)
     names = {s.id: s.full_name for s in exam_roster(db, ta, e)}
-    scans = list(db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id)))
+    scans = list(db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id)))      # kağız və onlayn sətirlər (source)
     have = {sc.student_id for sc in scans}
     variants = list(db.scalars(select(ExamVariant.student_id).where(ExamVariant.exam_id == e.id)))
     from ..domain.ksq_card import key_value
@@ -380,13 +379,15 @@ def clear_scans(ta_id: int, exam_id: int, user: User = Depends(staff), db: Sessi
     təzədən skan olunur. Onlayn yazılar, variantlar və skansız əl balları qalır. Kəsik şəkilləri saxlanır (ehtiyat)."""
     _, e = _exam(db, user, ta_id, exam_id)
     n = 0
-    for sc in list(db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id))):
-        if sc.read_by == 'online':
-            continue
+    for sc in list(db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.source == 'paper'))):
         score = db.get(ExamScore, (e.id, sc.student_id))
-        if score is not None:
-            db.delete(score)
         db.delete(sc)
+        db.flush()
+        if score is not None and score.chosen != 'manual':      # onlayn nəticə varsa – bal ondan; yoxdursa – silinir
+            if scan_of(db, e.id, sc.student_id, 'online') is not None:
+                recompute_score(db, e, sc.student_id)
+            else:
+                db.delete(score)
         n += 1
     audit(db, user, 'delete', 'exam_scans', e.id, deleted=n)
     db.commit()

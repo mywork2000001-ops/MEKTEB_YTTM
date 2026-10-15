@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import staff
 from ..models import Exam, ExamScan, ExamScore, ExamVariant, OnlineTask, TaskAttempt, User, now
-from ..exam_logic import exam_roster
+from ..exam_logic import exam_roster, scan_of
 from ..services import own_assignment
 from .common import audit, get_or_404
 from .tasks import aware
@@ -65,7 +65,7 @@ def _status(t: OnlineTask | None, a: TaskAttempt | None, at: dt.datetime) -> str
 
 
 def record(db: Session, t: OnlineTask, a: TaskAttempt) -> None:
-    """Təhvil (tasks.finalize): cavablar → oxunuş → bal → jurnal. Kağız skanı varsa – tarixçəyə keçir, onlayn əvəz edir."""
+    """Təhvil (tasks.finalize): cavablar → oxunuş → bal → jurnal. Onlayn nəticə öz sətrində (source='online') – kağız skanına heç vaxt toxunulmur; təkrar təhvil köhnəni tarixçəyə keçirir."""
     from .exam_scans import apply
     from ..domain.ksq_card import MCQ_LETTERS
     e = db.get(Exam, t.exam_id) if t.exam_id else None
@@ -83,9 +83,9 @@ def record(db: Session, t: OnlineTask, a: TaskAttempt) -> None:
         else:
             val = str(val).strip()[:40] if val not in (None, '') else None
         reading.append({'slot': q['slot'], 'value': val, 'confidence': 1.0, 'by': 'online'})
-    sc = db.scalar(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == a.student_id))
+    sc = scan_of(db, e.id, a.student_id, 'online')
     if sc is None:
-        sc = ExamScan(exam_id=e.id, student_id=a.student_id, code=v.code, history=[])
+        sc = ExamScan(exam_id=e.id, student_id=a.student_id, code=v.code, history=[], source='online')
         db.add(sc)
     elif sc.reading:
         sc.history = [*(sc.history or []), {'at': now().isoformat(), 'reading': sc.reading, 'points': sc.points,
@@ -102,7 +102,9 @@ def status(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = 
     tasks = _tasks(db, e)
     for t in {t.id: t for t in tasks.values()}.values():
         expire_due(db, t)
-    scans = {sc.student_id: sc for sc in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id))}
+    allsc = list(db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id)))
+    scans = {sc.student_id: sc for sc in allsc if sc.source == 'online'}
+    papers = {sc.student_id: sc for sc in allsc if sc.source == 'paper'}
     scores = {s.student_id: s for s in db.scalars(select(ExamScore).where(ExamScore.exam_id == e.id))}
     at = now()
     rows = []
@@ -111,12 +113,12 @@ def status(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = 
             continue
         t = tasks.get(sid)
         a = _attempt(db, t, sid) if t else None
-        sc, s = scans.get(sid), scores.get(sid)
+        sc, s, psc = scans.get(sid), scores.get(sid), papers.get(sid)
         rows.append({'student_id': sid, 'full_name': names[sid], 'status': _status(t, a, at),
                      'opens_at': aware(t.opens_at) if t else None, 'closes_at': aware(t.closes_at) if t else None,
                      'duration_min': t.duration_min if t else None,
                      'submitted_at': a.submitted_at if a and a.submitted_at else None, 'auto': bool(a and a.auto_submitted),
-                     'paper': bool(sc and sc.crop_key), 'online': bool(sc and sc.read_by == 'online'),
+                     'paper': bool(psc and psc.crop_key), 'online': bool(sc and sc.source == 'online'),
                      'points': s.points if s and not s.absent else None})
     rows.sort(key=lambda r: r['full_name'] or '')
     return {'rows': rows, 'counts': {k: sum(r['status'] == k for r in rows) for k in ('none', 'waiting', 'open', 'doing', 'done', 'missed')}}
@@ -128,7 +130,7 @@ class SendIn(BaseModel):
     window_hours: int = Field(24, ge=1, le=24 * 14)
     duration_min: int = Field(45, ge=5, le=240)
     shuffle: bool = True
-    resend: bool = False                          # təhvil vermiş / buraxmış şagirdə yeni cəhd (köhnə onlayn cəhd silinir)
+    resend: bool = False                          # təhvil vermiş / buraxmış şagirdə yeni cəhd (köhnə cəhd silinir, onlayn nəticə tarixçədə qalır)
 
 
 @router.post('/{ta_id}/{exam_id}')

@@ -1,6 +1,10 @@
-"""Əlavə KSQ/BSQ (docs/tasks/ksq-bsq-elave-ve-iki-netice.md, mərhələ 1)."""
-from app.models import ExamVariant
-from .test_ksq_scan import ksq
+"""Əlavə KSQ/BSQ + onlayn və kağız nəticə yanaşı + jurnala gedən seçim (docs/tasks/ksq-bsq-elave-ve-iki-netice.md, mərhələ 1–2)."""
+import datetime as dt
+
+from app.api.exam_scans import apply
+from app.models import ExamScan, ExamScore, ExamVariant, OnlineTask, TaskAttempt, now
+from app.domain.ksq_card import key_value
+from .test_ksq_scan import _graded, ksq
 
 
 def _ids(S, exam_id):
@@ -73,3 +77,86 @@ def test_extra_not_counted_as_ksq_in_semester(world):
     assert len(sem[a]['ksq']) == 1                                      # əlavə ayrıca KSQ kimi sayılmır
     assert sem[a]['ksq'][0][1] == 5 and sem[b]['ksq'][0][1] == 3
     assert sem[ids[2]]['ksq'][0][1] is None                             # əlavəyə düşməyən şagirdin qiyməti dəyişmir
+
+
+def test_two_sources_choice_and_manual(world, monkeypatch):
+    admin, ta, e, pr, st, keys = _graded(world, monkeypatch)
+    _, S = world
+    with S() as db:
+        paper = {s.student_id: s for s in db.query(ExamScan).filter_by(exam_id=e['id'], source='paper')}
+    sid = next(iter(paper))
+    assert paper[sid].points == 0
+    # kağız 0; onlayn tam bal – hər ikisi yanaşı
+    with S() as db:
+        from app.models import Exam
+        sc_on = ExamScan(exam_id=e['id'], student_id=sid, code=paper[sid].code, history=[], source='online', read_by='online',
+                         reading=[{'slot': q['slot'], 'value': key_value(q), 'confidence': 1.0}
+                                  for q in db.get(ExamVariant, (e['id'], sid)).questions])
+        db.add(sc_on)
+        apply(db, db.get(Exam, e['id']), sc_on)
+        db.commit()
+        on_pts = sc_on.points
+    assert on_pts and on_pts > 0
+    row = lambda: next(r for r in admin.get(f'/api/exams/{ta}/{e["id"]}').json()['rows'] if r['student_id'] == sid)
+    r = row()
+    assert r['online']['points'] == on_pts and r['paper']['points'] == 0 and r['differs'] is True
+    assert r['points'] == on_pts and r['chosen'] == 'max'                 # ən yüksək
+    # «Yazılı» seçilir -> jurnala 0
+    assert admin.put(f'/api/exams/{ta}/{e["id"]}/choice/{sid}', json={'chosen': 'paper'}).status_code == 200
+    assert row()['points'] == 0
+    assert admin.put(f'/api/exams/{ta}/{e["id"]}/choice/{sid}', json={'chosen': 'online'}).status_code == 200
+    assert row()['points'] == on_pts
+    # kağızı yenidən skan etmək onlayn nəticəni silmir, onlayn təhvil kağızı silmir
+    assert admin.delete(f'/api/exam-scans/{ta}/{e["id"]}').json()['deleted'] == len(paper)
+    with S() as db:
+        assert db.query(ExamScan).filter_by(exam_id=e['id'], source='online').count() == 1
+        assert db.query(ExamScan).filter_by(exam_id=e['id'], source='paper').count() == 0
+        assert db.get(ExamScore, (e['id'], sid)).points == on_pts       # bal onlayn nəticədən qaldı
+    # əl ilə: üstələnmir
+    assert admin.put(f'/api/exams/{ta}/{e["id"]}/choice/{sid}', json={'chosen': 'manual', 'points': 7}).status_code == 200
+    assert row()['points'] == 7 and row()['chosen'] == 'manual'
+    with S() as db:
+        from app.models import Exam
+        apply(db, db.get(Exam, e['id']), db.query(ExamScan).filter_by(exam_id=e['id'], student_id=sid, source='online').one())
+        db.commit()
+    assert row()['points'] == 7                                          # skan/təhvil «əl ilə» balı üstələmədi
+    assert admin.put(f'/api/exams/{ta}/{e["id"]}/choice/{sid}', json={'chosen': 'online', 'points': 3}).status_code == 400
+    assert admin.put(f'/api/exams/{ta}/{e["id"]}/choice/{sid}', json={'chosen': 'manual', 'points': 999}).status_code == 400
+    # başqa müəllimin imtahanı
+    assert world[0]('yad').put(f'/api/exams/{ta}/{e["id"]}/choice/{sid}', json={'chosen': 'max'}).status_code == 404
+    # hamı üçün: «əl ilə» olan atlanır
+    r = admin.put(f'/api/exams/{ta}/{e["id"]}/choice', json={'chosen': 'max'})
+    assert r.status_code == 200 and r.json()['skipped_manual'] == 1
+    assert row()['points'] == 7
+    # audit
+    from app.models import AuditLog
+    with S() as db:
+        assert db.query(AuditLog).filter_by(entity='exam_choice').count() >= 4
+
+
+def test_online_resend_keeps_history_and_paper(world, monkeypatch):
+    """Onlayn təkrar təhvil: köhnə onlayn oxunuş history-də, kağız sətrə toxunulmur."""
+    from app.api.ksq_online import record
+    from app.models import Exam
+    admin, ta, e, pr, st, keys = _graded(world, monkeypatch)
+    _, S = world
+    with S() as db:
+        sid = db.query(ExamScan).filter_by(exam_id=e['id'], source='paper').first().student_id
+        v = db.get(ExamVariant, (e['id'], sid))
+        t = OnlineTask(assignment_id=ta, title='KSQ-1', opens_at=now(), closes_at=now() + dt.timedelta(hours=1), duration_min=45,
+                       questions=[{k: q[k] for k in ('slot', 'kind') if k in q} for q in sorted(v.questions, key=lambda q: q['slot'])],
+                       shuffle=False, show_answers='never', student_ids=[sid], kind='ksq', exam_id=e['id'])
+        db.add(t)
+        db.flush()
+        a = TaskAttempt(task_id=t.id, student_id=sid, deadline=now() + dt.timedelta(hours=1), order=[], answers={}, submitted_at=now())
+        db.add(a)
+        db.flush()
+        paper_before = db.query(ExamScan).filter_by(exam_id=e['id'], student_id=sid, source='paper').one().updated_at
+        record(db, t, a)
+        a.answers = {'0': 1}
+        record(db, t, a)                                                  # ikinci təhvil
+        db.commit()
+        on = db.query(ExamScan).filter_by(exam_id=e['id'], student_id=sid, source='online').one()
+        assert on.read_by == 'online' and len(on.history) == 1
+        pp = db.query(ExamScan).filter_by(exam_id=e['id'], student_id=sid, source='paper').one()
+        assert pp.updated_at == paper_before and pp.crop_key

@@ -205,6 +205,10 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
             <div className="kpi"><b>{fmt(d.summary.avg_pct)}%</b><span>orta</span></div>
             <div className="kpi"><b>{[5, 4, 3, 2].map(g => d.summary.distribution[g]).join(' / ')}</b><span>5 / 4 / 3 / 2</span></div>
           </div>
+          {d.rows.some((r: any) => r.online || r.paper) && <div className="row" style={{ marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
+            <AsyncBtn className="btn sm" onClick={async () => { await put(`/api/exams/${ta.id}/${examId}/choice`, { chosen: 'max' }); reload() }}
+              title={tt('«Əl ilə» seçilmiş şagirdlərə toxunulmur')}>⬆ {tt('Hamıya: ən yüksək')}</AsyncBtn>
+            <span className="small muted">{tt('Onlayn və yazılı nəticə yanaşı saxlanılır; jurnala seçilən gedir.')}</span></div>}
           <div className="jlist">
             {d.rows.map((r: any) => {
               const v = rows[r.student_id]
@@ -219,6 +223,14 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
                     {!v.absent && <label className="check small" title="Üzrlü səbəbdən imtahan günü olmayıb, sonradan yazıb"><input type="checkbox" checked={v.later} onChange={e => set({ later: e.target.checked })} /> sonradan yazdı</label>}
                     {!v.absent && v.later && <input type="date" className="sel" style={{ maxWidth: 160 }} min={d.exam.date} value={v.taken_on} onChange={e => set({ taken_on: e.target.value })} aria-label="Yazdığı tarix" />}
                   </div>
+                  {(r.online || r.paper) && <div className="row small" style={{ gap: 8, flexWrap: 'wrap' }}>
+                    <span>{tt('Onlayn')}: <b>{r.online ? `${fmt(r.online.points)} → ${r.online.grade}` : '—'}</b></span>
+                    <span>{tt('Yazılı')}: <b>{r.paper ? `${fmt(r.paper.points)} → ${r.paper.grade}` : '—'}</b></span>
+                    {r.differs && <span title={tt('Onlayn və yazılı qiymət fərqlidir – köçürmə şübhəsi ola bilər')}><Pill tone="warn">⚠ {tt('fərq')}</Pill></span>}
+                    <label className="small">{tt('Jurnala')}: <select className="sel" value={r.chosen || 'max'} aria-label={tt('Jurnala')}
+                      onChange={async e => { await put(`/api/exams/${ta.id}/${examId}/choice/${r.student_id}`, { chosen: e.target.value }); reload() }}>
+                      <option value="max">{tt('Ən yüksək')}</option><option value="online">{tt('Onlayn')}</option><option value="paper">{tt('Yazılı')}</option><option value="manual">{tt('Əl ilə')}</option></select></label>
+                  </div>}
                   {!v.absent && (items ? (
                     <div className="att-btns">
                       {items.map((it, i) => (

@@ -61,7 +61,7 @@ def archive_zip(ta_id: int | None = None, user: User = Depends(staff), db: Sessi
             vs = sorted(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)), key=lambda v: v.code)
             names = {s.id: s.full_name for s in db.scalars(select(Student).where(Student.id.in_([v.student_id for v in vs] or [0])))}
             scores = {s.student_id: s for s in db.scalars(select(ExamScore).where(ExamScore.exam_id == e.id))}
-            scans = {s.student_id: s for s in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id))}
+            scans = {s.student_id: s for s in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id).order_by(ExamScan.source))}   # kağız (şəkilli) sonuncu
             meta = {'sinif': cls.name, 'fenn': ta.subject, 'imtahan': f'{e.kind}-{e.no}', 'yarimil': e.semester,
                     'tarix': e.date.isoformat(), 'max_bal': e.max_points, 'tapsiriqlar': e.items}
             z.writestr(f'{base}/variantlar.json', json.dumps(

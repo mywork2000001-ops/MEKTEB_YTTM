@@ -1,6 +1,8 @@
-"""Əlavə KSQ/BSQ (docs/tasks/ksq-bsq-elave-ve-iki-netice.md, mərhələ 1).
+"""Əlavə KSQ/BSQ + onlayn və kağız nəticə yanaşı (docs/tasks/ksq-bsq-elave-ve-iki-netice.md, mərhələ 1–2).
 
 - exams: extra_of (əsas imtahan), extra_seq (əsasda 0), extra_students (JSON); unikal: (assignment_id, kind, semester, no, extra_seq)
+- exam_scans: source (paper | online); köhnə sətirlərdə read_by='online' → online, qalanı paper; unikal: (exam_id, student_id, source)
+- exam_scores: chosen (online | paper | max | manual), köhnə sətirlər 'max' (bal olduğu kimi qalır)
 
 Revision ID: c5e7a9b1d3f6
 Revises: b4d6f8a0c2e4
@@ -39,9 +41,27 @@ def upgrade() -> None:
     _swap_unique('exams', ['assignment_id', 'kind', 'semester', 'no'], 'uq_exams_extra',
                  ['assignment_id', 'kind', 'semester', 'no', 'extra_seq'])
 
+    with op.batch_alter_table('exam_scans') as b:
+        b.add_column(sa.Column('source', sa.String(length=10), nullable=False, server_default='paper'))
+    op.execute("UPDATE exam_scans SET source = 'online' WHERE read_by = 'online'")
+    _swap_unique('exam_scans', ['exam_id', 'student_id'], 'uq_exam_scans_source', ['exam_id', 'student_id', 'source'])
+
+    with op.batch_alter_table('exam_scores') as b:
+        b.add_column(sa.Column('chosen', sa.String(length=10), nullable=False, server_default='max'))
 
 
 def downgrade() -> None:
+    with op.batch_alter_table('exam_scores') as b:
+        b.drop_column('chosen')
+
+    # köhnə sxemdə şagird başına bir skan: onlayn sətir kağızla toqquşursa – onlayn silinir (köhnə davranış: onlayn əvəz edirdi)
+    op.execute("DELETE FROM exam_scans WHERE source = 'online' AND EXISTS (SELECT 1 FROM exam_scans p "
+               "WHERE p.exam_id = exam_scans.exam_id AND p.student_id = exam_scans.student_id AND p.source = 'paper')")
+    with op.batch_alter_table('exam_scans', naming_convention=_NC) as b:
+        b.drop_constraint('uq_exam_scans_source', type_='unique')
+        b.create_unique_constraint('uq_exam_scans_exam_id', ['exam_id', 'student_id'])
+        b.drop_column('source')
+
     # əlavə imtahanlar (və onların nəticələri) silinir – köhnə sxemdə yoxdur
     for t in ('exam_scans', 'exam_scores', 'exam_variants', 'online_tasks'):
         col = 'exam_id'
