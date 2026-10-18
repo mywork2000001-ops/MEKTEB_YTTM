@@ -344,3 +344,24 @@ body.exam-guard main{max-width:860px;margin:0 auto}
 /* Testlər: status chip-ləri və dövr seçicisi bir sətirdə */
 .tfilters{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
 .tfilters .tf-sep{flex:1 1 0}
+
+/* Ana səhifə: açılan bölmələr (Layout nav-body ilə eyni yanaşma) */
+.panel.sec>.sec-h{margin:0}
+.sec-tog{all:unset;box-sizing:border-box;cursor:pointer;flex:1 1 auto;min-width:0;min-height:32px;display:flex;align-items:baseline;gap:8px;border-radius:var(--r-sm);font:inherit;color:inherit}
+.sec-tog:hover .sec-name{color:var(--accent)}
+.sec-tog:focus-visible,.wk-head:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sec-tog .ng-arrow,.wk-head .ng-arrow{margin-left:auto;font-size:12px;color:var(--muted);transition:transform .18s;align-self:center}
+.sec.open>.sec-h .ng-arrow,.wk-row.open>.wk-head .ng-arrow{transform:rotate(180deg)}
+.sec-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .18s ease}
+.sec.open>.sec-body{grid-template-rows:1fr}
+.sec-in{overflow:hidden;min-height:0}
+.panel.sec>.sec-body>.sec-in{padding-top:12px}
+.weekly h2{flex-wrap:nowrap;align-items:center}
+.wk-row.sec>.sec-body>.sec-in{padding-top:0}
+.wk-head{all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:32px;cursor:pointer;border-radius:var(--r-sm)}
+.wk-head.static{cursor:default}
+.wk-head:not(.static):hover .wk-name{color:var(--accent)}
+.wk-chips{gap:6px;flex:1 1 auto}
+.wk-names{margin:4px 0 2px}
+@media (prefers-reduced-motion:reduce){.sec-body,.sec-tog .ng-arrow,.wk-head .ng-arrow{transition:none}}
+@media (max-width:600px){.wk-head .wk-chips{order:3;flex-basis:100%}.wk-head .ng-arrow{order:2}.wk-head .wk-name{flex:1 1 auto}}

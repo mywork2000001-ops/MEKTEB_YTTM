@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { get } from '../../api'
 import { useAuth } from '../../auth'
@@ -13,6 +13,35 @@ function span(t: string | null) {
   if (!t) return null
   const [a, b] = t.replace('–', '-').split('-')
   return [toMin(a), toMin(b)] as const
+}
+
+const OPEN_KEY = 'mk-home-open'
+function readOpen(): Record<string, boolean> {
+  try { return JSON.parse(localStorage.getItem(OPEN_KEY) || '{}') || {} } catch { return {} }
+}
+/** Açılan bölmə: başlıq düyməsi + animasiyalı gövdə; vəziyyət localStorage-də (mk-home-open). */
+function Sec({ id, title, hint, extra, className, style, children }: { id: string; title: string; hint?: ReactNode; extra?: ReactNode; className?: string; style?: CSSProperties; children: ReactNode }) {
+  const t = useT()
+  const bid = useId()
+  const [open, setOpen] = useState(() => readOpen()[id] !== false)
+  const flip = () => {
+    const v = !open
+    setOpen(v)
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify({ ...readOpen(), [id]: v })) } catch { /* yaddaş yoxdur */ }
+  }
+  return (
+    <section className={'panel sec' + (open ? ' open' : '') + (className ? ' ' + className : '')} style={style}>
+      <h2 className="sec-h">
+        <button type="button" className="sec-tog" aria-expanded={open} aria-controls={bid}
+          aria-label={open ? t('{g} bölməsini bağla', { g: title }) : t('{g} bölməsini aç', { g: title })} onClick={flip}>
+          <span className="sec-name">{title}</span>{hint != null && <small>{hint}</small>}
+          <span className="ng-arrow" aria-hidden="true">▾</span>
+        </button>
+        {extra}
+      </h2>
+      <div className="sec-body" id={bid} inert={!open}><div className="sec-in">{children}</div></div>
+    </section>
+  )
 }
 
 export default function Home() {
@@ -70,8 +99,7 @@ export default function Home() {
       <ErrorBox error={err1 || err2} />
       <Weekly />
       <div className="grid g2">
-        <section className="panel">
-          <h2>{t('Bugünkü dərslər')} <small>{lessons.length}</small></h2>
+        <Sec id="lessons" title={t('Bugünkü dərslər')} hint={lessons.length}>
           {lessons.length ? (
             <ol className="timeline">
               {lessons.map(l => (
@@ -82,9 +110,8 @@ export default function Home() {
                 </li>))}
             </ol>
           ) : <p className="muted">{t('Bu gün dərsiniz yoxdur.')}</p>}
-        </section>
-        <section className="panel">
-          <h2>{t('Siniflərim')}</h2>
+        </Sec>
+        <Sec id="classes" title={t('Siniflərim')}>
           <div className="stack">
             {(ov || []).map(c => (
               <div key={c.ta_id} className="row" style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--line)', paddingBottom: 8 }}>
@@ -103,11 +130,10 @@ export default function Home() {
               <Stat value={ov.reduce((a, c) => a + c.lessons_written, 0)} label={t('yazılmış dərs')} />
               <Stat value={ov.reduce((a, c) => a + (c.risk?.['Qırmızı'] || 0), 0)} label={t('yüksək risk')} />
             </div>)}
-        </section>
+        </Sec>
       </div>
       {prog && prog.some(p => p.total) && (
-        <section className="panel" style={{ marginTop: 16 }}>
-          <h2>{t('Mövzu icrası')} <small>{t('rəsmi plana nisbətən')}</small></h2>
+        <Sec id="progress" title={t('Mövzu icrası')} hint={t('rəsmi plana nisbətən')} style={{ marginTop: 16 }}>
           <div className="stack" style={{ gap: 8 }}>{prog.filter(p => p.total).map(p => (
             <button key={p.ta_id} className="row" style={{ justifyContent: 'space-between', textAlign: 'left', background: 'none', border: 0, borderBottom: '1px solid var(--line)', padding: '0 0 8px', cursor: 'pointer', color: 'inherit' }}
               onClick={() => { try { sessionStorage.setItem('mk-pick-journal', String(p.ta_id)) } catch { /* yaddaş yoxdur */ } nav('/journal') }}>
@@ -118,7 +144,7 @@ export default function Home() {
                 {p.shortfall > 0 && <Pill tone="bad">{t('sığmır: {n}', { n: p.shortfall })}</Pill>}
               </span>
             </button>))}</div>
-        </section>)}
+        </Sec>)}
     </>
   )
 }
@@ -134,22 +160,40 @@ function Weekly() {
   if (!w || !w.items.length || seen || closed === key) return null
   const hide = () => { try { localStorage.setItem(key, '1') } catch { /* noop */ } setClosed(key) }
   return (
-    <section className="panel weekly" style={{ marginBottom: 16 }}>
-      <h2>{t('Bu həftə diqqət')} <small>{t('siniflərim üzrə')}</small><button className="btn sm ghost right" onClick={hide}>{t('Oxudum')}</button></h2>
-      {w.items.map((x: any) => (
-        <div key={x.ta_id} className="wk-row">
-          <b>{x.class_name} <span className="small muted">{x.subject}</span></b>
-          <div className="row" style={{ gap: 6 }}>
-            {x.missing_week.length > 0 && <Pill tone="warn">{t('son 7 gündə yazılmayıb: {n} dərs', { n: x.missing_week.length })}</Pill>}
-            {x.red.length > 0 && <Pill tone="bad">{t('qırmızı risk: {n}', { n: x.red.length })}</Pill>}
-            {x.absence.length > 0 && <Pill tone="warn">{t('25%+ buraxır: {n}', { n: x.absence.length })}</Pill>}
-          </div>
-          {(x.red.length > 0 || x.absence.length > 0) && <p className="small muted" style={{ margin: '4px 0 0' }}>{[...new Set([...x.red, ...x.absence])].join(', ')}</p>}
-        </div>))}
+    <Sec id="weekly" className="weekly" style={{ marginBottom: 16 }} title={t('Bu həftə diqqət')} hint={t('siniflərim üzrə')}
+      extra={<button type="button" className="btn sm ghost right" onClick={hide}>{t('Oxudum')}</button>}>
+      {w.items.map((x: any) => <WkRow key={x.ta_id} x={x} />)}
       <div className="row" style={{ marginTop: 10 }}>
         <button className="btn sm" onClick={() => nav('/journal')}>{t('Jurnala keç')}</button>
         <button className="btn sm" onClick={() => nav('/reports')}>{t('Analitika → Risk')}</button>
       </div>
-    </section>
+    </Sec>
+  )
+}
+
+/** Sinif sətri: başlıq (sinif + çiplər); şagird siyahısı standart olaraq bağlıdır. */
+function WkRow({ x }: { x: any }) {
+  const t = useT()
+  const bid = useId()
+  const [open, setOpen] = useState(false)
+  const names: string[] = [...new Set<string>([...x.red, ...x.absence])]
+  const head = (
+    <>
+      <b className="wk-name">{x.class_name} <span className="small muted">{x.subject}</span></b>
+      <span className="row wk-chips">
+        {x.missing_week.length > 0 && <Pill tone="warn">{t('son 7 gündə yazılmayıb: {n} dərs', { n: x.missing_week.length })}</Pill>}
+        {x.red.length > 0 && <Pill tone="bad">{t('qırmızı risk: {n}', { n: x.red.length })}</Pill>}
+        {x.absence.length > 0 && <Pill tone="warn">{t('25%+ buraxır: {n}', { n: x.absence.length })}</Pill>}
+      </span>
+    </>
+  )
+  if (!names.length) return <div className="wk-row"><div className="wk-head static">{head}</div></div>
+  return (
+    <div className={'wk-row sec' + (open ? ' open' : '')}>
+      <button type="button" className="wk-head" aria-expanded={open} aria-controls={bid} onClick={() => setOpen(!open)}>
+        {head}<span className="ng-arrow" aria-hidden="true">▾</span>
+      </button>
+      <div className="sec-body" id={bid} inert={!open}><div className="sec-in"><p className="small muted wk-names">{names.join(', ')}</p></div></div>
+    </div>
   )
 }
