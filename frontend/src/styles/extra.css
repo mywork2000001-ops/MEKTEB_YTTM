@@ -355,6 +355,7 @@ body.exam-guard main{max-width:860px;margin:0 auto}
 .sec-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .18s ease}
 .sec.open>.sec-body{grid-template-rows:1fr}
 .sec-in{overflow:hidden;min-height:0}
+.grid.g2:has(> .sec){align-items:start}
 .panel.sec>.sec-body>.sec-in{padding-top:12px}
 .weekly h2{flex-wrap:nowrap;align-items:center}
 .wk-row.sec>.sec-body>.sec-in{padding-top:0}
