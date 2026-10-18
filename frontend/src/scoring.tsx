@@ -1,6 +1,7 @@
 // 100 ballıq sistem (docs/yuz-balliq-sistem-promtu.md) – serverdəki app/domain/scoring.py ilə EYNİ qayda (önbaxış üçün;
 // son söz serverindir: «Avto» çətinlik statistikadan gələ bilər).
 import { Pill } from './ui'
+import { useT } from './i18n'
 
 export type Level = 'asan' | 'orta' | 'çətin'
 const TYPE_W: Record<string, number> = { mcq: 1, open: 1.5 }
@@ -29,23 +30,24 @@ export const fmtPts = (p: number | null | undefined) => (p == null ? '—' : Str
 
 /** Sualın sətrində: çətinlik seçimi (Avto / Asan / Orta / Çətin) və bal. */
 export function QPoints({ q, pts, onLevel }: { q: QLike; pts: number; onLevel?: (l: Level | null) => void }) {
+  const t = useT()
   const [lvl, src] = levelOf(q)
   return (
     <span className="row" style={{ gap: 4, flexWrap: 'nowrap' }} onClick={e => e.stopPropagation()}>
-      {onLevel && <select className="grade-sel" aria-label="Çətinlik" title="Çətinlik – balı müəyyən edir (avto: statistika və ya sual növü)"
+      {onLevel && <select className="grade-sel" aria-label={t('Çətinlik')} title={t('Çətinlik – balı müəyyən edir (avto: statistika və ya sual növü)')}
         value={q.difficulty || ''} onChange={e => onLevel((e.target.value || null) as Level | null)}>
-        <option value="">avto ({lvl})</option><option value="asan">asan</option><option value="orta">orta</option><option value="çətin">çətin</option>
+        <option value="">{t('avto (')}{lvl})</option><option value="asan">{t('asan')}</option><option value="orta">{t('orta')}</option><option value="çətin">{t('çətin')}</option>
       </select>}
-      <Pill tone={src === 'müəllim' ? 'acc' : undefined}>{fmtPts(pts)} bal</Pill>
+      <Pill tone={src === 'müəllim' ? 'acc' : undefined}>{fmtPts(pts)} {t('bal')}</Pill>
     </span>
   )
 }
 
 /** Siyahının başında: cəmi 100 bal və bölgü. */
 export function PointsSummary({ qs }: { qs: QLike[] }) {
+  const t = useT()
   if (!qs.length) return null
   const pts = previewPoints(qs)
   const sum = (k: string) => fmtPts(qs.reduce((a, q, i) => a + (q.kind === k ? pts[i] : 0), 0))
-  return <p className="small muted" style={{ margin: '0 0 6px' }}>Cəmi <b>100 bal</b> · qapalı {sum('mcq')} · açıq {sum('open')} bal.
-    Bal sualın növü (açıq ×1,5) və çətinliyinə (orta ×1,5, çətin ×2) görə; «avto» – şagird nəticələrinin statistikası, yoxdursa növ.</p>
+  return <p className="small muted" style={{ margin: '0 0 6px' }}>{t('Cəmi')} <b>{t('100 bal')}</b> {t('· qapalı')} {sum('mcq')} {t('· açıq')} {sum('open')} {t('bal. Bal sualın növü (açıq ×1,5) və çətinliyinə (orta ×1,5, çətin ×2) görə; «avto» – şagird nəticələrinin statistikası, yoxdursa növ.')}</p>
 }

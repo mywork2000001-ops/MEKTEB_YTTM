@@ -1,7 +1,7 @@
 // Test nəticələri mərkəzi (docs/test-neticeleri-promtu.md): iki hissəli reytinq (mövzu testləri | sınaqlar), testi
 // yazmayanlar (yenidən göndər, valideynlə əlaqə qeydi), şagird profili, sinif/qrup, ümumi və süni intellektin pedaqoji rəyi.
 // Hər bölmədə «Çap / PDF».
-import { tt } from '../../i18n'
+import { useT, tt } from '../../i18n'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { get, post } from '../../api'
@@ -61,9 +61,10 @@ function LSeg<T extends string>({ label, value, options, onChange }: { label: st
 }
 
 function PeriodPick({ f }: { f: PP }) {
+  const t = useT()
   return (
     <>
-      <LSeg label="Dövr" value={f.p} onChange={f.set} options={PERIODS} />
+      <LSeg label={t('Dövr')} value={f.p} onChange={f.set} options={PERIODS} />
       <span className="row" style={{ gap: 6, alignItems: 'center', alignSelf: 'end', minHeight: 38 }}>
         {f.has && <button className="btn sm" aria-label={tt('Əvvəlki dövr')} onClick={() => f.shift(-1)}>‹</button>}
         <b className="small">{f.label === 'bütün dövr' ? tt('bütün dövr') : f.label}</b>
@@ -72,9 +73,10 @@ function PeriodPick({ f }: { f: PP }) {
   )
 }
 
-function ClassSelect({ lessons, value, onChange, all = 'Hamısı (bütün siniflərim)' }: { lessons?: MyLesson[]; value: number | null; onChange: (v: number | null) => void; all?: string | null }) {
+function ClassSelect({ lessons, value, onChange, all = tt('Hamısı (bütün siniflərim)') }: { lessons?: MyLesson[]; value: number | null; onChange: (v: number | null) => void; all?: string | null }) {
+  const t = useT()
   return (
-    <select className="sel" aria-label="Sinif / qrup" style={{ width: 'auto', maxWidth: 280 }} value={value ?? ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}>
+    <select className="sel" aria-label={t('Sinif / qrup')} style={{ width: 'auto', maxWidth: 280 }} value={value ?? ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}>
       <option value="">{all ?? '— Sinif / qrup seçin —'}</option>
       {(lessons || []).map(l => <option key={l.id} value={l.id}>{l.class_name}{l.subject !== 'Riyaziyyat' ? ` · ${l.subject}` : ''}</option>)}
     </select>
@@ -84,6 +86,7 @@ function ClassSelect({ lessons, value, onChange, all = 'Hamısı (bütün sinifl
 // ---------------------------------------------------------------- səhifə
 /** embedded – «Testlər və sınaqlar» mərkəzində: bölmə (tab) və sinif yuxarıdakı açılan siyahılardan gəlir. */
 export default function ResultsCenter({ embedded, ta, tab: tabProp, onTab }: { embedded?: boolean; ta?: number | null; tab?: Tab; onTab?: (t: Tab) => void } = {}) {
+  const t = useT()
   const [sp, setSp] = useSearchParams()
   const [tabOwn, setTabOwn] = useState<Tab>(() => (sp.get('student') ? 'student' : (sp.get('tab') as Tab) || 'rating'))
   const tab = embedded ? tabProp ?? 'rating' : tabOwn
@@ -110,13 +113,13 @@ export default function ResultsCenter({ embedded, ta, tab: tabProp, onTab }: { e
   }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
-      {!embedded && <><Top title="Test nəticələri" sub="Bütün analitika bir yerdə: mövzu testləri və sınaqlar ayrıca – reytinq, yazmayanlar, şagird, sinif və qrup, ümumi, süni intellektin rəyi." />
-      <div className="toolbar no-print lsel-bar"><LSeg label="Bölmə" value={tab} onChange={setTab}
+      {!embedded && <><Top title={t('Test nəticələri')} sub="Bütün analitika bir yerdə: mövzu testləri və sınaqlar ayrıca – reytinq, yazmayanlar, şagird, sinif və qrup, ümumi, süni intellektin rəyi." />
+      <div className="toolbar no-print lsel-bar"><LSeg label={t('Bölmə')} value={tab} onChange={setTab}
         options={TABS.map(([k, l]) => [k, k === 'missing' && chronic > 0 ? `${tt(l)} (${chronic})` : l] as const)} /></div></>}
       {embedded && tab !== 'missing' && chronic > 0 && <p className="small no-print" style={{ margin: '0 0 8px' }}><button className="btn sm ghost" onClick={() => setTab('missing')}>
-        <span className="pill bad">{chronic}</span> xroniki yazmayan – «Yazmayanlar»a bax ›</button></p>}
-      <div className="toolbar no-print lsel-bar"><LSeg label="Növ" value={kf} onChange={setKf} options={KF_OPTS} /><PeriodPick f={f} />
-        {tab === 'rating' && <>{!embedded && <ClassSelect lessons={lessons} value={rta} onChange={setRta} />}<LSeg label="Sıralama" value={sort} onChange={setSort} options={SORTS} /></>}</div>
+        <span className="pill bad">{chronic}</span> {t('xroniki yazmayan – «Yazmayanlar»a bax ›')}</button></p>}
+      <div className="toolbar no-print lsel-bar"><LSeg label={t('Növ')} value={kf} onChange={setKf} options={KF_OPTS} /><PeriodPick f={f} />
+        {tab === 'rating' && <>{!embedded && <ClassSelect lessons={lessons} value={rta} onChange={setRta} />}<LSeg label={t('Sıralama')} value={sort} onChange={setSort} options={SORTS} /></>}</div>
       {tab === 'rating' && kinds.map(k => <div key={k} style={{ marginBottom: 18 }}><RatingPanel f={f} lessons={lessons} onStudent={openStudent} kind={k} ta={rta} sort={sort} /></div>)}
       {tab === 'missing' && <Missing key={embedded ? `m${ta ?? ''}` : 'm'} f={f} lessons={lessons} onStudent={openStudent} kind={kf} fixedTa={embedded ? ta ?? null : undefined} />}
       {tab === 'student' && <StudentPanel f={f} id={student} setId={setStudent} kinds={kinds} kf={kf} />}
@@ -141,6 +144,7 @@ const sortRows = (rows: RRow[], s: Sort) => (s === 'place' ? rows : [...rows].so
 /** Bir hissənin reytinqi. «Test nəticələri»ndə kind/ta/sort yuxarıdan gəlir; «Sınaq imtahanları»nda öz seçimi (initial='sinaq'). */
 export function RatingPanel({ f, lessons, onStudent, initial = 'movzu', kind: fixed, ta: taIn, sort: sortIn }: { f?: PP; lessons?: MyLesson[]; onStudent?: (id: number) => void
   initial?: Kind; kind?: Kind; ta?: number | null; sort?: Sort }) {
+  const t = useT()
   const [own, setKind] = useState<Kind>(initial)
   const [taOwn, setTa] = useState<number | null>(null)
   const [sortOwn, setSort] = useState<Sort>('place')
@@ -170,39 +174,39 @@ export function RatingPanel({ f, lessons, onStudent, initial = 'movzu', kind: fi
         {fixed ? <h2 style={{ margin: 0 }}>{KIND_LABEL[kind]}</h2> : <>
           <Seg value={kind} onChange={setKind} options={[['movzu', 'Mövzu testləri'], ['sinaq', 'Sınaqlar']]} />
           {lessons && <ClassSelect lessons={lessons} value={ta} onChange={setTa} />}
-          <Seg label="Sıralama" value={sort} onChange={setSort} options={SORTS} /></>}
-        {d && d.rows.length > 0 && <span className="row right" style={{ gap: 6 }}><button className="btn sm" onClick={csv}>Excel (CSV)</button><button className="btn sm" onClick={print}>Çap / PDF</button></span>}
+          <Seg label={t('Sıralama')} value={sort} onChange={setSort} options={SORTS} /></>}
+        {d && d.rows.length > 0 && <span className="row right" style={{ gap: 6 }}><button className="btn sm" onClick={csv}>{t('Excel (CSV)')}</button><button className="btn sm" onClick={print}>{t('Çap / PDF')}</button></span>}
       </div>
       <ErrorBox error={err} />
-      {loading && !d ? <Loading /> : d && (d.rows.length === 0 ? <div className="empty">{kind === 'movzu' ? 'Bu dövrdə mövzu testi nəticəsi yoxdur – Perspektiv plan → mövzu → «Test təyin et».' : 'Bu dövrdə sınaq nəticəsi yoxdur.'}</div> : (
+      {loading && !d ? <Loading /> : d && (d.rows.length === 0 ? <div className="empty">{kind === 'movzu' ? t('Bu dövrdə mövzu testi nəticəsi yoxdur – Perspektiv plan → mövzu → «Test təyin et».') : t('Bu dövrdə sınaq nəticəsi yoxdur.')}</div> : (
         <div className="grid g2">
           <section className="panel" style={{ gridColumn: '1 / -1' }}>
-            <h2>{fixed ? 'Kumulyativ reytinq' : `${KIND_LABEL[kind]} – kumulyativ reytinq`} <small>{d.tests.length} test · {d.total} şagird</small></h2>
-            <div className="kpis"><Stat value={d.tests.length} label="test" /><Stat value={pct(avgOf(d.rows.map(r => r.avg_pct)))} label="orta nəticə" />
-              <Stat value={pct(partOf(d.rows))} label="iştirak" /><Stat value={d.attention.length} label="diqqət tələb edir" /></div>
+            <h2>{fixed ? t('Kumulyativ reytinq') : `${KIND_LABEL[kind]} – kumulyativ reytinq`} <small>{d.tests.length} {t('test ·')} {d.total} {t('şagird')}</small></h2>
+            <div className="kpis"><Stat value={d.tests.length} label={t('test')} /><Stat value={pct(avgOf(d.rows.map(r => r.avg_pct)))} label={t('orta nəticə')} />
+              <Stat value={pct(partOf(d.rows))} label={t('iştirak')} /><Stat value={d.attention.length} label={t('diqqət tələb edir')} /></div>
             {narrow ? <div className="stack" style={{ gap: 6, marginTop: 10 }}>{d.rows.map(r => (
               <div key={r.student_id} className="jrow click" onClick={() => onStudent?.(r.student_id)}>
                 <div className="row"><b>{r.place_all ?? '—'}.</b><b className="grow">{r.full_name}</b><Pill tone={tone(r.avg_pct)}>{pct(r.avg_pct)}</Pill></div>
-                <span className="small muted">{r.class_name} · sinifdə {r.place_class ?? '—'} · {r.wrote}/{r.given} yazıb · dinamika {sgn(r.delta)} bənd</span>
+                <span className="small muted">{r.class_name} {t('· sinifdə')} {r.place_class ?? '—'} · {r.wrote}/{r.given} {t('yazıb · dinamika')} {sgn(r.delta)} {t('bənd')}</span>
                 <Flags r={r} /></div>))}</div> : (
               <div className="tbl-wrap" style={{ marginTop: 10 }}><table>
-                <thead><tr><th className="r">Yer</th><th className="r">Sinifdə</th><th>Şagird</th><th className="r">Yazıb</th><th className="r">Orta %</th><th className="r">Son %</th><th className="r">Dinamika</th><th>Qeyd</th></tr></thead>
+                <thead><tr><th className="r">{t('Yer')}</th><th className="r">{t('Sinifdə')}</th><th>{t('Şagird')}</th><th className="r">{t('Yazıb')}</th><th className="r">{t('Orta %')}</th><th className="r">{t('Son %')}</th><th className="r">{t('Dinamika')}</th><th>{t('Qeyd')}</th></tr></thead>
                 <tbody>{d.rows.map(r => (
                   <tr key={r.student_id} className="click" onClick={() => onStudent?.(r.student_id)}><td className="r num"><b>{r.place_all ?? '—'}</b></td><td className="r num">{r.place_class ?? '—'}</td>
                     <td><b>{r.full_name}</b><span className="sub">{r.class_name}</span></td><td className="r num">{r.wrote}/{r.given}</td>
                     <td className="r num"><b>{fmt(r.avg_pct)}</b></td><td className="r num">{fmt(r.last_pct)}</td>
-                    <td className="r num">{r.delta == null ? '—' : r.delta === 0 ? <span className="muted">0</span> : <Pill tone={r.delta > 0 ? 'ok' : 'bad'}>{sgn(r.delta)} bənd</Pill>}</td><td><Flags r={r} /></td></tr>))}</tbody>
+                    <td className="r num">{r.delta == null ? '—' : r.delta === 0 ? <span className="muted">0</span> : <Pill tone={r.delta > 0 ? 'ok' : 'bad'}>{sgn(r.delta)} {t('bənd')}</Pill>}</td><td><Flags r={r} /></td></tr>))}</tbody>
               </table></div>)}
-            <p className="small muted" style={{ margin: '8px 0 0' }}>{kind === 'movzu' ? 'Mövzu testləri formativ jurnala düşür.' : 'Sınaqlar formativ qiymətə təsir etmir; faiz cərimə ilə.'} Yer – verilən testlərin ən azı 40 %-ni yazanlara (az yazan sonda, yersiz). Mövzu testi və sınaq reytinqi qarışmır. Şagirdə toxunun – profil açılır.</p>
+            <p className="small muted" style={{ margin: '8px 0 0' }}>{kind === 'movzu' ? t('Mövzu testləri formativ jurnala düşür.') : t('Sınaqlar formativ qiymətə təsir etmir; faiz cərimə ilə.')} {t('Yer – verilən testlərin ən azı 40 %-ni yazanlara (az yazan sonda, yersiz). Mövzu testi və sınaq reytinqi qarışmır. Şagirdə toxunun – profil açılır.')}</p>
           </section>
-          {d.classes.length > 1 && <section className="panel"><h2>Siniflər</h2>
-            {d.classes.map(c => <div key={c.class_name} className="row small"><b>{c.place ?? '—'}.</b><span className="grow">{c.class_name}</span><span className="muted">iştirak {pct(c.participation)}</span><b>{pct(c.avg_pct)}</b></div>)}</section>}
-          {d.improved.length > 0 && <section className="panel"><h2>Ən çox irəliləyənlər</h2>
-            {d.improved.map(r => <div key={r.student_id} className="row small"><b className="grow">{r.full_name}</b><span className="muted">{r.class_name}</span><Pill tone="ok">{sgn(r.delta)} bənd</Pill></div>)}</section>}
-          {d.attention.length > 0 && <section className="panel"><h2 style={{ marginBottom: 2 }}>Diqqət tələb edənlər</h2><p className="small muted" style={{ margin: '0 0 8px' }}>orta &lt; 40% və ya son nəticə 10+ bənd düşüb</p>
+          {d.classes.length > 1 && <section className="panel"><h2>{t('Siniflər')}</h2>
+            {d.classes.map(c => <div key={c.class_name} className="row small"><b>{c.place ?? '—'}.</b><span className="grow">{c.class_name}</span><span className="muted">{t('iştirak')} {pct(c.participation)}</span><b>{pct(c.avg_pct)}</b></div>)}</section>}
+          {d.improved.length > 0 && <section className="panel"><h2>{t('Ən çox irəliləyənlər')}</h2>
+            {d.improved.map(r => <div key={r.student_id} className="row small"><b className="grow">{r.full_name}</b><span className="muted">{r.class_name}</span><Pill tone="ok">{sgn(r.delta)} {t('bənd')}</Pill></div>)}</section>}
+          {d.attention.length > 0 && <section className="panel"><h2 style={{ marginBottom: 2 }}>{t('Diqqət tələb edənlər')}</h2><p className="small muted" style={{ margin: '0 0 8px' }}>{t('orta < 40% və ya son nəticə 10+ bənd düşüb')}</p>
             {d.attention.map(r => <div key={r.student_id} className="row small click" onClick={() => onStudent?.(r.student_id)}><b className="grow">{r.full_name}</b><span className="muted">{r.class_name}</span><Pill tone="bad">{pct(r.avg_pct)}</Pill></div>)}</section>}
-          <section className="panel"><h2>Testlər üzrə orta</h2>
-            {d.tests.map(t => <div key={t.unit} className="row small"><span className="muted">{fmtDate(t.date)}</span><span className="grow">{t.title}</span>{t.closed ? <><span className="muted">{t.wrote}/{t.given}</span><b>{pct(t.avg_pct)}</b></> : <Pill tone="ok">açıqdır</Pill>}</div>)}</section>
+          <section className="panel"><h2>{t('Testlər üzrə orta')}</h2>
+            {d.tests.map(t => <div key={t.unit} className="row small"><span className="muted">{fmtDate(t.date)}</span><span className="grow">{t.title}</span>{t.closed ? <><span className="muted">{t.wrote}/{t.given}</span><b>{pct(t.avg_pct)}</b></> : <Pill tone="ok">{tt('açıqdır')}</Pill>}</div>)}</section>
         </div>))}
     </>
   )
@@ -210,7 +214,7 @@ export function RatingPanel({ f, lessons, onStudent, initial = 'movzu', kind: fi
 const avgOf = (v: (number | null)[]) => { const x = v.filter((n): n is number => n != null); return x.length ? Math.round(x.reduce((a, b) => a + b, 0) * 10 / x.length) / 10 : null }
 const partOf = (rows: { wrote: number; given: number }[]) => { const g = rows.reduce((a, r) => a + r.given, 0); return g ? Math.round(rows.reduce((a, r) => a + r.wrote, 0) * 1000 / g) / 10 : null }
 const flags = (r: { low_participation?: boolean; attention?: boolean; chronic?: boolean }) =>
-  [r.chronic && 'xroniki yazmır', !r.chronic && r.low_participation && 'az iştirak', r.attention && 'diqqət'].filter(Boolean) as string[]
+  [r.chronic && tt('xroniki yazmır'), !r.chronic && r.low_participation && tt('az iştirak'), r.attention && 'diqqət'].filter(Boolean) as string[]
 function Flags({ r }: { r: { low_participation?: boolean; attention?: boolean; chronic?: boolean } }) {
   const f = flags(r)
   return f.length ? <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}>{f.map(x => <Pill key={x} tone={x === 'diqqət' ? 'warn' : 'bad'}>{x}</Pill>)}</span> : null
@@ -222,6 +226,7 @@ type MStud = { student_id: number; full_name: string; class_name: string; given:
 type MData = { students: MStud[]; tests: { unit: string; kind: Kind; title: string; date: string; topic: string | null; given: number; missed: number }[] }
 
 function Missing({ f, lessons, onStudent, kind, fixedTa }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kind: KF; fixedTa?: number | null }) {
+  const t = useT()
   const [taOwn, setTa] = useState<number | null>(null)
   const ta = fixedTa !== undefined ? fixedTa : taOwn
   const [sel, setSel] = useState<Set<number>>(new Set())
@@ -247,31 +252,31 @@ function Missing({ f, lessons, onStudent, kind, fixedTa }: { f: PP; lessons?: My
         {d && d.students.length > 0 && <span className="row right" style={{ gap: 6 }}>
           <button className="btn sm" onClick={() => downloadCsv('Testi yazmayanlar', ['Şagird', 'Sinif', 'Yazmayıb', 'Verilən', 'Son', 'Xroniki', 'Testlər'],
             d.students.map(x => [x.full_name, x.class_name, x.missed, x.given, fmtD(x.last_missed), x.chronic ? 'bəli' : '', x.tests.map(t => `${fmtD(t.date)} ${t.title}`).join('; ')]))}>Excel (CSV)</button>
-          <button className="btn sm" onClick={print}>Çap / PDF</button></span>}
+          <button className="btn sm" onClick={print}>{t('Çap / PDF')}</button></span>}
       </div>
       <ErrorBox error={err} />
-      {loading && !d ? <Loading /> : d && (d.students.length === 0 ? <div className="empty">Bu dövrdə bağlanmış testləri yazmayan şagird yoxdur.</div> : (
+      {loading && !d ? <Loading /> : d && (d.students.length === 0 ? <div className="empty">{t('Bu dövrdə bağlanmış testləri yazmayan şagird yoxdur.')}</div> : (
         <div className="grid g2">
           <section className="panel" style={{ gridColumn: '1 / -1' }}>
-            <h2>Testi yazmayanlar <small>{d.students.length} şagird · {d.students.filter(s => s.chronic).length} xroniki</small></h2>
+            <h2>{t('Testi yazmayanlar')} <small>{d.students.length} {t('şagird ·')} {d.students.filter(s => s.chronic).length} {t('xroniki')}</small></h2>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '6px 0 10px' }}>
-              <button className="btn sm" onClick={() => setSel(new Set(d.students.map(s => s.student_id)))}>Hamısını seç</button>
-              <button className="btn sm" onClick={() => setSel(new Set(d.students.filter(s => s.chronic).map(s => s.student_id)))}>Xronikləri seç</button>
-              {sel.size > 0 && <button className="btn sm ghost" onClick={() => setSel(new Set())}>Seçimi təmizlə</button>}
-              <button className="btn sm primary" disabled={!chosen.length} onClick={() => setResend(true)}>Seçilənlərə yenidən göndər ({chosen.length})</button>
+              <button className="btn sm" onClick={() => setSel(new Set(d.students.map(s => s.student_id)))}>{t('Hamısını seç')}</button>
+              <button className="btn sm" onClick={() => setSel(new Set(d.students.filter(s => s.chronic).map(s => s.student_id)))}>{t('Xronikləri seç')}</button>
+              {sel.size > 0 && <button className="btn sm ghost" onClick={() => setSel(new Set())}>{t('Seçimi təmizlə')}</button>}
+              <button className="btn sm primary" disabled={!chosen.length} onClick={() => setResend(true)}>{t('Seçilənlərə yenidən göndər (')}{chosen.length})</button>
             </div>
             <div className="stack" style={{ gap: 6 }}>{d.students.map(s => (
               <div key={s.student_id} className="jrow">
                 <div className="row" style={{ gap: 8 }}>
                   <input type="checkbox" aria-label={`${s.full_name} seç`} checked={sel.has(s.student_id)} onChange={() => toggle(s.student_id)} />
                   <b className="grow click" onClick={() => onStudent(s.student_id)}>{s.full_name}</b>
-                  {s.chronic && <Pill tone="bad">xroniki</Pill>}<Pill tone="warn">{s.missed} / {s.given}</Pill>
+                  {s.chronic && <Pill tone="bad">{t('xroniki')}</Pill>}<Pill tone="warn">{s.missed} / {s.given}</Pill>
                 </div>
-                <span className="small muted">{s.class_name} · son: {fmtDate(s.last_missed)} · {s.tests.map(t => `${t.title} (${KIND_ONE[t.kind]})`).join(', ')}</span>
-                <div className="row no-print" style={{ gap: 6 }}><button className="btn sm ghost" onClick={() => setNote(s)}>Valideynlə əlaqə qeydi</button></div>
+                <span className="small muted">{s.class_name} {t('· son:')} {fmtDate(s.last_missed)} · {s.tests.map(t => `${t.title} (${KIND_ONE[t.kind]})`).join(', ')}</span>
+                <div className="row no-print" style={{ gap: 6 }}><button className="btn sm ghost" onClick={() => setNote(s)}>{t('Valideynlə əlaqə qeydi')}</button></div>
               </div>))}</div>
           </section>
-          <section className="panel" style={{ gridColumn: '1 / -1' }}><h2>Testlər üzrə</h2>
+          <section className="panel" style={{ gridColumn: '1 / -1' }}><h2>{t('Testlər üzrə')}</h2>
             {d.tests.map(t => <div key={t.unit} className="row small"><span className="muted">{fmtDate(t.date)}</span><span className="grow">{t.title}</span><Pill>{KIND_ONE[t.kind]}</Pill><b>{t.missed} / {t.given}</b></div>)}</section>
         </div>))}
       {resend && <ResendDrawer students={chosen} onClose={() => setResend(false)} onDone={() => { setResend(false); setSel(new Set()); reload() }} />}
@@ -283,6 +288,7 @@ function Missing({ f, lessons, onStudent, kind, fixedTa }: { f: PP; lessons?: My
 const localIso = (d: Date) => `${iso(d)}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 
 function ResendDrawer({ students, onClose, onDone }: { students: MStud[]; onClose: () => void; onDone: () => void }) {
+  const t = useT()
   const start = new Date(); start.setMinutes(0, 0, 0); start.setHours(start.getHours() + 1)
   const end = new Date(start.getTime() + 2 * 86400000)
   const [o, setO] = useState(localIso(start))
@@ -299,40 +305,40 @@ function ResendDrawer({ students, onClose, onDone }: { students: MStud[]; onClos
     return [...m.values()]
   }, [students, onlyLast])
   return (
-    <Drawer title="Yazmayanlara yenidən göndər" onClose={onClose}
+    <Drawer title={t('Yazmayanlara yenidən göndər')} onClose={onClose}
       footer={<AsyncBtn className="btn primary" disabled={!items.length} onClick={async () => {
         const r = await post<{ tasks: number; errors: string[] }>('/api/results-center/missing/resend', {
           items: items.map(({ title: _t, ...x }) => x), opens_at: new Date(o).toISOString(), closes_at: new Date(c).toISOString(),
           duration_min: dur ? Number(dur) : null })
-        toast(`${r.tasks} test yenidən göndərildi${r.errors.length ? ` · ${r.errors.length} xəta: ${r.errors[0]}` : ''}`); onDone()
-      }}>Göndər ({items.length} test)</AsyncBtn>}>
-      <p className="small muted">Hər test eyni suallarla yalnız onu yazmayan seçilmiş şagirdlərə yeni vaxtla göndərilir. Şagird portalında bildiriş çıxır.
-        Yazandan sonra nəticə əsas testə yazılır və şagird bu siyahıdan çıxır.</p>
+        toast(t('{tasks} test yenidən göndərildi{x2}', { tasks: r.tasks, x2: r.errors.length ? ` · ${r.errors.length} xəta: ${r.errors[0]}` : '' })); onDone()
+      }}>{t('Göndər (')}{items.length} {t('test)')}</AsyncBtn>}>
+      <p className="small muted">{t('Hər test eyni suallarla yalnız onu yazmayan seçilmiş şagirdlərə yeni vaxtla göndərilir. Şagird portalında bildiriş çıxır. Yazandan sonra nəticə əsas testə yazılır və şagird bu siyahıdan çıxır.')}</p>
       <div className="form">
-        <Field label="Açılır"><input type="datetime-local" className="sel" value={o} onChange={e => setO(e.target.value)} /></Field>
-        <Field label="Bağlanır"><input type="datetime-local" className="sel" value={c} onChange={e => setC(e.target.value)} /></Field>
-        <Field label="Həll müddəti, dəq" hint="boş – əvvəlki müddət"><input type="number" min={1} max={300} className="sel" value={dur} onChange={e => setDur(e.target.value)} /></Field>
-        <label className="row small"><input type="checkbox" checked={onlyLast} onChange={e => setOnlyLast(e.target.checked)} /> Yalnız sonuncu yazmadığı test</label>
+        <Field label={t('Açılır')}><input type="datetime-local" className="sel" value={o} onChange={e => setO(e.target.value)} /></Field>
+        <Field label={t('Bağlanır')}><input type="datetime-local" className="sel" value={c} onChange={e => setC(e.target.value)} /></Field>
+        <Field label={t('Həll müddəti, dəq')} hint="boş – əvvəlki müddət"><input type="number" min={1} max={300} className="sel" value={dur} onChange={e => setDur(e.target.value)} /></Field>
+        <label className="row small"><input type="checkbox" checked={onlyLast} onChange={e => setOnlyLast(e.target.checked)} /> {t('Yalnız sonuncu yazmadığı test')}</label>
       </div>
-      <h3 className="small muted" style={{ margin: '12px 0 6px' }}>Göndəriləcək testlər</h3>
-      {items.map(i => <div key={`${i.ta_id}:${i.task_id}`} className="row small"><span className="grow">{i.title}</span><b>{i.student_ids.length} şagird</b></div>)}
+      <h3 className="small muted" style={{ margin: '12px 0 6px' }}>{t('Göndəriləcək testlər')}</h3>
+      {items.map(i => <div key={`${i.ta_id}:${i.task_id}`} className="row small"><span className="grow">{i.title}</span><b>{i.student_ids.length} {t('şagird')}</b></div>)}
     </Drawer>
   )
 }
 
 function ContactNote({ s, onClose }: { s: MStud; onClose: () => void }) {
+  const t = useT()
   const [text, setText] = useState(`${s.missed} onlayn testi yazmayıb: ${s.tests.map(t => `${t.title} (${fmtD(t.date)})`).join('; ')}.`)
   const [method, setMethod] = useState<'zəng' | 'mesaj' | 'görüş'>('zəng')
   return (
-    <Drawer title={`Valideynlə əlaqə – ${s.full_name}`} onClose={onClose}
+    <Drawer title={t('Valideynlə əlaqə – {full_name}', { full_name: s.full_name })} onClose={onClose}
       footer={<AsyncBtn className="btn primary" ok="Qeyd şagird kartına əlavə olundu" onClick={async () => {
-        await post(`/api/students/${s.student_id}/contacts`, { date: iso(new Date()), method, topic: 'Onlayn testləri yazmır', outcome: text }); onClose()
-      }}>Saxla</AsyncBtn>}>
+        await post(`/api/students/${s.student_id}/contacts`, { date: iso(new Date()), method, topic: t('Onlayn testləri yazmır'), outcome: text }); onClose()
+      }}>{t('Saxla')}</AsyncBtn>}>
       <div className="form">
-        <Field label="Üsul"><Seg value={method} onChange={setMethod} options={[['zəng', 'Zəng'], ['mesaj', 'Mesaj'], ['görüş', 'Görüş']]} /></Field>
-        <Field label="Qeyd" full><textarea className="sel" rows={5} value={text} onChange={e => setText(e.target.value)} /></Field>
+        <Field label={t('Üsul')}><Seg value={method} onChange={setMethod} options={[['zəng', t('Zəng')], ['mesaj', t('Mesaj')], ['görüş', t('Görüş')]]} /></Field>
+        <Field label={t('Qeyd')} full><textarea className="sel" rows={5} value={text} onChange={e => setText(e.target.value)} /></Field>
       </div>
-      <p className="small muted">Qeyd şagird kartında «Valideynlə əlaqə» bölməsinə düşür (Siniflər → şagird).</p>
+      <p className="small muted">{t('Qeyd şagird kartında «Valideynlə əlaqə» bölməsinə düşür (Siniflər → şagird).')}</p>
     </Drawer>
   )
 }
@@ -340,6 +346,7 @@ function ContactNote({ s, onClose }: { s: MStud; onClose: () => void }) {
 // ---------------------------------------------------------------- qrafik (iki xətt + sinif ortası)
 type Pt = { label: string; v: number | null; ref?: number | null }
 function Trend({ series, height = 160 }: { series: { name: string; color: string; pts: Pt[] }[]; height?: number }) {
+  const t = useT()
   const all = series.flatMap(s => s.pts)
   if (!all.some(p => p.v != null)) return null
   const n = Math.max(...series.map(s => s.pts.length))
@@ -349,17 +356,17 @@ function Trend({ series, height = 160 }: { series: { name: string; color: string
   const line = (pts: (number | null | undefined)[]) => pts.map((v, i) => (v == null ? null : `${x(i, pts.length).toFixed(1)},${y(v).toFixed(1)}`)).filter(Boolean).join(' ')
   return (
     <div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Nəticələrin dinamikası, faizlə">
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={t('Nəticələrin dinamikası, faizlə')}>
         {[0, 40, 70, 100].map(g => <g key={g}><line x1={L} x2={W - R} y1={y(g)} y2={y(g)} stroke="var(--line)" strokeWidth="1" /><text x={L - 4} y={y(g) + 4} fontSize="10" textAnchor="end" fill="var(--muted)">{g}</text></g>)}
         {series.map(s => <g key={s.name}>
           {s.pts.some(p => p.ref != null) && <polyline fill="none" stroke={s.color} strokeOpacity=".45" strokeWidth="1.5" strokeDasharray="4 3" points={line(s.pts.map(p => p.ref))} />}
           <polyline fill="none" stroke={s.color} strokeWidth="2.2" points={line(s.pts.map(p => p.v))} />
-          {s.pts.map((p, i) => p.v == null ? null : <circle key={i} cx={x(i, s.pts.length)} cy={y(p.v)} r="3.5" fill={s.color}><title>{`${p.label}: ${fmt(p.v)}%${p.ref != null ? ` (sinif ${fmt(p.ref)}%)` : ''}`}</title></circle>)}
+          {s.pts.map((p, i) => p.v == null ? null : <circle key={i} cx={x(i, s.pts.length)} cy={y(p.v)} r="3.5" fill={s.color}><title>{`${p.label}: ${fmt(p.v)}%${p.ref != null ? (' ' + t('(sinif {x1}%)', { x1: fmt(p.ref) })) : ''}`}</title></circle>)}
         </g>)}
       </svg>
       <div className="legend small">{series.map(s => <span key={s.name}><svg width="22" height="8" aria-hidden><line x1="0" y1="4" x2="22" y2="4" stroke={s.color} strokeWidth="2.2" /></svg> {s.name}</span>)}
-        {series.some(s => s.pts.some(p => p.ref != null)) && <span><svg width="22" height="8" aria-hidden><line x1="0" y1="4" x2="22" y2="4" stroke="var(--muted)" strokeWidth="1.5" strokeDasharray="4 3" /></svg> sinif ortası</span>}
-        <span className="muted">{n} nöqtə</span></div>
+        {series.some(s => s.pts.some(p => p.ref != null)) && <span><svg width="22" height="8" aria-hidden><line x1="0" y1="4" x2="22" y2="4" stroke="var(--muted)" strokeWidth="1.5" strokeDasharray="4 3" /></svg> {t('sinif ortası')}</span>}
+        <span className="muted">{n} {t('nöqtə')}</span></div>
     </div>
   )
 }
@@ -372,6 +379,7 @@ type SPart = { summary: (RRow & { participation: number | null }) | null; class_
 type SData = { student: { id: number; full_name: string; class_name: string | null }; parts: Record<Kind, SPart> }
 
 function StudentPanel({ f, id, setId, kinds, kf }: { f: PP; id: number | null; setId: (v: number | null) => void; kinds: Kind[]; kf: KF }) {
+  const t = useT()
   const [list] = useLoad<{ id: number; full_name: string; class_name: string }[]>(() => get('/api/results-center/students'), [])
   const [q, setQ] = useState('')
   const [d, err, loading] = useLoad<SData | null>(() => (id ? get(`/api/results-center/student/${id}`, f.params) : Promise.resolve(null)), [id, f.label])
@@ -391,12 +399,12 @@ function StudentPanel({ f, id, setId, kinds, kf }: { f: PP; id: number | null; s
   return (
     <>
       <div className="toolbar no-print">
-        <input className="sel" placeholder="Şagird axtar…" value={q} onChange={e => setQ(e.target.value)} />
-        <select className="sel" aria-label="Şagird" value={id ?? ''} onChange={e => setId(e.target.value ? Number(e.target.value) : null)}>
-          <option value="">— Şagird seçin —</option>
+        <input className="sel" placeholder={t('Şagird axtar…')} value={q} onChange={e => setQ(e.target.value)} />
+        <select className="sel" aria-label={t('Şagird')} value={id ?? ''} onChange={e => setId(e.target.value ? Number(e.target.value) : null)}>
+          <option value="">{t('— Şagird seçin —')}</option>
           {shown.map(s => <option key={s.id} value={s.id}>{s.full_name} · {s.class_name}</option>)}
         </select>
-        {d && <button className="btn sm right" onClick={print}>Çap / PDF</button>}
+        {d && <button className="btn sm right" onClick={print}>{t('Çap / PDF')}</button>}
       </div>
       <ErrorBox error={err} />
       {!id ? <PickFirst text="Şagird seçin – mövzu testləri və sınaqlar üzrə fəaliyyəti açılacaq" /> : loading && !d ? <Loading /> : d && (
@@ -405,17 +413,17 @@ function StudentPanel({ f, id, setId, kinds, kf }: { f: PP; id: number | null; s
             <h2>{d.student.full_name} <small>{d.student.class_name}</small></h2>
             <div className="grid g2">{kinds.map(k => { const s = d.parts[k].summary
               return <div key={k}><h3 className="small muted" style={{ margin: '4px 0 6px' }}>{KIND_LABEL[k]}</h3>
-                {s ? <div className="kpis"><Stat value={pct(s.avg_pct)} label="orta" /><Stat value={sgn(s.delta)} label="dinamika" />
-                  <Stat value={`${s.wrote}/${s.given}`} label="yazıb / verilən" /><Stat value={s.place_class ? `${s.place_class}/${d.parts[k].class_size}` : '—'} label="sinifdə yer" /></div>
-                  : <div className="small muted">Nəticə yoxdur</div>}
+                {s ? <div className="kpis"><Stat value={pct(s.avg_pct)} label={t('orta')} /><Stat value={sgn(s.delta)} label={t('dinamika')} />
+                  <Stat value={`${s.wrote}/${s.given}`} label={t('yazıb / verilən')} /><Stat value={s.place_class ? `${s.place_class}/${d.parts[k].class_size}` : '—'} label={t('sinifdə yer')} /></div>
+                  : <div className="small muted">{t('Nəticə yoxdur')}</div>}
                 {s && <Flags r={s} />}</div> })}</div>
             <Trend series={kinds.filter(k => d.parts[k].items.some(x => x.pct != null)).map(k => ({
               name: KIND_LABEL[k], color: COLOR[k], pts: d.parts[k].items.filter(x => x.status === 'yazıb').map(x => ({ label: x.title, v: x.pct, ref: x.class_avg })) }))} />
           </section>
           {kinds.map(k => d.parts[k].items.length > 0 && (
-            <section key={k} className="panel" style={{ gridColumn: '1 / -1' }}><h2>{KIND_LABEL[k]} <small>{d.parts[k].items.length} test</small></h2>
+            <section key={k} className="panel" style={{ gridColumn: '1 / -1' }}><h2>{KIND_LABEL[k]} <small>{d.parts[k].items.length} {t('test')}</small></h2>
               <div className="tbl-wrap"><table>
-                <thead><tr><th>Tarix</th><th>Test</th><th className="r">%</th><th className="r">Qiymət</th><th className="r">Sinif ortası</th><th className="r">Fərq</th><th className="r">Yer</th></tr></thead>
+                <thead><tr><th>{t('Tarix')}</th><th>{t('Test')}</th><th className="r">%</th><th className="r">{t('Qiymət')}</th><th className="r">{t('Sinif ortası')}</th><th className="r">{t('Fərq')}</th><th className="r">{t('Yer')}</th></tr></thead>
                 <tbody>{d.parts[k].items.map(x => (
                   <tr key={x.unit}><td className="num">{fmtDate(x.date)}</td><td><b>{x.title}</b>{x.topic && k === 'movzu' && <span className="sub">{x.topic}</span>}</td>
                     <td className="r num">{x.status === 'yazıb' ? <Pill tone={tone(x.pct)}>{fmt(x.pct)}</Pill> : <Pill tone={x.status === 'yazmayıb' ? 'bad' : undefined}>{x.status}</Pill>}</td>
@@ -435,13 +443,14 @@ function StudentPanel({ f, id, setId, kinds, kf }: { f: PP; id: number | null; s
 const WEAK = 70
 const weakHtml = (v: { topic: string; pct: number }[]) => { const w = v.filter(t => t.pct < WEAK); return w.length ? `<p class="note"><b>Zəif mövzular (&lt; ${WEAK}%):</b> ${w.map(t => `${esc(t.topic)} (${fmtN(t.pct)}%)`).join('; ')}</p>` : '' }
 function Topics({ weak, strong }: { weak: { topic: string; pct: number; n: number }[]; strong: { topic: string; pct: number; n: number }[] }) {
+  const t = useT()
   const w = weak.filter(x => x.pct < WEAK)
   const s = strong.filter(x => x.pct >= WEAK).slice(0, 3)
   if (!w.length && !s.length) return null
   return (
     <div className="grid g2" style={{ marginTop: 10 }}>
-      {w.length > 0 && <div><h3 className="small muted" style={{ margin: '0 0 6px' }}>Zəif mövzular <small>&lt; {WEAK}%</small></h3>{w.slice(0, 5).map(t => <div key={t.topic} className="row small"><span className="grow">{t.topic}</span><Pill tone={tone(t.pct)}>{pct(t.pct)}</Pill></div>)}</div>}
-      {s.length > 0 && <div><h3 className="small muted" style={{ margin: '0 0 6px' }}>Güclü mövzular</h3>{s.map(t => <div key={t.topic} className="row small"><span className="grow">{t.topic}</span><Pill tone={tone(t.pct)}>{pct(t.pct)}</Pill></div>)}</div>}
+      {w.length > 0 && <div><h3 className="small muted" style={{ margin: '0 0 6px' }}>{t('Zəif mövzular')} <small>&lt; {WEAK}%</small></h3>{w.slice(0, 5).map(t => <div key={t.topic} className="row small"><span className="grow">{t.topic}</span><Pill tone={tone(t.pct)}>{pct(t.pct)}</Pill></div>)}</div>}
+      {s.length > 0 && <div><h3 className="small muted" style={{ margin: '0 0 6px' }}>{t('Güclü mövzular')}</h3>{s.map(t => <div key={t.topic} className="row small"><span className="grow">{t.topic}</span><Pill tone={tone(t.pct)}>{pct(t.pct)}</Pill></div>)}</div>}
     </div>
   )
 }
@@ -455,12 +464,13 @@ type CPart = { summary: { tests: number; students: number; avg_pct: number | nul
 type CData = { ta_id: number; class_name: string; subject: string; level: string | null; parts: Record<Kind, CPart> }
 
 function ClassPanel({ f, lessons, onStudent, kinds, kf, fixedTa }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kinds: Kind[]; kf: KF; fixedTa?: number | null }) {
+  const t = useT()
   const [taOwn, setTa] = useState<number | null>(null)         // null – «Hamısı (bütün siniflərim)»
   const ta = fixedTa !== undefined ? fixedTa : taOwn
   const [level, setLevel] = useState<'all' | (typeof LV)[number]>('all')
   const [d, err, loading] = useLoad<CData>(() => get(ta ? `/api/results-center/class/${ta}` : '/api/results-center/class', { ...(level !== 'all' ? { level } : {}), ...f.params }), [ta, level, f.label])
   const [review, setReview] = useState<Review | null>(null)
-  const title = d ? `${d.class_name} · ${d.subject}${d.level ? ` · ${d.level} qrup` : ''}` : ''
+  const title = d ? `${d.class_name} · ${d.subject}${d.level ? (' · ' + t('{level} qrup', { level: d.level })) : ''}` : ''
   const print = () => d && printDoc({
     title: `Sinif hesabatı – ${title}`, signers: [SIGN.teacher(), SIGN.deputy()],
     body: head(d.level ? 'Səviyyə qrupunun onlayn test nəticələri' : 'Sinfin onlayn test nəticələri', `${title} · ${f.label}`) +
@@ -477,8 +487,8 @@ function ClassPanel({ f, lessons, onStudent, kinds, kf, fixedTa }: { f: PP; less
     <>
       <div className="toolbar no-print">
         {fixedTa === undefined && <ClassSelect lessons={lessons} value={ta} onChange={setTa} />}
-        <Seg label="Səviyyə" value={level} onChange={setLevel} options={[['all', 'Hamısı'], ['Zəif', 'Zəif'], ['Orta', 'Orta'], ['Güclü', 'Güclü']]} />
-        {d && <button className="btn sm right" onClick={print}>Çap / PDF</button>}
+        <Seg label={t('Səviyyə')} value={level} onChange={setLevel} options={[['all', 'Hamısı'], ['Zəif', 'Zəif'], ['Orta', 'Orta'], ['Güclü', 'Güclü']]} />
+        {d && <button className="btn sm right" onClick={print}>{t('Çap / PDF')}</button>}
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : d && (
@@ -486,15 +496,15 @@ function ClassPanel({ f, lessons, onStudent, kinds, kf, fixedTa }: { f: PP; less
           {kinds.map(k => { const p = d.parts[k]; const s = p.summary; const tot = Object.values(p.distribution).reduce((a, b) => a + b, 0) || 1
             return (
               <section key={k} className="panel" style={kinds.length === 1 ? { gridColumn: '1 / -1' } : undefined}>
-                <h2>{KIND_LABEL[k]} <small>{s.tests} test · {s.students} şagird</small></h2>
-                {s.tests === 0 ? <div className="small muted">Bu dövrdə test yoxdur.</div> : <>
-                  <div className="kpis"><Stat value={pct(s.avg_pct)} label="orta" /><Stat value={pct(s.participation)} label="iştirak" /><Stat value={s.chronic} label="xroniki yazmayan" /><Stat value={s.attention} label="diqqət tələb edir" /></div>
+                <h2>{KIND_LABEL[k]} <small>{s.tests} {t('test ·')} {s.students} {t('şagird')}</small></h2>
+                {s.tests === 0 ? <div className="small muted">{t('Bu dövrdə test yoxdur.')}</div> : <>
+                  <div className="kpis"><Stat value={pct(s.avg_pct)} label={t('orta')} /><Stat value={pct(s.participation)} label={t('iştirak')} /><Stat value={s.chronic} label={t('xroniki yazmayan')} /><Stat value={s.attention} label={t('diqqət tələb edir')} /></div>
                   <div className="bar" style={{ height: 12, marginTop: 10 }}>{['5', '4', '3', '2'].map(g => <i key={g} style={{ width: (p.distribution[g] || 0) * 100 / tot + '%', background: `var(--${g === '5' ? 'ok' : g === '4' ? 'info' : g === '3' ? 'warn' : 'bad'})` }} />)}</div>
                   <div className="legend small" style={{ marginTop: 6 }}>{['5', '4', '3', '2'].map(g => <span key={g}>«{g}» – {p.distribution[g] || 0}</span>)}</div>
                   {!d.level && <div className="row" style={{ marginTop: 8, flexWrap: 'wrap', gap: 6 }}>{LV.map(l => <Pill key={l} tone={l === 'Güclü' ? 'ok' : l === 'Zəif' ? 'bad' : 'warn'}>{l}: {pct(p.levels[l]?.avg_pct)} · {p.levels[l]?.students || 0}</Pill>)}</div>}
                   <Trend series={[{ name: KIND_LABEL[k], color: COLOR[k], pts: p.tests.map(t => ({ label: t.title, v: t.avg_pct })) }]} height={130} />
                   <Topics weak={p.weak_topics} strong={p.strong_topics} />
-                  <h3 className="small muted" style={{ margin: '12px 0 6px' }}>Şagirdlər</h3>
+                  <h3 className="small muted" style={{ margin: '12px 0 6px' }}>{t('Şagirdlər')}</h3>
                   {p.students.map(r => <div key={r.student_id} className="row small click" onClick={() => onStudent(r.student_id)}>
                     <span className="grow">{r.full_name}</span>{r.level && <span className="muted">{r.level}</span>}<span className="muted">{r.wrote}/{r.given}</span><Flags r={r} /><b>{pct(r.avg_pct)}</b></div>)}
                 </>}
@@ -514,6 +524,7 @@ const MON = ['yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avq', 'sen', 'okt
 const monLabel = (m: string) => `${MON[Number(m.slice(5)) - 1]} ${m.slice(2, 4)}`
 
 function Overall({ f, kinds, kf }: { f: PP; kinds: Kind[]; kf: KF }) {
+  const t = useT()
   const [d, err, loading] = useLoad<OData>(() => get('/api/results-center/overview', f.params), [f.label])
   const [review, setReview] = useState<Review | null>(null)
   const { me } = useAuth()
@@ -530,24 +541,24 @@ function Overall({ f, kinds, kf }: { f: PP; kinds: Kind[]; kf: KF }) {
   })
   return (
     <>
-      <div className="toolbar no-print">{d && d.classes.length > 0 && <button className="btn sm right" onClick={print}>Çap / PDF</button>}</div>
+      <div className="toolbar no-print">{d && d.classes.length > 0 && <button className="btn sm right" onClick={print}>{t('Çap / PDF')}</button>}</div>
       <ErrorBox error={err} />
-      {loading && !d ? <Loading /> : d && (d.classes.length === 0 ? <div className="empty">Bu dövrdə siniflərinizdə onlayn test nəticəsi yoxdur.</div> : (
+      {loading && !d ? <Loading /> : d && (d.classes.length === 0 ? <div className="empty">{t('Bu dövrdə siniflərinizdə onlayn test nəticəsi yoxdur.')}</div> : (
         <div className="grid g2">
           <section className="panel" style={{ gridColumn: '1 / -1' }}>
-            <h2>Bütün siniflərim</h2>
-            <div className="kpis"><Stat value={d.summary.movzu.tests} label="mövzu testi" /><Stat value={pct(d.summary.movzu.avg_pct)} label="mövzu testi ortası" />
-              <Stat value={d.summary.sinaq.tests} label="sınaq" /><Stat value={pct(d.summary.sinaq.avg_pct)} label="sınaq ortası" /></div>
+            <h2>{t('Bütün siniflərim')}</h2>
+            <div className="kpis"><Stat value={d.summary.movzu.tests} label={t('mövzu testi')} /><Stat value={pct(d.summary.movzu.avg_pct)} label={t('mövzu testi ortası')} />
+              <Stat value={d.summary.sinaq.tests} label={t('sınaq')} /><Stat value={pct(d.summary.sinaq.avg_pct)} label={t('sınaq ortası')} /></div>
             <div className="tbl-wrap" style={{ marginTop: 10 }}><table>
-              <thead><tr><th>Sinif</th><th className="r">Mövzu testi</th><th className="r">İştirak</th><th className="r">Sınaq</th><th className="r">İştirak</th><th className="r">Xroniki</th><th className="r">Diqqət</th></tr></thead>
+              <thead><tr><th>{t('Sinif')}</th><th className="r">{t('Mövzu testi')}</th><th className="r">{t('İştirak')}</th><th className="r">{t('Sınaq')}</th><th className="r">{t('İştirak')}</th><th className="r">{t('Xroniki')}</th><th className="r">{t('Diqqət')}</th></tr></thead>
               <tbody>{d.classes.map(c => (
                 <tr key={c.ta_id}><td><b>{c.class_name}</b><span className="sub">{c.subject}</span></td>
-                  <td className="r num">{c.movzu.tests ? <><Pill tone={tone(c.movzu.avg_pct)}>{pct(c.movzu.avg_pct)}</Pill><span className="sub">{c.movzu.tests} test</span></> : '—'}</td><td className="r num">{pct(c.movzu.participation)}</td>
-                  <td className="r num">{c.sinaq.tests ? <><Pill tone={tone(c.sinaq.avg_pct)}>{pct(c.sinaq.avg_pct)}</Pill><span className="sub">{c.sinaq.tests} sınaq</span></> : '—'}</td><td className="r num">{pct(c.sinaq.participation)}</td>
+                  <td className="r num">{c.movzu.tests ? <><Pill tone={tone(c.movzu.avg_pct)}>{pct(c.movzu.avg_pct)}</Pill><span className="sub">{c.movzu.tests} {t('test')}</span></> : '—'}</td><td className="r num">{pct(c.movzu.participation)}</td>
+                  <td className="r num">{c.sinaq.tests ? <><Pill tone={tone(c.sinaq.avg_pct)}>{pct(c.sinaq.avg_pct)}</Pill><span className="sub">{c.sinaq.tests} {t('sınaq')}</span></> : '—'}</td><td className="r num">{pct(c.sinaq.participation)}</td>
                   <td className="r num">{c.movzu.chronic + c.sinaq.chronic || '—'}</td><td className="r num">{c.movzu.attention + c.sinaq.attention || '—'}</td></tr>))}</tbody>
             </table></div>
           </section>
-          {months.length > 1 && <section className="panel" style={{ gridColumn: '1 / -1' }}><h2>Aylar üzrə dinamika</h2>
+          {months.length > 1 && <section className="panel" style={{ gridColumn: '1 / -1' }}><h2>{t('Aylar üzrə dinamika')}</h2>
             <Trend series={kinds.map(k => ({ name: KIND_LABEL[k], color: COLOR[k], pts: months.map(m => ({ label: monLabel(m), v: d.months[k].find(x => x.month === m)?.avg_pct ?? null })) }))} /></section>}
           <section className="panel" style={{ gridColumn: '1 / -1' }}><AiPanel scope="overall" kind={kf} params={f.params} onReview={setReview} /></section>
         </div>))}
@@ -561,43 +572,44 @@ type Review = { id: number; created_at: string; model: string | null; payload: {
 
 function AiPanel({ scope, ta_id, student_id, level, kind = 'all', params, onReview }: { scope: 'student' | 'class' | 'group' | 'overall'; ta_id?: number | null; student_id?: number | null
   level?: string; kind?: KF; params: Record<string, string>; onReview: (r: Review | null) => void }) {
+  const t = useT()
   const q = { scope, ...(ta_id ? { ta_id } : {}), ...(student_id ? { student_id } : {}), ...(level ? { level } : {}), ...(kind !== 'all' ? { kind } : {}) }
   const key = JSON.stringify(q)
   const [last, err] = useLoad<{ review: Review | null }>(() => get('/api/results-center/ai-review', q), [key])
   const [r, setR] = useState<Review | null>(null)
   useEffect(() => { setR(last?.review ?? null) }, [last])
   useEffect(() => { onReview(r) }, [r])   // eslint-disable-line react-hooks/exhaustive-deps
-  const what = { student: 'şagird', class: ta_id ? 'sinif' : 'bütün siniflərim', group: 'səviyyə qrupu', overall: 'bütün siniflər' }[scope] +
+  const what = { student: 'şagird', class: ta_id ? 'sinif' : t('bütün siniflərim'), group: t('səviyyə qrupu'), overall: 'bütün siniflər' }[scope] +
     (kind !== 'all' ? ` · ${KIND_LABEL[kind].toLowerCase()}` : '')
   return (
     <>
       <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-        <h2 className="grow" style={{ margin: 0 }}>Süni intellektin pedaqoji rəyi <small>{what} üzrə</small></h2>
+        <h2 className="grow" style={{ margin: 0 }}>{t('Süni intellektin pedaqoji rəyi')} <small>{what} {t('üzrə')}</small></h2>
         <AsyncBtn className={r ? 'btn sm' : 'btn sm primary'} ok="Rəy hazırdır" onClick={async () => {
           const x = await post<{ review: Review }>('/api/results-center/ai-review', { ...q, date_from: params.date_from || null, date_to: params.date_to || null }); setR(x.review)
         }}>{r ? 'Yenilə' : 'Rəy hazırla'}</AsyncBtn>
       </div>
       <ErrorBox error={err} />
-      {!r ? <p className="small muted">Mövzu testləri və sınaqların rəqəmlərinə əsasən güclü/zəif tərəflər, ehtimal olunan səbəblər və 2–4 həftəlik tövsiyələr.
-        Şagird adları provayderə göndərilmir (kodla). Tənzimləmələr → «Süni intellekt»də öz açarınız lazımdır.</p> : <ReviewView r={r} />}
+      {!r ? <p className="small muted">{t('Mövzu testləri və sınaqların rəqəmlərinə əsasən güclü/zəif tərəflər, ehtimal olunan səbəblər və 2–4 həftəlik tövsiyələr. Şagird adları provayderə göndərilmir (kodla). Tənzimləmələr → «Süni intellekt»də öz açarınız lazımdır.')}</p> : <ReviewView r={r} />}
     </>
   )
 }
 
 function ReviewView({ r }: { r: Review }) {
+  const t = useT()
   const p = r.payload
   const list = (t: string, v: string[], tn?: 'ok' | 'bad' | 'warn'): ReactNode => v.length > 0 && <div style={{ marginTop: 10 }}><h3 className="small muted" style={{ margin: '0 0 4px' }}>{t}</h3>
     <ul style={{ margin: 0, paddingLeft: 18 }}>{v.map((x, i) => <li key={i} style={tn ? { color: `var(--${tn})` } : undefined}><span style={{ color: 'var(--ink)' }}>{x}</span></li>)}</ul></div>
   return (
     <div>
       <p style={{ margin: '8px 0 0' }}>{p.xulase}</p>
-      <div className="grid g2">{list('Güclü tərəflər', p.guclu, 'ok')}{list('İnkişaf ehtiyacı', p.zeif, 'bad')}</div>
-      {list('Ehtimal olunan səbəblər', p.sebebler)}
-      {p.tovsiyeler.length > 0 && <div style={{ marginTop: 10 }}><h3 className="small muted" style={{ margin: '0 0 4px' }}>Tövsiyələr</h3>
+      <div className="grid g2">{list('Güclü tərəflər', p.guclu, 'ok')}{list(t('İnkişaf ehtiyacı'), p.zeif, 'bad')}</div>
+      {list(t('Ehtimal olunan səbəblər'), p.sebebler)}
+      {p.tovsiyeler.length > 0 && <div style={{ marginTop: 10 }}><h3 className="small muted" style={{ margin: '0 0 4px' }}>{t('Tövsiyələr')}</h3>
         {p.tovsiyeler.map((t, i) => <div key={i} className="row small" style={{ alignItems: 'baseline' }}><b>{i + 1}.</b><span className="grow">{t.ne}</span>{t.kim && <Pill>{t.kim}</Pill>}{t.muddet && <span className="muted">{t.muddet}</span>}</div>)}</div>}
       {list('Diqqət', p.diqqet, 'warn')}
-      {p.valideyne && <div style={{ marginTop: 10 }}><h3 className="small muted" style={{ margin: '0 0 4px' }}>Valideynə</h3><p style={{ margin: 0 }}>{p.valideyne}</p></div>}
-      <p className="small muted" style={{ marginTop: 10 }}>{fmtDate(r.created_at)} · {r.model} · rəy köməkçidir – müəllim tərəfindən yoxlanmalıdır.</p>
+      {p.valideyne && <div style={{ marginTop: 10 }}><h3 className="small muted" style={{ margin: '0 0 4px' }}>{t('Valideynə')}</h3><p style={{ margin: 0 }}>{p.valideyne}</p></div>}
+      <p className="small muted" style={{ marginTop: 10 }}>{fmtDate(r.created_at)} · {r.model} {t('· rəy köməkçidir – müəllim tərəfindən yoxlanmalıdır.')}</p>
     </div>
   )
 }

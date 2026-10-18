@@ -8,6 +8,7 @@ import { AsyncBtn, ConfirmName, Drawer, Empty, ErrorBox, Field, fmt, fmtDate, Lo
 import { esc, fmtD, fmtN, head, kpis, printDoc, SIGN, table } from '../../print'
 import { useAuth } from '../../auth'
 import { LessonSelect, useMyLessons } from './common'
+import { useT, tt } from '../../i18n'
 
 type Kind = 'likert5' | 'scale10' | 'single' | 'multi' | 'text'
 type Q = { id?: number; key: string | null; section: string; kind: Kind; text: string; options: { min?: number; max?: number; choices?: string[] } | null; required: boolean; reverse: boolean }
@@ -28,6 +29,7 @@ const color = (v: number | null | undefined) => `var(--${tone(v) || 'muted'})`
 const LIK_COLORS = ['var(--bad)', 'color-mix(in srgb,var(--bad) 55%,var(--warn))', 'var(--muted)', 'color-mix(in srgb,var(--ok) 60%,var(--info))', 'var(--ok)']
 
 export default function Surveys() {
+  const t = useT()
   const [archived, setArchived] = useState(false)
   const [list, err, loading, reload] = useLoad<Sv[]>(() => get('/api/surveys', { archived: archived ? 1 : undefined }), [archived])
   const [sel, setSel] = useState<number | null>(null)
@@ -35,21 +37,21 @@ export default function Surveys() {
   if (sel) return <Detail id={sel} onBack={() => { setSel(null); reload() }} onOpen={id => setSel(id)} />
   return (
     <>
-      <Top title="Şagird sorğusu" sub="Öz işiniz haqqında anonim rəy: link WhatsApp-da göndərilir, şagirdin tətbiqində də görünür"
-        actions={<button className="btn primary" onClick={() => setCreating(true)}>+ Yeni sorğu</button>} />
-      <div className="toolbar"><Seg value={archived ? 'a' : 'c'} onChange={v => setArchived(v === 'a')} options={[['c', 'Sorğular'], ['a', 'Arxiv']]} label="Siyahı" /></div>
+      <Top title={t('Şagird sorğusu')} sub="Öz işiniz haqqında anonim rəy: link WhatsApp-da göndərilir, şagirdin tətbiqində də görünür"
+        actions={<button className="btn primary" onClick={() => setCreating(true)}>{t('+ Yeni sorğu')}</button>} />
+      <div className="toolbar"><Seg value={archived ? 'a' : 'c'} onChange={v => setArchived(v === 'a')} options={[['c', 'Sorğular'], ['a', 'Arxiv']]} label={t('Siyahı')} /></div>
       <ErrorBox error={err} />
       {loading && !list ? <Loading /> : !list?.length ? (
-        <Empty><p>{archived ? 'Arxiv boşdur.' : 'Hələ sorğu yoxdur. «Yeni sorğu» ilə hazır peşəkar şablondan (33 sual, 8 meyar) başlayın.'}</p></Empty>
+        <Empty><p>{archived ? t('Arxiv boşdur.') : t('Hələ sorğu yoxdur. «Yeni sorğu» ilə hazır peşəkar şablondan (33 sual, 8 meyar) başlayın.')}</p></Empty>
       ) : (
         <div className="grid g2">{list.map(s => (
           <section key={s.id} className="panel click" onClick={() => setSel(s.id)} style={{ cursor: 'pointer' }}>
             <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
               <h2 style={{ margin: 0 }}>{s.title}</h2><Pill tone={STATE[s.state]?.[1]}>{STATE[s.state]?.[0] || s.state}</Pill></div>
             <p className="small muted" style={{ margin: '6px 0 0' }}>
-              {s.repeat === 'weekly' ? (s.pulse ? 'Həftəlik (qısa)' : 'Həftəlik') : 'Birdəfəlik'}{s.wave > 1 ? ` · ${s.wave}-ci dalğa` : ''}{s.in_app ? ' · tətbiqdə' : ''} · {fmtDate(s.created_at)}</p>
-            <div className="kpis" style={{ marginTop: 10 }}><Stat value={s.responses} label="cavab" /><Stat value={s.links.filter(l => l.active).length} label="aktiv link" />
-              <Stat value={s.responses >= s.min_group ? '✓' : `${s.responses}/${s.min_group}`} label="nəticə" /></div>
+              {s.repeat === 'weekly' ? (s.pulse ? t('Həftəlik (qısa)') : t('Həftəlik')) : t('Birdəfəlik')}{s.wave > 1 ? (' · ' + t('{wave}-ci dalğa', { wave: s.wave })) : ''}{s.in_app ? (' · ' + t('tətbiqdə')) : ''} · {fmtDate(s.created_at)}</p>
+            <div className="kpis" style={{ marginTop: 10 }}><Stat value={s.responses} label={t('cavab')} /><Stat value={s.links.filter(l => l.active).length} label={t('aktiv link')} />
+              <Stat value={s.responses >= s.min_group ? '✓' : `${s.responses}/${s.min_group}`} label={t('nəticə')} /></div>
           </section>))}</div>)}
       {creating && <CreateDrawer onClose={() => setCreating(false)} onCreated={id => { setCreating(false); setSel(id) }} />}
     </>
@@ -57,23 +59,24 @@ export default function Surveys() {
 }
 
 function CreateDrawer({ onClose, onCreated, from }: { onClose: () => void; onCreated: (id: number) => void; from?: Sv }) {
+  const t = useT()
   const { me } = useAuth()
   const [f, setF] = useState({ title: from ? `${from.title} – ${from.wave + 1}-ci dalğa` : `${me?.full_name || 'Müəllim'} – şagirdlərin rəyi`,
     description: from?.description || 'Əziz şagird! Bu sorğu dərslərin keyfiyyətini yaxşılaşdırmaq üçündür. Hər suala səmimi cavab verin – düzgün və ya səhv cavab yoxdur.',
     include_demo: false, repeat: from?.repeat || 'once' as 'once' | 'weekly', in_app: from?.in_app ?? true, pulse: from?.pulse ?? true })
   return (
-    <Drawer title={from ? 'Təkrar sorğu (yeni dalğa)' : 'Yeni sorğu'} onClose={onClose}
-      footer={<AsyncBtn className="btn primary" onClick={async () => { const s = await post<Sv>('/api/surveys', { ...f, from_id: from?.id }); onCreated(s.id) }}>Yarat</AsyncBtn>}>
+    <Drawer title={from ? t('Təkrar sorğu (yeni dalğa)') : t('Yeni sorğu')} onClose={onClose}
+      footer={<AsyncBtn className="btn primary" onClick={async () => { const s = await post<Sv>('/api/surveys', { ...f, from_id: from?.id }); onCreated(s.id) }}>{t('Yarat')}</AsyncBtn>}>
       <div className="stack">
-        <Field label="Ad"><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} maxLength={200} /></Field>
-        <Field label="Şagirdə müraciət (giriş mətni)"><textarea rows={4} value={f.description} onChange={e => setF({ ...f, description: e.target.value })} maxLength={2000} /></Field>
-        <Field label="Növ" hint={f.repeat === 'weekly' ? 'Şagird hər tədris həftəsində bir dəfə cavab verir; nəticələr həftələr üzrə müqayisə olunur.' : 'Hər şagird bir dəfə cavab verir.'}>
-          <Seg value={f.repeat} onChange={v => setF({ ...f, repeat: v })} options={[['once', 'Birdəfəlik'], ['weekly', 'Hər həftə']]} label="Növ" /></Field>
-        {f.repeat === 'weekly' && <label className="row"><input type="checkbox" checked={f.pulse} onChange={e => setF({ ...f, pulse: e.target.checked })} /> Qısa həftəlik sorğu – hər həftə ~8 sual (1–2 dəq.), suallar növbə ilə dəyişir; 4–5 həftədə bütün anket əhatə olunur (tövsiyə)</label>}
-        <label className="row"><input type="checkbox" checked={f.in_app} onChange={e => setF({ ...f, in_app: e.target.checked })} /> Şagirdlərimin tətbiqində də göstər (siniflərim)</label>
-        {!from && <label className="row"><input type="checkbox" checked={f.include_demo} onChange={e => setF({ ...f, include_demo: e.target.checked })} /> «Özünüz haqqında» bölməsi (sinif, davamiyyət – istəyə görə)</label>}
-        <p className="small muted">{from ? 'Suallar əvvəlki sorğudan köçürülür – nəticələr dalğalar üzrə müqayisə olunacaq.'
-          : 'Şablon: fənn bilgisi və izah, dərsin təşkili, qiymətləndirmə, ünsiyyət, motivasiya, intizam (28 sual, şkala 1–5), ümumi bal, tövsiyə (NPS), 3 açıq sual. Açmazdan əvvəl sualları dəyişə bilərsiniz.'}</p>
+        <Field label={t('Ad')}><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} maxLength={200} /></Field>
+        <Field label={t('Şagirdə müraciət (giriş mətni)')}><textarea rows={4} value={f.description} onChange={e => setF({ ...f, description: e.target.value })} maxLength={2000} /></Field>
+        <Field label={t('Növ')} hint={f.repeat === 'weekly' ? t('Şagird hər tədris həftəsində bir dəfə cavab verir; nəticələr həftələr üzrə müqayisə olunur.') : t('Hər şagird bir dəfə cavab verir.')}>
+          <Seg value={f.repeat} onChange={v => setF({ ...f, repeat: v })} options={[['once', t('Birdəfəlik')], ['weekly', t('Hər həftə')]]} label={t('Növ')} /></Field>
+        {f.repeat === 'weekly' && <label className="row"><input type="checkbox" checked={f.pulse} onChange={e => setF({ ...f, pulse: e.target.checked })} /> {t('Qısa həftəlik sorğu – hər həftə ~8 sual (1–2 dəq.), suallar növbə ilə dəyişir; 4–5 həftədə bütün anket əhatə olunur (tövsiyə)')}</label>}
+        <label className="row"><input type="checkbox" checked={f.in_app} onChange={e => setF({ ...f, in_app: e.target.checked })} /> {t('Şagirdlərimin tətbiqində də göstər (siniflərim)')}</label>
+        {!from && <label className="row"><input type="checkbox" checked={f.include_demo} onChange={e => setF({ ...f, include_demo: e.target.checked })} /> {t('«Özünüz haqqında» bölməsi (sinif, davamiyyət – istəyə görə)')}</label>}
+        <p className="small muted">{from ? t('Suallar əvvəlki sorğudan köçürülür – nəticələr dalğalar üzrə müqayisə olunacaq.')
+          : t('Şablon: fənn bilgisi və izah, dərsin təşkili, qiymətləndirmə, ünsiyyət, motivasiya, intizam (28 sual, şkala 1–5), ümumi bal, tövsiyə (NPS), 3 açıq sual. Açmazdan əvvəl sualları dəyişə bilərsiniz.')}</p>
       </div>
     </Drawer>
   )
@@ -81,29 +84,30 @@ function CreateDrawer({ onClose, onCreated, from }: { onClose: () => void; onCre
 
 // ---------------------------------------------------------------- bir sorğu
 function Detail({ id, onBack, onOpen }: { id: number; onBack: () => void; onOpen: (id: number) => void }) {
+  const t = useT()
   const [s, err, loading, reload] = useLoad<Sv>(() => get(`/api/surveys/${id}`), [id])
   const [tab, setTab] = useState<'share' | 'results' | 'questions' | 'settings'>('share')
   const [wave, setWave] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
-  if (!s) return err ? <><button className="btn sm ghost" onClick={onBack}>← Sorğular</button><ErrorBox error={err} /></> : <Loading />
+  if (!s) return err ? <><button className="btn sm ghost" onClick={onBack}>{t('← Sorğular')}</button><ErrorBox error={err} /></> : <Loading />
   const status = (st: string) => post(`/api/surveys/${id}/status`, { status: st }).then(reload)
   return (
     <>
-      <button className="btn sm ghost" onClick={onBack} style={{ marginBottom: 6 }}>← Sorğular</button>
-      <Top title={s.title} sub={<>{s.repeat === 'weekly' ? 'Həftəlik sorğu' : 'Birdəfəlik sorğu'}{s.wave > 1 ? ` · ${s.wave}-ci dalğa` : ''} · {s.responses} cavab · <Pill tone={STATE[s.state]?.[1]}>{STATE[s.state]?.[0]}</Pill></>}
+      <button className="btn sm ghost" onClick={onBack} style={{ marginBottom: 6 }}>{t('← Sorğular')}</button>
+      <Top title={s.title} sub={<>{s.repeat === 'weekly' ? t('Həftəlik sorğu') : t('Birdəfəlik sorğu')}{s.wave > 1 ? (' · ' + t('{wave}-ci dalğa', { wave: s.wave })) : ''} · {s.responses} {t('cavab ·')} <Pill tone={STATE[s.state]?.[1]}>{STATE[s.state]?.[0]}</Pill></>}
         actions={s.archived_at ? <>
-          <AsyncBtn className="btn" onClick={() => post(`/api/surveys/${id}/restore`).then(reload)}>Geri qaytar</AsyncBtn>
-          <button className="btn danger" onClick={() => setConfirmDel(true)}>Həmişəlik sil</button></> : <>
-          {s.status !== 'open' && <AsyncBtn className="btn primary" ok="Sorğu açıldı" onClick={() => status('open')}>Sorğunu aç</AsyncBtn>}
-          {s.status === 'open' && <AsyncBtn className="btn" ok="Sorğu bağlandı" onClick={() => status('closed')}>Bağla</AsyncBtn>}
-          <button className="btn" onClick={() => setWave(true)}>Yenidən keçir</button>
-          <AsyncBtn className="btn ghost" ok="Arxivə köçürüldü" onClick={() => post(`/api/surveys/${id}/archive`).then(onBack)}>Arxivə</AsyncBtn></>} />
+          <AsyncBtn className="btn" onClick={() => post(`/api/surveys/${id}/restore`).then(reload)}>{t('Geri qaytar')}</AsyncBtn>
+          <button className="btn danger" onClick={() => setConfirmDel(true)}>{t('Həmişəlik sil')}</button></> : <>
+          {s.status !== 'open' && <AsyncBtn className="btn primary" ok="Sorğu açıldı" onClick={() => status('open')}>{t('Sorğunu aç')}</AsyncBtn>}
+          {s.status === 'open' && <AsyncBtn className="btn" ok="Sorğu bağlandı" onClick={() => status('closed')}>{t('Bağla')}</AsyncBtn>}
+          <button className="btn" onClick={() => setWave(true)}>{t('Yenidən keçir')}</button>
+          <AsyncBtn className="btn ghost" ok="Arxivə köçürüldü" onClick={() => post(`/api/surveys/${id}/archive`).then(onBack)}>{t('Arxivə')}</AsyncBtn></>} />
       {confirmDel && <ConfirmName name={s.title} action="Həmişəlik sil" onCancel={() => setConfirmDel(false)}
-        onConfirm={async typed => { await del(`/api/surveys/${id}`, { confirm: typed }); toast('Sorğu silindi'); onBack() }} />}
-      {loading && <div className="small muted">Yenilənir…</div>}
+        onConfirm={async typed => { await del(`/api/surveys/${id}`, { confirm: typed }); toast(t('Sorğu silindi')); onBack() }} />}
+      {loading && <div className="small muted">{t('Yenilənir…')}</div>}
       <div className="chips" role="tablist">
-        {([['share', 'Paylaş'], ['results', 'Nəticələr'], ['questions', 'Suallar'], ['settings', 'Parametrlər']] as const).map(([k, l]) =>
-          <button key={k} className="chip" role="tab" aria-pressed={tab === k} onClick={() => setTab(k)}>{l}</button>)}
+        {([['share', 'Paylaş'], ['results', 'Nəticələr'], ['questions', t('Suallar')], ['settings', t('Parametrlər')]] as const).map(([k, l]) =>
+          <button key={k} className="chip" role="tab" aria-pressed={tab === k} onClick={() => setTab(k)}>{t(l)}</button>)}
       </div>
       {tab === 'share' && <Share s={s} reload={reload} />}
       {tab === 'results' && <Results s={s} />}
@@ -116,6 +120,7 @@ function Detail({ id, onBack, onOpen }: { id: number; onBack: () => void; onOpen
 
 // ---------------------------------------------------------------- paylaşma: link, WhatsApp, QR
 function Share({ s, reload }: { s: Sv; reload: () => void }) {
+  const t = useT()
   const { me } = useAuth()
   const [lessons] = useMyLessons()
   const [ta, setTa] = useState<number | null>(null)
@@ -141,58 +146,58 @@ function Share({ s, reload }: { s: Sv; reload: () => void }) {
   // link göndərilməzdən əvvəl sorğu açıq olmalıdır – qaralama / bağlı sorğu avtomatik açılır
   const ensureOpen = async () => {
     if (s.state === 'open' || s.state === 'scheduled') return
-    try { await post(`/api/surveys/${s.id}/status`, { status: 'open' }); toast('Sorğu açıldı – link işləyir'); reload() }
-    catch { toast('Sorğu açılmadı – yuxarıda «Sorğunu aç» basın') }
+    try { await post(`/api/surveys/${s.id}/status`, { status: 'open' }); toast(t('Sorğu açıldı – link işləyir')); reload() }
+    catch { toast(t('Sorğu açılmadı – yuxarıda «Sorğunu aç» basın')) }
   }
   return (
     <div className="grid g2">
       <section className="panel" style={{ gridColumn: '1 / -1' }}>
-        <h2>Linklər <small>WhatsApp-da göndərin və ya QR-ı sinifdə göstərin</small></h2>
-        {s.state === 'scheduled' && <div className="banner" style={{ background: 'var(--info-soft)', color: 'var(--info)', borderRadius: 10 }}>Sorğu {fmtDate(s.opens_at)} tarixində açılacaq – o vaxta qədər link «açılacaq» yazacaq.</div>}
+        <h2>{t('Linklər')} <small>{t('WhatsApp-da göndərin və ya QR-ı sinifdə göstərin')}</small></h2>
+        {s.state === 'scheduled' && <div className="banner" style={{ background: 'var(--info-soft)', color: 'var(--info)', borderRadius: 10 }}>{t('Sorğu')} {fmtDate(s.opens_at)} {t('tarixində açılacaq – o vaxta qədər link «açılacaq» yazacaq.')}</div>}
         {!open && s.state !== 'scheduled' && <div className="banner row" style={{ background: 'var(--warn-soft)', color: 'var(--warn)', borderRadius: 10, gap: 8, flexWrap: 'wrap' }}>
-          <span className="grow">Sorğu {s.state === 'closed' ? 'bağlıdır' : 'hələ açılmayıb'} – şagirdlər linkdə cavab verə bilməz. Linki göndərəndə sorğu avtomatik açılacaq.</span>
-          <AsyncBtn className="btn sm primary" ok="Sorğu açıldı" onClick={() => post(`/api/surveys/${s.id}/status`, { status: 'open' }).then(reload)}>İndi aç</AsyncBtn></div>}
+          <span className="grow">{t('Sorğu')} {s.state === 'closed' ? 'bağlıdır' : t('hələ açılmayıb')} {t('– şagirdlər linkdə cavab verə bilməz. Linki göndərəndə sorğu avtomatik açılacaq.')}</span>
+          <AsyncBtn className="btn sm primary" ok="Sorğu açıldı" onClick={() => post(`/api/surveys/${s.id}/status`, { status: 'open' }).then(reload)}>{t('İndi aç')}</AsyncBtn></div>}
         {s.links.map(l => (
           <div key={l.id} style={{ padding: '10px 0', borderTop: '1px solid var(--line)' }}>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-              <b className="grow">{l.label}</b><span className="small muted">{l.responses} cavab</span>
-              {!l.active && <Pill tone="bad">deaktiv</Pill>}
+              <b className="grow">{l.label}</b><span className="small muted">{l.responses} {t('cavab')}</span>
+              {!l.active && <Pill tone="bad">{t('deaktiv')}</Pill>}
             </div>
             <div className="small mono" style={{ wordBreak: 'break-all', margin: '4px 0 8px' }}>{fullUrl(l)}</div>
             <div className="row small" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-              <Seg value={l.mode} label="Linkin rejimi" onChange={m => post(`/api/surveys/${s.id}/links/${l.id}`, { mode: m }).then(reload)}
-                options={[['auto', 'Avtomatik'], ['full', 'Tam anket'], ['short', 'Qısa, hər dəfə dəyişir']]} />
-              <span className="muted">{l.effective === 'full' ? `tam anket · ${l.served} sual` : `qısa · ${l.served} sual · ${s.repeat === 'weekly' ? 'hər həftə yeni suallar' : 'hər şagirdə başqa suallar'}`}</span>
+              <Seg value={l.mode} label={t('Linkin rejimi')} onChange={m => post(`/api/surveys/${s.id}/links/${l.id}`, { mode: m }).then(reload)}
+                options={[['auto', 'Avtomatik'], ['full', t('Tam anket')], ['short', t('Qısa, hər dəfə dəyişir')]]} />
+              <span className="muted">{l.effective === 'full' ? t('tam anket · {served} sual', { served: l.served }) : t('qısa · {served} sual · {x2}', { served: l.served, x2: s.repeat === 'weekly' ? 'hər həftə yeni suallar' : 'hər şagirdə başqa suallar' })}</span>
             </div>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-              <button className="btn sm primary" disabled={!l.active} onClick={() => { wa(l); ensureOpen() }} style={{ background: '#1FA855', borderColor: '#1FA855', color: '#fff' }}>WhatsApp-da göndər</button>
-              <button className="btn sm" disabled={!l.active} onClick={() => { ensureOpen(); share(l) }}>Paylaş…</button>
-              <button className="btn sm" onClick={() => { ensureOpen(); copy(fullUrl(l)) }}>Linki kopyala</button>
-              <button className="btn sm" onClick={() => { ensureOpen(); copy(msg(l)) }}>Mətni kopyala</button>
-              <button className="btn sm" disabled={!l.active} onClick={() => { ensureOpen(); qr(l) }}>QR çap et</button>
-              <AsyncBtn className="btn sm ghost" onClick={() => post(`/api/surveys/${s.id}/links/${l.id}`, { active: !l.active }).then(reload)}>{l.active ? 'Deaktiv et' : 'Aktiv et'}</AsyncBtn>
+              <button className="btn sm primary" disabled={!l.active} onClick={() => { wa(l); ensureOpen() }} style={{ background: '#1FA855', borderColor: '#1FA855', color: '#fff' }}>{t('WhatsApp-da göndər')}</button>
+              <button className="btn sm" disabled={!l.active} onClick={() => { ensureOpen(); share(l) }}>{t('Paylaş…')}</button>
+              <button className="btn sm" onClick={() => { ensureOpen(); copy(fullUrl(l)) }}>{t('Linki kopyala')}</button>
+              <button className="btn sm" onClick={() => { ensureOpen(); copy(msg(l)) }}>{t('Mətni kopyala')}</button>
+              <button className="btn sm" disabled={!l.active} onClick={() => { ensureOpen(); qr(l) }}>{t('QR çap et')}</button>
+              <AsyncBtn className="btn sm ghost" onClick={() => post(`/api/surveys/${s.id}/links/${l.id}`, { active: !l.active }).then(reload)}>{l.active ? t('Deaktiv et') : t('Aktiv et')}</AsyncBtn>
             </div>
           </div>))}
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 12, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
-          <LessonSelect lessons={lessons} value={ta} onChange={setTa} />
-          <Seg value={newMode} onChange={setNewMode} label="Yeni linkin rejimi" options={[['auto', 'Avtomatik'], ['full', 'Tam'], ['short', 'Qısa']]} />
-          <AsyncBtn className="btn" disabled={!ta} ok="Sinif linki hazırdır" onClick={() => post(`/api/surveys/${s.id}/links`, { ta_id: ta, mode: newMode }).then(() => { setTa(null); reload() })}>+ Sinif linki</AsyncBtn>
-          <AsyncBtn className="btn ghost" ok="Link hazırdır" onClick={() => post(`/api/surveys/${s.id}/links`, { mode: newMode }).then(reload)}>+ Ümumi link (WhatsApp qrupu üçün)</AsyncBtn>
+          <LessonSelect lessons={lessons} value={ta} onChange={setTa} chips={false} />
+          <Seg value={newMode} onChange={setNewMode} label={t('Yeni linkin rejimi')} options={[['auto', 'Avtomatik'], ['full', t('Tam')], ['short', t('Qısa')]]} />
+          <AsyncBtn className="btn" disabled={!ta} ok="Sinif linki hazırdır" onClick={() => post(`/api/surveys/${s.id}/links`, { ta_id: ta, mode: newMode }).then(() => { setTa(null); reload() })}>{t('+ Sinif linki')}</AsyncBtn>
+          <AsyncBtn className="btn ghost" ok="Link hazırdır" onClick={() => post(`/api/surveys/${s.id}/links`, { mode: newMode }).then(reload)}>{t('+ Ümumi link (WhatsApp qrupu üçün)')}</AsyncBtn>
         </div>
-        <p className="small muted" style={{ marginBottom: 0 }}><b>Tam anket</b> – bütün suallar (7–10 dəq.). <b>Qısa</b> – hər meyardan bir sual + ümumi bal (1–2 dəq.); {s.repeat === 'weekly' ? 'hər həftə suallar dəyişir' : 'hər şagird başqa dəst alır, birlikdə bütün anket əhatə olunur'}. Eyni sorğu üçün WhatsApp qrupuna həm tam, həm qısa link göndərə bilərsiniz. Sinif linki ilə nəticələr siniflər üzrə müqayisə olunur (hər sinifdə ≥ {s.min_group} cavab).</p>
+        <p className="small muted" style={{ marginBottom: 0 }}><b>{t('Tam anket')}</b> {t('– bütün suallar (7–10 dəq.).')} <b>{t('Qısa')}</b> {t('– hər meyardan bir sual + ümumi bal (1–2 dəq.);')} {s.repeat === 'weekly' ? t('hər həftə suallar dəyişir') : t('hər şagird başqa dəst alır, birlikdə bütün anket əhatə olunur')}{t('. Eyni sorğu üçün WhatsApp qrupuna həm tam, həm qısa link göndərə bilərsiniz. Sinif linki ilə nəticələr siniflər üzrə müqayisə olunur (hər sinifdə ≥')} {s.min_group} {t('cavab).')}</p>
       </section>
       <section className="panel">
-        <h2>Şagirdin tətbiqində</h2>
-        {s.in_app ? <p className="small" style={{ margin: 0 }}>Sorğu açıq olduqca dərs dediyiniz siniflərin şagirdləri onu tətbiqdə <b>«Sorğular»</b> bölməsində və «Bu gün» səhifəsində görür.
-          {s.repeat === 'weekly' ? ' Hər yeni tədris həftəsində (bazar ertəsi) sorğu yenidən açılır.' : ''} Tətbiqdən gələn cavablar sinif linkinə yazılır.</p>
-          : <p className="small muted" style={{ margin: 0 }}>Söndürülüb – yalnız link ilə. «Parametrlər»dən aça bilərsiniz.</p>}
+        <h2>{t('Şagirdin tətbiqində')}</h2>
+        {s.in_app ? <p className="small" style={{ margin: 0 }}>{t('Sorğu açıq olduqca dərs dediyiniz siniflərin şagirdləri onu tətbiqdə')} <b>{t('«Sorğular»')}</b> {t('bölməsində və «Bu gün» səhifəsində görür.')}
+          {s.repeat === 'weekly' ? (' ' + t('Hər yeni tədris həftəsində (bazar ertəsi) sorğu yenidən açılır.')) : ''} {t('Tətbiqdən gələn cavablar sinif linkinə yazılır.')}</p>
+          : <p className="small muted" style={{ margin: 0 }}>{t('Söndürülüb – yalnız link ilə. «Parametrlər»dən aça bilərsiniz.')}</p>}
       </section>
       <section className="panel">
-        <h2>Anonimlik</h2>
+        <h2>{t('Anonimlik')}</h2>
         <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
-          <li>Cavabda şagirdin adı, hesabı, IP və cihazı saxlanmır.</li>
-          <li>Təkrar göndərmə yalnız ayrıca saxlanan şifrəli nişanla yoxlanır.</li>
-          <li>Nəticə yalnız ən azı {s.min_group} cavab olduqda görünür; açıq cavablar qarışıq sıra ilə.</li>
+          <li>{t('Cavabda şagirdin adı, hesabı, IP və cihazı saxlanmır.')}</li>
+          <li>{t('Təkrar göndərmə yalnız ayrıca saxlanan şifrəli nişanla yoxlanır.')}</li>
+          <li>{t('Nəticə yalnız ən azı')} {s.min_group} {t('cavab olduqda görünür; açıq cavablar qarışıq sıra ilə.')}</li>
         </ul>
       </section>
     </div>
@@ -202,25 +207,26 @@ function Share({ s, reload }: { s: Sv; reload: () => void }) {
 // ---------------------------------------------------------------- parametrlər
 const toLocal = (v: string | null) => (v ? new Date(v).toLocaleString('sv-SE').slice(0, 16).replace(' ', 'T') : '')
 function Settings({ s, reload }: { s: Sv; reload: () => void }) {
+  const t = useT()
   const [f, setF] = useState({ title: s.title, description: s.description || '', opens_at: toLocal(s.opens_at), closes_at: toLocal(s.closes_at),
     min_group: s.min_group, repeat: s.repeat, in_app: s.in_app, pulse: s.pulse })
   return (
     <section className="panel" style={{ maxWidth: 720 }}>
       <div className="stack">
-        <Field label="Ad"><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} maxLength={200} /></Field>
-        <Field label="Şagirdə müraciət"><textarea rows={4} value={f.description} onChange={e => setF({ ...f, description: e.target.value })} maxLength={2000} /></Field>
+        <Field label={t('Ad')}><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} maxLength={200} /></Field>
+        <Field label={t('Şagirdə müraciət')}><textarea rows={4} value={f.description} onChange={e => setF({ ...f, description: e.target.value })} maxLength={2000} /></Field>
         <div className="grid g2">
-          <Field label="Açılır (istəyə görə)"><input type="datetime-local" value={f.opens_at} onChange={e => setF({ ...f, opens_at: e.target.value })} /></Field>
-          <Field label="Bağlanır (istəyə görə)"><input type="datetime-local" value={f.closes_at} onChange={e => setF({ ...f, closes_at: e.target.value })} /></Field>
+          <Field label={t('Açılır (istəyə görə)')}><input type="datetime-local" value={f.opens_at} onChange={e => setF({ ...f, opens_at: e.target.value })} /></Field>
+          <Field label={t('Bağlanır (istəyə görə)')}><input type="datetime-local" value={f.closes_at} onChange={e => setF({ ...f, closes_at: e.target.value })} /></Field>
         </div>
-        <Field label="Növ" hint={s.responses ? 'Cavab gəldikdən sonra növ dəyişmir.' : undefined}>
-          <Seg value={f.repeat} onChange={v => !s.responses && setF({ ...f, repeat: v })} options={[['once', 'Birdəfəlik'], ['weekly', 'Hər həftə']]} label="Növ" /></Field>
-        <Field label="Anonimlik həddi" hint="Nəticə (o cümlədən sinif və həftə üzrə) yalnız bu qədər cavab olduqda göstərilir. Tövsiyə: 5.">
+        <Field label={t('Növ')} hint={s.responses ? t('Cavab gəldikdən sonra növ dəyişmir.') : undefined}>
+          <Seg value={f.repeat} onChange={v => !s.responses && setF({ ...f, repeat: v })} options={[['once', t('Birdəfəlik')], ['weekly', t('Hər həftə')]]} label={t('Növ')} /></Field>
+        <Field label={t('Anonimlik həddi')} hint="Nəticə (o cümlədən sinif və həftə üzrə) yalnız bu qədər cavab olduqda göstərilir. Tövsiyə: 5.">
           <input type="number" min={3} max={30} value={f.min_group} onChange={e => setF({ ...f, min_group: Number(e.target.value) })} /></Field>
-        {f.repeat === 'weekly' && <label className="row"><input type="checkbox" checked={f.pulse} onChange={e => setF({ ...f, pulse: e.target.checked })} /> Qısa həftəlik sorğu (hər həftə ~8 sual, növbə ilə)</label>}
-        <label className="row"><input type="checkbox" checked={f.in_app} onChange={e => setF({ ...f, in_app: e.target.checked })} /> Şagirdlərimin tətbiqində göstər</label>
+        {f.repeat === 'weekly' && <label className="row"><input type="checkbox" checked={f.pulse} onChange={e => setF({ ...f, pulse: e.target.checked })} /> {t('Qısa həftəlik sorğu (hər həftə ~8 sual, növbə ilə)')}</label>}
+        <label className="row"><input type="checkbox" checked={f.in_app} onChange={e => setF({ ...f, in_app: e.target.checked })} /> {t('Şagirdlərimin tətbiqində göstər')}</label>
         <AsyncBtn className="btn primary" ok="Yadda saxlandı" onClick={() => put(`/api/surveys/${s.id}`, { ...f, description: f.description || null,
-          opens_at: f.opens_at ? new Date(f.opens_at).toISOString() : null, closes_at: f.closes_at ? new Date(f.closes_at).toISOString() : null }).then(reload)}>Yadda saxla</AsyncBtn>
+          opens_at: f.opens_at ? new Date(f.opens_at).toISOString() : null, closes_at: f.closes_at ? new Date(f.closes_at).toISOString() : null }).then(reload)}>{t('Yadda saxla')}</AsyncBtn>
       </div>
     </section>
   )
@@ -228,6 +234,7 @@ function Settings({ s, reload }: { s: Sv; reload: () => void }) {
 
 // ---------------------------------------------------------------- suallar (redaktor)
 function Questions({ s, reload }: { s: Sv; reload: () => void }) {
+  const t = useT()
   const [qs, setQs] = useState<Q[]>(s.questions || [])
   const [secs, setSecs] = useState<Section[]>(s.sections || [])
   useEffect(() => { setQs(s.questions || []); setSecs(s.sections || []) }, [s])
@@ -240,57 +247,57 @@ function Questions({ s, reload }: { s: Sv; reload: () => void }) {
   return (
     <>
       {locked && <div className="banner" style={{ background: 'var(--info-soft)', color: 'var(--info)', borderRadius: 10, marginBottom: 12 }}>
-        Sorğuya artıq cavab verilib – suallar dəyişdirilə bilməz (nəticələr müqayisəli qalsın). Dəyişiklik üçün «Yenidən keçir» ilə yeni dalğa yaradın.</div>}
+        {t('Sorğuya artıq cavab verilib – suallar dəyişdirilə bilməz (nəticələr müqayisəli qalsın). Dəyişiklik üçün «Yenidən keçir» ilə yeni dalğa yaradın.')}</div>}
       {secs.map((sec, si) => (
         <section key={sec.key} className="panel" style={{ marginBottom: 12 }}>
           <div className="row" style={{ gap: 8 }}>
             <b>{sec.key}.</b>
             {locked ? <h2 className="grow" style={{ margin: 0 }}>{sec.title}</h2>
-              : <input className="grow" value={sec.title} onChange={e => setSecs(secs.map((x, j) => (j === si ? { ...x, title: e.target.value } : x)))} aria-label="Bölmənin adı" />}
-            {!locked && !qs.some(q => q.section === sec.key) && <button className="btn sm ghost" onClick={() => setSecs(secs.filter((_, j) => j !== si))}>Bölməni sil</button>}
+              : <input className="grow" value={sec.title} onChange={e => setSecs(secs.map((x, j) => (j === si ? { ...x, title: e.target.value } : x)))} aria-label={t('Bölmənin adı')} />}
+            {!locked && !qs.some(q => q.section === sec.key) && <button className="btn sm ghost" onClick={() => setSecs(secs.filter((_, j) => j !== si))}>{t('Bölməni sil')}</button>}
           </div>
           {qs.map((q, i) => q.section !== sec.key ? null : (
             <div key={i} style={{ borderTop: '1px dashed var(--line)', padding: '10px 0' }}>
               {locked ? (
                 <div className="row" style={{ gap: 8, alignItems: 'baseline' }}><span className="grow">{q.text}</span>
-                  <span className="small muted">{KIND_LABEL[q.kind]}{q.reverse ? ' · əks' : ''}{q.required ? '' : ' · istəyə görə'}</span></div>
+                  <span className="small muted">{t(KIND_LABEL[q.kind])}{q.reverse ? ' · əks' : ''}{q.required ? '' : ' · istəyə görə'}</span></div>
               ) : (
                 <div className="stack" style={{ gap: 6 }}>
-                  <textarea rows={2} value={q.text} onChange={e => upd(i, { text: e.target.value })} maxLength={500} aria-label="Sualın mətni" placeholder="Sualın mətni" />
+                  <textarea rows={2} value={q.text} onChange={e => upd(i, { text: e.target.value })} maxLength={500} aria-label={t('Sualın mətni')} placeholder={t('Sualın mətni')} />
                   <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                    <select className="sel" value={q.kind} aria-label="Növ" style={{ width: 'auto' }} onChange={e => {
+                    <select className="sel" value={q.kind} aria-label={t('Növ')} style={{ width: 'auto' }} onChange={e => {
                       const k = e.target.value as Kind
                       upd(i, { kind: k, reverse: k === 'likert5' && q.reverse, options: k === 'scale10' ? { min: 0, max: 10 } : k === 'single' || k === 'multi' ? { choices: q.options?.choices || ['', ''] } : null })
-                    }}>{KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-                    <label className="row small"><input type="checkbox" checked={q.required} onChange={e => upd(i, { required: e.target.checked })} /> məcburi</label>
-                    {q.kind === 'likert5' && <label className="row small" title="Mənfi ifadəli sual: indeksdə 6 − bal kimi sayılır"><input type="checkbox" checked={q.reverse} onChange={e => upd(i, { reverse: e.target.checked })} /> əks (mənfi) sual</label>}
-                    {q.kind === 'scale10' && <label className="row small">min <input type="number" min={0} max={9} style={{ width: 60 }} value={q.options?.min ?? 0} onChange={e => upd(i, { options: { ...q.options, min: Number(e.target.value) } })} />
-                      max <input type="number" min={1} max={10} style={{ width: 60 }} value={q.options?.max ?? 10} onChange={e => upd(i, { options: { ...q.options, max: Number(e.target.value) } })} /></label>}
+                    }}>{KINDS.map(([k, l]) => <option key={k} value={k}>{t(l)}</option>)}</select>
+                    <label className="row small"><input type="checkbox" checked={q.required} onChange={e => upd(i, { required: e.target.checked })} /> {t('məcburi')}</label>
+                    {q.kind === 'likert5' && <label className="row small" title={t('Mənfi ifadəli sual: indeksdə 6 − bal kimi sayılır')}><input type="checkbox" checked={q.reverse} onChange={e => upd(i, { reverse: e.target.checked })} /> {t('əks (mənfi) sual')}</label>}
+                    {q.kind === 'scale10' && <label className="row small">{t('min')} <input type="number" min={0} max={9} style={{ width: 60 }} value={q.options?.min ?? 0} onChange={e => upd(i, { options: { ...q.options, min: Number(e.target.value) } })} />
+                      {t('max')} <input type="number" min={1} max={10} style={{ width: 60 }} value={q.options?.max ?? 10} onChange={e => upd(i, { options: { ...q.options, max: Number(e.target.value) } })} /></label>}
                     <span className="grow" />
-                    <button className="btn sm ghost" onClick={() => move(i, -1)} aria-label="Yuxarı">↑</button>
-                    <button className="btn sm ghost" onClick={() => move(i, 1)} aria-label="Aşağı">↓</button>
-                    <button className="btn sm ghost danger" onClick={() => setQs(qs.filter((_, j) => j !== i))}>Sil</button>
+                    <button className="btn sm ghost" onClick={() => move(i, -1)} aria-label={t('Yuxarı')}>↑</button>
+                    <button className="btn sm ghost" onClick={() => move(i, 1)} aria-label={t('Aşağı')}>↓</button>
+                    <button className="btn sm ghost danger" onClick={() => setQs(qs.filter((_, j) => j !== i))}>{t('Sil')}</button>
                   </div>
                   {(q.kind === 'single' || q.kind === 'multi') && (
                     <div className="stack" style={{ gap: 4 }}>
                       {(q.options?.choices || []).map((c, ci) => (
                         <div key={ci} className="row" style={{ gap: 6 }}>
-                          <input className="grow" value={c} placeholder={`Variant ${ci + 1}`} onChange={e => upd(i, { options: { choices: (q.options?.choices || []).map((x, j) => (j === ci ? e.target.value : x)) } })} />
+                          <input className="grow" value={c} placeholder={t('Variant {x1}', { x1: ci + 1 })} onChange={e => upd(i, { options: { choices: (q.options?.choices || []).map((x, j) => (j === ci ? e.target.value : x)) } })} />
                           <button className="btn sm ghost" onClick={() => upd(i, { options: { choices: (q.options?.choices || []).filter((_, j) => j !== ci) } })}>✕</button></div>))}
-                      <button className="btn sm ghost" style={{ alignSelf: 'flex-start' }} onClick={() => upd(i, { options: { choices: [...(q.options?.choices || []), ''] } })}>+ variant</button>
+                      <button className="btn sm ghost" style={{ alignSelf: 'flex-start' }} onClick={() => upd(i, { options: { choices: [...(q.options?.choices || []), ''] } })}>{t('+ variant')}</button>
                     </div>)}
                 </div>)}
             </div>))}
-          {!locked && <button className="btn sm ghost" onClick={() => add(sec.key)}>+ Sual</button>}
+          {!locked && <button className="btn sm ghost" onClick={() => add(sec.key)}>{t('+ Sual')}</button>}
         </section>))}
       {!locked && (
         <div className="row" style={{ gap: 8, position: 'sticky', bottom: 70, background: 'var(--bg)', padding: '8px 0' }}>
-          <button className="btn" onClick={addSection}>+ Bölmə</button>
-          <span className="grow small muted">{qs.length} sual</span>
+          <button className="btn" onClick={addSection}>{t('+ Bölmə')}</button>
+          <span className="grow small muted">{qs.length} {t('sual')}</span>
           <AsyncBtn className="btn primary" ok="Suallar yadda saxlandı" onClick={() => put(`/api/surveys/${s.id}`, {
             title: s.title, description: s.description, opens_at: s.opens_at, closes_at: s.closes_at, min_group: s.min_group, repeat: s.repeat, in_app: s.in_app, pulse: s.pulse,
             sections: secs, questions: qs.map(q => ({ ...q, text: q.text.trim(), options: q.options?.choices ? { choices: q.options.choices.map(c => c.trim()).filter(Boolean) } : q.options })),
-          }).then(reload)}>Sualları yadda saxla</AsyncBtn>
+          }).then(reload)}>{t('Sualları yadda saxla')}</AsyncBtn>
         </div>)}
     </>
   )
@@ -313,7 +320,7 @@ type Res = { n: number; min_group: number; hidden: boolean; sections: Section[];
 type Pick = { id: number; text: string; section: string; adj_mean: number; agree_pct: number; reverse: boolean; n: number }
 const PickRow = ({ x, tn }: { x: Pick; tn?: 'ok' | 'info' | 'warn' | 'bad' }) => (
   <div className="row small" style={{ padding: '4px 0', alignItems: 'baseline', gap: 8 }}>
-    <span className="grow">{x.text}{x.reverse && <span className="muted"> (əks sual – şagirdlər razı deyil, bu yaxşıdır)</span>}</span>
+    <span className="grow">{x.text}{x.reverse && <span className="muted"> {tt('(əks sual – şagirdlər razı deyil, bu yaxşıdır)')}</span>}</span>
     <span style={{ flex: 'none' }}><Pill tone={tn}>{fmt(x.adj_mean, 2)}</Pill></span></div>)
 type Review = { id: number; created_at: string; model: string | null; payload: { title: string; n: number; xulase: string; guclu: string[]; inkisaf: string[]
   movzular: { movzu: string; say: number | null; ton: string }[]; tovsiyeler: { ne: string; muddet: string; olcu: string }[]; diqqet: string[] } }
@@ -321,6 +328,7 @@ type Review = { id: number; created_at: string; model: string | null; payload: {
 const npsTone = (v: number | null | undefined) => (v == null ? undefined : v >= 50 ? 'ok' : v >= 0 ? 'warn' : 'bad') as 'ok' | 'warn' | 'bad' | undefined
 
 function Results({ s }: { s: Sv }) {
+  const t = useT()
   const { me } = useAuth()
   const [link, setLink] = useState<number | ''>('')
   const [cls, setCls] = useState<number | ''>('')
@@ -329,7 +337,7 @@ function Results({ s }: { s: Sv }) {
   const [d, err, loading, reload] = useLoad<Res>(() => get(`/api/surveys/${s.id}/results`, params), [link, period, cls])
   const [review, setReview] = useState<Review | null>(null)
   const [q, setQ] = useState('')
-  const scope = [cls !== '' ? `sinif: ${d?.classes.find(c => c.id === cls)?.name || ''}` : link ? d?.links.find(l => l.id === link)?.label : 'Bütün siniflər', period ? `həftə ${d?.periods.find(p => p.period === period)?.label}` : ''].filter(Boolean).join(' · ')
+  const scope = [cls !== '' ? t('sinif: {x1}', { x1: d?.classes.find(c => c.id === cls)?.name || '' }) : link ? d?.links.find(l => l.id === link)?.label : t('Bütün siniflər'), period ? t('həftə {label}', { label: d?.periods.find(p => p.period === period)?.label }) : ''].filter(Boolean).join(' · ')
 
   const csv = async () => {
     const u = new URL(`/api/surveys/${s.id}/export.csv`, location.origin)
@@ -365,62 +373,62 @@ function Results({ s }: { s: Sv }) {
   return (
     <>
       <div className="toolbar">
-        <select className="sel" style={{ width: 'auto' }} value={cls} onChange={e => setCls(e.target.value === '' ? '' : Number(e.target.value))} aria-label="Sinif">
-          <option value="">Bütün siniflər</option>{d?.classes.map(c => <option key={c.id} value={c.id}>{c.name} ({c.n})</option>)}</select>
-        {(d?.links.length || 0) > 1 && <select className="sel" style={{ width: 'auto' }} value={link} onChange={e => setLink(e.target.value ? Number(e.target.value) : '')} aria-label="Link">
-          <option value="">Bütün linklər</option>{d?.links.map(l => <option key={l.id} value={l.id}>{l.label} ({l.n})</option>)}</select>}
-        {(d?.periods.length || 0) > 0 && <select className="sel" style={{ width: 'auto' }} value={period} onChange={e => setPeriod(e.target.value)} aria-label="Həftə">
-          <option value="">Bütün həftələr</option>{d?.periods.map(p => <option key={p.period} value={p.period}>{p.label} ({p.n})</option>)}</select>}
+        <select className="sel" style={{ width: 'auto' }} value={cls} onChange={e => setCls(e.target.value === '' ? '' : Number(e.target.value))} aria-label={t('Sinif')}>
+          <option value="">{t('Bütün siniflər')}</option>{d?.classes.map(c => <option key={c.id} value={c.id}>{c.name} ({c.n})</option>)}</select>
+        {(d?.links.length || 0) > 1 && <select className="sel" style={{ width: 'auto' }} value={link} onChange={e => setLink(e.target.value ? Number(e.target.value) : '')} aria-label={t('Link')}>
+          <option value="">{t('Bütün linklər')}</option>{d?.links.map(l => <option key={l.id} value={l.id}>{l.label} ({l.n})</option>)}</select>}
+        {(d?.periods.length || 0) > 0 && <select className="sel" style={{ width: 'auto' }} value={period} onChange={e => setPeriod(e.target.value)} aria-label={t('Həftə')}>
+          <option value="">{t('Bütün həftələr')}</option>{d?.periods.map(p => <option key={p.period} value={p.period}>{p.label} ({p.n})</option>)}</select>}
         <span className="right row" style={{ gap: 6 }}>
-          <button className="btn sm" onClick={reload}>Yenilə</button>
-          {d && !d.hidden && <><AsyncBtn className="btn sm" onClick={csv}>Excel (CSV)</AsyncBtn><button className="btn sm" onClick={print}>Çap / PDF</button></>}
+          <button className="btn sm" onClick={reload}>{t('Yenilə')}</button>
+          {d && !d.hidden && <><AsyncBtn className="btn sm" onClick={csv}>{t('Excel (CSV)')}</AsyncBtn><button className="btn sm" onClick={print}>{t('Çap / PDF')}</button></>}
         </span>
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : d && (d.hidden ? (
-        <Empty><p><b>{d.n}</b> cavab var. Anonimliyi qorumaq üçün nəticə ən azı <b>{d.min_group}</b> cavab olduqda göstərilir.</p></Empty>
+        <Empty><p><b>{d.n}</b> {t('cavab var. Anonimliyi qorumaq üçün nəticə ən azı')} <b>{d.min_group}</b> {t('cavab olduqda göstərilir.')}</p></Empty>
       ) : (
         <div className="grid g2">
           <section className="panel" style={{ gridColumn: '1 / -1' }}>
-            <h2>Ümumi mənzərə <small>{scope}</small></h2>
+            <h2>{t('Ümumi mənzərə')} <small>{scope}</small></h2>
             <div className="kpis" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))' }}>
-              <Stat value={d.n} label="cavab" />
-              <Stat value={fmt(d.overall?.mean ?? null)} label="ümumi bal (1–10)" />
-              <Stat value={<em style={{ fontStyle: 'normal', color: `var(--${npsTone(d.nps?.score) || 'ink'})` }}>{d.nps?.score ?? '—'}</em>} label="NPS (−100…100)" />
-              <Stat value={<em style={{ fontStyle: 'normal', color: color(avgIndex(d)) }}>{fmt(avgIndex(d), 2)}</em>} label="orta indeks (1–5)" />
+              <Stat value={d.n} label={t('cavab')} />
+              <Stat value={fmt(d.overall?.mean ?? null)} label={t('ümumi bal (1–10)')} />
+              <Stat value={<em style={{ fontStyle: 'normal', color: `var(--${npsTone(d.nps?.score) || 'ink'})` }}>{d.nps?.score ?? '—'}</em>} label={t('NPS (−100…100)')} />
+              <Stat value={<em style={{ fontStyle: 'normal', color: color(avgIndex(d)) }}>{fmt(avgIndex(d), 2)}</em>} label={t('orta indeks (1–5)')} />
             </div>
-            {d.nps && d.nps.n > 0 && <p className="small muted" style={{ margin: '8px 0 0' }}>Tövsiyə edənlər (9–10): {d.nps.promoters} · neytral (7–8): {d.nps.passives} · tənqidçilər (0–6): {d.nps.detractors}</p>}
+            {d.nps && d.nps.n > 0 && <p className="small muted" style={{ margin: '8px 0 0' }}>{t('Tövsiyə edənlər (9–10):')} {d.nps.promoters} {t('· neytral (7–8):')} {d.nps.passives} {t('· tənqidçilər (0–6):')} {d.nps.detractors}</p>}
           </section>
 
           <section className="panel">
-            <h2>Meyarlar üzrə indeks <small>1–5</small></h2>
-            {(d.section_index || []).map(x => <HBar key={x.key} label={`${x.key}. ${x.title}`} value={x.index} max={5} sub={x.agree_pct != null ? `razılıq ${fmt(x.agree_pct)}%` : ''} />)}
-            <p className="small muted" style={{ marginBottom: 0 }}>≥ 4,3 çox güclü · 3,8–4,3 güclü · 3,2–3,8 inkişaf zonası · &lt; 3,2 diqqət</p>
+            <h2>{t('Meyarlar üzrə indeks')} <small>1–5</small></h2>
+            {(d.section_index || []).map(x => <HBar key={x.key} label={`${x.key}. ${x.title}`} value={x.index} max={5} sub={x.agree_pct != null ? t('razılıq {x1}%', { x1: fmt(x.agree_pct) }) : ''} />)}
+            <p className="small muted" style={{ marginBottom: 0 }}>{t('≥ 4,3 çox güclü · 3,8–4,3 güclü · 3,2–3,8 inkişaf zonası · < 3,2 diqqət')}</p>
           </section>
 
           <section className="panel">
-            <h2>Güclü tərəflər</h2>
+            <h2>{t('Güclü tərəflər')}</h2>
             {(d.strengths || []).map(x => <PickRow key={x.id} x={x} tn="ok" />)}
-            <h2 style={{ marginTop: 14 }}>İnkişaf zonaları</h2>
+            <h2 style={{ marginTop: 14 }}>{t('İnkişaf zonaları')}</h2>
             {(d.growth || []).map(x => <PickRow key={x.id} x={x} tn={tone(x.adj_mean)} />)}
           </section>
 
-          {d.overall && <section className="panel"><h2>Ümumi bal <small>orta {fmt(d.overall.mean ?? null)} · median {d.overall.median ?? '—'}</small></h2><Dist dist={d.overall.dist || {}} /></section>}
-          {(() => { const np = (d.questions || []).find(x => x.key === 'nps'); return np && <section className="panel"><h2>Tövsiyə (0–10)</h2><Dist dist={np.dist || {}} /></section> })()}
+          {d.overall && <section className="panel"><h2>{t('Ümumi bal')} <small>{t('orta')} {fmt(d.overall.mean ?? null)} {t('· median')} {d.overall.median ?? '—'}</small></h2><Dist dist={d.overall.dist || {}} /></section>}
+          {(() => { const np = (d.questions || []).find(x => x.key === 'nps'); return np && <section className="panel"><h2>{t('Tövsiyə (0–10)')}</h2><Dist dist={np.dist || {}} /></section> })()}
 
           <Trends d={d} />
           <Strategy d={d} onPick={id => setCls(id)} />
 
           <section className="panel" style={{ gridColumn: '1 / -1' }}>
-            <h2>Suallar üzrə paylanma</h2>
-            <div className="legend small" style={{ marginBottom: 8 }}>{['Tamamilə razı deyiləm', 'Razı deyiləm', 'Bilmirəm', 'Razıyam', 'Tamamilə razıyam'].map((l, i) =>
+            <h2>{t('Suallar üzrə paylanma')}</h2>
+            <div className="legend small" style={{ marginBottom: 8 }}>{[t('Tamamilə razı deyiləm'), t('Razı deyiləm'), t('Bilmirəm'), t('Razıyam'), t('Tamamilə razıyam')].map((l, i) =>
               <span key={l}><i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: LIK_COLORS[i] }} />{l}</span>)}</div>
             {(d.sections || []).map(sec => { const items = (d.questions || []).filter(x => x.section === sec.key && x.kind === 'likert5'); return items.length === 0 ? null : (
               <div key={sec.key} style={{ marginBottom: 12 }}>
                 <h3 className="small muted" style={{ margin: '8px 0 4px' }}>{sec.key}. {sec.title}</h3>
                 {items.map(x => { const tot = Object.values(x.dist || {}).reduce((a, b) => a + b, 0) || 1; return (
                   <div key={x.id} className="sv-hbar">
-                    <span>{x.text}{x.reverse && <span className="small muted"> (əks)</span>}</span>
+                    <span>{x.text}{x.reverse && <span className="small muted"> {t('(əks)')}</span>}</span>
                     <div className="sv-stack" title={[1, 2, 3, 4, 5].map(i => `${i}: ${x.dist?.[i] || 0}`).join(' · ')}>{[1, 2, 3, 4, 5].map(i =>
                       <i key={i} style={{ width: ((x.dist?.[i] || 0) * 100) / tot + '%', background: LIK_COLORS[(x.reverse ? 6 - i : i) - 1] }} />)}</div>
                     <b style={{ color: color(x.adj_mean), textAlign: 'right' }}>{fmt(x.adj_mean ?? null, 2)}</b>
@@ -432,18 +440,18 @@ function Results({ s }: { s: Sv }) {
           </section>
 
           <section className="panel" style={{ gridColumn: '1 / -1' }}>
-            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><h2 className="grow" style={{ margin: 0 }}>Açıq cavablar</h2>
-              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Axtar…" aria-label="Açıq cavablarda axtar" style={{ maxWidth: 220 }} /></div>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><h2 className="grow" style={{ margin: 0 }}>{t('Açıq cavablar')}</h2>
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('Axtar…')} aria-label={t('Açıq cavablarda axtar')} style={{ maxWidth: 220 }} /></div>
             {(d.texts || []).map(t => { const items = t.items.filter(x => !q || x.text.toLocaleLowerCase('az').includes(q.toLocaleLowerCase('az'))); return (
               <div key={t.qid} style={{ marginTop: 12 }}>
                 <h3 className="small muted" style={{ margin: '0 0 6px' }}>{t.text} <span>({t.items.filter(x => !x.hidden).length})</span></h3>
-                {items.length === 0 ? <p className="small muted">Cavab yoxdur.</p> : items.map(x => (
+                {items.length === 0 ? <p className="small muted">{tt('Cavab yoxdur.')}</p> : items.map(x => (
                   <div key={x.rid} className={'sv-text row' + (x.hidden ? ' off' : '')} style={{ alignItems: 'flex-start', gap: 8 }}>
                     <span className="grow">{x.text}</span>
-                    <AsyncBtn className="btn sm ghost" onClick={() => post(`/api/surveys/${s.id}/responses/${x.rid}/hide`, { qid: t.qid, hidden: !x.hidden }).then(reload)}>{x.hidden ? 'Göstər' : 'Gizlət'}</AsyncBtn>
+                    <AsyncBtn className="btn sm ghost" onClick={() => post(`/api/surveys/${s.id}/responses/${x.rid}/hide`, { qid: t.qid, hidden: !x.hidden }).then(reload)}>{x.hidden ? tt('Göstər') : tt('Gizlət')}</AsyncBtn>
                   </div>))}
               </div>) })}
-            <p className="small muted" style={{ marginBottom: 0 }}>Cavablar qarışıq sıra ilə və tarixsiz göstərilir. «Gizlət» – təhqiramiz cavabı hesabatdan çıxarır (silinmir).</p>
+            <p className="small muted" style={{ marginBottom: 0 }}>{t('Cavablar qarışıq sıra ilə və tarixsiz göstərilir. «Gizlət» – təhqiramiz cavabı hesabatdan çıxarır (silinmir).')}</p>
           </section>
 
           <section className="panel" style={{ gridColumn: '1 / -1' }}><AiPanel sid={s.id} link={link || null} period={period || null} cls={cls === '' ? null : cls} clsName={d.classes.find(c => c.id === cls)?.name} onReview={setReview} /></section>
@@ -459,7 +467,7 @@ function avgIndex(d: Res): number | null {
 }
 function sumTable(d: Res, rows: [string, Sum][]): string {
   const keys = (d.section_index || []).map(x => x.key)
-  return table(['', 'Cavab', ...keys, 'Ümumi bal', 'NPS'], rows.map(([l, x]) => [l, x.n, ...keys.map(k => fmtN(x.sections[k] ?? null, 2)), fmtN(x.overall), x.nps ?? '—']),
+  return table(['', 'Cavab', ...keys, tt('Ümumi bal'), 'NPS'], rows.map(([l, x]) => [l, x.n, ...keys.map(k => fmtN(x.sections[k] ?? null, 2)), fmtN(x.overall), x.nps ?? '—']),
     [1, ...keys.map((_, i) => i + 2), keys.length + 2, keys.length + 3])
 }
 
@@ -488,18 +496,19 @@ function Dist({ dist }: { dist: Record<string, number> }) {
 }
 
 function Trends({ d }: { d: Res }) {
+  const t = useT()
   const blocks: [string, [string, Sum][]][] = []
-  if ((d.compare || []).length > 1) blocks.push(['Siniflər üzrə müqayisə', (d.compare || []).map(c => [c.label, c])])
-  if ((d.weeks || []).length > 0) blocks.push(['Həftələr üzrə dinamika', (d.weeks || []).map(w => [w.label, w])])
-  if ((d.waves || []).length > 1) blocks.push(['Dalğalar üzrə dinamika', (d.waves || []).map(w => [`${w.wave}-ci dalğa · ${fmtDate(w.date)}`, w])])
+  if ((d.compare || []).length > 1) blocks.push([t('Siniflər üzrə müqayisə'), (d.compare || []).map(c => [c.label, c])])
+  if ((d.weeks || []).length > 0) blocks.push([t('Həftələr üzrə dinamika'), (d.weeks || []).map(w => [w.label, w])])
+  if ((d.waves || []).length > 1) blocks.push([t('Dalğalar üzrə dinamika'), (d.waves || []).map(w => [t('{wave}-ci dalğa · {x2}', { wave: w.wave, x2: fmtDate(w.date) }), w])])
   if (!blocks.length) return null
   const keys = (d.section_index || []).map(x => x.key)
   const titles = Object.fromEntries((d.section_index || []).map(x => [x.key, x.title]))
   return <>{blocks.map(([title, rows]) => (
     <section key={title} className="panel" style={{ gridColumn: '1 / -1' }}>
-      <h2>{title} <small>yalnız ≥ {d.min_group} cavab olan qruplar</small></h2>
+      <h2>{title} <small>{t('yalnız ≥')} {d.min_group} {t('cavab olan qruplar')}</small></h2>
       <div className="tbl-wrap"><table>
-        <thead><tr><th></th><th className="r">Cavab</th>{keys.map(k => <th key={k} className="r" title={titles[k]}>{k}</th>)}<th className="r">Ümumi bal</th><th className="r">NPS</th></tr></thead>
+        <thead><tr><th></th><th className="r">{t('Cavab')}</th>{keys.map(k => <th key={k} className="r" title={titles[k]}>{k}</th>)}<th className="r">{t('Ümumi bal')}</th><th className="r">{t('NPS')}</th></tr></thead>
         <tbody>{rows.map(([l, x], i) => { const prev = i > 0 ? rows[i - 1][1] : null; return (
           <tr key={l}><td><b>{l}</b></td><td className="r num">{x.n}</td>
             {keys.map(k => <td key={k} className="r num"><span style={{ color: color(x.sections[k]) }}>{fmt(x.sections[k] ?? null, 2)}</span>
@@ -511,25 +520,26 @@ function Trends({ d }: { d: Res }) {
 }
 /** Sinif üzrə təlim strategiyası: hər sinifdə ən güclü və ən zəif meyarlar + konkret metodik addımlar. */
 function Strategy({ d, onPick }: { d: Res; onPick: (id: number) => void }) {
+  const t = useT()
   const list = d.class_strategy || []
   const untagged = d.classes.find(c => c.id === 0)?.n || 0
   if (!list.length && !d.classes.length) return null
   return (
     <section className="panel" style={{ gridColumn: '1 / -1' }}>
-      <h2>Siniflər üzrə təlim strategiyası <small>hər sinifdə ≥ {d.min_group} cavab olduqda</small></h2>
-      {!list.length ? <p className="small muted">Hələ heç bir sinifdə {d.min_group} cavab yoxdur. Sinif linki göndərin və ya ümumi linkdə şagirdlər sinfini seçsin.</p> : (
+      <h2>{t('Siniflər üzrə təlim strategiyası')} <small>{t('hər sinifdə ≥')} {d.min_group} {t('cavab olduqda')}</small></h2>
+      {!list.length ? <p className="small muted">{t('Hələ heç bir sinifdə')} {d.min_group} {t('cavab yoxdur. Sinif linki göndərin və ya ümumi linkdə şagirdlər sinfini seçsin.')}</p> : (
         <div className="grid g2">{list.map(c => (
           <div key={c.class_id} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: 12 }}>
-            <div className="row" style={{ gap: 8 }}><b className="grow">{c.label}</b><span className="small muted">{c.n} cavab · bal {fmt(c.overall)}</span>
-              <button className="btn sm ghost" onClick={() => onPick(c.class_id)}>Ətraflı</button></div>
-            <div className="small" style={{ margin: '6px 0' }}>Güclü: <Pill tone="ok">{c.strong.title} · {fmt(c.strong.index, 2)}</Pill></div>
+            <div className="row" style={{ gap: 8 }}><b className="grow">{c.label}</b><span className="small muted">{c.n} {t('cavab · bal')} {fmt(c.overall)}</span>
+              <button className="btn sm ghost" onClick={() => onPick(c.class_id)}>{t('Ətraflı')}</button></div>
+            <div className="small" style={{ margin: '6px 0' }}>{t('Güclü:')} <Pill tone="ok">{c.strong.title} · {fmt(c.strong.index, 2)}</Pill></div>
             {c.weak.map(w => (
               <div key={w.key} style={{ marginTop: 8 }}>
-                <div className="small">İnkişaf: <Pill tone={tone(w.index)}>{w.title} · {fmt(w.index, 2)}</Pill></div>
+                <div className="small">{t('İnkişaf:')} <Pill tone={tone(w.index)}>{w.title} · {fmt(w.index, 2)}</Pill></div>
                 <ul className="small" style={{ margin: '4px 0 0', paddingLeft: 18 }}>{w.tips.map((t, i) => <li key={i}>{t}</li>)}</ul>
               </div>))}
           </div>))}</div>)}
-      {untagged > 0 && <p className="small muted" style={{ marginBottom: 0 }}>{untagged} cavabda sinif göstərilməyib (sinif seçimindən əvvəl gələn cavablar) – ümumi nəticəyə daxildir.</p>}
+      {untagged > 0 && <p className="small muted" style={{ marginBottom: 0 }}>{untagged} {t('cavabda sinif göstərilməyib (sinif seçimindən əvvəl gələn cavablar) – ümumi nəticəyə daxildir.')}</p>}
     </section>
   )
 }
@@ -538,6 +548,7 @@ const Delta = ({ v }: { v: number }) => Math.abs(v) < 0.05 ? null : <span classN
 
 // ---------------------------------------------------------------- süni intellektin rəyi
 function AiPanel({ sid, link, period, cls, clsName, onReview }: { sid: number; link: number | null; period: string | null; cls: number | null; clsName?: string; onReview: (r: Review | null) => void }) {
+  const t = useT()
   const q = { link_id: link || undefined, period: period || undefined, class_id: cls ?? undefined }
   const [last, err] = useLoad<{ review: Review | null }>(() => get(`/api/surveys/${sid}/ai-review`, q), [sid, link, period, cls])
   const [r, setR] = useState<Review | null>(null)
@@ -549,22 +560,21 @@ function AiPanel({ sid, link, period, cls, clsName, onReview }: { sid: number; l
   return (
     <>
       <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-        <h2 className="grow" style={{ margin: 0 }}>Süni intellektin rəyi <small>{cls != null && clsName ? `${clsName} sinfi üçün təlim strategiyası` : 'peşəkar inkişaf üçün'}</small></h2>
+        <h2 className="grow" style={{ margin: 0 }}>{t('Süni intellektin rəyi')} <small>{cls != null && clsName ? t('{clsName} sinfi üçün təlim strategiyası', { clsName }) : t('peşəkar inkişaf üçün')}</small></h2>
         <AsyncBtn className={r ? 'btn sm' : 'btn sm primary'} ok="Rəy hazırdır" onClick={async () => {
-          const x = await post<{ review: Review }>(`/api/surveys/${sid}/ai-review`, { link_id: link, period, class_id: cls }); setR(x.review) }}>{r ? 'Yenilə' : 'Rəy hazırla'}</AsyncBtn>
+          const x = await post<{ review: Review }>(`/api/surveys/${sid}/ai-review`, { link_id: link, period, class_id: cls }); setR(x.review) }}>{r ? t('Yenilə') : t('Rəy hazırla')}</AsyncBtn>
       </div>
       <ErrorBox error={err} />
-      {!p ? <p className="small muted">Meyarların rəqəmləri və açıq cavablar əsasında xülasə, güclü tərəflər, inkişaf zonaları, açıq cavabların mövzuları və ölçülə bilən tövsiyələr.
-        Provayderə yalnız ümumi rəqəmlər və anonim mətnlər gedir. Tənzimləmələr → «Süni intellekt»də öz açarınız lazımdır.</p> : (
+      {!p ? <p className="small muted">{t('Meyarların rəqəmləri və açıq cavablar əsasında xülasə, güclü tərəflər, inkişaf zonaları, açıq cavabların mövzuları və ölçülə bilən tövsiyələr. Provayderə yalnız ümumi rəqəmlər və anonim mətnlər gedir. Tənzimləmələr → «Süni intellekt»də öz açarınız lazımdır.')}</p> : (
         <div>
           <p style={{ margin: '8px 0 0' }}>{p.xulase}</p>
-          <div className="grid g2">{list('Güclü tərəflər', p.guclu, 'ok')}{list('İnkişaf zonaları', p.inkisaf, 'bad')}</div>
-          {p.movzular.length > 0 && <div style={{ marginTop: 10 }}><h3 className="small muted" style={{ margin: '0 0 4px' }}>Açıq cavabların mövzuları</h3>
+          <div className="grid g2">{list(t('Güclü tərəflər'), p.guclu, 'ok')}{list(t('İnkişaf zonaları'), p.inkisaf, 'bad')}</div>
+          {p.movzular.length > 0 && <div style={{ marginTop: 10 }}><h3 className="small muted" style={{ margin: '0 0 4px' }}>{t('Açıq cavabların mövzuları')}</h3>
             <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>{p.movzular.map((m, i) => <Pill key={i} tone={m.ton.startsWith('müs') ? 'ok' : m.ton.startsWith('mən') ? 'bad' : undefined}>{m.movzu}{m.say ? ` · ${m.say}` : ''}</Pill>)}</div></div>}
-          {p.tovsiyeler.length > 0 && <div style={{ marginTop: 10 }}><h3 className="small muted" style={{ margin: '0 0 4px' }}>Tövsiyələr</h3>
-            {p.tovsiyeler.map((t, i) => <div key={i} className="small" style={{ padding: '4px 0' }}><b>{i + 1}.</b> {t.ne}{t.muddet && <span className="muted"> · {t.muddet}</span>}{t.olcu && <div className="muted">Ölçü: {t.olcu}</div>}</div>)}</div>}
-          {list('Diqqət', p.diqqet, 'warn')}
-          <p className="small muted" style={{ marginTop: 10 }}>{fmtDate(r!.created_at)} · {r!.model} · {p.n} cavab · rəy köməkçidir – müəllim tərəfindən yoxlanmalıdır.</p>
+          {p.tovsiyeler.length > 0 && <div style={{ marginTop: 10 }}><h3 className="small muted" style={{ margin: '0 0 4px' }}>{t('Tövsiyələr')}</h3>
+            {p.tovsiyeler.map((t, i) => <div key={i} className="small" style={{ padding: '4px 0' }}><b>{i + 1}.</b> {t.ne}{t.muddet && <span className="muted"> · {t.muddet}</span>}{t.olcu && <div className="muted">{tt('Ölçü:')} {t.olcu}</div>}</div>)}</div>}
+          {list(t('Diqqət'), p.diqqet, 'warn')}
+          <p className="small muted" style={{ marginTop: 10 }}>{fmtDate(r!.created_at)} · {r!.model} · {p.n} {t('cavab · rəy köməkçidir – müəllim tərəfindən yoxlanmalıdır.')}</p>
         </div>)}
     </>
   )

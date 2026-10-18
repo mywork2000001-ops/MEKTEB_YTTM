@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { get } from '../../api'
 import { useAuth } from '../../auth'
 import { useT } from '../../i18n'
-import { ErrorBox, fmt, Icon, isoDate, longDate, Pill, Stat, useLoad, WD, ord, lessonWhen } from '../../ui'
+import { ErrorBox, fmt, Icon, isoDate, longDateT, Pill, Stat, useLoad, wdT, hourN, lessonWhen } from '../../ui'
 
 type Cell = { ta_id: number; class_name: string; subject: string; time: string | null; topic: string | null; assessment_type: string | null }
 type TT = { days: { date: string; weekday: string; periods: Record<string, Cell[]> }[] }
@@ -46,8 +46,8 @@ export default function Home() {
     <>
       <section className="hero">
         <div className="hero-txt">
-          <div className="hero-date">{WD[now.getDay()]} · {longDate(today)}</div>
-          <h1>{t('Salam')}, {first} müəllim</h1>
+          <div className="hero-date">{wdT(now.getDay())} · {longDateT(today)}</div>
+          <h1>{t('Salam, {name} müəllim', { name: first })}</h1>
           <div className="hero-chips">
             <button className="hchip solid" onClick={() => nav('/journal')}>{t('Jurnal')}</button>
             <button className="hchip" onClick={() => nav('/timetable')}>{t('Həftəlik cədvəl')}</button>
@@ -56,14 +56,14 @@ export default function Home() {
         </div>
         <div className="clock" aria-live="off">
           <div className="clk-time">{hh}:{mm}<span>:{ss}</span></div>
-          <div className="clk-date">{longDate(today)}</div>
+          <div className="clk-date">{longDateT(today)}</div>
           {cur ? (
-            <div className="clk-st lesson"><b>{ord(cur.period)} saat · {cur.class_name}</b><span>{cur.time} · {cur.topic || '—'}</span>
+            <div className="clk-st lesson"><b>{hourN(cur.period)} · {cur.class_name}</b><span>{cur.time} · {cur.topic || '—'}</span>
               <div className="clk-bar"><i style={{ width: pct + '%' }} /></div></div>
           ) : next ? (
-            <div className="clk-st"><b>Növbəti: {ord(next.period)} saat · {next.class_name}</b><span>{next.time}</span></div>
+            <div className="clk-st"><b>{t('Növbəti: {when} · {cls}', { when: hourN(next.period), cls: next.class_name })}</b><span>{next.time}</span></div>
           ) : (
-            <div className="clk-st"><b>{lessons.length ? 'Bugünkü dərslər bitdi' : 'Bu gün dərs yoxdur'}</b></div>
+            <div className="clk-st"><b>{lessons.length ? t('Bugünkü dərslər bitdi') : t('Bu gün dərs yoxdur')}</b></div>
           )}
         </div>
       </section>
@@ -71,51 +71,51 @@ export default function Home() {
       <Weekly />
       <div className="grid g2">
         <section className="panel">
-          <h2>Bugünkü dərslər <small>{lessons.length}</small></h2>
+          <h2>{t('Bugünkü dərslər')} <small>{lessons.length}</small></h2>
           {lessons.length ? (
             <ol className="timeline">
               {lessons.map(l => (
                 <li key={l.ta_id + '-' + l.period} className={span(l.time) && mins >= span(l.time)![1] ? 'done' : ''}>
                   <time>{l.time}</time>
                   <span><b>{lessonWhen(l.period, l.time)} · {l.class_name}</b> {l.assessment_type && ['KSQ', 'BSQ'].includes(l.assessment_type) && <Pill tone="warn">{l.assessment_type}</Pill>}<br />
-                    <span className="muted small">{l.topic || 'Plan yüklənməyib'}</span></span>
+                    <span className="muted small">{l.topic || t('Plan yüklənməyib')}</span></span>
                 </li>))}
             </ol>
-          ) : <p className="muted">Bu gün dərsiniz yoxdur.</p>}
+          ) : <p className="muted">{t('Bu gün dərsiniz yoxdur.')}</p>}
         </section>
         <section className="panel">
-          <h2>Siniflərim</h2>
+          <h2>{t('Siniflərim')}</h2>
           <div className="stack">
             {(ov || []).map(c => (
               <div key={c.ta_id} className="row" style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--line)', paddingBottom: 8 }}>
                 <span className="ctag">{c.class_name}</span>
                 <span className="row small">
-                  <span>{c.avg_grade != null ? <>orta qiymət <b>{fmt(c.avg_grade, 2)}</b></> : <span className="muted">qiymət yoxdur</span>}</span>
-                  {c.risk?.['Qırmızı'] > 0 && <Pill tone="bad">risk {c.risk['Qırmızı']}</Pill>}
+                  <span>{c.avg_grade != null ? <>{t('orta qiymət')} <b>{fmt(c.avg_grade, 2)}</b></> : <span className="muted">{t('qiymət yoxdur')}</span>}</span>
+                  {c.risk?.['Qırmızı'] > 0 && <Pill tone="bad">{t('risk')} {c.risk['Qırmızı']}</Pill>}
                   {c.absence_warnings > 0 && <Pill tone="warn"><Icon name="bell" className="ico" /> 25%+ {c.absence_warnings}</Pill>}
                 </span>
               </div>))}
-            {ov && !ov.length && <p className="muted">Hələ sinfə qoşulmamısınız – Tənzimləmələr → Siniflər.</p>}
+            {ov && !ov.length && <p className="muted">{t('Hələ sinfə qoşulmamısınız – Tənzimləmələr → Siniflər.')}</p>}
           </div>
           {ov && ov.length > 0 && (
             <div className="kpis" style={{ marginTop: 12 }}>
-              <Stat value={ov.reduce((a, c) => a + c.students, 0)} label="şagird" />
-              <Stat value={ov.reduce((a, c) => a + c.lessons_written, 0)} label="yazılmış dərs" />
-              <Stat value={ov.reduce((a, c) => a + (c.risk?.['Qırmızı'] || 0), 0)} label="yüksək risk" />
+              <Stat value={ov.reduce((a, c) => a + c.students, 0)} label={t('şagird')} />
+              <Stat value={ov.reduce((a, c) => a + c.lessons_written, 0)} label={t('yazılmış dərs')} />
+              <Stat value={ov.reduce((a, c) => a + (c.risk?.['Qırmızı'] || 0), 0)} label={t('yüksək risk')} />
             </div>)}
         </section>
       </div>
       {prog && prog.some(p => p.total) && (
         <section className="panel" style={{ marginTop: 16 }}>
-          <h2>Mövzu icrası <small>rəsmi plana nisbətən</small></h2>
+          <h2>{t('Mövzu icrası')} <small>{t('rəsmi plana nisbətən')}</small></h2>
           <div className="stack" style={{ gap: 8 }}>{prog.filter(p => p.total).map(p => (
             <button key={p.ta_id} className="row" style={{ justifyContent: 'space-between', textAlign: 'left', background: 'none', border: 0, borderBottom: '1px solid var(--line)', padding: '0 0 8px', cursor: 'pointer', color: 'inherit' }}
               onClick={() => { try { sessionStorage.setItem('mk-pick-journal', String(p.ta_id)) } catch { /* yaddaş yoxdur */ } nav('/journal') }}>
-              <span><span className="ctag">{p.class_name}</span> <span className="small muted">{p.next ? `növbəti: №${p.next.seq} ${p.next.topic}` : 'plan bitib'}</span></span>
+              <span><span className="ctag">{p.class_name}</span> <span className="small muted">{p.next ? t('növbəti: №{seq} {topic}', { seq: p.next.seq, topic: p.next.topic }) : t('plan bitib')}</span></span>
               <span className="row small" style={{ gap: 6 }}>
                 <b>{p.done}/{p.total}</b>
-                {p.delta < 0 ? <Pill tone={p.delta <= -3 ? 'bad' : 'warn'}>{p.delta} dərs</Pill> : p.delta > 0 ? <Pill tone="ok">+{p.delta}</Pill> : <Pill tone="ok">plana uyğun</Pill>}
-                {p.shortfall > 0 && <Pill tone="bad">sığmır: {p.shortfall}</Pill>}
+                {p.delta < 0 ? <Pill tone={p.delta <= -3 ? 'bad' : 'warn'}>{p.delta} {t('dərs')}</Pill> : p.delta > 0 ? <Pill tone="ok">+{p.delta}</Pill> : <Pill tone="ok">{t('plana uyğun')}</Pill>}
+                {p.shortfall > 0 && <Pill tone="bad">{t('sığmır: {n}', { n: p.shortfall })}</Pill>}
               </span>
             </button>))}</div>
         </section>)}
@@ -125,6 +125,7 @@ export default function Home() {
 
 /** Həftəlik xülasə: qırmızı risk, 25%+ buraxanlar, son 7 gündə yazılmamış dərslər – həftə ərzində «Oxudum» ilə gizlənir. */
 function Weekly() {
+  const t = useT()
   const nav = useNavigate()
   const [w] = useLoad<any>(() => get('/api/my/weekly'), [])
   const key = w ? `mk-weekly-${w.week}` : ''
@@ -134,20 +135,20 @@ function Weekly() {
   const hide = () => { try { localStorage.setItem(key, '1') } catch { /* noop */ } setClosed(key) }
   return (
     <section className="panel weekly" style={{ marginBottom: 16 }}>
-      <h2>Bu həftə diqqət <small>siniflərim üzrə</small><button className="btn sm ghost right" onClick={hide}>Oxudum</button></h2>
+      <h2>{t('Bu həftə diqqət')} <small>{t('siniflərim üzrə')}</small><button className="btn sm ghost right" onClick={hide}>{t('Oxudum')}</button></h2>
       {w.items.map((x: any) => (
         <div key={x.ta_id} className="wk-row">
           <b>{x.class_name} <span className="small muted">{x.subject}</span></b>
           <div className="row" style={{ gap: 6 }}>
-            {x.missing_week.length > 0 && <Pill tone="warn">son 7 gündə yazılmayıb: {x.missing_week.length} dərs</Pill>}
-            {x.red.length > 0 && <Pill tone="bad">qırmızı risk: {x.red.length}</Pill>}
-            {x.absence.length > 0 && <Pill tone="warn">25%+ buraxır: {x.absence.length}</Pill>}
+            {x.missing_week.length > 0 && <Pill tone="warn">{t('son 7 gündə yazılmayıb: {n} dərs', { n: x.missing_week.length })}</Pill>}
+            {x.red.length > 0 && <Pill tone="bad">{t('qırmızı risk: {n}', { n: x.red.length })}</Pill>}
+            {x.absence.length > 0 && <Pill tone="warn">{t('25%+ buraxır: {n}', { n: x.absence.length })}</Pill>}
           </div>
           {(x.red.length > 0 || x.absence.length > 0) && <p className="small muted" style={{ margin: '4px 0 0' }}>{[...new Set([...x.red, ...x.absence])].join(', ')}</p>}
         </div>))}
       <div className="row" style={{ marginTop: 10 }}>
-        <button className="btn sm" onClick={() => nav('/journal')}>Jurnala keç</button>
-        <button className="btn sm" onClick={() => nav('/reports')}>Analitika → Risk</button>
+        <button className="btn sm" onClick={() => nav('/journal')}>{t('Jurnala keç')}</button>
+        <button className="btn sm" onClick={() => nav('/reports')}>{t('Analitika → Risk')}</button>
       </div>
     </section>
   )

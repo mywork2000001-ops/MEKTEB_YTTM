@@ -1,9 +1,9 @@
 import { Suspense, useEffect, useState } from 'react'
 import { ApiError, del, get, patch, post, put, setSettingsToken, settingsToken } from '../../api'
 import { useAuth } from '../../auth'
-import { AsyncBtn, ErrorBox, Field, Loading, toast, Top, useLoad, ord } from '../../ui'
+import { AsyncBtn, ErrorBox, Field, Loading, toast, Top, useLoad, hourN } from '../../ui'
 import { LookPanel, PasswordPanel } from '../shared'
-import { useT } from '../../i18n'
+import { useT, tt } from '../../i18n'
 
 import SettingsRoster from './SettingsRoster'
 import SettingsAdmin from './SettingsAdmin'
@@ -21,7 +21,7 @@ export default function Settings() {
   // 15 dəqiqədən sonra avtomatik kilid (server də açarı qəbul etmir)
   useEffect(() => {
     if (!unlocked) return
-    const t = setTimeout(() => { setSettingsToken(null); setUnlocked(false); toast('Tənzimləmələr kilidləndi') }, 15 * 60 * 1000)
+    const t = setTimeout(() => { setSettingsToken(null); setUnlocked(false); toast(tt('Tənzimləmələr kilidləndi')) }, 15 * 60 * 1000)
     return () => clearTimeout(t)
   }, [unlocked])
   useEffect(() => {
@@ -33,13 +33,13 @@ export default function Settings() {
   if (!lock) return <Loading />
   if (lock.has_password && !unlocked) return <Unlock onDone={() => setUnlocked(true)} />
 
-  const tabs: [string, string][] = [['look', 'Görünüş'], ['account', 'Hesab'], ['school', me?.workspace === 'private' ? 'Fərdi məkan' : 'Məktəb'], ['classes', 'Siniflər'], ['programs', 'Proqramlar'],
+  const tabs: [string, string][] = [['look', 'Görünüş'], ['account', 'Hesab'], ['school', me?.workspace === 'private' ? t('Fərdi məkan') : 'Məktəb'], ['classes', 'Siniflər'], ['programs', 'Proqramlar'],
     ['students', 'Şagirdlər'], ['archive', 'Arxiv'], ['ai', 'Süni intellekt'], ['lock', 'Kilid'],
     ...(admin ? [['teachers', 'Müəllimlər'], ['bank', 'Test bazası'], ['audit', 'Audit jurnalı']] as [string, string][] : [])]
   return (
     <>
-      <Top title="Tənzimləmələr" sub={admin ? 'Admin: bütün ümumi tənzimləmələr' : 'Yalnız sizə aid tənzimləmələr'}
-        actions={lock.has_password ? <button className="btn sm" onClick={() => { setSettingsToken(null); setUnlocked(false) }}>Kilidlə</button> : undefined} />
+      <Top title={t('Tənzimləmələr')} sub={admin ? t('Admin: bütün ümumi tənzimləmələr') : t('Yalnız sizə aid tənzimləmələr')}
+        actions={lock.has_password ? <button className="btn sm" onClick={() => { setSettingsToken(null); setUnlocked(false) }}>{t('Kilidlə')}</button> : undefined} />
       <div className="tabs">{tabs.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{t(l)}</button>)}</div>
       <Suspense fallback={<Loading />}>
         {tab === 'look' && <LookPanel />}
@@ -56,37 +56,40 @@ export default function Settings() {
 }
 
 function Unlock({ onDone }: { onDone: () => void }) {
+  const t = useT()
   const [p, setP] = useState('')
   const [err, setErr] = useState<unknown>()
   return (
     <form className="panel lockbox" onSubmit={async e => { e.preventDefault(); try { const r = await post<{ token: string }>('/api/settings/unlock', { password: p }); setSettingsToken(r.token); onDone() } catch (x) { setErr(x) } }}>
-      <h2>Tənzimləmələr kilidlidir</h2>
-      <Field label="Parol"><input type="password" value={p} onChange={e => setP(e.target.value)} autoFocus /></Field>
+      <h2>{t('Tənzimləmələr kilidlidir')}</h2>
+      <Field label={t('Parol')}><input type="password" value={p} onChange={e => setP(e.target.value)} autoFocus /></Field>
       <ErrorBox error={err} />
-      <button className="btn primary w100" style={{ marginTop: 10 }}>Aç (15 dəqiqə)</button>
+      <button className="btn primary w100" style={{ marginTop: 10 }}>{t('Aç (15 dəqiqə)')}</button>
     </form>
   )
 }
 
 function LockPanel({ has, onChange }: { has: boolean; onChange: () => void }) {
+  const t = useT()
   const [p, setP] = useState('')
   return (
     <section className="panel" style={{ maxWidth: 480 }}>
-      <h2>Tənzimləmələr parolu</h2>
-      <p className="small muted">{has ? 'Parol qoyulub. Hər açılışdan sonra 15 dəqiqə açıq qalır.' : 'Hazırda parol yoxdur – Tənzimləmələr sərbəst açılır.'}</p>
-      <Field label={has ? 'Yeni parol (boş – parolu götür)' : 'Parol'}><input type="password" value={p} onChange={e => setP(e.target.value)} /></Field>
+      <h2>{t('Tənzimləmələr parolu')}</h2>
+      <p className="small muted">{has ? t('Parol qoyulub. Hər açılışdan sonra 15 dəqiqə açıq qalır.') : t('Hazırda parol yoxdur – Tənzimləmələr sərbəst açılır.')}</p>
+      <Field label={has ? t('Yeni parol (boş – parolu götür)') : 'Parol'}><input type="password" value={p} onChange={e => setP(e.target.value)} /></Field>
       <div className="row" style={{ marginTop: 10 }}>
-        <AsyncBtn className="btn primary" ok={p ? 'Parol qoyuldu' : 'Parol götürüldü'} onClick={async () => {
+        <AsyncBtn className="btn primary" ok={p ? t('Parol qoyuldu') : t('Parol götürüldü')} onClick={async () => {
           await put('/api/settings/password', { new: p || null })
           if (p) { const r = await post<{ token: string }>('/api/settings/unlock', { password: p }); setSettingsToken(r.token) }
           setP(''); onChange()
-        }}>Yadda saxla</AsyncBtn>
+        }}>{t('Yadda saxla')}</AsyncBtn>
       </div>
     </section>
   )
 }
 
 function SchoolPanel({ admin }: { admin: boolean }) {
+  const t = useT()
   const { me, refresh } = useAuth()
   const [school, err, , reload] = useLoad<any>(() => get('/api/school'), [me?.school_id])
   const [q, setQ] = useState('')
@@ -102,36 +105,36 @@ function SchoolPanel({ admin }: { admin: boolean }) {
   return (
     <div className="grid g2">
       <section className="panel">
-        <h2>Mənim məktəbim</h2>
+        <h2>{t('Mənim məktəbim')}</h2>
         <ErrorBox error={err} />
-        {school ? <p><b>{school.name}</b>{admin && <><br /><span className="small muted">UTİS: {school.utis || 'yazılmayıb'}</span></>}</p> : <p className="muted">Məktəb seçilməyib.</p>}
-        <Field label="Məktəbi adına görə tapın" hint="Eyni məktəbin müəllimləri ortaq sinif siyahısını və Müəllim otağını görür">
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="məs. Rafiq Nuriyev" /></Field>
+        {school ? <p><b>{school.name}</b>{admin && <><br /><span className="small muted">{t('UTİS:')} {school.utis || 'yazılmayıb'}</span></>}</p> : <p className="muted">{t('Məktəb seçilməyib.')}</p>}
+        <Field label={t('Məktəbi adına görə tapın')} hint="Eyni məktəbin müəllimləri ortaq sinif siyahısını və Müəllim otağını görür">
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder={t('məs. Rafiq Nuriyev')} /></Field>
         <div className="stack" style={{ marginTop: 8 }}>
           {found.map(s => <AsyncBtn key={s.id} className="btn" ok="Məktəb seçildi" onClick={async () => { await post('/api/me/school', { school_id: s.id }); setQ(''); await refresh(); reload() }}>{s.name}</AsyncBtn>)}
         </div>
       </section>
       {admin && f && school && (
         <section className="panel">
-          <h2>Məktəb məlumatları (admin)</h2>
+          <h2>{t('Məktəb məlumatları (admin)')}</h2>
           <div className="fg">
-            <Field label="Ad" full><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
-            <Field label="UTİS kodu" hint="yalnız rəqəm"><input inputMode="numeric" value={f.utis} onChange={e => setF({ ...f, utis: e.target.value.replace(/\D/g, '') })} /></Field>
-            <Field label="Region"><input value={f.region} onChange={e => setF({ ...f, region: e.target.value })} /></Field>
+            <Field label={t('Ad')} full><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
+            <Field label={t('UTİS kodu')} hint="yalnız rəqəm"><input inputMode="numeric" value={f.utis} onChange={e => setF({ ...f, utis: e.target.value.replace(/\D/g, '') })} /></Field>
+            <Field label={t('Region')}><input value={f.region} onChange={e => setF({ ...f, region: e.target.value })} /></Field>
           </div>
-          <h3 className="small muted" style={{ margin: '14px 0 6px' }}>Rəsmi sənədlərdə imza (çap / PDF)</h3>
+          <h3 className="small muted" style={{ margin: '14px 0 6px' }}>{t('Rəsmi sənədlərdə imza (çap / PDF)')}</h3>
           <div className="fg">
-            <Field label="Direktor müavini (tədris işləri üzrə)" hint="ad, soyad – hesabatların altında"><input value={f.deputy} onChange={e => setF({ ...f, deputy: e.target.value })} /></Field>
-            <Field label="Direktor" hint="məktəb üzrə hesabatda"><input value={f.director} onChange={e => setF({ ...f, director: e.target.value })} /></Field>
+            <Field label={t('Direktor müavini (tədris işləri üzrə)')} hint="ad, soyad – hesabatların altında"><input value={f.deputy} onChange={e => setF({ ...f, deputy: e.target.value })} /></Field>
+            <Field label={t('Direktor')} hint="məktəb üzrə hesabatda"><input value={f.director} onChange={e => setF({ ...f, director: e.target.value })} /></Field>
           </div>
-          <h3 className="small muted" style={{ margin: '14px 0 6px' }}>Dərs vaxtları (bütün məktəb)</h3>
+          <h3 className="small muted" style={{ margin: '14px 0 6px' }}>{t('Dərs vaxtları (bütün məktəb)')}</h3>
           <div className="fg">{Array.from({ length: 8 }, (_, i) => String(i + 1)).map(k => (
-            <Field key={k} label={`${ord(k)} saat`}><input value={f.bells[k] || ''} placeholder="08:50–09:35" onChange={e => setF({ ...f, bells: { ...f.bells, [k]: e.target.value } })} /></Field>))}</div>
+            <Field key={k} label={hourN(k)}><input value={f.bells[k] || ''} placeholder="08:50–09:35" onChange={e => setF({ ...f, bells: { ...f.bells, [k]: e.target.value } })} /></Field>))}</div>
           <AsyncBtn className="btn primary" ok="Yadda saxlanıldı" onClick={async () => {
             const bells = Object.fromEntries(Object.entries(f.bells).filter(([, v]) => v))
             await patch(`/api/schools/${school.id}`, { name: f.name, utis: f.utis || null, short_name: f.short_name || null, region: f.region || null, bells,
               doc_settings: { deputy: f.deputy.trim() || null, director: f.director.trim() || null } }); reload(); await refresh()
-          }}>Yadda saxla</AsyncBtn>
+          }}>{t('Yadda saxla')}</AsyncBtn>
         </section>)}
     </div>
   )
@@ -195,7 +198,7 @@ function AiKeyForm({ purpose }: { purpose: 'plan' | 'review' }) {
       <div className="fg">
         <Field label={t('Xidmət (provayder)')}><select value={v.provider} onChange={e => { const np = s.providers.find(x => x.id === e.target.value)!; set({ provider: np.id, model: np.models[0] || '', api_key: '' }) }}>
           {s.providers.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select></Field>
-        <Field label="Model" hint={t('Siyahıdan seçin və ya adını yazın')}><input list={'ai-models-' + purpose} value={v.model} onChange={e => set({ model: e.target.value })} />
+        <Field label={t('Model')} hint={t('Siyahıdan seçin və ya adını yazın')}><input list={'ai-models-' + purpose} value={v.model} onChange={e => set({ model: e.target.value })} />
           <datalist id={'ai-models-' + purpose}>{prov.models.map(m => <option key={m} value={m} />)}</datalist></Field>
         {prov.custom && <Field label={t('Ünvan (base URL)')} hint={t('OpenAI-uyğun, https://…/v1')} full><input value={v.base_url} placeholder="https://api.mistral.ai/v1" onChange={e => set({ base_url: e.target.value })} /></Field>}
         <Field label={t('API açarı')} hint={sameProv ? t('Boş saxlasanız, köhnə açar qalır') : prov.hint} full>
@@ -252,7 +255,7 @@ function ScanKeysForm() {
             <div className="fg">
               <Field label={t('Xidmət (provayder)')}><select value={r.provider} onChange={e => { const np = d.providers.find(x => x.id === e.target.value)!; set(i, { provider: np.id, model: np.models[0], api_key: '', keep_from: null, mask: null, status: null }) }}>
                 {d.providers.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select></Field>
-              <Field label="Model"><select value={r.model} onChange={e => set(i, { model: e.target.value })}>
+              <Field label={t('Model')}><select value={r.model} onChange={e => set(i, { model: e.target.value })}>
                 {[...new Set([r.model, ...pv.models])].map(m => <option key={m} value={m}>{m}</option>)}</select></Field>
               <Field label={t('API açarı')} hint={r.keep_from ? t('Boş saxlasanız, köhnə açar qalır') : pv.hint} full>
                 <input type="password" autoComplete="off" value={r.api_key} placeholder={r.mask || t('Açarı buraya yapışdırın')} onChange={e => set(i, { api_key: e.target.value.trim() })} /></Field>
@@ -281,6 +284,7 @@ function ScanKeysForm() {
 
 /** Fərdi (repetitor) məkan: ad və dərs vaxtları; məktəbə aid deyil, yalnız sizə görünür. */
 function PrivatePanel() {
+  const t = useT()
   const { refresh } = useAuth()
   const [school, err, , reload] = useLoad<any>(() => get('/api/school'), [])
   const [f, setF] = useState<{ name: string; bells: Record<string, string> } | null>(null)
@@ -289,18 +293,17 @@ function PrivatePanel() {
   return (
     <>
     <section className="panel" style={{ maxWidth: 720 }}>
-      <h2>Fərdi məkan <small>hazırlıq / repetitor</small></h2>
-      <p className="small muted">Bu məkandakı siniflər, şagirdlər, jurnal və nəticələr məktəbin hesabatlarına, siyahılarına və adminə düşmür.
-        Tədris ili və bayramlar məktəbin təqvimindən köçürülüb. Məkanlar arasında keçid – yuxarıdakı «Məktəb · Fərdi» düyməsi.</p>
+      <h2>{t('Fərdi məkan')} <small>{t('hazırlıq / repetitor')}</small></h2>
+      <p className="small muted">{t('Bu məkandakı siniflər, şagirdlər, jurnal və nəticələr məktəbin hesabatlarına, siyahılarına və adminə düşmür. Tədris ili və bayramlar məktəbin təqvimindən köçürülüb. Məkanlar arasında keçid – yuxarıdakı «Məktəb · Fərdi» düyməsi.')}</p>
       <div className="fg">
-        <Field label="Ad (çap sənədlərinin başlığında)" full><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} maxLength={300} /></Field>
+        <Field label={t('Ad (çap sənədlərinin başlığında)')} full><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} maxLength={300} /></Field>
       </div>
-      <h3 className="small muted" style={{ margin: '14px 0 6px' }}>Dərs vaxtları</h3>
+      <h3 className="small muted" style={{ margin: '14px 0 6px' }}>{t('Dərs vaxtları')}</h3>
       <div className="fg">{Array.from({ length: 9 }, (_, i) => String(i)).map(k => (
-        <Field key={k} label={`${ord(k)} saat`}><input value={f.bells[k] || ''} placeholder="15:00–15:45" onChange={e => setF({ ...f, bells: { ...f.bells, [k]: e.target.value } })} /></Field>))}</div>
+        <Field key={k} label={hourN(k)}><input value={f.bells[k] || ''} placeholder="15:00–15:45" onChange={e => setF({ ...f, bells: { ...f.bells, [k]: e.target.value } })} /></Field>))}</div>
       <AsyncBtn className="btn primary" ok="Yadda saxlanıldı" disabled={f.name.trim().length < 3} onClick={async () => {
         await patch('/api/workspaces/private', { name: f.name.trim(), bells: f.bells }); reload(); await refresh()
-      }}>Yadda saxla</AsyncBtn>
+      }}>{t('Yadda saxla')}</AsyncBtn>
     </section>
     <PrivateCalendar />
     </>
@@ -309,6 +312,7 @@ function PrivatePanel() {
 
 /** Fərdi məkanın təqvimi: tədris ili (məs. yay hazırlığı), bayramlar və tətillər; məktəbin təqviminə qaytarmaq. */
 function PrivateCalendar() {
+  const t = useT()
   const [cal, err, , reload] = useLoad<any>(() => get('/api/workspaces/private/calendar'), [])
   const [y, setY] = useState<any>(null)
   const [h, setH] = useState({ date: '', to: '', name: '' })
@@ -325,38 +329,37 @@ function PrivateCalendar() {
   }
   return (
     <section className="panel" style={{ maxWidth: 720, marginTop: 16 }}>
-      <h2>Təqvim <small>tədris ili, bayramlar və tətillər</small></h2>
-      <p className="small muted" style={{ marginTop: 0 }}>Perspektiv plan, jurnal günləri və yarımil hesabları bu tarixlərlə işləyir. Bayram və tətil günlərində dərs olmur –
-        plan növbəti dərs gününə sürüşür. Məktəbin təqviminə təsir etmir.</p>
+      <h2>{t('Təqvim')} <small>{t('tədris ili, bayramlar və tətillər')}</small></h2>
+      <p className="small muted" style={{ marginTop: 0 }}>{t('Perspektiv plan, jurnal günləri və yarımil hesabları bu tarixlərlə işləyir. Bayram və tətil günlərində dərs olmur – plan növbəti dərs gününə sürüşür. Məktəbin təqviminə təsir etmir.')}</p>
       <div className="fg">
-        <Field label="Ad" hint="məs. 2026–2027 və ya Yay 2027"><input value={y.name} onChange={e => setY({ ...y, name: e.target.value })} maxLength={20} /></Field>
-        <Field label="Başlanğıc"><input type="date" value={y.start} onChange={e => setY({ ...y, start: e.target.value })} /></Field>
-        <Field label="I yarımilin sonu"><input type="date" value={y.sem1_end} onChange={e => setY({ ...y, sem1_end: e.target.value })} /></Field>
-        <Field label="II yarımilin başlanğıcı"><input type="date" value={y.sem2_start} onChange={e => setY({ ...y, sem2_start: e.target.value })} /></Field>
-        <Field label="İlin sonu"><input type="date" value={y.end} onChange={e => setY({ ...y, end: e.target.value })} /></Field>
+        <Field label={t('Ad')} hint="məs. 2026–2027 və ya Yay 2027"><input value={y.name} onChange={e => setY({ ...y, name: e.target.value })} maxLength={20} /></Field>
+        <Field label={t('Başlanğıc')}><input type="date" value={y.start} onChange={e => setY({ ...y, start: e.target.value })} /></Field>
+        <Field label={t('I yarımilin sonu')}><input type="date" value={y.sem1_end} onChange={e => setY({ ...y, sem1_end: e.target.value })} /></Field>
+        <Field label={t('II yarımilin başlanğıcı')}><input type="date" value={y.sem2_start} onChange={e => setY({ ...y, sem2_start: e.target.value })} /></Field>
+        <Field label={t('İlin sonu')}><input type="date" value={y.end} onChange={e => setY({ ...y, end: e.target.value })} /></Field>
       </div>
       <div className="row" style={{ marginTop: 10 }}>
         <AsyncBtn className="btn primary" ok="Tədris ili yadda saxlanıldı" onClick={async () => {
           await put('/api/workspaces/private/year', { name: y.name, start: y.start, sem1_end: y.sem1_end, sem2_start: y.sem2_start, end: y.end }); reload()
-        }}>Tədris ilini saxla</AsyncBtn>
-        {!reset ? <button className="btn ghost" onClick={() => setReset(true)}>Məktəbin təqvimini yenidən köçür</button> : (
-          <span className="row" style={{ gap: 6 }}><span className="small">Tarixlər və bayramlar məktəbinki ilə əvəzlənsin?</span>
-            <AsyncBtn className="btn sm danger" ok="Məktəbin təqvimi köçürüldü" onClick={async () => { await post('/api/workspaces/private/calendar/reset'); setReset(false); reload() }}>Bəli</AsyncBtn>
-            <button className="btn sm" onClick={() => setReset(false)}>Xeyr</button></span>)}
+        }}>{t('Tədris ilini saxla')}</AsyncBtn>
+        {!reset ? <button className="btn ghost" onClick={() => setReset(true)}>{t('Məktəbin təqvimini yenidən köçür')}</button> : (
+          <span className="row" style={{ gap: 6 }}><span className="small">{t('Tarixlər və bayramlar məktəbinki ilə əvəzlənsin?')}</span>
+            <AsyncBtn className="btn sm danger" ok="Məktəbin təqvimi köçürüldü" onClick={async () => { await post('/api/workspaces/private/calendar/reset'); setReset(false); reload() }}>{t('Bəli')}</AsyncBtn>
+            <button className="btn sm" onClick={() => setReset(false)}>{t('Xeyr')}</button></span>)}
       </div>
-      <h3 className="small muted" style={{ margin: '18px 0 6px' }}>Bayramlar və tətillər <span className="muted">({cal.holidays.length} gün)</span></h3>
+      <h3 className="small muted" style={{ margin: '18px 0 6px' }}>{t('Bayramlar və tətillər')} <span className="muted">({cal.holidays.length} {t('gün)')}</span></h3>
       <div className="fg">
-        <Field label="Tarix (və ya tətilin başlanğıcı)"><input type="date" value={h.date} onChange={e => setH({ ...h, date: e.target.value })} /></Field>
-        <Field label="Son tarix" hint="tətil üçün; tək gün – boş"><input type="date" value={h.to} onChange={e => setH({ ...h, to: e.target.value })} /></Field>
-        <Field label="Ad" full><input value={h.name} onChange={e => setH({ ...h, name: e.target.value })} placeholder="məs. Novruz bayramı, qış tətili" maxLength={120} /></Field>
+        <Field label={t('Tarix (və ya tətilin başlanğıcı)')}><input type="date" value={h.date} onChange={e => setH({ ...h, date: e.target.value })} /></Field>
+        <Field label={t('Son tarix')} hint="tətil üçün; tək gün – boş"><input type="date" value={h.to} onChange={e => setH({ ...h, to: e.target.value })} /></Field>
+        <Field label={t('Ad')} full><input value={h.name} onChange={e => setH({ ...h, name: e.target.value })} placeholder={t('məs. Novruz bayramı, qış tətili')} maxLength={120} /></Field>
       </div>
       <AsyncBtn className="btn" disabled={!h.date || h.name.trim().length < 2} ok="Əlavə olundu" onClick={async () => {
         await post('/api/workspaces/private/holidays', { date: h.date, to: h.to || null, name: h.name.trim() }); setH({ date: '', to: '', name: '' }); reload()
-      }}>+ Əlavə et</AsyncBtn>
-      <div className="mlist" style={{ marginTop: 10 }}>{cal.holidays.length === 0 ? <div className="mrow"><span className="muted small">Bayram yoxdur.</span></div> :
+      }}>{t('+ Əlavə et')}</AsyncBtn>
+      <div className="mlist" style={{ marginTop: 10 }}>{cal.holidays.length === 0 ? <div className="mrow"><span className="muted small">{t('Bayram yoxdur.')}</span></div> :
         groups.map(g => (
           <div key={g.ids[0]} className="mrow"><span><b>{g.from === g.to ? fmtD(g.from) : `${fmtD(g.from).slice(0, 5)}–${fmtD(g.to)}`}</b> <span className="small muted">{g.name}{g.ids.length > 1 ? ` · ${g.ids.length} gün` : ''}</span></span>
-            <span className="mact"><AsyncBtn className="btn sm ghost" ok="Silindi" onClick={async () => { for (const id of g.ids) await del(`/api/workspaces/private/holidays/${id}`); reload() }}>Sil</AsyncBtn></span></div>))}</div>
+            <span className="mact"><AsyncBtn className="btn sm ghost" ok="Silindi" onClick={async () => { for (const id of g.ids) await del(`/api/workspaces/private/holidays/${id}`); reload() }}>{t('Sil')}</AsyncBtn></span></div>))}</div>
     </section>
   )
 }

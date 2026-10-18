@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { api, del, get, patch, post } from '../../api'
 import { useAuth } from '../../auth'
-import { AsyncBtn, Drawer, ErrorBox, Field, fmtDate, Loading, PickFirst, Pill, toast, useLoad, ord } from '../../ui'
+import { AsyncBtn, Drawer, ErrorBox, Field, fmtDate, Loading, PickFirst, Pill, toast, useLoad, ord, hourN } from '../../ui'
 import { useT } from '../../i18n'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { head, printDoc, SIGN, table } from '../../print'
@@ -271,7 +271,7 @@ function ExtraLessons({ aid, onClose }: { aid: number; onClose: () => void }) {
         {d.warnings.map((w: string) => <p key={w} className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {w}</p>)}
         <div className="jlist">{d.lessons_list.map((l: any) => (
           <div key={l.seq} className="jrow cols" style={{ ['--cols' as any]: '92px minmax(0,1fr)', ['--mcols' as any]: '78px minmax(0,1fr)' }}>
-            <span className="small">{l.date ? fmtDate(l.date) : '—'}<br /><span className="muted">{l.period ? t('{n} saat', { n: ord(l.period) }) : ''}</span></span>
+            <span className="small">{l.date ? fmtDate(l.date) : '—'}<br /><span className="muted">{l.period ? hourN(l.period) : ''}</span></span>
             <span>{l.topic}{l.assessment_type !== 'formativ' && <Pill tone="warn">{l.assessment_type}</Pill>}<span className="sub">{l.section}</span></span>
           </div>))}</div>
       </>}
@@ -328,7 +328,7 @@ function WordImport({ onClose, onDone }: { onClose: () => void; onDone: () => vo
               <span className="btn sm">{t('Fayl seçin')}</span><span className="small muted">{file ? file.name : t('fayl seçilməyib')}</span>
               <input type="file" accept=".docx" style={{ display: 'none' }} onChange={e => setFile(e.target.files?.[0] || null)} />
             </label></Field>
-          <Field label="Ad" full hint={t('boş – fayl adı')}><input value={title} onChange={e => setTitle(e.target.value)} maxLength={200} /></Field>
+          <Field label={t('Ad')} full hint={t('boş – fayl adı')}><input value={title} onChange={e => setTitle(e.target.value)} maxLength={200} /></Field>
           <Field label={t('Sinif')} hint={t('boş – fayl adından')}><select value={grade} onChange={e => setGrade(e.target.value)}>
             <option value="">—</option>{Array.from({ length: 11 }, (_, i) => i + 1).map(g => <option key={g} value={g}>{g}</option>)}</select></Field>
         </div>}

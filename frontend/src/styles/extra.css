@@ -286,3 +286,39 @@ body.exam-guard main{max-width:860px;margin:0 auto}
 @keyframes sv-in{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
 @media (max-width:700px){.sv-nudge{bottom:calc(72px + env(safe-area-inset-bottom))}}
 @media (prefers-reduced-motion:reduce){.sv-nudge{animation:none}}
+
+/* ---- müəllim dizayn optimallaşdırması (18.10.2026) ---- */
+/* yan menyu: qruplar, sıx bəndlər, scroll olunan menyu + həmişə görünən alt hissə */
+.side{overflow:hidden}
+.side .nav{flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-width:thin;gap:2px}
+.side .nav button{min-height:36px;min-width:0}
+.nav .nav-lbl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav-group{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:10px 12px 3px}
+.side .nav-group{color:var(--side-muted);opacity:.75}
+.nav-group-more{padding-top:12px}
+.side .side-foot{flex:none}
+@media (max-width:1100px){
+  .side .nav{overflow-y:auto}
+  .nav .nav-lbl{white-space:normal;overflow:visible;text-overflow:clip}
+  .nav-group{font-size:0;padding:0;margin:6px 8px 4px;border-top:1px solid var(--line);opacity:.5}
+  .side .nav-group{border-top-color:rgba(255,255,255,.18)}
+}
+/* sinif seçimi: sürətli düymələr */
+.quickpick{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
+.quickpick .chip{border-left:4px solid var(--cc,var(--accent-line))}
+.toolbar > .quickpick{flex:1 1 100%;order:9;margin:2px 0 0}
+.quickpick-hint{margin:14px 0 0;color:var(--muted);font-size:14px}
+/* alçaq ekran: sıxlıq */
+@media (max-height:760px) and (min-width:701px){
+  main{padding-block:16px 36px}
+  .topbar{min-height:52px;height:52px;margin-bottom:12px}
+  .top{margin-bottom:12px}
+  .top h1{font-size:clamp(20px,2.6vw,24px)}
+  .top p{margin-top:2px}
+  .grid{gap:12px}
+  .side{padding-block:12px;gap:10px}
+  .brand{padding-bottom:8px}
+}
+/* Testlər: status chip-ləri və dövr seçicisi bir sətirdə */
+.tfilters{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.tfilters .tf-sep{flex:1 1 0}

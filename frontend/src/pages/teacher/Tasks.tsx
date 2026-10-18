@@ -1,9 +1,9 @@
 // Onlayn tapşırıqlar (müəllim): yaratma / viktorinadan test / redaktə / link kimi göndərmə / silmə / canlı izləmə.
 import { useEffect, useState } from 'react'
-import { ml, tt } from '../../i18n'
+import { useT, ml, tt } from '../../i18n'
 import { del as apiDel, get, post } from '../../api'
 import { MathText } from '../../MathText'
-import { AsyncBtn, Chips, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, Loading, More, Pill, toast, Top, useLoad, ord } from '../../ui'
+import { AsyncBtn, Chips, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, Loading, More, Pill, toast, Top, useLoad, hourN } from '../../ui'
 import { type MyLesson, type Preset, StudentPicker, useMyLessons, usePick } from './common'
 import { PeriodBar, usePeriod } from '../../periods'
 import { Link } from 'react-router-dom'
@@ -25,6 +25,7 @@ const ST_ORDER: Record<Exclude<St, 'all'>, number> = { open: 0, soon: 1, closed:
 
 /** embedded – «Testlər və sınaqlar» mərkəzinin içində: sinif yuxarıdakı açılan siyahıdan gəlir, başlıq təkrarlanmır. */
 export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta?: number | null } = {}) {
+  const t = useT()
   const [lessons, err0] = useMyLessons()
   const [taOwn, setTa] = usePick('tasks-all')             // boş – bütün siniflərim (sinif seçmədən hər şey görünür)
   const ta = embedded ? taProp ?? null : taOwn
@@ -56,58 +57,55 @@ export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta
     if (g) g.items.push(t)
     else groups.push({ key, items: [t] })
   }
-  const statePill = (s: Exclude<St, 'all'>) => s === 'soon' ? <Pill>gözlənilir</Pill> : s === 'open' ? <Pill tone="ok">● açıqdır</Pill> : <Pill tone="info">bağlanıb</Pill>
+  const statePill = (s: Exclude<St, 'all'>) => s === 'soon' ? <Pill>{t('gözlənilir')}</Pill> : s === 'open' ? <Pill tone="ok">{t('● açıqdır')}</Pill> : <Pill tone="info">{t('bağlanıb')}</Pill>
   const when = (t: Task) => `${dt(t.opens_at)} – ${t.opens_at.slice(0, 10) === t.closes_at.slice(0, 10) ? hm(t.closes_at) : dt(t.closes_at)}`
   const actions = (t: Task, s: Exclude<St, 'all'>) => (<>
     {archived ? (
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-        <AsyncBtn className="btn sm primary" ok="Test geri qaytarıldı" onClick={async () => { await post(`/api/tasks/${t.ta_id}/${t.id}/restore`); reload() }}>Geri qaytar</AsyncBtn>
-        <button className="btn sm" onClick={() => setWatch(t)}>Nəticələr</button>
-        <button className="btn sm ghost" onClick={() => setDel(t)}>Birdəfəlik sil</button>
+        <AsyncBtn className="btn sm primary" ok="Test geri qaytarıldı" onClick={async () => { await post(`/api/tasks/${t.ta_id}/${t.id}/restore`); reload() }}>{tt('Geri qaytar')}</AsyncBtn>
+        <button className="btn sm" onClick={() => setWatch(t)}>{tt('Nəticələr')}</button>
+        <button className="btn sm ghost" onClick={() => setDel(t)}>{tt('Birdəfəlik sil')}</button>
       </div>
     ) : (
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-        <button className={'btn sm' + (exp === t.id ? ' primary' : '')} onClick={() => setExp(e => (e === t.id ? null : t.id))}>👥 Şagirdlər</button>
-        <button className="btn sm" onClick={() => setEdit(t)}>✏ Redaktə</button>
-        <button className="btn sm ghost" onClick={() => setDel(t)}>🗑 Sil</button>
-        <button className={'btn sm' + (s === 'open' ? ' primary' : '')} onClick={() => setWatch(t)}>{s === 'open' ? 'Canlı izlə' : 'Nəticələr'}</button>
+        <button className={'btn sm' + (exp === t.id ? ' primary' : '')} onClick={() => setExp(e => (e === t.id ? null : t.id))}>{tt('👥 Şagirdlər')}</button>
+        <button className="btn sm" onClick={() => setEdit(t)}>{tt('✏ Redaktə')}</button>
+        <button className="btn sm ghost" onClick={() => setDel(t)}>{tt('🗑 Sil')}</button>
+        <button className={'btn sm' + (s === 'open' ? ' primary' : '')} onClick={() => setWatch(t)}>{s === 'open' ? tt('Canlı izlə') : 'Nəticələr'}</button>
         <More>
-          <button onClick={() => setShare(t)}>Link göndər</button>
-          <button onClick={() => setResend(t)}>Yenidən göndər</button>
-          <button onClick={() => paper(t.ta_id!, t.id, t.class_name || '')}>Kağız variant (çap)</button>
+          <button onClick={() => setShare(t)}>{tt('Link göndər')}</button>
+          <button onClick={() => setResend(t)}>{tt('Yenidən göndər')}</button>
+          <button onClick={() => paper(t.ta_id!, t.id, t.class_name || '')}>{tt('Kağız variant (çap)')}</button>
         </More>
       </div>)}
     {exp === t.id && <TaskStudents ta={t.ta_id!} id={t.id} />}
-    {del?.id === t.id && <ConfirmName name={t.title} action={archived ? 'Birdəfəlik sil' : 'Sil'} onCancel={() => setDel(null)}
+    {del?.id === t.id && <ConfirmName name={t.title} action={archived ? tt('Birdəfəlik sil') : 'Sil'} onCancel={() => setDel(null)}
       onConfirm={async () => {
-        if (archived) { await apiDel(`/api/tasks/${t.ta_id}/${t.id}`); toast('Test sistemdən birdəfəlik silindi') }
-        else { await post(`/api/tasks/${t.ta_id}/${t.id}/archive`); toast('Test silindi – «Silinənlər»dən geri qaytarmaq və ya birdəfəlik silmək olar') }
+        if (archived) { await apiDel(`/api/tasks/${t.ta_id}/${t.id}`); toast(tt('Test sistemdən birdəfəlik silindi')) }
+        else { await post(`/api/tasks/${t.ta_id}/${t.id}/archive`); toast(tt('Test silindi – «Silinənlər»dən geri qaytarmaq və ya birdəfəlik silmək olar')) }
         setDel(null); reload() }} />}
   </>)
   return (
     <>
       {(() => {
-        const sub = archived ? 'Silinmiş mövzu testləri – geri qaytarmaq və ya birdəfəlik silmək olar' : 'Perspektiv planın mövzu testləri – təyin etmək, izləmək, idarə etmək.'
-        const act = archived ? <button className="btn" onClick={() => setArchived(false)}>‹ Mövzu testləri</button>
-          : <Link className="btn primary" to="/plan" title="Perspektiv planda mövzunun yanındakı «🧪 Test» düyməsi">+ Mövzu testi təyin et</Link>
+        const sub = archived ? 'Silinmiş mövzu testləri – geri qaytarmaq və ya birdəfəlik silmək olar' : t('Perspektiv planın mövzu testləri – təyin etmək, izləmək, idarə etmək.')
+        const act = archived ? <button className="btn" onClick={() => setArchived(false)}>{t('‹ Mövzu testləri')}</button>
+          : <Link className="btn primary" to="/plan" title={t('Perspektiv planda mövzunun yanındakı «🧪 Test» düyməsi')}>{t('+ Mövzu testi təyin et')}</Link>
         return embedded ? <div className="hub-head"><span className="small muted grow">{sub}</span>{act}</div>
-          : <Top title={archived ? 'Silinmiş mövzu testləri' : 'Onlayn tapşırıqlar'} sub={sub} actions={act} />
+          : <Top title={archived ? t('Silinmiş mövzu testləri') : 'Onlayn tapşırıqlar'} sub={sub} actions={act} />
       })()}
       <ErrorBox error={err0 || err} />
-      <div className="toolbar">
-        {!embedded && <select className="sel" aria-label="Sinif / qrup" style={{ width: 'auto', maxWidth: 280 }} value={ta ?? ''} onChange={e => setTa(e.target.value ? Number(e.target.value) : null)}>
-          <option value="">Bütün siniflərim</option>
+      {!embedded && <div className="toolbar">
+        <select className="sel" aria-label={t('Sinif / qrup')} style={{ width: 'auto', maxWidth: 280 }} value={ta ?? ''} onChange={e => setTa(e.target.value ? Number(e.target.value) : null)}>
+          <option value="">{t('Bütün siniflərim')}</option>
           {(lessons || []).map(l => <option key={l.id} value={l.id}>{l.class_name}{l.subject !== 'Riyaziyyat' ? ` · ${l.subject}` : ''}</option>)}
-        </select>}
-        {!archived && <Chips label="Vəziyyət" value={st} onChange={setSt} options={[['all', 'Hamısı', inPeriod.length], ['open', '● Açıq', count('open')],
-          ['soon', 'Gözlənilir', count('soon')], ['closed', 'Bağlanıb', count('closed')]]} />}
-      </div>
+        </select></div>}
       {loading && !list ? <Loading /> : (<>
-        {inClass.length > 0 && <PeriodBar f={f} count={shown.length} total={inClass.length} topicLabel="Sinif və mövzu üzrə" />}
+        {inClass.length > 0 && <PeriodBar f={f} count={shown.length} total={inClass.length} topicLabel="Sinif və mövzu üzrə" lead={!archived ? <Chips label={t('Vəziyyət')} value={st} onChange={setSt} options={[['all', 'Hamısı', inPeriod.length], ['open', '● Açıq', count('open')], ['soon', 'Gözlənilir', count('soon')], ['closed', t('Bağlanıb'), count('closed')]]} /> : undefined} />}
         <div className="jlist">
-          {list && inClass.length === 0 && <div className="empty">{archived ? 'Silinmiş mövzu testi yoxdur.'
-            : <>Hələ mövzu testi yoxdur. <Link to="/plan">Perspektiv plan</Link>da mövzunun yanındakı «🧪 Test» ilə təyin edin.</>}</div>}
-          {inClass.length > 0 && shown.length === 0 && <div className="empty">Bu seçimdə test yoxdur – vəziyyəti və ya dövrü dəyişin.</div>}
+          {list && inClass.length === 0 && <div className="empty">{archived ? t('Silinmiş mövzu testi yoxdur.')
+            : <>{t('Hələ mövzu testi yoxdur.')} <Link to="/plan">{t('Perspektiv plan')}</Link>{t('da mövzunun yanındakı «🧪 Test» ilə təyin edin.')}</>}</div>}
+          {inClass.length > 0 && shown.length === 0 && <div className="empty">{t('Bu seçimdə test yoxdur – vəziyyəti və ya dövrü dəyişin.')}</div>}
           {groups.map(g => {
             const head = g.items[0]
             const sts = g.items.map(t => stateOf(t, now))
@@ -121,25 +119,25 @@ export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta
                   {one && many && <Pill tone="info">{head.class_name}</Pill>}
                   <Pill tone="acc">{head.topic ? `№${head.topic.seq}` : 'planda yoxdur'}</Pill>
                   <b className="grow">{head.title}</b>
-                  {!one && <Pill>{g.items.length} sinif</Pill>}
-                  {one && head.journal_auto && <Pill tone={head.journal_done_at ? 'ok' : undefined}>{head.journal_done_at ? 'jurnala yazılıb' : 'jurnala yazılacaq'}</Pill>}
+                  {!one && <Pill>{g.items.length} {t('sinif')}</Pill>}
+                  {one && head.journal_auto && <Pill tone={head.journal_done_at ? 'ok' : undefined}>{head.journal_done_at ? t('jurnala yazılıb') : t('jurnala yazılacaq')}</Pill>}
                   {statePill(s)}
                 </div>
-                {one ? <><span className="small muted">{when(head)} · {head.duration_min} dəq · {head.questions} sual · {head.student_ids ? `${head.student_ids.length} şagird` : 'bütün sinif'} · <b>{head.submitted}</b> təhvil{head.avg_pct != null ? <> · orta <b>{fmt(head.avg_pct)}%</b></> : ''}</span>
+                {one ? <><span className="small muted">{when(head)} · {head.duration_min} {t('dəq ·')} {head.questions} {t('sual ·')} {head.student_ids ? t('{length} şagird', { length: head.student_ids.length }) : 'bütün sinif'} · <b>{head.submitted}</b> {t('təhvil')}{head.avg_pct != null ? <> {t('· orta')} <b>{fmt(head.avg_pct)}%</b></> : ''}</span>
                   {actions(head, stateOf(head, now))}</>
-                  : <><span className="small muted">{head.duration_min} dəq · {head.questions} sual · <b>{sub}</b> təhvil{avg != null ? <> · orta <b>{fmt(avg)}%</b></> : ''}</span>
+                  : <><span className="small muted">{head.duration_min} {t('dəq ·')} {head.questions} {t('sual ·')} <b>{sub}</b> {t('təhvil')}{avg != null ? <> {t('· orta')} <b>{fmt(avg)}%</b></> : ''}</span>
                     <div className="subrows">{g.items.map(t => (
                       <div key={t.id} className="subrow">
                         <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
                           <Pill tone="info">{t.class_name}</Pill>{statePill(stateOf(t, now))}
-                          <span className="small muted grow">{when(t)} · <b>{t.submitted}</b> təhvil{t.avg_pct != null ? <> · orta <b>{fmt(t.avg_pct)}%</b></> : ''}{t.journal_auto ? (t.journal_done_at ? ' · jurnala yazılıb' : ' · jurnala yazılacaq') : ''}</span>
+                          <span className="small muted grow">{when(t)} · <b>{t.submitted}</b> {tt('təhvil')}{t.avg_pct != null ? <> {tt('· orta')} <b>{fmt(t.avg_pct)}%</b></> : ''}{t.journal_auto ? (t.journal_done_at ? (' · ' + tt('jurnala yazılıb')) : (' · ' + tt('jurnala yazılacaq'))) : ''}</span>
                         </div>
                         {actions(t, stateOf(t, now))}
                       </div>))}</div></>}
               </div>)
           })}
         </div>
-        {!archived && <p className="small" style={{ marginTop: 12 }}><button className="btn sm ghost" onClick={() => setArchived(true)}>🗑 Silinənlər</button></p>}
+        {!archived && <p className="small" style={{ marginTop: 12 }}><button className="btn sm ghost" onClick={() => setArchived(true)}>{t('🗑 Silinənlər')}</button></p>}
       </>)}
       {edit && <TaskEditor ta={edit.ta_id!} taskId={edit.id} fromBank={false} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
       {watch && <Watch ta={watch.ta_id!} id={watch.id} onClose={() => { setWatch(null); reload() }} />}
@@ -147,7 +145,7 @@ export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta
       {resend && <Resend ta={resend.ta_id!} task={resend} lessons={lessons || []} onClose={() => setResend(null)}
         onDone={(t, sameClass) => {
           setResend(null)
-          if (t.kind === 'sinaq') toast('Hədəf sinfin planında bu mövzu yoxdur – test sınaq kimi «Sınaq imtahanları»na düşdü')
+          if (t.kind === 'sinaq') toast(tt('Hədəf sinfin planında bu mövzu yoxdur – test sınaq kimi «Sınaq imtahanları»na düşdü'))
           if (sameClass) reload()
           setShare({ ...t, class_name: lessons?.find(l => l.id === t.ta_id)?.class_name ?? resend.class_name }) }} />}
     </>
@@ -158,19 +156,20 @@ const TASK_TONE: Record<string, 'ok' | 'info' | undefined> = { 'təhvil verib': 
 
 /** Testi alan şagirdlər (əlifba ilə) və vəziyyəti – siyahıda sətrin altında (docs/test-sinaq-siyahi-promtu.md §1). */
 function TaskStudents({ ta, id }: { ta: number; id: number }) {
+  const t = useT()
   const [d, err] = useLoad<any>(() => get(`/api/tasks/${ta}/${id}`), [ta, id])
   if (err) return <ErrorBox error={err} />
   if (!d) return <Loading />
   const rows = [...d.rows].sort((a: any, b: any) => a.full_name.localeCompare(b.full_name, 'az'))
   return (
     <div className="subrows"><div className="subrow" style={{ alignItems: 'stretch' }}>
-      <span className="small muted">{d.summary['təhvil verib']}/{rows.length} təhvil verib · {d.summary['həll edir']} həll edir · {d.summary['başlamayıb']} başlamayıb</span>
-      {rows.length === 0 ? <span className="small muted">Şagird yoxdur.</span>
+      <span className="small muted">{d.summary['təhvil verib']}/{rows.length} {t('təhvil verib ·')} {d.summary['həll edir']} {t('həll edir ·')} {d.summary['başlamayıb']} {t('başlamayıb')}</span>
+      {rows.length === 0 ? <span className="small muted">{t('Şagird yoxdur.')}</span>
         : <ol className="small" style={{ margin: '4px 0 0', paddingLeft: 22, columns: '2 260px', columnGap: 24 }}>
           {rows.map((r: any) => (
             <li key={r.student_id} style={{ breakInside: 'avoid', marginBottom: 2 }}>{r.full_name}{' '}
               <Pill tone={r.status === 'təhvil verib' ? (r.pct >= 70 ? 'ok' : r.pct >= 40 ? 'warn' : 'bad') : TASK_TONE[r.status]}>
-                {r.status === 'təhvil verib' ? `${fmt(r.pct, r.grade ? 0 : 1)}%${r.grade ? ` → ${r.grade}` : ''}` : r.status}</Pill></li>))}
+                {r.status === 'təhvil verib' ? `${fmt(r.pct, r.grade ? 0 : 1)}%${r.grade ? ` → ${r.grade}` : ''}` : t(r.status)}</Pill></li>))}
         </ol>}
     </div></div>
   )
@@ -178,6 +177,7 @@ function TaskStudents({ ta, id }: { ta: number; id: number }) {
 
 /** Bir testin idarəsi (sınaq jurnalında hər sinif üçün): canlı izlə, link; nadir əməllər «⋯» menyusunda. */
 export function TaskActions({ ta, id, cls, onChange }: { ta: number; id: number; cls: string; onChange: () => void }) {
+  const t = useT()
   const [lessons] = useMyLessons()
   const [mode, setMode] = useState<null | 'watch' | 'share' | 'resend' | 'edit'>(null)
   const [task, setTask] = useState<Task | null>(null)
@@ -188,12 +188,12 @@ export function TaskActions({ ta, id, cls, onChange }: { ta: number; id: number;
   return (
     <>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-        <button className="btn sm" onClick={() => setMode('watch')}>Canlı izlə</button>
-        <button className="btn sm" onClick={() => open('share')}>Link göndər</button>
+        <button className="btn sm" onClick={() => setMode('watch')}>{t('Canlı izlə')}</button>
+        <button className="btn sm" onClick={() => open('share')}>{t('Link göndər')}</button>
         <More>
-          <button onClick={() => open('resend')}>Yenidən göndər</button>
-          <button onClick={() => paper(ta, id, cls)}>Kağız variant (çap)</button>
-          <button onClick={() => setMode('edit')}>Redaktə</button>
+          <button onClick={() => open('resend')}>{t('Yenidən göndər')}</button>
+          <button onClick={() => paper(ta, id, cls)}>{t('Kağız variant (çap)')}</button>
+          <button onClick={() => setMode('edit')}>{t('Redaktə')}</button>
         </More>
       </div>
       {mode === 'watch' && <Watch ta={ta} id={id} onClose={() => { setMode(null); onChange() }} onResendAbsent={() => open('resend', 'absent')} />}
@@ -210,20 +210,22 @@ const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 6
 /** Yenidən göndər: eyni suallarla surət – yeni vaxt, həmin və ya başqa sinif/qrup. Köhnə nəticələr yerində qalır. */
 /** Bir (və ya bir neçə) konkret şagirdə yenidən göndər — sınaq jurnalından / şagird siyahısından (eyni sınaq paketinə düşür). */
 export function ResendToStudents({ ta, taskId, ids, onClose, onDone }: { ta: number; taskId: number; ids: number[]; onClose: () => void; onDone: () => void }) {
+  const t = useT()
   const [lessons] = useMyLessons()
   const [task, err] = useLoad<Task>(() => get(`/api/tasks/${ta}/${taskId}/full`), [ta, taskId])
-  if (err) return <Drawer title="Yenidən göndər" onClose={onClose}><ErrorBox error={err} /></Drawer>
+  if (err) return <Drawer title={t('Yenidən göndər')} onClose={onClose}><ErrorBox error={err} /></Drawer>
   if (!task) return null
   return <Resend ta={ta} task={task} lessons={lessons || []} onlyIds={ids} onClose={onClose}
-    onDone={() => { toast(ids.length === 1 ? 'Sınaq şagirdə yenidən göndərildi' : `Sınaq ${ids.length} şagirdə yenidən göndərildi`); onDone() }} />
+    onDone={() => { toast(ids.length === 1 ? t('Sınaq şagirdə yenidən göndərildi') : t('Sınaq {length} şagirdə yenidən göndərildi', { length: ids.length })); onDone() }} />
 }
 
 function Resend({ ta, task, lessons, preset, onlyIds, onClose, onDone }: { ta: number; task: Task; lessons: MyLesson[]; preset?: 'absent'; onlyIds?: number[]; onClose: () => void; onDone: (t: Task, sameClass: boolean) => void }) {
+  const t = useT()
   // həmin sinfə: «Yazmayanlar» və «50%-dən aşağı» – bu testin nəticələrindən (docs/sagird-secimi-promtu.md §6)
   const [res] = useLoad<any>(() => get(`/api/tasks/${ta}/${task.id}`), [ta, task.id])
   const presets: Preset[] = res ? [
     { key: 'absent', label: 'Yazmayanlar', ids: res.rows.filter((r: any) => r.status !== 'təhvil verib').map((r: any) => r.student_id) },
-    { key: 'low', label: '50%-dən aşağı', ids: res.rows.filter((r: any) => r.pct != null && r.pct < 50).map((r: any) => r.student_id) },
+    { key: 'low', label: t('50%-dən aşağı'), ids: res.rows.filter((r: any) => r.pct != null && r.pct < 50).map((r: any) => r.student_id) },
   ] : []
   const [ids, setIds] = useState<number[] | null>(onlyIds ?? null)
   useEffect(() => { if (res && preset === 'absent' && !onlyIds) setIds(presets[0].ids) }, [res])
@@ -235,21 +237,21 @@ function Resend({ ta, task, lessons, preset, onlyIds, onClose, onDone }: { ta: n
     try {
       const t = await post<Task>(`/api/tasks/${ta}/${task.id}/copy`, { target_ta_id: f.target, opens_at: new Date(f.opens).toISOString(),
         closes_at: new Date(f.closes).toISOString(), duration_min: f.duration, title: f.title, student_ids: ids })
-      toast('Test yenidən göndərildi'); onDone(t, f.target === ta)
+      toast(tt('Test yenidən göndərildi')); onDone(t, f.target === ta)
     } catch (e) { setErr(e) }
   }
   return (
-    <Drawer title="Testi yenidən göndər" onClose={onClose}
-      footer={<><button className="btn" onClick={onClose}>Ləğv et</button><AsyncBtn className="btn primary" disabled={ids?.length === 0} onClick={save}>Göndər</AsyncBtn></>}>
+    <Drawer title={t('Testi yenidən göndər')} onClose={onClose}
+      footer={<><button className="btn" onClick={onClose}>{t('Ləğv et')}</button><AsyncBtn className="btn primary" disabled={ids?.length === 0} onClick={save}>{t('Göndər')}</AsyncBtn></>}>
       <div className="stack">
-        <p className="small muted">Eyni {task.questions} sualla yeni test yaradılır. Köhnə testin nəticələri yerində qalır; şagirdlər yenisini təzədən həll edir.</p>
+        <p className="small muted">{t('Eyni')} {task.questions} {t('sualla yeni test yaradılır. Köhnə testin nəticələri yerində qalır; şagirdlər yenisini təzədən həll edir.')}</p>
         <div className="fg">
-          <Field label="Sinif / qrup" full><select value={f.target} onChange={e => setF({ ...f, target: Number(e.target.value) })}>
-            {lessons.map(l => <option key={l.id} value={l.id}>{l.class_name}{l.subject !== 'Riyaziyyat' ? ` · ${l.subject}` : ''}{l.id === ta ? ' (həmin sinif)' : ''}</option>)}</select></Field>
-          <Field label="Ad" full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
-          <Field label="Açılır"><input type="datetime-local" value={f.opens} onChange={e => setF({ ...f, opens: e.target.value })} /></Field>
-          <Field label="Bağlanır"><input type="datetime-local" value={f.closes} onChange={e => setF({ ...f, closes: e.target.value })} /></Field>
-          <Field label="Həll müddəti (dəq)" hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+          <Field label={t('Sinif / qrup')} full><select value={f.target} onChange={e => setF({ ...f, target: Number(e.target.value) })}>
+            {lessons.map(l => <option key={l.id} value={l.id}>{l.class_name}{l.subject !== 'Riyaziyyat' ? ` · ${l.subject}` : ''}{l.id === ta ? (' ' + t('(həmin sinif)')) : ''}</option>)}</select></Field>
+          <Field label={t('Ad')} full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
+          <Field label={t('Açılır')}><input type="datetime-local" value={f.opens} onChange={e => setF({ ...f, opens: e.target.value })} /></Field>
+          <Field label={t('Bağlanır')}><input type="datetime-local" value={f.closes} onChange={e => setF({ ...f, closes: e.target.value })} /></Field>
+          <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
         </div>
         {(f.target !== ta || res) && <StudentPicker key={`${f.target}-${!!res}`} ta={f.target} presets={f.target === ta ? presets : []}
           value={f.target === ta && onlyIds ? onlyIds : f.target === ta && preset === 'absent' && res ? presets[0].ids : null}
@@ -272,18 +274,19 @@ async function paper(ta: number, id: number, cls: string) {
 }
 
 function Share({ task, cls, onClose }: { task: Task; cls: string; onClose: () => void }) {
+  const t = useT()
   const url = taskLink(task.id)
   const text = `${cls} – onlayn test «${task.title}»: ${dt(task.opens_at)}–${hm(task.closes_at)}, ${task.duration_min} dəq. Keçid: ${url}`
   return (
-    <Drawer title="Testi link kimi göndər" onClose={onClose}>
+    <Drawer title={t('Testi link kimi göndər')} onClose={onClose}>
       <div className="stack">
-        <p className="small muted">Şagird linki açır → giriş kodu və PIN ilə daxil olur (və ya qeydiyyat linki ilə qeydiyyatdan keçir) → birbaşa bu testə düşür. Test yalnız bu sinfin/qrupun (seçilmiş) şagirdlərinə açılır.</p>
+        <p className="small muted">{t('Şagird linki açır → giriş kodu və PIN ilə daxil olur (və ya qeydiyyat linki ilə qeydiyyatdan keçir) → birbaşa bu testə düşür. Test yalnız bu sinfin/qrupun (seçilmiş) şagirdlərinə açılır.')}</p>
         <input className="sel w100" readOnly value={url} onFocus={e => e.target.select()} />
         <div className="row">
-          <button className="btn primary" onClick={async () => { try { await navigator.clipboard.writeText(url); toast('Link kopyalandı') } catch { toast('Linki seçib kopyalayın') } }}>Linki kopyala</button>
-          <button className="btn" onClick={async () => { try { await navigator.clipboard.writeText(text); toast('Mətn kopyalandı') } catch { toast('Kopyalanmadı') } }}>Mətnlə kopyala</button>
-          <a className="btn" target="_blank" rel="noreferrer" href={'https://wa.me/?text=' + encodeURIComponent(text)}>WhatsApp</a>
-          {'share' in navigator && <button className="btn" onClick={() => (navigator as any).share({ title: task.title, text, url }).catch(() => {})}>Paylaş…</button>}
+          <button className="btn primary" onClick={async () => { try { await navigator.clipboard.writeText(url); toast(t('Link kopyalandı')) } catch { toast('Linki seçib kopyalayın') } }}>{t('Linki kopyala')}</button>
+          <button className="btn" onClick={async () => { try { await navigator.clipboard.writeText(text); toast(t('Mətn kopyalandı')) } catch { toast(t('Kopyalanmadı')) } }}>{t('Mətnlə kopyala')}</button>
+          <a className="btn" target="_blank" rel="noreferrer" href={'https://wa.me/?text=' + encodeURIComponent(text)}>{t('WhatsApp')}</a>
+          {'share' in navigator && <button className="btn" onClick={() => (navigator as any).share({ title: task.title, text, url }).catch(() => {})}>{t('Paylaş…')}</button>}
         </div>
       </div>
     </Drawer>
@@ -292,6 +295,7 @@ function Share({ task, cls, onClose }: { task: Task; cls: string; onClose: () =>
 
 /** Təhvil verilmiş nəticələr formativ «test» qiyməti kimi seçilən dərsə (defolt – testin açıldığı gün). */
 function ToJournal({ ta, id, opens }: { ta: number; id: number; opens: string }) {
+  const t = useT()
   const [date, setDate] = useState(() => isoDate(new Date(opens)))
   const [day] = useLoad<any>(() => get(`/api/journal/${ta}/day`, { date }), [ta, date])
   const [period, setPeriod] = useState<number | ''>('')
@@ -299,25 +303,26 @@ function ToJournal({ ta, id, opens }: { ta: number; id: number; opens: string })
   useEffect(() => { setPeriod(day?.lessons?.[0]?.period ?? '') }, [day])
   const lessons = (day?.lessons || []) as any[]
   return (
-    <section className="panel"><h2>Jurnala köçür <small>formativ «test» qiyməti</small></h2>
+    <section className="panel"><h2>{t('Jurnala köçür')} <small>{t('formativ «test» qiyməti')}</small></h2>
       <div className="row">
-        <input type="date" className="sel" value={date} max={isoDate(new Date())} onChange={e => { setDate(e.target.value); setRes(null) }} aria-label="Dərs günü" />
-        <select className="sel" value={period} onChange={e => setPeriod(e.target.value === '' ? '' : Number(e.target.value))} aria-label="Dərs saatı">
-          {lessons.length === 0 && <option value="">bu gün dərs yoxdur</option>}
+        <input type="date" className="sel" value={date} max={isoDate(new Date())} onChange={e => { setDate(e.target.value); setRes(null) }} aria-label={t('Dərs günü')} />
+        <select className="sel" value={period} onChange={e => setPeriod(e.target.value === '' ? '' : Number(e.target.value))} aria-label={t('Dərs saatı')}>
+          {lessons.length === 0 && <option value="">{t('bu gün dərs yoxdur')}</option>}
           {lessons.map(l => <option key={l.period} value={l.period} disabled={['KSQ', 'BSQ'].includes(l.plan?.assessment_type)}>
-            {ord(l.period)} saat · {(l.entry?.topic || l.plan?.topic || '').slice(0, 40)}{['KSQ', 'BSQ'].includes(l.plan?.assessment_type) ? ` (${l.plan.assessment_type} – olmaz)` : ''}</option>)}
+            {hourN(l.period)} · {(l.entry?.topic || l.plan?.topic || '').slice(0, 40)}{['KSQ', 'BSQ'].includes(l.plan?.assessment_type) ? (' ' + t('({assessment_type} – olmaz)', { assessment_type: l.plan.assessment_type })) : ''}</option>)}
         </select>
-        <AsyncBtn className="btn primary" disabled={period === ''} onClick={async () => setRes(await post(`/api/tasks/${ta}/${id}/to-journal`, { date, period }))}>Köçür</AsyncBtn>
+        <AsyncBtn className="btn primary" disabled={period === ''} onClick={async () => setRes(await post(`/api/tasks/${ta}/${id}/to-journal`, { date, period }))}>{t('Köçür')}</AsyncBtn>
       </div>
-      {res && <p className="small" style={{ margin: '8px 0 0' }}>{fmtDate(res.date)}, {ord(res.period)} saat: <b>{res.copied}</b> yeni, <b>{res.updated}</b> yeniləndi
-        {res.skipped.length > 0 && <> · ötürüldü: {res.skipped.map((s: any) => `${s.full_name} (${s.reason})`).join(', ')}</>}</p>}
-      <p className="small muted" style={{ margin: '6px 0 0' }}>Qiymət: düzgün / sual → faiz → qiymət. Həmin dərsdə olmayan şagird ötürülür; təkrar köçürmə köhnəni yeniləyir.</p>
+      {res && <p className="small" style={{ margin: '8px 0 0' }}>{fmtDate(res.date)}, {hourN(res.period)}: <b>{res.copied}</b> {t('yeni,')} <b>{res.updated}</b> {t('yeniləndi')}
+        {res.skipped.length > 0 && <> {t('· ötürüldü:')} {res.skipped.map((s: any) => `${s.full_name} (${s.reason})`).join(', ')}</>}</p>}
+      <p className="small muted" style={{ margin: '6px 0 0' }}>{t('Qiymət: düzgün / sual → faiz → qiymət. Həmin dərsdə olmayan şagird ötürülür; təkrar köçürmə köhnəni yeniləyir.')}</p>
     </section>
   )
 }
 
 // ---------------------------------------------------------------- canlı izləmə və nəticələr
 function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; onClose: () => void; onResendAbsent?: () => void }) {
+  const t = useT()
   const [d, err, , reload] = useLoad<any>(() => get(`/api/tasks/${ta}/${id}`), [ta, id])
   const [q, setQ] = useState('')
   const [st, setSt] = useState<'all' | 'başlamayıb' | 'həll edir' | 'təhvil verib'>('all')
@@ -325,7 +330,7 @@ function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; on
   const live = !!d && Date.now() < Date.parse(d.task.closes_at)
   useEffect(() => { if (!auto || !live) return; const i = setInterval(reload, 5000); return () => clearInterval(i) }, [auto, live, reload])
   const skew = d ? Date.parse(d.server_time) - Date.now() : 0
-  const left = (s: string | null) => { if (!s) return ''; const m = Math.max(0, Math.round((Date.parse(s) - (Date.now() + skew)) / 60000)); return `${m} dəq qalıb` }
+  const left = (s: string | null) => { if (!s) return ''; const m = Math.max(0, Math.round((Date.parse(s) - (Date.now() + skew)) / 60000)); return t('{m} dəq qalıb', { m }) }
   const rows = (d?.rows || []).filter((r: any) => (st === 'all' || r.status === st) && (!q || r.full_name.toLowerCase().includes(q.toLowerCase())))
   const total = d?.task.questions || 0
   return (
@@ -334,27 +339,27 @@ function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; on
       {d && (
         <div className="stack">
           <div className="kpis">
-            <div className="kpi"><b>{d.summary['başlamayıb']}</b><span>başlamayıb</span></div>
-            <div className="kpi"><b style={{ color: 'var(--info)' }}>{d.summary['həll edir']}</b><span>həll edir</span></div>
-            <div className="kpi"><b style={{ color: 'var(--ok)' }}>{d.summary['təhvil verib']}</b><span>təhvil verib</span></div>
+            <div className="kpi"><b>{d.summary['başlamayıb']}</b><span>{t('başlamayıb')}</span></div>
+            <div className="kpi"><b style={{ color: 'var(--info)' }}>{d.summary['həll edir']}</b><span>{t('həll edir')}</span></div>
+            <div className="kpi"><b style={{ color: 'var(--ok)' }}>{d.summary['təhvil verib']}</b><span>{t('təhvil verib')}</span></div>
           </div>
           <div className="row">
-            {live ? <label className="check small"><input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} /> Canlı (hər 5 san.)</label> : <Pill tone="info">bağlanıb</Pill>}
-            <button className="btn sm" onClick={reload}>Yenilə</button>
-            <input className="sel grow" placeholder="Şagird axtar" value={q} onChange={e => setQ(e.target.value)} />
+            {live ? <label className="check small"><input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} /> {t('Canlı (hər 5 san.)')}</label> : <Pill tone="info">{t('bağlanıb')}</Pill>}
+            <button className="btn sm" onClick={reload}>{t('Yenilə')}</button>
+            <input className="sel grow" placeholder={t('Şagird axtar')} value={q} onChange={e => setQ(e.target.value)} />
             {!live && onResendAbsent && d.summary['başlamayıb'] + d.summary['həll edir'] > 0 &&
-              <button className="btn sm" onClick={onResendAbsent}>Yazmayanlara yenidən göndər ({d.summary['başlamayıb'] + d.summary['həll edir']})</button>}
+              <button className="btn sm" onClick={onResendAbsent}>{t('Yazmayanlara yenidən göndər (')}{d.summary['başlamayıb'] + d.summary['həll edir']})</button>}
           </div>
           <div className="row" style={{ gap: 6 }}>
-            {(['all', 'həll edir', 'başlamayıb', 'təhvil verib'] as const).map(k => <button key={k} className="chip" aria-pressed={st === k} onClick={() => setSt(k)}>{k === 'all' ? 'Hamısı' : k}</button>)}
+            {(['all', 'həll edir', 'başlamayıb', 'təhvil verib'] as const).map(k => <button key={k} className="chip" aria-pressed={st === k} onClick={() => setSt(k)}>{k === 'all' ? t('Hamısı') : t(k)}</button>)}
           </div>
           <div className="jlist">{rows.map((r: any) => (
             <div className="jrow" key={r.student_id} style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}>
-              <span><b>{r.full_name}</b><span className="sub small muted"> {r.portal_code}{r.auto_submitted ? ' · vaxt bitdi' : ''}</span>
-                {r.solution_at && <> <a className="small" href={`/api/tasks/${ta}/${id}/solution/${r.student_id}`} target="_blank" rel="noreferrer" title="Şagirdin həll şəkilləri (PDF)">📄 Həll</a></>}
+              <span><b>{r.full_name}</b><span className="sub small muted"> {r.portal_code}{r.auto_submitted ? (' · ' + t('vaxt bitdi')) : ''}</span>
+                {r.solution_at && <> <a className="small" href={`/api/tasks/${ta}/${id}/solution/${r.student_id}`} target="_blank" rel="noreferrer" title={t('Şagirdin həll şəkilləri (PDF)')}>{t('📄 Həll')}</a></>}
                 {r.status === 'həll edir' && <>
                   <div className="cmp" style={{ marginTop: 6 }}><i style={{ width: (total ? r.answered * 100 / total : 0) + '%' }} /></div>
-                  <span className="small muted">{r.answered}/{total} cavab · {left(r.deadline)}</span></>}
+                  <span className="small muted">{r.answered}/{total} {t('cavab ·')} {left(r.deadline)}</span></>}
               </span>
               <span className="row">{r.status === 'təhvil verib'
                 ? <><span className="small">{r.correct}/{r.total}</span><Pill tone={r.grade ? gradeTone(r.grade) : r.pct >= 70 ? 'ok' : r.pct >= 40 ? 'warn' : 'bad'}>{fmt(r.pct, r.grade ? 0 : 1)}%{r.grade ? ` → ${r.grade}` : ''}</Pill></>
@@ -362,14 +367,14 @@ function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; on
                 {r.status !== 'başlamayıb' && <AsyncBtn className="btn sm" ok={tt('Şagird testi davam etdirə bilər')} title={tt('Cavablar saxlanır, qalan vaxt yenidən verilir (test bağlansa da)')}
                   onClick={async () => { await post(`/api/tasks/${ta}/${id}/attempts/${r.student_id}/resume`); reload() }}>▶ {tt('Davam etsin')}</AsyncBtn>}
                 {live && r.status !== 'başlamayıb' && <AsyncBtn className="btn sm ghost" ok="Təkrar icazə verildi"
-                  onClick={async () => { await apiDel(`/api/tasks/${ta}/${id}/attempts/${r.student_id}`); reload() }}>Təkrar icazə</AsyncBtn>}</span>
+                  onClick={async () => { await apiDel(`/api/tasks/${ta}/${id}/attempts/${r.student_id}`); reload() }}>{t('Təkrar icazə')}</AsyncBtn>}</span>
             </div>))}
-            {rows.length === 0 && <div className="empty">Uyğun şagird yoxdur.</div>}
+            {rows.length === 0 && <div className="empty">{t('Uyğun şagird yoxdur.')}</div>}
           </div>
-          {d.task.kind === 'sinaq' ? <p className="small muted">Sınaq imtahanı formativ jurnala köçürülmür – nəticə «Sınaq imtahanları» bölməsində (jurnal və reytinq).</p>
+          {d.task.kind === 'sinaq' ? <p className="small muted">{t('Sınaq imtahanı formativ jurnala köçürülmür – nəticə «Sınaq imtahanları» bölməsində (jurnal və reytinq).')}</p>
             : d.summary['təhvil verib'] > 0 && <ToJournal ta={ta} id={id} opens={d.task.opens_at} />}
           {d.questions.length > 0 && d.summary['təhvil verib'] > 0 && (
-            <section className="panel"><h2>Suallar üzrə</h2>
+            <section className="panel"><h2>{t('Suallar üzrə')}</h2>
               {d.questions.map((x: any) => (
                 <div key={x.index} className="row small" style={{ marginBottom: 6, flexWrap: 'nowrap' }}>
                   <span className="grow clamp2">{x.index + 1}. <MathText text={ml(x.text)} /></span>

@@ -7,6 +7,7 @@ import { head, printDoc, table } from '../../print'
 import { useMyLessons } from './common'
 import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
 import { azDT } from '../../ui'
+import { useT, tt } from '../../i18n'
 
 type Sess = { id: number; date: string; weekday: string; start: string; end: string; format: 'əyani' | 'onlayn'; room: string | null; link: string | null
   topics: { plan_lesson_id: number | null; seq: number | null; text: string }[]; goals: string | null; resources: string | null; homework: string | null
@@ -21,29 +22,29 @@ const ST: Record<string, [string, any]> = { planned: ['planlaşdırılıb', unde
 
 /** embedded – «Siniflər və qruplar → Məşğələ qrupları» içində (öz başlığı yoxdur). */
 export default function ExtraCourses({ embedded }: { embedded?: boolean } = {}) {
+  const t = useT()
   const [view, setView] = useState<'active' | 'archived'>('active')
   const [list, err, loading, reload] = useLoad<Course[]>(() => get('/api/extra', view === 'archived' ? { archived: true } : {}), [view])
   const [creating, setCreating] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
   return (
     <>
-      {embedded ? <div className="hub-head"><span className="small muted grow">Əyani və onlayn məşğələ qrupları – öz planı, davamiyyət, statistika (jurnala qiymət yazmır).
-        Qrupa istənilən sinfinizdən şagird əlavə edə və çıxara bilərsiniz.</span><button className="btn primary" onClick={() => setCreating(true)}>+ Yeni məşğələ qrupu</button></div>
-        : <Top title="Əlavə məşğələ" sub="Əyani və onlayn məşğələ kursu – öz perspektiv planı, davamiyyət, statistika (jurnala qiymət yazmır)"
-          actions={<button className="btn primary" onClick={() => setCreating(true)}>+ Yeni kurs</button>} />}
-      <div className="toolbar"><Seg value={view} onChange={setView} options={[['active', 'Kurslar'], ['archived', 'Arxiv']]} /></div>
+      {embedded ? <div className="hub-head"><span className="small muted grow">{t('Əyani və onlayn məşğələ qrupları – öz planı, davamiyyət, statistika (jurnala qiymət yazmır). Qrupa istənilən sinfinizdən şagird əlavə edə və çıxara bilərsiniz.')}</span><button className="btn primary" onClick={() => setCreating(true)}>{t('+ Yeni məşğələ qrupu')}</button></div>
+        : <Top title={t('Əlavə məşğələ')} sub="Əyani və onlayn məşğələ kursu – öz perspektiv planı, davamiyyət, statistika (jurnala qiymət yazmır)"
+          actions={<button className="btn primary" onClick={() => setCreating(true)}>{t('+ Yeni kurs')}</button>} />}
+      <div className="toolbar"><Seg value={view} onChange={setView} options={[['active', t('Kurslar')], ['archived', 'Arxiv']]} /></div>
       <ErrorBox error={err} />
       {loading && !list ? <Loading /> : (
         <div className="grid g2">
-          {list?.length === 0 && <div className="empty">{view === 'archived' ? 'Arxiv boşdur.' : 'Hələ kurs yoxdur. Məs.: «IX – buraxılışa hazırlıq, şənbə 10:00, 12 həftə» və ya «Zəif qrup – təkrar».'}</div>}
+          {list?.length === 0 && <div className="empty">{view === 'archived' ? 'Arxiv boşdur.' : t('Hələ kurs yoxdur. Məs.: «IX – buraxılışa hazırlıq, şənbə 10:00, 12 həftə» və ya «Zəif qrup – təkrar».')}</div>}
           {list?.map(c => (
             <section key={c.id} className="panel click" onClick={() => setOpen(c.id)}>
               <h2>{c.title} <small>{c.format}</small></h2>
-              <p className="small muted" style={{ margin: '0 0 6px' }}>{c.subject} · {c.classes.join(', ')}{c.audience.levels ? ` · ${c.audience.levels.join(', ')} qrup` : ''} · {c.students} şagird</p>
+              <p className="small muted" style={{ margin: '0 0 6px' }}>{c.subject} · {c.classes.join(', ')}{c.audience.levels ? (' · ' + t('{x1} qrup', { x1: c.audience.levels.join(', ') })) : ''} · {c.students} {t('şagird')}</p>
               <p className="small" style={{ margin: '0 0 6px' }}>{c.schedule.map(s => `${DAYS[s.weekday].slice(0, 3)}. ${s.start}–${s.end}`).join(', ')} · {fmtDate(c.starts_on)} – {fmtDate(c.ends_on)}</p>
               <div className="row">
-                <Pill tone="ok">keçirildi {c.held}/{c.sessions - c.cancelled}</Pill>
-                {c.next && <Pill tone="info">növbəti: {fmtDate(c.next.date)} {c.next.start}{c.next.topics.length ? ` · ${c.next.topics[0].text}` : ''}</Pill>}
+                <Pill tone="ok">{t('keçirildi')} {c.held}/{c.sessions - c.cancelled}</Pill>
+                {c.next && <Pill tone="info">{t('növbəti:')} {fmtDate(c.next.date)} {c.next.start}{c.next.topics.length ? ` · ${c.next.topics[0].text}` : ''}</Pill>}
               </div>
             </section>))}
         </div>)}
@@ -55,6 +56,7 @@ export default function ExtraCourses({ embedded }: { embedded?: boolean } = {}) 
 
 // ---------------------------------------------------------------- yeni kurs
 function NewCourse({ onClose, onDone }: { onClose: () => void; onDone: (id: number) => void }) {
+  const t = useT()
   const [lessons] = useMyLessons()
   const [f, setF] = useState(() => {
     const t = localParts(new Date().toISOString())[0]
@@ -74,46 +76,46 @@ function NewCourse({ onClose, onDone }: { onClose: () => void; onDone: (id: numb
         levels: f.audience === 'levels' ? f.levels : null,
         schedule: slots.map(s => ({ weekday: s.weekday, start: s.start, end: s.end, room: s.room || null, link: s.link || null })),
       })
-      toast(`Kurs yaradıldı – ${r.sessions} məşğələ planlaşdırıldı`)
-      if (r.warnings?.length) toast('Diqqət: məktəb cədvəli ilə toqquşma var – kursda baxın')
+      toast(t('Kurs yaradıldı – {sessions} məşğələ planlaşdırıldı', { sessions: r.sessions }))
+      if (r.warnings?.length) toast(t('Diqqət: məktəb cədvəli ilə toqquşma var – kursda baxın'))
       onDone(r.id)
     } catch (e) { setErr(e) }
   }
   return (
-    <Drawer title="Yeni əlavə məşğələ kursu" onClose={onClose}
-      footer={<><span className="grow" /><button className="btn" onClick={onClose}>Ləğv et</button>
-        <button className="btn primary" disabled={!f.title.trim() || !tas.length || !slots.length} onClick={submit}>Yarat və planı qur</button></>}>
+    <Drawer title={t('Yeni əlavə məşğələ kursu')} onClose={onClose}
+      footer={<><span className="grow" /><button className="btn" onClick={onClose}>{t('Ləğv et')}</button>
+        <button className="btn primary" disabled={!f.title.trim() || !tas.length || !slots.length} onClick={submit}>{t('Yarat və planı qur')}</button></>}>
       <div className="stack">
         <div className="fg">
-          <Field label="Ad" full><input value={f.title} maxLength={200} placeholder="məs. IX – buraxılışa hazırlıq" onChange={e => setF({ ...f, title: e.target.value })} /></Field>
-          <Field label="Format"><select value={f.format} onChange={e => setF({ ...f, format: e.target.value })}>
-            <option value="əyani">əyani (məktəbdə)</option><option value="onlayn">onlayn</option><option value="qarışıq">qarışıq</option></select></Field>
-          <Field label="Başlama"><input type="date" value={f.starts_on} onChange={e => setF({ ...f, starts_on: e.target.value })} /></Field>
-          <Field label="Bitmə"><input type="date" value={f.ends_on} onChange={e => setF({ ...f, ends_on: e.target.value })} /></Field>
-          <Field label="Məqsəd" full><textarea value={f.goal} placeholder="məs. kəsrlər və faiz mövzularında boşluqları bağlamaq" onChange={e => setF({ ...f, goal: e.target.value })} /></Field>
+          <Field label={t('Ad')} full><input value={f.title} maxLength={200} placeholder={t('məs. IX – buraxılışa hazırlıq')} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
+          <Field label={t('Format')}><select value={f.format} onChange={e => setF({ ...f, format: e.target.value })}>
+            <option value="əyani">{t('əyani (məktəbdə)')}</option><option value="onlayn">{t('onlayn')}</option><option value="qarışıq">{t('qarışıq')}</option></select></Field>
+          <Field label={t('Başlama')}><input type="date" value={f.starts_on} onChange={e => setF({ ...f, starts_on: e.target.value })} /></Field>
+          <Field label={t('Bitmə')}><input type="date" value={f.ends_on} onChange={e => setF({ ...f, ends_on: e.target.value })} /></Field>
+          <Field label={t('Məqsəd')} full><textarea value={f.goal} placeholder={t('məs. kəsrlər və faiz mövzularında boşluqları bağlamaq')} onChange={e => setF({ ...f, goal: e.target.value })} /></Field>
         </div>
-        <fieldset><legend>Kimə</legend>
+        <fieldset><legend>{t('Kimə')}</legend>
           {avail.map(l => <label key={l.id} className="check"><input type="checkbox" checked={tas.includes(l.id)}
             onChange={e => setTas(s => e.target.checked ? [...s, l.id] : s.filter(x => x !== l.id))} /> {l.class_name} <span className="small muted">· {l.subject}</span></label>)}
           <div className="row" style={{ marginTop: 8 }}>
-            <Seg value={f.audience} onChange={v => setF({ ...f, audience: v })} options={[['all', 'Bütün şagirdlər'], ['levels', 'Səviyyə qrupu']]} />
+            <Seg value={f.audience} onChange={v => setF({ ...f, audience: v })} options={[['all', t('Bütün şagirdlər')], ['levels', t('Səviyyə qrupu')]]} />
             {f.audience === 'levels' && ['Zəif', 'Orta', 'Güclü'].map(k => <label key={k} className="check"><input type="checkbox" checked={f.levels.includes(k)}
               onChange={e => setF({ ...f, levels: e.target.checked ? [...f.levels, k] : f.levels.filter(x => x !== k) })} /> {k}</label>)}
           </div>
-          {f.audience === 'levels' && <p className="small muted">Səviyyə qrupları Jurnal → «Səviyyə qrupları»nda təyin olunur. Şagird öz səviyyəsini görmür – yalnız kursu görür.</p>}
+          {f.audience === 'levels' && <p className="small muted">{t('Səviyyə qrupları Jurnal → «Səviyyə qrupları»nda təyin olunur. Şagird öz səviyyəsini görmür – yalnız kursu görür.')}</p>}
         </fieldset>
-        <fieldset><legend>Həftəlik cədvəl</legend>
+        <fieldset><legend>{t('Həftəlik cədvəl')}</legend>
           {slots.map((s, i) => (
             <div key={i} className="row" style={{ gap: 6, marginBottom: 6 }}>
               <select className="sel" value={s.weekday} onChange={e => setSlot(i, { weekday: Number(e.target.value) })}>{DAYS.map((d, j) => <option key={j} value={j}>{d}</option>)}</select>
               <input type="time" className="sel" value={s.start} onChange={e => setSlot(i, { start: e.target.value })} />
               <input type="time" className="sel" value={s.end} onChange={e => setSlot(i, { end: e.target.value })} />
-              {f.format !== 'onlayn' && <input className="sel" placeholder="otaq" value={s.room} onChange={e => setSlot(i, { room: e.target.value })} style={{ width: 90 }} />}
-              {f.format !== 'əyani' && <input className="sel grow" placeholder="https://meet… (onlayn)" value={s.link} onChange={e => setSlot(i, { link: e.target.value })} />}
-              <button className="btn sm ghost" onClick={() => setSlots(x => x.filter((_, j) => j !== i))} aria-label="Sil">✕</button>
+              {f.format !== 'onlayn' && <input className="sel" placeholder={t('otaq')} value={s.room} onChange={e => setSlot(i, { room: e.target.value })} style={{ width: 90 }} />}
+              {f.format !== 'əyani' && <input className="sel grow" placeholder={t('https://meet… (onlayn)')} value={s.link} onChange={e => setSlot(i, { link: e.target.value })} />}
+              <button className="btn sm ghost" onClick={() => setSlots(x => x.filter((_, j) => j !== i))} aria-label={t('Sil')}>✕</button>
             </div>))}
-          <button className="btn sm" onClick={() => setSlots(x => [...x, { weekday: 2, start: '15:00', end: '16:00', room: '', link: '' }])}>+ gün</button>
-          <p className="small muted">Tarixlər bu cədvəldən avtomatik qurulur, tətil və bayram günləri çıxılır. Qarışıq formatda keçidi olan gün onlayn sayılır.</p>
+          <button className="btn sm" onClick={() => setSlots(x => [...x, { weekday: 2, start: '15:00', end: '16:00', room: '', link: '' }])}>{t('+ gün')}</button>
+          <p className="small muted">{t('Tarixlər bu cədvəldən avtomatik qurulur, tətil və bayram günləri çıxılır. Qarışıq formatda keçidi olan gün onlayn sayılır.')}</p>
         </fieldset>
         <ErrorBox error={err} />
       </div>
@@ -126,6 +128,7 @@ type Cand = { ta_id: number; class_name: string; students: { id: number; full_na
 type LvF = 'all' | 'Zəif' | 'Orta' | 'Güclü' | 'none'
 
 function Members({ id, c, archived, onChange }: { id: number; c: Course; archived: boolean; onChange: () => void }) {
+  const t = useT()
   const [adding, setAdding] = useState(false)
   const [cand, , , reloadCand] = useLoad<Cand[]>(() => (adding ? get(`/api/extra/${id}/candidates`) : Promise.resolve([])), [id, adding])
   const [ta, setTa] = useState<number | ''>('')
@@ -140,44 +143,44 @@ function Members({ id, c, archived, onChange }: { id: number; c: Course; archive
   const members = c.members || []
   return (
     <div className="stack">
-      <div className="row"><b className="grow">{members.length} şagird</b>
+      <div className="row"><b className="grow">{members.length} {t('şagird')}</b>
         {!archived && <button className="btn sm primary" onClick={() => { setAdding(a => !a); setPick([]) }}>{adding ? 'Bağla' : '+ Şagird əlavə et'}</button>}</div>
       {adding && (
         <section className="panel" style={{ padding: 12 }}>
           <div className="row" style={{ gap: 8, marginBottom: 8 }}>
-            <label className="hub-pick" style={{ flex: '1 1 200px' }}><span>Sinif</span>
+            <label className="hub-pick" style={{ flex: '1 1 200px' }}><span>{t('Sinif')}</span>
               <select value={cls?.ta_id ?? ''} onChange={e => { setTa(Number(e.target.value)); setPick([]); setLvf('all') }}>
-                {(cand || []).map(x => <option key={x.ta_id} value={x.ta_id}>{x.class_name} · {x.students.filter(s => !s.member).length} əlavə oluna bilər</option>)}
+                {(cand || []).map(x => <option key={x.ta_id} value={x.ta_id}>{x.class_name} · {x.students.filter(s => !s.member).length} {t('əlavə oluna bilər')}</option>)}
               </select></label>
           </div>
-          {cand && freeAll.length > 0 && <div style={{ marginBottom: 8 }}><Chips label="Səviyyə" value={lvf} onChange={v => { setLvf(v); setPick([]) }}
+          {cand && freeAll.length > 0 && <div style={{ marginBottom: 8 }}><Chips label={t('Səviyyə')} value={lvf} onChange={v => { setLvf(v); setPick([]) }}
             options={[['all', 'Hamısı', lvN('all')], ['Zəif', 'Zəif', lvN('Zəif')], ['Orta', 'Orta', lvN('Orta')], ['Güclü', 'Güclü', lvN('Güclü')], ['none', 'səviyyəsiz', lvN('none')]]} /></div>}
-          {!cand ? <Loading /> : free.length === 0 ? <p className="small muted" style={{ margin: 0 }}>{freeAll.length ? 'Bu səviyyədə əlavə ediləsi şagird yoxdur.' : 'Bu sinfin bütün şagirdləri artıq qrupdadır.'}</p> : <>
+          {!cand ? <Loading /> : free.length === 0 ? <p className="small muted" style={{ margin: 0 }}>{freeAll.length ? t('Bu səviyyədə əlavə ediləsi şagird yoxdur.') : t('Bu sinfin bütün şagirdləri artıq qrupdadır.')}</p> : <>
             <div className="row" style={{ gap: 6, marginBottom: 6 }}>
-              <button className="btn sm ghost" onClick={() => setPick(pick.length === free.length ? [] : free.map(s => s.id))}>{pick.length === free.length ? 'Heç biri' : lvf === 'all' ? 'Hamısını seç' : `Bütün «${lvf === 'none' ? 'səviyyəsiz' : lvf}» seç`}</button>
-              <span className="small muted">seçilib {pick.length}</span></div>
+              <button className="btn sm ghost" onClick={() => setPick(pick.length === free.length ? [] : free.map(s => s.id))}>{pick.length === free.length ? 'Heç biri' : lvf === 'all' ? 'Hamısını seç' : t('Bütün «{x1}» seç', { x1: lvf === 'none' ? 'səviyyəsiz' : lvf })}</button>
+              <span className="small muted">{t('seçilib')} {pick.length}</span></div>
             <div className="jlist" style={{ maxHeight: 260, overflow: 'auto' }}>{free.map(s => (
               <label key={s.id} className="check" style={{ padding: '0 12px', minHeight: 36 }}>
                 <input type="checkbox" checked={pick.includes(s.id)} onChange={e => setPick(p => e.target.checked ? [...p, s.id] : p.filter(x => x !== s.id))} /> {s.full_name}
                 {s.level && <> <Pill tone={levelTone(s.level)}>{s.level}</Pill></>}</label>))}</div>
             <AsyncBtn className="btn primary" disabled={!pick.length} ok="Qrupa əlavə olundu"
-              onClick={async () => { await post(`/api/extra/${id}/members`, { student_ids: pick }); setPick([]); reloadCand(); onChange() }}>Qrupa əlavə et ({pick.length})</AsyncBtn></>}
-          <p className="small muted" style={{ margin: '8px 0 0' }}>Yalnız seçdiyiniz şagirdlər qoşulur – sinfin qalanı yox. Səviyyə (Zəif / Orta / Güclü) – Jurnal → «Səviyyə qrupları»ndan;
-            zəif və güclü qrupları ayrıca məşğələ qrupu kimi saxlamaq üçün hər qrupa öz səviyyəsini əlavə edin.</p>
+              onClick={async () => { await post(`/api/extra/${id}/members`, { student_ids: pick }); setPick([]); reloadCand(); onChange() }}>{t('Qrupa əlavə et (')}{pick.length})</AsyncBtn></>}
+          <p className="small muted" style={{ margin: '8px 0 0' }}>{t('Yalnız seçdiyiniz şagirdlər qoşulur – sinfin qalanı yox. Səviyyə (Zəif / Orta / Güclü) – Jurnal → «Səviyyə qrupları»ndan; zəif və güclü qrupları ayrıca məşğələ qrupu kimi saxlamaq üçün hər qrupa öz səviyyəsini əlavə edin.')}</p>
         </section>)}
       <div className="jlist">{members.map(m => (
         <div key={m.student_id} className="row small" style={{ padding: '6px 12px' }}>
           <b className="grow">{m.full_name}</b><Pill tone="info">{m.class_name}</Pill>
           {!archived && members.length > 1 && <AsyncBtn className="btn sm ghost" ok="Qrupdan çıxarıldı"
-            onClick={async () => { await apiDel(`/api/extra/${id}/members/${m.student_id}`); onChange(); if (adding) reloadCand() }}>✕ çıxar</AsyncBtn>}
+            onClick={async () => { await apiDel(`/api/extra/${id}/members/${m.student_id}`); onChange(); if (adding) reloadCand() }}>{t('✕ çıxar')}</AsyncBtn>}
         </div>))}</div>
-      {members.length > 0 && <p className="small muted" style={{ margin: 0 }}>Çıxarılan şagirdin keçmiş davamiyyəti qalır; növbəti məşğələləri artıq görmür.</p>}
+      {members.length > 0 && <p className="small muted" style={{ margin: 0 }}>{t('Çıxarılan şagirdin keçmiş davamiyyəti qalır; növbəti məşğələləri artıq görmür.')}</p>}
     </div>
   )
 }
 
 /** Şagird kartı üçün: müəllimin məşğələ qrupları – işarələ: əlavə, götür: çıxar. */
 export function StudentGroups({ studentId }: { studentId: number }) {
+  const t = useT()
   const [list, err, , reload] = useLoad<{ id: number; title: string; subject: string; format: string; member: boolean }[]>(() => get(`/api/extra/student/${studentId}`), [studentId])
   const [busy, setBusy] = useState<number | null>(null)
   const toggle = async (g: { id: number; member: boolean }) => {
@@ -185,14 +188,14 @@ export function StudentGroups({ studentId }: { studentId: number }) {
     try {
       if (g.member) await apiDel(`/api/extra/${g.id}/members/${studentId}`)
       else await post(`/api/extra/${g.id}/members`, { student_ids: [studentId] })
-      toast(g.member ? 'Qrupdan çıxarıldı' : 'Qrupa əlavə olundu'); reload()
+      toast(g.member ? t('Qrupdan çıxarıldı') : t('Qrupa əlavə olundu')); reload()
     } catch (e) { toast('Xəta: ' + (e as Error).message) } finally { setBusy(null) }
   }
   return (
     <section className="panel" style={{ marginTop: 12 }}>
-      <h2>Məşğələ qrupları</h2>
+      <h2>{t('Məşğələ qrupları')}</h2>
       <ErrorBox error={err} />
-      {!list ? <Loading /> : list.length === 0 ? <p className="small muted" style={{ margin: 0 }}>Bu şagirdin fənnindən məşğələ qrupunuz yoxdur – «Siniflər və qruplar → Məşğələ qrupları».</p>
+      {!list ? <Loading /> : list.length === 0 ? <p className="small muted" style={{ margin: 0 }}>{t('Bu şagirdin fənnindən məşğələ qrupunuz yoxdur – «Siniflər və qruplar → Məşğələ qrupları».')}</p>
         : list.map(g => <label key={g.id} className="check"><input type="checkbox" checked={g.member} disabled={busy === g.id} onChange={() => toggle(g)} />
           {g.title} <span className="small muted">· {g.subject} · {g.format}</span></label>)}
     </section>
@@ -201,6 +204,7 @@ export function StudentGroups({ studentId }: { studentId: number }) {
 
 // ---------------------------------------------------------------- kurs: Plan | Davamiyyət | Statistika
 function CourseView({ id, archived, onClose }: { id: number; archived: boolean; onClose: () => void }) {
+  const t = useT()
   const [c, err, , reload] = useLoad<Course>(() => get(`/api/extra/${id}`), [id])
   const [tab, setTab] = useState<'plan' | 'att' | 'stats'>('plan')
   const [edit, setEdit] = useState<Sess | 'new' | null>(null)
@@ -211,35 +215,35 @@ function CourseView({ id, archived, onClose }: { id: number; archived: boolean; 
     table(['№', 'Tarix', 'Vaxt', 'Format', 'Mövzu', 'Ev tapşırığı', 'Status'], (c.session_list || []).map((s, i) => [i + 1, `${fmtDate(s.date)} ${s.weekday}`, `${s.start}–${s.end}`,
       s.format === 'onlayn' ? 'onlayn' : `əyani${s.room ? ' · ' + s.room : ''}`, s.topics.map(t => t.text).join('; '), s.homework || '', ST[s.status][0]])) })
   return (
-    <Drawer title={c ? c.title : 'Kurs'} onClose={onClose}
-      footer={c && <><button className="btn" onClick={print}>Planı çap et</button><span className="grow" />
-        {archived ? <AsyncBtn className="btn" ok="Geri qaytarıldı" onClick={async () => { await post(`/api/extra/${id}/restore`); onClose() }}>Geri qaytar</AsyncBtn>
-          : <AsyncBtn className="btn" ok="Arxivə köçürüldü" onClick={async () => { await post(`/api/extra/${id}/archive`); onClose() }}>Arxivə</AsyncBtn>}</>}>
+    <Drawer title={c ? c.title : t('Kurs')} onClose={onClose}
+      footer={c && <><button className="btn" onClick={print}>{t('Planı çap et')}</button><span className="grow" />
+        {archived ? <AsyncBtn className="btn" ok="Geri qaytarıldı" onClick={async () => { await post(`/api/extra/${id}/restore`); onClose() }}>{t('Geri qaytar')}</AsyncBtn>
+          : <AsyncBtn className="btn" ok="Arxivə köçürüldü" onClick={async () => { await post(`/api/extra/${id}/archive`); onClose() }}>{t('Arxivə')}</AsyncBtn>}</>}>
       <ErrorBox error={err} />
       {!c ? <Loading /> : (
         <div className="stack">
-          <p className="small muted" style={{ margin: 0 }}>{c.subject} · {c.classes.join(', ')}{c.audience.levels ? ` · ${c.audience.levels.join(', ')} qrup` : ''} · {c.students} şagird · {c.format}{c.goal ? ` · ${c.goal}` : ''}</p>
+          <p className="small muted" style={{ margin: 0 }}>{c.subject} · {c.classes.join(', ')}{c.audience.levels ? (' · ' + t('{x1} qrup', { x1: c.audience.levels.join(', ') })) : ''} · {c.students} {t('şagird ·')} {c.format}{c.goal ? ` · ${c.goal}` : ''}</p>
           {(c.warnings || []).length > 0 && <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>
-            Məktəb cədvəli ilə toqquşma: {c.warnings!.join('; ')}</div>}
-          <Seg value={tab} onChange={setTab} options={[['plan', 'Plan'], ['att', 'Şagirdlər'], ['stats', 'Statistika']]} />
+            {t('Məktəb cədvəli ilə toqquşma:')} {c.warnings!.join('; ')}</div>}
+          <Seg value={tab} onChange={setTab} options={[['plan', 'Plan'], ['att', 'Şagirdlər'], ['stats', t('Statistika')]]} />
           {tab === 'plan' && <>
-            <div className="row"><button className="btn sm" onClick={() => setBulk(true)}>Mövzuları paylaşdır</button>
-              <button className="btn sm" onClick={() => setEdit('new')}>+ Əlavə məşğələ</button></div>
+            <div className="row"><button className="btn sm" onClick={() => setBulk(true)}>{t('Mövzuları paylaşdır')}</button>
+              <button className="btn sm" onClick={() => setEdit('new')}>{t('+ Əlavə məşğələ')}</button></div>
             <div className="jlist">
               {(c.session_list || []).map((s, i) => (
                 <div key={s.id} className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 4, opacity: s.status === 'cancelled' ? 0.6 : 1 }}>
                   <div className="row"><b>№{i + 1} · {fmtDate(s.date)} {s.weekday} {s.start}–{s.end}</b>
                     <Pill tone={s.format === 'onlayn' ? 'info' : undefined}>{s.format}{s.room ? ` · ${s.room}` : ''}</Pill>
                     <Pill tone={ST[s.status][1]}>{ST[s.status][0]}{s.status === 'held' ? ` · ${s.present}/${s.students}` : ''}</Pill>
-                    {s.joined > 0 && s.status === 'planned' && <Pill tone="ok">qoşulub: {s.joined}</Pill>}
-                    {s.batch_id && <Pill tone="acc">test</Pill>}</div>
-                  <span className="small">{s.topics.length ? s.topics.map(t => (t.seq ? `№${t.seq} ` : '') + t.text).join(' · ') : <span className="muted">mövzu təyin edilməyib</span>}</span>
-                  {s.materials.length > 0 && <span className="small">Material: {s.materials.map(m => m.title).join(' · ')}</span>}
-                  {(s.homework || s.note) && <span className="small muted">{s.homework ? `Ev tapşırığı: ${s.homework}` : ''}{s.note ? ` · ${s.note}` : ''}</span>}
+                    {s.joined > 0 && s.status === 'planned' && <Pill tone="ok">{t('qoşulub:')} {s.joined}</Pill>}
+                    {s.batch_id && <Pill tone="acc">{t('test')}</Pill>}</div>
+                  <span className="small">{s.topics.length ? s.topics.map(t => (t.seq ? `№${t.seq} ` : '') + t.text).join(' · ') : <span className="muted">{t('mövzu təyin edilməyib')}</span>}</span>
+                  {s.materials.length > 0 && <span className="small">{t('Material:')} {s.materials.map(m => m.title).join(' · ')}</span>}
+                  {(s.homework || s.note) && <span className="small muted">{s.homework ? t('Ev tapşırığı: {homework}', { homework: s.homework }) : ''}{s.note ? ` · ${s.note}` : ''}</span>}
                   {!archived && <div className="row" style={{ gap: 6 }}>
-                    <button className="btn sm" onClick={() => setEdit(s)}>Redaktə</button>
-                    {s.status !== 'cancelled' && <button className="btn sm" onClick={() => setHeld(s)}>{s.status === 'held' ? 'Davamiyyət' : 'Keçirildi'}</button>}
-                    {!s.batch_id && s.status !== 'cancelled' && <button className="btn sm ghost" onClick={() => setTest(s)}>+ Test</button>}
+                    <button className="btn sm" onClick={() => setEdit(s)}>{t('Redaktə')}</button>
+                    {s.status !== 'cancelled' && <button className="btn sm" onClick={() => setHeld(s)}>{s.status === 'held' ? 'Davamiyyət' : t('Keçirildi')}</button>}
+                    {!s.batch_id && s.status !== 'cancelled' && <button className="btn sm ghost" onClick={() => setTest(s)}>{t('+ Test')}</button>}
                   </div>}
                 </div>))}
             </div></>}
@@ -255,6 +259,7 @@ function CourseView({ id, archived, onClose }: { id: number; archived: boolean; 
 }
 
 function SessionEdit({ course, s, onClose, onDone }: { course: Course; s: Sess | null; onClose: () => void; onDone: () => void }) {
+  const t = useT()
   const [sug] = useLoad<{ suggested: any[]; plan: any[] }>(() => get(`/api/extra/${course.id}/suggest-topics`), [course.id])
   const [f, setF] = useState(() => ({
     date: s?.date || localParts(new Date().toISOString())[0], start: s?.start || '10:00', end: s?.end || '11:00',
@@ -277,47 +282,47 @@ function SessionEdit({ course, s, onClose, onDone }: { course: Course; s: Sess |
     try {
       if (s) await put(`/api/extra/${course.id}/sessions/${s.id}`, body)
       else await post(`/api/extra/${course.id}/sessions`, body)
-      toast('Məşğələ yadda saxlanıldı'); onDone()
+      toast(t('Məşğələ yadda saxlanıldı')); onDone()
     } catch (e) { setErr(e) }
   }
   return (
-    <Drawer title={s ? `Məşğələ – ${fmtDate(s.date)}` : 'Əlavə məşğələ'} onClose={onClose}
-      footer={<>{s && s.status !== 'held' && <AsyncBtn className="btn ghost" ok="Silindi" onClick={async () => { await apiDel(`/api/extra/${course.id}/sessions/${s.id}`); onDone() }}>Sil</AsyncBtn>}
-        <span className="grow" /><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" onClick={save}>Yadda saxla</button></>}>
+    <Drawer title={s ? t('Məşğələ – {x1}', { x1: fmtDate(s.date) }) : 'Əlavə məşğələ'} onClose={onClose}
+      footer={<>{s && s.status !== 'held' && <AsyncBtn className="btn ghost" ok="Silindi" onClick={async () => { await apiDel(`/api/extra/${course.id}/sessions/${s.id}`); onDone() }}>{t('Sil')}</AsyncBtn>}
+        <span className="grow" /><button className="btn" onClick={onClose}>{t('Ləğv et')}</button><button className="btn primary" onClick={save}>{t('Yadda saxla')}</button></>}>
       <div className="stack">
         <div className="fg">
-          <Field label="Tarix"><input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></Field>
-          <Field label="Format"><select value={f.format} onChange={e => setF({ ...f, format: e.target.value as any })}><option value="əyani">əyani</option><option value="onlayn">onlayn</option></select></Field>
-          <Field label="Başlama"><input type="time" value={f.start} onChange={e => setF({ ...f, start: e.target.value })} /></Field>
-          <Field label="Bitmə"><input type="time" value={f.end} onChange={e => setF({ ...f, end: e.target.value })} /></Field>
-          {f.format === 'əyani' ? <Field label="Otaq"><input value={f.room} onChange={e => setF({ ...f, room: e.target.value })} /></Field>
-            : <Field label="Keçid (https://)" full><input value={f.link} placeholder="https://meet.google.com/…" onChange={e => setF({ ...f, link: e.target.value })} /></Field>}
+          <Field label={t('Tarix')}><input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></Field>
+          <Field label={t('Format')}><select value={f.format} onChange={e => setF({ ...f, format: e.target.value as any })}><option value="əyani">{t('əyani')}</option><option value="onlayn">{t('onlayn')}</option></select></Field>
+          <Field label={t('Başlama')}><input type="time" value={f.start} onChange={e => setF({ ...f, start: e.target.value })} /></Field>
+          <Field label={t('Bitmə')}><input type="time" value={f.end} onChange={e => setF({ ...f, end: e.target.value })} /></Field>
+          {f.format === 'əyani' ? <Field label={t('Otaq')}><input value={f.room} onChange={e => setF({ ...f, room: e.target.value })} /></Field>
+            : <Field label={t('Keçid (https://)')} full><input value={f.link} placeholder="https://meet.google.com/…" onChange={e => setF({ ...f, link: e.target.value })} /></Field>}
         </div>
-        <fieldset><legend>Mövzular</legend>
-          {topics.map((t, i) => <div key={i} className="row small"><span className="grow">{label(t)}</span><button className="btn sm ghost" onClick={() => setTopics(x => x.filter((_, j) => j !== i))} aria-label="Sil">✕</button></div>)}
+        <fieldset><legend>{t('Mövzular')}</legend>
+          {topics.map((t, i) => <div key={i} className="row small"><span className="grow">{label(t)}</span><button className="btn sm ghost" onClick={() => setTopics(x => x.filter((_, j) => j !== i))} aria-label={tt('Sil')}>✕</button></div>)}
           <select className="sel" value="" onChange={e => { const v = Number(e.target.value); if (v) setTopics(x => [...x, { plan_lesson_id: v, text: '' }]) }}>
-            <option value="">+ Perspektiv plandan mövzu</option>
-            {sug?.suggested.length ? <optgroup label="Təklif (təkrar / zəif nəticə)">{sug.suggested.map(x => <option key={'s' + x.plan_lesson_id} value={x.plan_lesson_id}>№{x.seq} {x.topic} – {x.reason}</option>)}</optgroup> : null}
-            <optgroup label="Plan">{sug?.plan.map(x => <option key={x.id} value={x.id}>№{x.seq} {x.topic}</option>)}</optgroup>
+            <option value="">{t('+ Perspektiv plandan mövzu')}</option>
+            {sug?.suggested.length ? <optgroup label={t('Təklif (təkrar / zəif nəticə)')}>{sug.suggested.map(x => <option key={'s' + x.plan_lesson_id} value={x.plan_lesson_id}>№{x.seq} {x.topic} – {x.reason}</option>)}</optgroup> : null}
+            <optgroup label={t('Plan')}>{sug?.plan.map(x => <option key={x.id} value={x.id}>№{x.seq} {x.topic}</option>)}</optgroup>
           </select>
-          <div className="row" style={{ marginTop: 6 }}><input className="sel grow" placeholder="və ya sərbəst mövzu (məs. sınaq səhvlərinin təhlili)" value={free} onChange={e => setFree(e.target.value)} />
-            <button className="btn sm" disabled={!free.trim()} onClick={() => { setTopics(x => [...x, { plan_lesson_id: null, text: free.trim() }]); setFree('') }}>Əlavə et</button></div>
+          <div className="row" style={{ marginTop: 6 }}><input className="sel grow" placeholder={t('və ya sərbəst mövzu (məs. sınaq səhvlərinin təhlili)')} value={free} onChange={e => setFree(e.target.value)} />
+            <button className="btn sm" disabled={!free.trim()} onClick={() => { setTopics(x => [...x, { plan_lesson_id: null, text: free.trim() }]); setFree('') }}>{t('Əlavə et')}</button></div>
         </fieldset>
-        <fieldset><legend>Materiallar <span className="small muted">(«Materiallar» bölmənizdən)</span></legend>
-          {!mats ? <Loading /> : mats.length === 0 ? <p className="small muted">Bu siniflər üçün material yoxdur – əvvəl «Materiallar» bölməsində əlavə edin.</p>
+        <fieldset><legend>{t('Materiallar')} <span className="small muted">{t('(«Materiallar» bölmənizdən)')}</span></legend>
+          {!mats ? <Loading /> : mats.length === 0 ? <p className="small muted">{t('Bu siniflər üçün material yoxdur – əvvəl «Materiallar» bölməsində əlavə edin.')}</p>
             : <div style={{ maxHeight: 200, overflow: 'auto' }}>{mats.map(m => (
               <label key={m.id} className="check"><input type="checkbox" checked={matIds.includes(m.id)} onChange={e => setMatIds(x => e.target.checked ? [...x, m.id] : x.filter(v => v !== m.id))} />
-                {m.title} <span className="small muted">· {m.kind === 'video' ? 'video' : m.kind === 'link' ? 'keçid' : m.kind === 'task' ? 'tapşırıq' : 'qeyd'}{m.student_ids ? ' · seçilmiş şagirdlərə' : ''}</span></label>))}</div>}
-          <p className="small muted" style={{ margin: '6px 0 0' }}>Şagird yalnız özünə açıq olan materialları görür.</p>
+                {m.title} <span className="small muted">· {m.kind === 'video' ? 'video' : m.kind === 'link' ? 'keçid' : m.kind === 'task' ? 'tapşırıq' : 'qeyd'}{m.student_ids ? (' · ' + t('seçilmiş şagirdlərə')) : ''}</span></label>))}</div>}
+          <p className="small muted" style={{ margin: '6px 0 0' }}>{t('Şagird yalnız özünə açıq olan materialları görür.')}</p>
         </fieldset>
         <div className="fg">
-          <Field label="Məqsəd" full><textarea value={f.goals} onChange={e => setF({ ...f, goals: e.target.value })} /></Field>
-          <Field label="Əlavə qeyd / keçidlər" full><textarea value={f.resources} onChange={e => setF({ ...f, resources: e.target.value })} /></Field>
-          <Field label="Ev tapşırığı" full><input value={f.homework} onChange={e => setF({ ...f, homework: e.target.value })} /></Field>
-          <Field label="Status"><select value={f.status} onChange={e => setF({ ...f, status: e.target.value as any })}>
-            <option value="planned">planlaşdırılıb</option><option value="cancelled">ləğv edildi</option>{s?.status === 'held' && <option value="held">keçirildi</option>}</select></Field>
-          <Field label={f.status === 'cancelled' ? 'Ləğv səbəbi' : 'Qeyd'}><input value={f.note} maxLength={300} onChange={e => setF({ ...f, note: e.target.value })} /></Field>
-          {s?.status === 'held' && f.format === 'onlayn' && <Field label="Yazı keçidi (istəyə görə)" full><input value={f.recording_url} onChange={e => setF({ ...f, recording_url: e.target.value })} /></Field>}
+          <Field label={t('Məqsəd')} full><textarea value={f.goals} onChange={e => setF({ ...f, goals: e.target.value })} /></Field>
+          <Field label={t('Əlavə qeyd / keçidlər')} full><textarea value={f.resources} onChange={e => setF({ ...f, resources: e.target.value })} /></Field>
+          <Field label={t('Ev tapşırığı')} full><input value={f.homework} onChange={e => setF({ ...f, homework: e.target.value })} /></Field>
+          <Field label={t('Status')}><select value={f.status} onChange={e => setF({ ...f, status: e.target.value as any })}>
+            <option value="planned">{t('planlaşdırılıb')}</option><option value="cancelled">{t('ləğv edildi')}</option>{s?.status === 'held' && <option value="held">{t('keçirildi')}</option>}</select></Field>
+          <Field label={f.status === 'cancelled' ? t('Ləğv səbəbi') : 'Qeyd'}><input value={f.note} maxLength={300} onChange={e => setF({ ...f, note: e.target.value })} /></Field>
+          {s?.status === 'held' && f.format === 'onlayn' && <Field label={t('Yazı keçidi (istəyə görə)')} full><input value={f.recording_url} onChange={e => setF({ ...f, recording_url: e.target.value })} /></Field>}
         </div>
         <ErrorBox error={err} />
       </div>
@@ -326,20 +331,21 @@ function SessionEdit({ course, s, onClose, onDone }: { course: Course; s: Sess |
 }
 
 function Held({ course, s, onClose, onDone }: { course: number; s: Sess; onClose: () => void; onDone: () => void }) {
+  const t = useT()
   const [rows, err] = useLoad<any[]>(() => get(`/api/extra/${course}/sessions/${s.id}/attendance`), [course, s.id])
   const [st, setSt] = useState<Record<number, string>>({})
   const val = (r: any) => st[r.student_id] ?? r.status ?? (r.joined_at || s.format === 'əyani' ? 'var' : 'yox')
   return (
-    <Drawer title={`Davamiyyət – ${fmtDate(s.date)} ${s.start}`} onClose={onClose}
-      footer={<><span className="grow" /><button className="btn" onClick={onClose}>Ləğv et</button>
+    <Drawer title={t('Davamiyyət – {x1} {start}', { x1: fmtDate(s.date), start: s.start })} onClose={onClose}
+      footer={<><span className="grow" /><button className="btn" onClick={onClose}>{t('Ləğv et')}</button>
         <AsyncBtn className="btn primary" ok="Keçirildi kimi qeyd olundu" onClick={async () => {
           await post(`/api/extra/${course}/sessions/${s.id}/held`, { attendance: Object.fromEntries((rows || []).map(r => [r.student_id, val(r)])) }); onDone()
-        }}>Yadda saxla</AsyncBtn></>}>
+        }}>{t('Yadda saxla')}</AsyncBtn></>}>
       <ErrorBox error={err} />
-      {s.format === 'onlayn' && <p className="small muted">Onlayn «Qoşul» basanlar avtomatik «var» təklif olunur – yoxlayıb təsdiqləyin.</p>}
+      {s.format === 'onlayn' && <p className="small muted">{t('Onlayn «Qoşul» basanlar avtomatik «var» təklif olunur – yoxlayıb təsdiqləyin.')}</p>}
       {!rows ? <Loading /> : rows.map(r => (
         <div key={r.student_id} className="row" style={{ borderTop: '1px solid var(--line)', padding: '6px 0' }}>
-          <span className="grow small"><b>{r.full_name}</b>{r.joined_at ? <span className="muted"> · qoşulub {azDT(new Date(r.joined_at), { hour: '2-digit', minute: '2-digit' })}</span> : null}</span>
+          <span className="grow small"><b>{r.full_name}</b>{r.joined_at ? <span className="muted"> {t('· qoşulub')} {azDT(new Date(r.joined_at), { hour: '2-digit', minute: '2-digit' })}</span> : null}</span>
           <Seg value={val(r)} onChange={v => setSt(x => ({ ...x, [r.student_id]: v }))} options={[['var', 'var'], ['gecikdi', 'gecikdi'], ['yox', 'yox'], ['üzrlü', 'üzrlü']]} />
         </div>))}
     </Drawer>
@@ -347,32 +353,33 @@ function Held({ course, s, onClose, onDone }: { course: number; s: Sess; onClose
 }
 
 function SessionTest({ course, s, onClose, onDone }: { course: number; s: Sess; onClose: () => void; onDone: () => void }) {
+  const t = useT()
   const [qs, setQs] = useState<Q[]>([])
-  const [f, setF] = useState({ title: `Məşğələ testi – ${fmtDate(s.date)}`, d1: s.date, t1: s.start, d2: s.date, t2: '22:00', duration: 15 })
+  const [f, setF] = useState({ title: t('Məşğələ testi – {x1}', { x1: fmtDate(s.date) }), d1: s.date, t1: s.start, d2: s.date, t2: '22:00', duration: 15 })
   const [err, setErr] = useState<unknown>()
   const has = (k: string) => qs.some(q => q.key === k)
   const add = (list: Q[]) => setQs(cur => [...cur, ...list.filter(q => !cur.some(c => c.key === q.key))])
   const remove = (k: string) => setQs(cur => cur.filter(q => q.key !== k))
   return (
-    <Drawer title="Məşğələ testi" onClose={onClose}
-      footer={<><span className="small muted grow">{qs.length} sual</span><button className="btn" onClick={onClose}>Ləğv et</button>
+    <Drawer title={t('Məşğələ testi')} onClose={onClose}
+      footer={<><span className="small muted grow">{qs.length} {t('sual')}</span><button className="btn" onClick={onClose}>{t('Ləğv et')}</button>
         <button className="btn primary" disabled={!qs.length} onClick={async () => {
           try {
             await post(`/api/extra/${course}/sessions/${s.id}/test`, { title: f.title, duration_min: f.duration, opens_at: iso(f.d1, f.t1), closes_at: iso(f.d2, f.t2), bank_ids: [], custom: qs.map(toCustom) })
-            toast('Test kursun şagirdlərinə göndərildi'); onDone()
+            toast(t('Test kursun şagirdlərinə göndərildi')); onDone()
           } catch (e) { setErr(e) }
-        }}>Göndər</button></>}>
+        }}>{t('Göndər')}</button></>}>
       <div className="stack">
-        <p className="small muted" style={{ margin: 0 }}>5–8 sual məşğələnin effektini ölçür. Yalnız kursun şagirdləri görür; nəticə jurnala yazılmır – statistikaya düşür.</p>
+        <p className="small muted" style={{ margin: 0 }}>{t('5–8 sual məşğələnin effektini ölçür. Yalnız kursun şagirdləri görür; nəticə jurnala yazılmır – statistikaya düşür.')}</p>
         <div className="fg">
-          <Field label="Ad" full><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
-          <Field label="Açılır"><input type="time" value={f.t1} onChange={e => setF({ ...f, t1: e.target.value })} /></Field>
-          <Field label="Bağlanır (tarix)"><input type="date" value={f.d2} onChange={e => setF({ ...f, d2: e.target.value })} /></Field>
-          <Field label="Bağlanır (saat)"><input type="time" value={f.t2} onChange={e => setF({ ...f, t2: e.target.value })} /></Field>
-          <Field label="Müddət (dəq)"><input type="number" min={1} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+          <Field label={t('Ad')} full><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
+          <Field label={t('Açılır')}><input type="time" value={f.t1} onChange={e => setF({ ...f, t1: e.target.value })} /></Field>
+          <Field label={t('Bağlanır (tarix)')}><input type="date" value={f.d2} onChange={e => setF({ ...f, d2: e.target.value })} /></Field>
+          <Field label={t('Bağlanır (saat)')}><input type="time" value={f.t2} onChange={e => setF({ ...f, t2: e.target.value })} /></Field>
+          <Field label={t('Müddət (dəq)')}><input type="number" min={1} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
         </div>
         <BankPicker has={has} add={add} remove={remove} onTitle={() => {}} disabled={false} first={false} kinds={['movzu', 'diaqnostik']} />
-        <p className="small">Seçilib: {qs.length} sual</p>
+        <p className="small">{t('Seçilib:')} {qs.length} {t('sual')}</p>
         <OwnQuestion onAdd={q => add([q])} />
         <ErrorBox error={err} />
       </div>
@@ -381,22 +388,23 @@ function SessionTest({ course, s, onClose, onDone }: { course: number; s: Sess; 
 }
 
 function BulkTopics({ course, onClose, onDone }: { course: number; onClose: () => void; onDone: () => void }) {
+  const t = useT()
   const [sug] = useLoad<{ suggested: any[]; plan: any[] }>(() => get(`/api/extra/${course}/suggest-topics`), [course])
   const [sel, setSel] = useState<number[]>([])
   const [per, setPer] = useState(1)
   return (
-    <Drawer title="Mövzuları məşğələlərə paylaşdır" onClose={onClose}
-      footer={<><span className="small muted grow">{sel.length} mövzu</span><button className="btn" onClick={onClose}>Ləğv et</button>
+    <Drawer title={t('Mövzuları məşğələlərə paylaşdır')} onClose={onClose}
+      footer={<><span className="small muted grow">{sel.length} {t('mövzu')}</span><button className="btn" onClick={onClose}>{t('Ləğv et')}</button>
         <AsyncBtn className="btn primary" disabled={!sel.length} onClick={async () => {
           const r = await post<any>(`/api/extra/${course}/topics/bulk`, { plan_lesson_ids: sel, per_session: per })
-          toast(`${r.sessions} məşğələyə paylaşdırıldı${r.left ? ` · ${r.left} mövzu yer tapmadı` : ''}`); onDone()
-        }}>Paylaşdır</AsyncBtn></>}>
-      <p className="small muted">Seçilən mövzular mövzusu olmayan növbəti planlaşdırılmış məşğələlərə ardıcıl düşür.</p>
-      <Field label="Bir məşğələyə"><select value={per} onChange={e => setPer(Number(e.target.value))}>{[1, 2, 3].map(n => <option key={n} value={n}>{n} mövzu</option>)}</select></Field>
-      {sug?.suggested.length ? <><h3 className="small">Təklif olunan (təkrar / zəif nəticə)</h3>
+          toast(t('{sessions} məşğələyə paylaşdırıldı{x2}', { sessions: r.sessions, x2: r.left ? ` · ${r.left} mövzu yer tapmadı` : '' })); onDone()
+        }}>{t('Paylaşdır')}</AsyncBtn></>}>
+      <p className="small muted">{t('Seçilən mövzular mövzusu olmayan növbəti planlaşdırılmış məşğələlərə ardıcıl düşür.')}</p>
+      <Field label={t('Bir məşğələyə')}><select value={per} onChange={e => setPer(Number(e.target.value))}>{[1, 2, 3].map(n => <option key={n} value={n}>{n} {t('mövzu')}</option>)}</select></Field>
+      {sug?.suggested.length ? <><h3 className="small">{t('Təklif olunan (təkrar / zəif nəticə)')}</h3>
         {sug.suggested.map(x => <label key={'s' + x.plan_lesson_id} className="check"><input type="checkbox" checked={sel.includes(x.plan_lesson_id)}
           onChange={e => setSel(s => e.target.checked ? [...s, x.plan_lesson_id] : s.filter(v => v !== x.plan_lesson_id))} /> №{x.seq} {x.topic} <span className="small muted">· {x.reason}</span></label>)}</> : null}
-      <h3 className="small">Perspektiv plan</h3>
+      <h3 className="small">{t('Perspektiv plan')}</h3>
       <div style={{ maxHeight: 360, overflow: 'auto' }}>{sug?.plan.map(x => <label key={x.id} className="check"><input type="checkbox" checked={sel.includes(x.id)}
         onChange={e => setSel(s => e.target.checked ? [...s, x.id] : s.filter(v => v !== x.id))} /> №{x.seq} {x.topic}</label>)}</div>
     </Drawer>
@@ -406,6 +414,7 @@ function BulkTopics({ course, onClose, onDone }: { course: number; onClose: () =
 const sign = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+' : ''}${fmt(v)}`)
 
 function Stats({ id }: { id: number }) {
+  const t = useT()
   const [d, err] = useLoad<any>(() => get(`/api/extra/${id}/stats`), [id])
   if (!d) return err ? <ErrorBox error={err} /> : <Loading />
   const s = d.summary, cmp = d.compare
@@ -414,27 +423,26 @@ function Stats({ id }: { id: number }) {
   return (
     <div className="stack">
       <div className="kpis">
-        <Stat value={`${s.held}/${s.sessions - s.cancelled}`} label="keçirildi" /><Stat value={fmt(s.hours)} label="saat" />
-        <Stat value={fmt(s.attendance_pct) + '%'} label="orta iştirak" /><Stat value={fmt(s.extra_test_avg) + '%'} label="məşğələ testi" />
+        <Stat value={`${s.held}/${s.sessions - s.cancelled}`} label={t('keçirildi')} /><Stat value={fmt(s.hours)} label={t('saat')} />
+        <Stat value={fmt(s.attendance_pct) + '%'} label={t('orta iştirak')} /><Stat value={fmt(s.extra_test_avg) + '%'} label={t('məşğələ testi')} />
       </div>
-      {s.at_risk > 0 && <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>{s.at_risk} şagird ardıcıl 2 məşğələni buraxıb – valideynlə əlaqə saxlayın.</div>}
-      <section className="panel"><h2>Effekt <small>irəliləyiş: kursdan sonrakı nəticə − əvvəlki (mövzu testləri və sınaqlar)</small></h2>
-        {cmp.participants_delta == null && cmp.others_delta == null ? <p className="small muted">Kursdan əvvəl və sonra test/sınaq nəticəsi yığıldıqca burada görünəcək.</p> : (
+      {s.at_risk > 0 && <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>{s.at_risk} {t('şagird ardıcıl 2 məşğələni buraxıb – valideynlə əlaqə saxlayın.')}</div>}
+      <section className="panel"><h2>{t('Effekt')} <small>{t('irəliləyiş: kursdan sonrakı nəticə − əvvəlki (mövzu testləri və sınaqlar)')}</small></h2>
+        {cmp.participants_delta == null && cmp.others_delta == null ? <p className="small muted">{t('Kursdan əvvəl və sonra test/sınaq nəticəsi yığıldıqca burada görünəcək.')}</p> : (
           <div className="row">
-            <Pill tone="ok">iştirakçılar ({cmp.participants}): {sign(cmp.participants_delta)}</Pill><Pill>digərləri ({cmp.others}): {sign(cmp.others_delta)}</Pill>
-            {cmp.participants_delta != null && cmp.others_delta != null && <b>fərq {sign(cmp.participants_delta - cmp.others_delta)}</b>}
+            <Pill tone="ok">{t('iştirakçılar (')}{cmp.participants}): {sign(cmp.participants_delta)}</Pill><Pill>{t('digərləri (')}{cmp.others}): {sign(cmp.others_delta)}</Pill>
+            {cmp.participants_delta != null && cmp.others_delta != null && <b>{t('fərq')} {sign(cmp.participants_delta - cmp.others_delta)}</b>}
           </div>)}
-        <p className="small muted">İştirakçı – məşğələlərin ən azı yarısında olan şagird. Zəif qrup üçün mütləq nəticə yox, irəliləyiş müqayisə olunur.
-          Kursdan sonrakı orta: iştirakçılar {fmt(cmp.participants_pct)}%, digərləri {fmt(cmp.others_pct)}%. Format üzrə iştirak: əyani {fmt(d.by_format['əyani'].attendance_pct)}%, onlayn {fmt(d.by_format.onlayn.attendance_pct)}%.</p></section>
+        <p className="small muted">{t('İştirakçı – məşğələlərin ən azı yarısında olan şagird. Zəif qrup üçün mütləq nəticə yox, irəliləyiş müqayisə olunur. Kursdan sonrakı orta: iştirakçılar')} {fmt(cmp.participants_pct)}{t('%, digərləri')} {fmt(cmp.others_pct)}{t('%. Format üzrə iştirak: əyani')} {fmt(d.by_format['əyani'].attendance_pct)}{t('%, onlayn')} {fmt(d.by_format.onlayn.attendance_pct)}%.</p></section>
       <div className="tbl-wrap"><table>
-        <thead><tr><th>Şagird</th><th className="r">İştirak</th><th className="r">Test %</th><th className="r">Əvvəl</th><th className="r">Sonra</th><th className="r">±</th></tr></thead>
+        <thead><tr><th>{t('Şagird')}</th><th className="r">{t('İştirak')}</th><th className="r">{t('Test %')}</th><th className="r">{t('Əvvəl')}</th><th className="r">{t('Sonra')}</th><th className="r">±</th></tr></thead>
         <tbody>{d.students.map((x: any) => (
-          <tr key={x.student_id}><td><b>{x.full_name}</b>{x.risk && <Pill tone="bad">2 buraxma</Pill>}<span className="sub">{x.class_name}</span></td>
+          <tr key={x.student_id}><td><b>{x.full_name}</b>{x.risk && <Pill tone="bad">{t('2 buraxma')}</Pill>}<span className="sub">{x.class_name}</span></td>
             <td className="r num">{x.present}/{x.held}{x.attendance_pct != null ? ` (${fmt(x.attendance_pct, 0)}%)` : ''}</td><td className="r num">{fmt(x.extra_test_avg)}</td>
             <td className="r num">{fmt(x.before_pct)}</td><td className="r num">{fmt(x.after_pct)}</td>
             <td className="r num">{x.delta == null ? '—' : <Pill tone={x.delta > 0 ? 'ok' : x.delta < 0 ? 'bad' : undefined}>{x.delta > 0 ? '+' : ''}{fmt(x.delta)}</Pill>}</td></tr>))}</tbody>
       </table></div>
-      <button className="btn sm" onClick={print}>Hesabatı çap et (tədris hissəsi üçün)</button>
+      <button className="btn sm" onClick={print}>{t('Hesabatı çap et (tədris hissəsi üçün)')}</button>
     </div>
   )
 }

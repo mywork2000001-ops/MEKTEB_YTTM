@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Reac
 import { createPortal } from 'react-dom'
 import { ICONS } from './icons-data'
 import { ApiError } from './api'
-import { useT } from './i18n'
+import { getLang, tt, useT } from './i18n'
 import { docCtx } from './doccontext'
 
 export function Icon({ name, className = 'ico' }: { name: string; className?: string }) {
@@ -27,16 +27,23 @@ export const ord = (v: number | string) => {
 }
 /** Dərsin «nə vaxt» yazısı: məktəbdə «3-cü saat», fərdi hazırlıqda (məktəb zəngi yoxdur) – real vaxt «17:00–18:30». */
 export const lessonWhen = (period: number | string, time?: string | null) =>
-  docCtx.private && time ? time : `${ord(period)} saat`
+  docCtx.private && time ? time : hourN(period)
+/** «3-cü saat» – interfeys dilində (AZ / «3-й урок» / «period 3»). Rəsmi çap formaları ord() ilə AZ qalır. */
+export const hourN = (period: number | string) => { const l = getLang(); return l === 'ru' ? `${period}-й урок` : l === 'en' ? `period ${period}` : `${ord(period)} saat` }
 export const fmt = (v: number | null | undefined, d = 1) => (v == null ? '—' : v.toFixed(d).replace('.', ','))
 export const fmtDate = (s?: string | null) => (s ? s.slice(0, 10).split('-').reverse().join('.') : '—')
 export const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 export const WD = ['B.', 'B.e.', 'Ç.a.', 'Ç.', 'C.a.', 'C.', 'Ş.']
 export const MONTHS = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avqust', 'sentyabr', 'oktyabr', 'noyabr', 'dekabr']
 export const longDate = (s: string) => { const d = new Date(s + 'T00:00'); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}` }
+/** Eyni, lakin interfeys dilində (müəllim səhifələri). */
+export const longDateT = (s: string) => { const d = new Date(s + 'T00:00'); return `${d.getDate()} ${tt(MONTHS[d.getMonth()])} ${d.getFullYear()}` }
+/** Sıra sayı qısa: AZ «3-cü», RU «3-й», EN «3». */
+export const ordT = (n: number | string) => { const l = getLang(); return l === 'ru' ? n + '-й' : l === 'en' ? String(n) : ord(n) }
+export const wdT = (i: number) => tt(WD[i])
 
 /** Filtrli ekranlarda yuxarıda seçim edilənə qədər aşağı hissə boş qalır. */
-export function PickFirst({ text = 'Yuxarıda seçim edin' }: { text?: string }) {
+export function PickFirst({ text = 'Sinif seçin' }: { text?: string }) {
   const t = useT()
   return <div className="empty"><Icon name="info" /><p>{t(text)}</p></div>
 }
@@ -46,12 +53,12 @@ export function Empty({ children }: { children: ReactNode }) {
 }
 
 export function Loading() {
-  return <div className="empty" aria-busy="true">Yüklənir…</div>
+  return <div className="empty" aria-busy="true">{tt('Yüklənir…')}</div>
 }
 
 export function ErrorBox({ error }: { error: unknown }) {
   if (!error) return null
-  const m = error instanceof ApiError ? error.message : String(error)
+  const m = tt(error instanceof ApiError ? error.message : String(error))
   return <div className="banner" style={{ background: 'var(--bad-soft)', color: 'var(--bad)' }} role="alert"><Icon name="info" />{m}</div>
 }
 
@@ -93,7 +100,7 @@ export function ToastHost() {
     toastFn = m => { setMsg(m); clearTimeout(t.current); t.current = window.setTimeout(() => setMsg(null), 2600) }
     return () => { toastFn = null }
   }, [])
-  return msg ? <div className="toast" role="status">{msg}</div> : null
+  return msg ? <div className="toast" role="status">{tt(msg)}</div> : null
 }
 
 // ---------------------------------------------------------------- yan pəncərə (telefonda aşağıdan)
@@ -106,9 +113,9 @@ export function Drawer({ title, onClose, children, footer }: { title: ReactNode;
   }, [onClose])
   return createPortal(
     <div className="scrim" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <section className="drawer" role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined}>
+      <section className="drawer" role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? tt(title) : undefined}>
         <span className="grab" />
-        <header><h2>{title}</h2><button className="btn ghost sm" onClick={onClose} aria-label="Bağla">✕</button></header>
+        <header><h2>{typeof title === 'string' ? tt(title) : title}</h2><button className="btn ghost sm" onClick={onClose} aria-label={tt('Bağla')}>✕</button></header>
         <div className="body">{children}</div>
         {footer && <footer>{footer}</footer>}
       </section>
@@ -123,10 +130,10 @@ export function ConfirmName({ name, action, onConfirm, onCancel }: { name: strin
   const ok = v.trim().replace(/\s+/g, ' ').toLocaleLowerCase('az') === name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('az')
   return (
     <div className="confirm">
-      <span>{action} üçün adı yazın: <b>{name}</b></span>
-      <input className="sel" style={{ flex: '1 1 200px' }} value={v} onChange={e => setV(e.target.value)} aria-label="Təsdiq üçün ad" autoFocus />
-      <button className="btn danger sm" disabled={!ok || busy} onClick={async () => { setBusy(true); try { await onConfirm(v) } catch (e) { setErr(e) } finally { setBusy(false) } }}>{action}</button>
-      <button className="btn ghost sm" onClick={onCancel}>Ləğv et</button>
+      <span>{tt('{action} üçün adı yazın:', { action: tt(action) })} <b>{name}</b></span>
+      <input className="sel" style={{ flex: '1 1 200px' }} value={v} onChange={e => setV(e.target.value)} aria-label={tt('Təsdiq üçün ad')} autoFocus />
+      <button className="btn danger sm" disabled={!ok || busy} onClick={async () => { setBusy(true); try { await onConfirm(v) } catch (e) { setErr(e) } finally { setBusy(false) } }}>{tt(action)}</button>
+      <button className="btn ghost sm" onClick={onCancel}>{tt('Ləğv et')}</button>
       <ErrorBox error={err} />
     </div>
   )
@@ -134,8 +141,8 @@ export function ConfirmName({ name, action, onConfirm, onCancel }: { name: strin
 
 export function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: [T, string][]; onChange: (v: T) => void; label?: string }) {
   return (
-    <div className="seg" role="group" aria-label={label}>
-      {options.map(([v, l]) => <button key={v} type="button" aria-pressed={v === value} onClick={() => onChange(v)}>{l}</button>)}
+    <div className="seg" role="group" aria-label={label ? tt(label) : undefined}>
+      {options.map(([v, l]) => <button key={v} type="button" aria-pressed={v === value} onClick={() => onChange(v)}>{tt(l)}</button>)}
     </div>
   )
 }
@@ -143,16 +150,16 @@ export function Seg<T extends string>({ value, options, onChange, label }: { val
 export function Field({ label, hint, error, full, children }: { label: string; hint?: string; error?: string; full?: boolean; children: ReactNode }) {
   return (
     <label className={'f' + (full ? ' full' : '')}>
-      {label}{children}
-      {hint && <span className="hint">{hint}</span>}
-      {error && <span className="err">{error}</span>}
+      {tt(label)}{children}
+      {hint && <span className="hint">{tt(hint)}</span>}
+      {error && <span className="err">{tt(error)}</span>}
     </label>
   )
 }
 
 export function Top({ title, sub, actions }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
   const t = useT()
-  return <div className="top"><div><h1>{typeof title === 'string' ? t(title) : title}</h1>{sub && <p>{sub}</p>}</div>{actions && <div className="actions">{actions}</div>}</div>
+  return <div className="top"><div><h1>{typeof title === 'string' ? t(title) : title}</h1>{sub && <p>{typeof sub === 'string' ? t(sub) : sub}</p>}</div>{actions && <div className="actions">{actions}</div>}</div>
 }
 
 export function Stat({ value, label }: { value: ReactNode; label: string }) {
@@ -227,7 +234,7 @@ export function Chips<T extends string>({ value, onChange, options, label }: { v
   return (
     <div className="row" role="group" aria-label={label} style={{ gap: 6, flexWrap: 'wrap' }}>
       {options.map(([k, l, n]) => <button key={k} className="chip" aria-pressed={value === k} onClick={() => onChange(k)}>
-        {l}{n != null && <span className="chip-n">{n}</span>}</button>)}
+        {tt(l)}{n != null && <span className="chip-n">{n}</span>}</button>)}
     </div>
   )
 }

@@ -3,8 +3,9 @@ import { docCtx } from '../../doccontext'
 // nahar fasiləsi ayrıca sətir, boş saat «Sərbəst», hər sinfin sabit rəngi, içində perspektiv plandan mövzu.
 import { useMemo, useState } from 'react'
 import { get } from '../../api'
-import { ErrorBox, fmtDate, isoDate, Loading, Pill, Top, useLoad, ord } from '../../ui'
+import { ErrorBox, fmtDate, isoDate, Loading, Pill, Top, useLoad, hourN, ord } from '../../ui'
 import { esc, head, printDoc } from '../../print'
+import { useT, tt } from '../../i18n'
 
 type Cell = { ta_id: number; class_name: string; subject: string; time: string | null; topic: string | null; assessment_type: string | null; held: boolean }
 type Day = { date: string; weekday: string; periods: Record<string, Cell[]> }
@@ -18,6 +19,7 @@ const startOf = (t: string) => toMin(t.replace('–', '-').split('-')[0].trim())
 const endOf = (t: string) => toMin(t.replace('–', '-').split('-')[1].trim())
 
 export default function Timetable() {
+  const t = useT()
   const [date, setDate] = useState(isoDate(new Date()))
   const [d, err, loading] = useLoad<TT>(() => get('/api/timetable', { date }), [date])
   const [school] = useLoad<any>(() => get('/api/school'), [])
@@ -33,7 +35,7 @@ export default function Timetable() {
     for (const day of d?.days || []) {
       for (const [p, cells] of Object.entries(day.periods)) {
         for (const c of cells) {
-          const t = c.time || `${ord(p)} saat`
+          const t = c.time || hourN(p)
           times.add(t)
           if (!byTime.has(t)) byTime.set(t, new Map())
           const m = byTime.get(t)!
@@ -64,47 +66,47 @@ export default function Timetable() {
   const weekTotal = [...totals.values()].reduce((a, b) => a + b, 0)
   const CellBox = ({ c }: { c: Cell & { p: number } }) => (
     <div className="ttc" style={{ ['--cc' as any]: colors[c.class_name] }}>
-      <div className="ttc-h"><b>{c.class_name}</b><span>{priv ? c.time : `${ord(c.p)} saat`}</span></div>
+      <div className="ttc-h"><b>{c.class_name}</b><span>{priv ? c.time : hourN(c.p)}</span></div>
       {c.subject !== 'Riyaziyyat' && <div className="small">{c.subject}</div>}
-      <div className="ttc-t">{c.topic || <span className="muted">plan yüklənməyib</span>}</div>
+      <div className="ttc-t">{c.topic || <span className="muted">{tt('plan yüklənməyib')}</span>}</div>
       {(c.assessment_type === 'KSQ' || c.assessment_type === 'BSQ' || c.held) && (
         <div className="row" style={{ gap: 4, marginTop: 4 }}>
           {(c.assessment_type === 'KSQ' || c.assessment_type === 'BSQ') && <Pill tone="warn">{c.assessment_type}</Pill>}
-          {c.held && <Pill tone="info">mövzu saxlanılıb</Pill>}
+          {c.held && <Pill tone="info">{tt('mövzu saxlanılıb')}</Pill>}
         </div>)}
     </div>
   )
 
   return (
     <>
-      <Top title="Həftəlik dərs cədvəli" sub={d ? `${fmtDate(d.days[0].date)} – ${fmtDate(d.days[d.days.length - 1].date)} · həftədə ${weekTotal} dərs` : 'Mövzular perspektiv plandan'} />
+      <Top title={t('Həftəlik dərs cədvəli')} sub={d ? t('{x1} – {x2} · həftədə {weekTotal} dərs', { x1: fmtDate(d.days[0].date), x2: fmtDate(d.days[d.days.length - 1].date), weekTotal }) : t('Mövzular perspektiv plandan')} />
       <div className="row no-print" style={{ marginBottom: 12 }}>
-        <button className="btn sm" onClick={() => shift(-1)}>‹ Əvvəlki</button>
-        <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>Bu həftə</button>
-        <button className="btn sm" onClick={() => shift(1)}>Növbəti ›</button>
+        <button className="btn sm" onClick={() => shift(-1)}>{t('‹ Əvvəlki')}</button>
+        <button className="btn sm ghost" onClick={() => setDate(isoDate(new Date()))}>{t('Bu həftə')}</button>
+        <button className="btn sm" onClick={() => shift(1)}>{t('Növbəti ›')}</button>
         <button className="btn sm right" disabled={!d} onClick={() => d && printDoc({ landscape: true, title: `Həftəlik dərs cədvəli ${fmtDate(d.days[0].date)}–${fmtDate(d.days[d.days.length - 1].date)}`, body: head('Həftəlik dərs cədvəli', `${fmtDate(d.days[0].date)} – ${fmtDate(d.days[d.days.length - 1].date)}`) + `<table><thead><tr><th>Vaxt</th>${d.days.map(x => `<th>${esc(DAY_FULL[x.weekday] || x.weekday)}<br>${fmtDate(x.date).slice(0, 5)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => r.kind === 'break' ? `<tr><td class="c">${esc(r.time)}</td><td colspan="${d.days.length}" class="c b">Nahar fasiləsi</td></tr>` : `<tr><td class="c b">${esc(r.time)}</td>${d.days.map(x => { const cs = byTime.get(r.time)?.get(x.date) || []; return `<td>${cs.map(c => `<b>${esc(c.class_name)}</b> (${ord(c.p)})${c.assessment_type === 'KSQ' || c.assessment_type === 'BSQ' ? ' <b>' + c.assessment_type + '</b>' : ''}<br>${esc(c.topic || '')}`).join('<hr>') || '<span class="muted">—</span>'}</td>` }).join('')}</tr>`).join('')}</tbody></table>` })}>Çap / PDF</button>
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : d && (
         <>
           <div className="legend" style={{ marginBottom: 10 }}>
-            {Object.entries(colors).map(([c, col]) => <span key={c}><i style={{ width: 12, height: 12, borderRadius: 3, background: col, display: 'inline-block' }} /> {c} – {totals.get(c)} {priv ? "dərs" : "saat"}</span>)}
+            {Object.entries(colors).map(([c, col]) => <span key={c}><i style={{ width: 12, height: 12, borderRadius: 3, background: col, display: 'inline-block' }} /> {c} – {totals.get(c)} {priv ? tt('dərs') : tt('saat')}</span>)}
           </div>
 
           {/* noutbuk / planşet: cədvəl */}
           <div className="tbl-wrap only-desk">
             <table className="ttable">
-              <thead><tr><th className="tt-time">Vaxt</th>{d.days.map(x => (
-                <th key={x.date} className={x.date === todayIso ? 'today' : ''}>{DAY_FULL[x.weekday] || x.weekday}<span>{fmtDate(x.date).slice(0, 5)}</span></th>))}</tr></thead>
+              <thead><tr><th className="tt-time">{t('Vaxt')}</th>{d.days.map(x => (
+                <th key={x.date} className={x.date === todayIso ? 'today' : ''}>{tt(DAY_FULL[x.weekday] || x.weekday)}<span>{fmtDate(x.date).slice(0, 5)}</span></th>))}</tr></thead>
               <tbody>
                 {rows.map(r => r.kind === 'break' ? (
-                  <tr key={'b' + r.time} className="tt-break"><td className="tt-time">{r.time}</td><td colSpan={d.days.length}>Nahar fasiləsi</td></tr>
+                  <tr key={'b' + r.time} className="tt-break"><td className="tt-time">{r.time}</td><td colSpan={d.days.length}>{t('Nahar fasiləsi')}</td></tr>
                 ) : (
                   <tr key={r.time}>
                     <td className="tt-time">{r.time.replace('–', '\n')}</td>
                     {d.days.map(x => {
                       const cells = byTime.get(r.time)?.get(x.date) || []
-                      return <td key={x.date} className={x.date === todayIso ? 'today' : ''}>{cells.length ? cells.map(c => <CellBox key={c.ta_id} c={c} />) : <span className="tt-free">Sərbəst</span>}</td>
+                      return <td key={x.date} className={x.date === todayIso ? 'today' : ''}>{cells.length ? cells.map(c => <CellBox key={c.ta_id} c={c} />) : <span className="tt-free">{t('Sərbəst')}</span>}</td>
                     })}
                   </tr>))}
               </tbody>
@@ -118,8 +120,8 @@ export default function Timetable() {
               const today = x.date === todayIso
               return (
                 <section key={x.date} className="panel" style={{ padding: 12, outline: today ? '2px solid var(--accent)' : undefined }}>
-                  <h2 style={{ marginBottom: 6 }}>{DAY_FULL[x.weekday] || x.weekday} <small>{fmtDate(x.date)}{today ? ' · bu gün' : ''} · {list.length} dərs</small></h2>
-                  {list.length === 0 ? <p className="muted small" style={{ margin: 0 }}>Dərs yoxdur</p> : list.map(({ c, time }) => (
+                  <h2 style={{ marginBottom: 6 }}>{tt(DAY_FULL[x.weekday] || x.weekday)} <small>{fmtDate(x.date)}{today ? ' · ' + tt('bu gün') : ''} · {list.length} {t('dərs')}</small></h2>
+                  {list.length === 0 ? <p className="muted small" style={{ margin: 0 }}>{t('Dərs yoxdur')}</p> : list.map(({ c, time }) => (
                     <div key={c.ta_id + time} className="tt-prow">
                       <span className="tt-ptime">{time.split('–')[0]}<small>{time.split('–')[1]}</small></span>
                       <CellBox c={c} />

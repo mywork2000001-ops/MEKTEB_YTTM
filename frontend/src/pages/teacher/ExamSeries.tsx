@@ -5,6 +5,7 @@ import { del as apiDel, get, patch, post } from '../../api'
 import { azDT, Drawer, ErrorBox, Field, Loading, Pill, Seg, toast, useLoad } from '../../ui'
 import { bankGroup } from './TaskEditor'
 import { heldLabel, useExamDates, type Dated } from './examDates'
+import { useT, tt } from '../../i18n'
 
 type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; mine: boolean; students: number }
 type BFile = Dated & { id: number; label: string; questions: number; kind: string; grades: number[]; source: string; given: string[]; grade_ok: boolean }
@@ -17,46 +18,45 @@ type Series = {
 const WD = ['Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə', 'Bazar']
 const SOURCES: [string, string][] = [['sinaqlar', 'Sınaqlar (illər üzrə)'], ['p012', 'P012 · Riyaziyyat 11 Buraxılış'], ['p009', 'P009 · Riyaziyyat 11 DİM']]   // TAİM (P004) – müəllim imtahanı, seriyaya düşmür
 const when = (s: string) => azDT(new Date(s), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-const rule = (s: Series) => s.period === 'day' ? `hər ${s.every > 1 ? s.every + ' ' : ''}gün` : s.period === 'week'
-  ? `hər ${s.every > 1 ? s.every + ' ' : ''}həftə, ${WD[s.weekday ?? 0]}` : `hər ${s.every > 1 ? s.every + ' ' : ''}ay, ${s.month_day}-i`
+const rule = (s: Series) => s.period === 'day' ? tt('hər {x1}gün', { x1: s.every > 1 ? s.every + ' ' : '' }) : s.period === 'week'
+  ? tt('hər {x1}həftə, {x2}', { x1: s.every > 1 ? s.every + ' ' : '', x2: WD[s.weekday ?? 0] }) : tt('hər {x1}ay, {month_day}-i', { x1: s.every > 1 ? s.every + ' ' : '', month_day: s.month_day })
 
 export default function ExamSeriesPanel() {
+  const t = useT()
   const [list, err, loading, reload] = useLoad<Series[]>(() => get('/api/exam-series'), [])
   const [creating, setCreating] = useState(false)
   const act = async (fn: () => Promise<unknown>, msg: string) => { try { await fn(); toast(msg); reload() } catch (e: any) { toast(e?.message || 'Xəta') } }
   return (
     <>
       <div className="row" style={{ marginBottom: 12 }}>
-        <p className="small muted grow" style={{ margin: 0 }}>Bir dəfə qurun: seçdiyiniz sınaqlar növbə ilə (hər gün / həftə / ay) siniflərə özü gedir.
-          «Yeni sınaqları avtomatik əlavə et» açıqdırsa, viktorina-ya əlavə etdiyiniz yeni sınaqlar da növbəyə düşür.</p>
-        <button className="btn primary" onClick={() => setCreating(true)}>+ Yeni seriya</button>
+        <p className="small muted grow" style={{ margin: 0 }}>{t('Bir dəfə qurun: seçdiyiniz sınaqlar növbə ilə (hər gün / həftə / ay) siniflərə özü gedir. «Yeni sınaqları avtomatik əlavə et» açıqdırsa, viktorina-ya əlavə etdiyiniz yeni sınaqlar da növbəyə düşür.')}</p>
+        <button className="btn primary" onClick={() => setCreating(true)}>{t('+ Yeni seriya')}</button>
       </div>
       <ErrorBox error={err} />
       {loading && !list ? <Loading /> : (
         <div className="jlist">
-          {list?.length === 0 && <div className="empty">Seriya yoxdur – «+ Yeni seriya» ilə sınaqları seçib dövrü təyin edin.</div>}
+          {list?.length === 0 && <div className="empty">{t('Seriya yoxdur – «+ Yeni seriya» ilə sınaqları seçib dövrü təyin edin.')}</div>}
           {list?.map(s => (
             <div key={s.id} className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 6 }}>
               <div className="row"><b className="grow">{s.title}</b>
                 <Pill tone={s.active ? 'ok' : undefined}>{s.active ? 'işləyir' : 'dayandırılıb'}</Pill>
-                {s.auto_new && <Pill tone="info">yeni sınaqlar avtomatik</Pill>}</div>
-              <span className="small muted">{s.subject} · {rule(s)}, {s.open_time} · {s.window_hours} saat açıq · {s.duration_min} dəq ·
-                növbədə {s.queue.length} · göndərilib {s.done.length}</span>
+                {s.auto_new && <Pill tone="info">{t('yeni sınaqlar avtomatik')}</Pill>}</div>
+              <span className="small muted">{s.subject} · {rule(s)}, {s.open_time} · {s.window_hours} {t('saat açıq ·')} {s.duration_min} {t('dəq · növbədə')} {s.queue.length} {t('· göndərilib')} {s.done.length}</span>
               {s.active && <div className="small">{s.preview.slice(0, 4).map((p, i) => (
-                <div key={i}>{p.weekday} {when(p.at)} – {p.label ? <b>{p.label}</b> : <span className="muted">növbə boşdur – yeni sınaq gözlənilir</span>}</div>))}</div>}
+                <div key={i}>{p.weekday} {when(p.at)} – {p.label ? <b>{p.label}</b> : <span className="muted">{t('növbə boşdur – yeni sınaq gözlənilir')}</span>}</div>))}</div>}
               <div className="row" style={{ gap: 6 }}>
-                <button className="btn sm" onClick={() => act(() => patch(`/api/exam-series/${s.id}`, { active: !s.active }), s.active ? 'Dayandırıldı' : 'Davam edir')}>{s.active ? 'Dayandır' : 'Davam et'}</button>
-                <button className="btn sm" onClick={() => act(() => patch(`/api/exam-series/${s.id}`, { auto_new: !s.auto_new }), 'Saxlandı')}>{s.auto_new ? 'Yeniləri avtomatik əlavə etmə' : 'Yeniləri avtomatik əlavə et'}</button>
-                <button className="btn sm ghost" onClick={() => act(() => apiDel(`/api/exam-series/${s.id}`), 'Seriya silindi (göndərilmiş sınaqlar qalır)')}>Sil</button>
+                <button className="btn sm" onClick={() => act(() => patch(`/api/exam-series/${s.id}`, { active: !s.active }), s.active ? t('Dayandırıldı') : t('Davam edir'))}>{s.active ? t('Dayandır') : 'Davam et'}</button>
+                <button className="btn sm" onClick={() => act(() => patch(`/api/exam-series/${s.id}`, { auto_new: !s.auto_new }), t('Saxlandı'))}>{s.auto_new ? t('Yeniləri avtomatik əlavə etmə') : t('Yeniləri avtomatik əlavə et')}</button>
+                <button className="btn sm ghost" onClick={() => act(() => apiDel(`/api/exam-series/${s.id}`), t('Seriya silindi (göndərilmiş sınaqlar qalır)'))}>{t('Sil')}</button>
               </div>
-              {s.queue.length > 0 && <details><summary className="small">Növbə ({s.queue.length})</summary>
+              {s.queue.length > 0 && <details><summary className="small">{t('Növbə (')}{s.queue.length})</summary>
                 {s.queue.map((q, i) => (
                   <div key={q.id} className="row small" style={{ gap: 6 }}><span className="grow">{i + 1}. {q.label}
-                    {q.skip ? <> <Pill tone="warn">atlanacaq – {q.given.length ? `verilib: ${q.given.join(', ')}` : 'sinfə uyğun deyil'}</Pill></>
-                      : q.given.length > 0 && <> <Pill>{q.given.join(', ')} – artıq verilib, atlanır</Pill></>}
-                    {q.other_ok && <> <Pill>başqa sinfin – təsdiqlənib</Pill></>}</span>
-                    <button className="btn sm ghost" disabled={i === 0} onClick={() => { const x = s.queue.map(y => y.id); [x[i - 1], x[i]] = [x[i], x[i - 1]]; act(() => patch(`/api/exam-series/${s.id}`, { queue: x }), 'Sıra dəyişdi') }}>↑</button>
-                    <button className="btn sm ghost" onClick={() => act(() => patch(`/api/exam-series/${s.id}`, { queue: s.queue.map(y => y.id).filter(y => y !== q.id) }), 'Növbədən çıxarıldı')}>✕</button>
+                    {q.skip ? <> <Pill tone="warn">{t('atlanacaq –')} {q.given.length ? t('verilib: {x1}', { x1: q.given.join(', ') }) : t('sinfə uyğun deyil')}</Pill></>
+                      : q.given.length > 0 && <> <Pill>{q.given.join(', ')} {t('– artıq verilib, atlanır')}</Pill></>}
+                    {q.other_ok && <> <Pill>{t('başqa sinfin – təsdiqlənib')}</Pill></>}</span>
+                    <button className="btn sm ghost" disabled={i === 0} onClick={() => { const x = s.queue.map(y => y.id); [x[i - 1], x[i]] = [x[i], x[i - 1]]; act(() => patch(`/api/exam-series/${s.id}`, { queue: x }), t('Sıra dəyişdi')) }}>↑</button>
+                    <button className="btn sm ghost" onClick={() => act(() => patch(`/api/exam-series/${s.id}`, { queue: s.queue.map(y => y.id).filter(y => y !== q.id) }), t('Növbədən çıxarıldı'))}>✕</button>
                   </div>))}
               </details>}
             </div>))}
@@ -67,9 +67,10 @@ export default function ExamSeriesPanel() {
 }
 
 function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const t = useT()
   const today = new Date().toISOString().slice(0, 10)
   const [targets, , tl] = useLoad<Target[]>(() => get('/api/exams-online/targets'), [])
-  const [f, setF] = useState({ title: 'Həftəlik sınaqlar', sources: ['sinaqlar', 'p012'], grade: '' as string, period: 'week' as 'day' | 'week' | 'month',
+  const [f, setF] = useState({ title: t('Həftəlik sınaqlar'), sources: ['sinaqlar', 'p012'], grade: '' as string, period: 'week' as 'day' | 'week' | 'month',
     every: 1, weekday: 5, month_day: 1, start: today, open_time: '15:00', window_hours: 48, duration_min: 60, penalty: 0,
     show_answers: 'after_close', auto_new: true })
   const [tas, setTas] = useState<number[]>([])
@@ -94,7 +95,7 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
     for (const x of dates.sort((files || []).filter(x => (showAll || !odd(x) || queue.includes(x.id)) && (dates.fits(x) || queue.includes(x.id))))) {
       const g = bankGroup(x.source, x.label)
       const key = `${x.source}|${g}`
-      const title = [SOURCES.find(([k]) => k === x.source)?.[1] || x.source, g].filter(Boolean).join(' · ')
+      const title = [tt(SOURCES.find(([k]) => k === x.source)?.[1] || x.source), g].filter(Boolean).join(' · ')
       const cur = out.find(o => o.key === key)
       if (cur) cur.items.push(x)
       else out.push({ key, title, items: [x] })
@@ -108,49 +109,49 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
     try {
       await post('/api/exam-series', { ...f, grade: f.grade ? Number(f.grade) : null, targets: tas.map(ta_id => ({ ta_id })), queue, other_ok: okOther ? other : [],
         weekday: f.period === 'week' ? f.weekday : null, month_day: f.period === 'month' ? f.month_day : null })
-      toast('Seriya yaradıldı'); onDone()
+      toast(t('Seriya yaradıldı')); onDone()
     } catch (e) { setErr(e) } finally { setBusy(false) }
   }
   return (
-    <Drawer title="Yeni sınaq seriyası" onClose={onClose}
-      footer={<><span className="small muted grow">{queue.length} sınaq növbədə · {tas.length} sinif</span><button className="btn" onClick={onClose}>Ləğv et</button>
-        <button className="btn primary" disabled={busy || !tas.length || (!queue.length && !f.auto_new) || (other.length > 0 && !okOther)} onClick={submit}>Yarat</button></>}>
+    <Drawer title={t('Yeni sınaq seriyası')} onClose={onClose}
+      footer={<><span className="small muted grow">{queue.length} {t('sınaq növbədə ·')} {tas.length} {t('sinif')}</span><button className="btn" onClick={onClose}>{t('Ləğv et')}</button>
+        <button className="btn primary" disabled={busy || !tas.length || (!queue.length && !f.auto_new) || (other.length > 0 && !okOther)} onClick={submit}>{t('Yarat')}</button></>}>
       <div className="stack">
         <div className="fg">
-          <Field label="Ad" full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
-          <Field label="Dövr" full><Seg value={f.period} onChange={v => setF({ ...f, period: v })} options={[['day', 'Hər gün'], ['week', 'Hər həftə'], ['month', 'Hər ay']]} /></Field>
-          <Field label="Hər neçə dövrdən bir"><input type="number" min={1} max={12} value={f.every} onChange={e => setF({ ...f, every: Number(e.target.value) || 1 })} /></Field>
-          {f.period === 'week' && <Field label="Həftənin günü"><select value={f.weekday} onChange={e => setF({ ...f, weekday: Number(e.target.value) })}>{WD.map((w, i) => <option key={i} value={i}>{w}</option>)}</select></Field>}
-          {f.period === 'month' && <Field label="Ayın günü"><input type="number" min={1} max={31} value={f.month_day} onChange={e => setF({ ...f, month_day: Number(e.target.value) || 1 })} /></Field>}
-          <Field label="Başlama tarixi"><input type="date" value={f.start} onChange={e => setF({ ...f, start: e.target.value })} /></Field>
-          <Field label="Açılma saatı"><input type="time" value={f.open_time} onChange={e => setF({ ...f, open_time: e.target.value })} /></Field>
-          <Field label="Açıq qalır (saat)"><input type="number" min={1} max={744} value={f.window_hours} onChange={e => setF({ ...f, window_hours: Number(e.target.value) || 48 })} /></Field>
-          <Field label="Həll müddəti (dəq)" hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration_min} onChange={e => setF({ ...f, duration_min: Number(e.target.value) || 60 })} /></Field>
-          <Field label="Cərimə"><select value={f.penalty} onChange={e => setF({ ...f, penalty: Number(e.target.value) })}><option value={0}>yoxdur</option><option value={3}>3 səhv 1 düzü aparır</option><option value={4}>4 səhv 1 düzü aparır</option></select></Field>
-          <Field label="Düzgün cavablar"><select value={f.show_answers} onChange={e => setF({ ...f, show_answers: e.target.value })}><option value="after_close">bağlandıqdan sonra</option><option value="after_submit">təhvildən dərhal sonra</option><option value="never">göstərilməsin</option></select></Field>
+          <Field label={t('Ad')} full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
+          <Field label={t('Dövr')} full><Seg value={f.period} onChange={v => setF({ ...f, period: v })} options={[['day', t('Hər gün')], ['week', 'Hər həftə'], ['month', t('Hər ay')]]} /></Field>
+          <Field label={t('Hər neçə dövrdən bir')}><input type="number" min={1} max={12} value={f.every} onChange={e => setF({ ...f, every: Number(e.target.value) || 1 })} /></Field>
+          {f.period === 'week' && <Field label={t('Həftənin günü')}><select value={f.weekday} onChange={e => setF({ ...f, weekday: Number(e.target.value) })}>{WD.map((w, i) => <option key={i} value={i}>{w}</option>)}</select></Field>}
+          {f.period === 'month' && <Field label={t('Ayın günü')}><input type="number" min={1} max={31} value={f.month_day} onChange={e => setF({ ...f, month_day: Number(e.target.value) || 1 })} /></Field>}
+          <Field label={t('Başlama tarixi')}><input type="date" value={f.start} onChange={e => setF({ ...f, start: e.target.value })} /></Field>
+          <Field label={t('Açılma saatı')}><input type="time" value={f.open_time} onChange={e => setF({ ...f, open_time: e.target.value })} /></Field>
+          <Field label={t('Açıq qalır (saat)')}><input type="number" min={1} max={744} value={f.window_hours} onChange={e => setF({ ...f, window_hours: Number(e.target.value) || 48 })} /></Field>
+          <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration_min} onChange={e => setF({ ...f, duration_min: Number(e.target.value) || 60 })} /></Field>
+          <Field label={t('Cərimə')}><select value={f.penalty} onChange={e => setF({ ...f, penalty: Number(e.target.value) })}><option value={0}>{t('yoxdur')}</option><option value={3}>{t('3 səhv 1 düzü aparır')}</option><option value={4}>{t('4 səhv 1 düzü aparır')}</option></select></Field>
+          <Field label={t('Düzgün cavablar')}><select value={f.show_answers} onChange={e => setF({ ...f, show_answers: e.target.value })}><option value="after_close">{t('bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvildən dərhal sonra')}</option><option value="never">{t('göstərilməsin')}</option></select></Field>
         </div>
-        <fieldset><legend>Siniflər {subj ? `(${subj})` : ''}</legend>
+        <fieldset><legend>{t('Siniflər')} {subj ? `(${subj})` : ''}</legend>
           {tl && !targets ? <Loading /> : targets?.filter(t => t.mine).map(t => (
             <label key={t.ta_id} className="check"><input type="checkbox" checked={tas.includes(t.ta_id)} disabled={!!subj && t.subject !== subj}
-              onChange={e => setTas(x => e.target.checked ? [...x, t.ta_id] : x.filter(y => y !== t.ta_id))} /> {t.class_name} <span className="small muted">· {t.subject} · {t.students} şagird</span></label>))}
+              onChange={e => setTas(x => e.target.checked ? [...x, t.ta_id] : x.filter(y => y !== t.ta_id))} /> {t.class_name} <span className="small muted">· {t.subject} · {t.students} {tt('şagird')}</span></label>))}
         </fieldset>
-        <fieldset><legend>Sınaqlar (seçilmə sırası = göndərilmə sırası)</legend>
+        <fieldset><legend>{t('Sınaqlar (seçilmə sırası = göndərilmə sırası)')}</legend>
           <div className="row" style={{ gap: 6, marginBottom: 6 }}>
             {SOURCES.map(([k, l]) => <button key={k} type="button" className="chip" aria-pressed={f.sources.includes(k)}
-              onClick={() => setF({ ...f, sources: f.sources.includes(k) ? f.sources.filter(x => x !== k) : [...f.sources, k] })}>{l}</button>)}
-            <select className="sel" value={f.grade} onChange={e => setF({ ...f, grade: e.target.value })}><option value="">bütün siniflər</option>
-              {[5, 6, 7, 8, 9, 10, 11].map(g => <option key={g} value={g}>{g}-cu sinif</option>)}</select>
+              onClick={() => setF({ ...f, sources: f.sources.includes(k) ? f.sources.filter(x => x !== k) : [...f.sources, k] })}>{t(l)}</button>)}
+            <select className="sel" value={f.grade} onChange={e => setF({ ...f, grade: e.target.value })}><option value="">{t('bütün siniflər')}</option>
+              {[5, 6, 7, 8, 9, 10, 11].map(g => <option key={g} value={g}>{g}{t('-cu sinif')}</option>)}</select>
           </div>
-          <label className="check"><input type="checkbox" checked={f.auto_new} onChange={e => setF({ ...f, auto_new: e.target.checked })} /> Yeni sınaqları avtomatik əlavə et (viktorina-ya əlavə olunanlar)</label>
-          {!files ? <Loading /> : files.length === 0 ? <p className="small muted">Bu mənbələrdə sınaq yoxdur.</p> : <>
+          <label className="check"><input type="checkbox" checked={f.auto_new} onChange={e => setF({ ...f, auto_new: e.target.checked })} /> {t('Yeni sınaqları avtomatik əlavə et (viktorina-ya əlavə olunanlar)')}</label>
+          {!files ? <Loading /> : files.length === 0 ? <p className="small muted">{t('Bu mənbələrdə sınaq yoxdur.')}</p> : <>
             <div className="row" style={{ gap: 6 }}>
               <button type="button" className="btn sm ghost" onClick={() => setQueue(queue.length >= pickable.length ? [] : pickable.map(x => x.id))}>{queue.length >= pickable.length ? 'Heç biri' : 'Hamısını seç'}</button>
-              <span className="small muted">seçilib {queue.length} / cəmi {pickable.length}</span>
+              <span className="small muted">{t('seçilib')} {queue.length} {t('/ cəmi')} {pickable.length}</span>
             </div>
             {files.some(x => x.held_on) && dates.bar}
             {files.length > pickable.length && <label className="check small"><input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
-              Verilmiş və başqa sinfin sınaqlarını da göstər <span className="muted">({files.length - pickable.length} gizlədilib)</span></label>}
-            {!tas.length && <p className="small muted" style={{ margin: 0 }}>Əvvəlcə sinifləri seçin – siyahı sinfə görə süzülür (11-ci sinfə yalnız 11-in sınaqları).</p>}
+              {t('Verilmiş və başqa sinfin sınaqlarını da göstər')} <span className="muted">({files.length - pickable.length} {t('gizlədilib)')}</span></label>}
+            {!tas.length && <p className="small muted" style={{ margin: 0 }}>{t('Əvvəlcə sinifləri seçin – siyahı sinfə görə süzülür (11-ci sinfə yalnız 11-in sınaqları).')}</p>}
             <div className="jlist" style={{ maxHeight: '60vh', overflowY: 'auto' }}>{groups.map(g => {
               const free = g.items.filter(x => !odd(x))
               const all = free.length > 0 && free.every(x => queue.includes(x.id))
@@ -163,13 +164,13 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
                 {g.items.map(x => {
                   const n = queue.indexOf(x.id)
                   return <label key={x.id} className="check small" style={{ padding: '0 12px' }}><input type="checkbox" checked={n >= 0} onChange={() => toggle(x.id)} />
-                    {n >= 0 && <b>{n + 1}.</b>} {heldLabel(x) && <Pill tone="info">{heldLabel(x)}</Pill>} {x.label} <span className="muted">({x.questions} sual{x.grades.length ? ` · ${x.grades.join(', ')}-cu sinif` : ' · sinif göstərilməyib'})</span>
-                    {x.given.length > 0 && <Pill tone="warn">verilib: {x.given.join(', ')}</Pill>}{!x.grade_ok && <Pill tone="warn">başqa sinfin</Pill>}</label>
+                    {n >= 0 && <b>{n + 1}.</b>} {heldLabel(x) && <Pill tone="info">{heldLabel(x)}</Pill>} {x.label} <span className="muted">({x.questions} {t('sual')}{x.grades.length ? ` · ${x.grades.join(', ')}-cu sinif` : (' · ' + t('sinif göstərilməyib'))})</span>
+                    {x.given.length > 0 && <Pill tone="warn">{t('verilib:')} {x.given.join(', ')}</Pill>}{!x.grade_ok && <Pill tone="warn">{t('başqa sinfin')}</Pill>}</label>
                 })}</div>
             })}</div></>}
           {other.length > 0 && <label className="check small" style={{ color: 'var(--warn)' }}><input type="checkbox" checked={okOther} onChange={e => setOkOther(e.target.checked)} />
-            {other.length} sınaq seçilmiş siniflərin sinfinə uyğun deyil – bilərəkdən verirəm (təsdiq)</label>}
-          <p className="small muted" style={{ margin: 0 }}>Artıq verilmiş sınaq sinfə ikinci dəfə göndərilmir; avtomatik əlavə olunanlar yalnız sinfin öz sınaqlarıdır.</p>
+            {other.length} {t('sınaq seçilmiş siniflərin sinfinə uyğun deyil – bilərəkdən verirəm (təsdiq)')}</label>}
+          <p className="small muted" style={{ margin: 0 }}>{t('Artıq verilmiş sınaq sinfə ikinci dəfə göndərilmir; avtomatik əlavə olunanlar yalnız sinfin öz sınaqlarıdır.')}</p>
         </fieldset>
         <ErrorBox error={err} />
       </div>

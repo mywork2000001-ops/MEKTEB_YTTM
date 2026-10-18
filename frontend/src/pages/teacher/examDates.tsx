@@ -3,6 +3,7 @@
 // İl – təqvim ili (2025, 2026), tədris ili deyil. Gün/həftə yalnız günü bilinən sınaqları, ay – günü və ya ayı bilinənləri göstərir.
 import { useMemo, useState } from 'react'
 import { Chips, MONTHS } from '../../ui'
+import { tt } from '../../i18n'
 
 export type Dated = { held_on?: string | null; held_prec?: 'day' | 'month' | 'year' | null }
 type Mode = 'all' | 'year' | 'month' | 'week' | 'day'
@@ -47,13 +48,13 @@ export function useExamDates<T extends Dated>(items: T[]) {
   const n = items.filter(fits).length
   const bar = (
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-      <span className="small muted">Sınağın tarixi</span>
-      <Chips label="Sınağın tarixi" value={mode} onChange={m => { setMode(m); setAnchor(null) }}
+      <span className="small muted">{tt('Sınağın tarixi')}</span>
+      <Chips label={tt('Sınağın tarixi')} value={mode} onChange={m => { setMode(m); setAnchor(null) }}
         options={[['all', 'Hamısı'], ['year', 'İl'], ['month', 'Ay'], ['week', 'Həftə'], ['day', 'Gün']]} />
-      {r && <><button type="button" className="btn sm" aria-label="Əvvəlki dövr" onClick={() => shift(-1)}>‹</button>
+      {r && <><button type="button" className="btn sm" aria-label={tt('Əvvəlki dövr')} onClick={() => shift(-1)}>‹</button>
         <b className="small">{label}</b>
-        <button type="button" className="btn sm" aria-label="Növbəti dövr" onClick={() => shift(1)}>›</button>
-        <span className="small muted">{n} sınaq</span></>}
+        <button type="button" className="btn sm" aria-label={tt('Növbəti dövr')} onClick={() => shift(1)}>›</button>
+        <span className="small muted">{n} {tt('sınaq')}</span></>}
     </div>
   )
   return { bar, fits, sort, mode }

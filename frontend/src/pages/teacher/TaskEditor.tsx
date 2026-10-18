@@ -1,7 +1,7 @@
 // Onlayn tapşırıq redaktoru: yaratma və redaktə. Viktorina bazasından bir neçə mənbə və bir neçə bölmə (alt mövzu),
 // seçilmiş sualların redaktəsi (mətn, variantlar, düzgün cavab, izah), öz sualım, vaxt, kimə.
 import { useEffect, useMemo, useState } from 'react'
-import { ml } from '../../i18n'
+import { useT, ml } from '../../i18n'
 import { get, patch, post } from '../../api'
 import { MathText } from '../../MathText'
 import { Drawer, ErrorBox, Field, Pill, toast } from '../../ui'
@@ -35,6 +35,7 @@ export const localParts = (s: string) => { const d = new Date(s); return [`${d.g
 
 export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, onClose, onDone }:
   { ta: number; taskId?: number; fromBank?: boolean; onClose: () => void; onDone: () => void }) {
+  const t = useT()
   const today = new Date().toISOString().slice(0, 10)
   const [f, setF] = useState({ title: `Test – ${today.split('-').reverse().join('.')}`, date: today, from: '15:00', to: '16:00', duration: 45, show: 'after_close', shuffle: true })
   const [qs, setQs] = useState<Q[]>([])
@@ -60,9 +61,9 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
   const add = (list: Q[]) => setQs(cur => [...cur, ...list.filter(q => !cur.some(c => c.key === q.key))])
   const remove = (k: string) => setQs(cur => cur.filter(q => q.key !== k))
 
-  const problem = !f.title.trim() ? 'Tapşırığın adını yazın' : !qs.length ? 'Ən azı 1 sual seçin'
-    : f.to <= f.from ? 'Bağlanma saatı açılma saatından sonra olmalıdır' : targets && !targets.length ? '«Kimə» bölməsində şagird seçin'
-    : qs.length > 100 ? 'Bir tapşırıqda ən çoxu 100 sual' : ''
+  const problem = !f.title.trim() ? t('Tapşırığın adını yazın') : !qs.length ? 'Ən azı 1 sual seçin'
+    : f.to <= f.from ? t('Bağlanma saatı açılma saatından sonra olmalıdır') : targets && !targets.length ? t('«Kimə» bölməsində şagird seçin')
+    : qs.length > 100 ? t('Bir tapşırıqda ən çoxu 100 sual') : ''
   const submit = async () => {
     if (problem) { setErr(new Error(problem)); return }
     const meta = { title: f.title.trim(), opens_at: iso(f.date, f.from), closes_at: iso(f.date, f.to), duration_min: f.duration, shuffle: f.shuffle, show_answers: f.show }
@@ -73,10 +74,10 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
         if (targets === null) body.all_students = true
         else if (targets) body.student_ids = targets
         await patch(`/api/tasks/${ta}/${taskId}`, body)
-        toast('Tapşırıq yeniləndi')
+        toast(t('Tapşırıq yeniləndi'))
       } else {
         await post(`/api/tasks/${ta}`, { ...meta, bank_ids: [], custom: qs.map(toCustom), student_ids: targets ?? null })
-        toast('Sınaq yaradıldı – «Sınaq imtahanları»nda da görünür')
+        toast(t('Sınaq yaradıldı – «Sınaq imtahanları»nda da görünür'))
       }
       onDone()
     } catch (e) { setErr(e) }
@@ -84,26 +85,26 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
 
   const bank = <BankPicker has={has} add={add} remove={remove} onTitle={t => !taskId && setF(x => ({ ...x, title: t }))} disabled={locked} first={bankFirst} />
   return (
-    <Drawer title={taskId ? 'Tapşırığı redaktə et' : bankFirst ? 'Viktorinadan test əlavə et' : 'Yeni tapşırıq'} onClose={onClose}
-      footer={<><span className="small muted grow">{qs.length} sual</span><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" onClick={submit}>{taskId ? 'Yadda saxla' : 'Yarat'}</button></>}>
+    <Drawer title={taskId ? t('Tapşırığı redaktə et') : bankFirst ? t('Viktorinadan test əlavə et') : 'Yeni tapşırıq'} onClose={onClose}
+      footer={<><span className="small muted grow">{qs.length} {t('sual')}</span><button className="btn" onClick={onClose}>{t('Ləğv et')}</button><button className="btn primary" onClick={submit}>{taskId ? 'Yadda saxla' : 'Yarat'}</button></>}>
       <div className="stack">
-        {locked && <div className="banner">Şagirdlər artıq başlayıb ({started}) – suallar dəyişdirilə bilməz; ad, vaxt və «kimə» dəyişə bilər.</div>}
+        {locked && <div className="banner">{t('Şagirdlər artıq başlayıb (')}{started}{t(') – suallar dəyişdirilə bilməz; ad, vaxt və «kimə» dəyişə bilər.')}</div>}
         {bankFirst && !taskId && bank}
         <div className="fg">
-          <Field label="Ad" full><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="məs. Kvadrat tənliklər – test" /></Field>
-          <Field label="Tarix"><input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></Field>
-          <Field label="Həll müddəti (dəq)" hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
-          <Field label="Açılır"><input type="time" value={f.from} onChange={e => setF({ ...f, from: e.target.value })} /></Field>
-          <Field label="Bağlanır"><input type="time" value={f.to} onChange={e => setF({ ...f, to: e.target.value })} /></Field>
-          <Field label="Düzgün cavablar görünsün" full><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
-            <option value="after_close">tapşırıq bağlandıqdan sonra</option><option value="after_submit">təhvil verdikdən dərhal sonra</option><option value="never">heç vaxt</option></select></Field>
-          <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> Sualların sırası hər şagirdə fərqli</label>
+          <Field label={t('Ad')} full><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder={t('məs. Kvadrat tənliklər – test')} /></Field>
+          <Field label={t('Tarix')}><input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></Field>
+          <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+          <Field label={t('Açılır')}><input type="time" value={f.from} onChange={e => setF({ ...f, from: e.target.value })} /></Field>
+          <Field label={t('Bağlanır')}><input type="time" value={f.to} onChange={e => setF({ ...f, to: e.target.value })} /></Field>
+          <Field label={t('Düzgün cavablar görünsün')} full><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
+            <option value="after_close">{t('tapşırıq bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvil verdikdən dərhal sonra')}</option><option value="never">{t('heç vaxt')}</option></select></Field>
+          <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> {t('Sualların sırası hər şagirdə fərqli')}</label>
         </div>
         {aud !== undefined && <TargetPicker ta={ta} value={aud} onChange={setTargets} />}
-        {taskId && aud !== undefined && started > 0 && <p className="small muted" style={{ margin: 0 }}>Testə başlamış şagirdi auditoriyadan çıxarmaq olmaz – əlavə etmək olar.</p>}
+        {taskId && aud !== undefined && started > 0 && <p className="small muted" style={{ margin: 0 }}>{t('Testə başlamış şagirdi auditoriyadan çıxarmaq olmaz – əlavə etmək olar.')}</p>}
         {!(bankFirst && !taskId) && bank}
-        <fieldset><legend>Seçilmiş suallar ({qs.length})</legend>
-          {qs.length === 0 ? <p className="small muted">Hələ sual yoxdur – yuxarıdan seçin və ya öz sualınızı yazın.</p> : (
+        <fieldset><legend>{t('Seçilmiş suallar (')}{qs.length})</legend>
+          {qs.length === 0 ? <p className="small muted">{t('Hələ sual yoxdur – yuxarıdan seçin və ya öz sualınızı yazın.')}</p> : (
             <div className="jlist">
               <PointsSummary qs={qs} />
               {qs.map((q, i) => editing === q.key && !locked ? (
@@ -112,11 +113,11 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
                 <div key={q.key} className="jrow cols" style={{ ['--cols' as any]: '28px minmax(0,1fr) auto', ['--mcols' as any]: '28px minmax(0,1fr)' }}>
                   <span className="num muted">{i + 1}.</span>
                   <span className="small"><span className="clamp2"><MathText text={q.text} /></span>
-                    <span className="muted">{q.raw ? `${q.source || ''}${q.lesson ? ' · ' + q.lesson : ''}` : 'redaktə olunub / öz sualım'}{q.image ? ' · 🖼' : ''}</span></span>
+                    <span className="muted">{q.raw ? `${q.source || ''}${q.lesson ? ' · ' + q.lesson : ''}` : t('redaktə olunub / öz sualım')}{q.image ? ' · 🖼' : ''}</span></span>
                   {!locked && <span className="row" style={{ flexWrap: 'nowrap' }}>
                     <QPoints q={q} pts={previewPoints(qs)[i]} onLevel={l => setQs(cur => cur.map(x => (x.key === q.key ? { ...x, difficulty: l } : x)))} />
-                    <button className="btn sm" onClick={() => setEditing(q.key)}>Redaktə</button>
-                    <button className="btn sm ghost" onClick={() => remove(q.key)} aria-label="Sil">✕</button></span>}
+                    <button className="btn sm" onClick={() => setEditing(q.key)}>{t('Redaktə')}</button>
+                    <button className="btn sm ghost" onClick={() => remove(q.key)} aria-label={t('Sil')}>✕</button></span>}
                 </div>))}
             </div>)}
           {!locked && <OwnQuestion onAdd={q => add([q])} />}
@@ -145,6 +146,7 @@ const ddmm = (s: string) => { const d = new Date(s); return `${String(d.getDate(
 // given – seçilmiş siniflərə verilmiş fayllar; grades – seçilmiş siniflərin rəqəmləri: verilmiş və başqa sinfin / sinifsiz
 // fayllar gizlədilir (açarla görünür) – təkrar və yanlış sinif qarışıqlığı olmasın (docs/sinaq-tekrar-qadagasi-promtu.md)
 export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, legend, main, exclude, tall, given, grades }: { has: (k: string) => boolean; add: (q: Q[]) => void; remove: (k: string) => void; onTitle: (t: string) => void; disabled: boolean; first: boolean; kinds?: string[]; legend?: string; main?: string[]; exclude?: string[]; tall?: boolean; given?: Record<string, Given>; grades?: number[] }) {
+  const t = useT()
   const [sources, setSources] = useState<any[]>([])
   const [srcSel, setSrcSel] = useState<string[]>([])
   const [more, setMore] = useState(!main)
@@ -169,7 +171,7 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
   const toggleLes = (l: any, src: string) => setLesSel(s => {
     const next = s.some(x => x.id === l.id) ? s.filter(x => x.id !== l.id) : [...s, { id: l.id, src, label: l.label }]
     if (next.length === 1) onTitle(`${next[0].label} · ${label(next[0].src).split('·').pop()!.trim()}`.slice(0, 200))
-    else if (next.length > 1) onTitle(`Test: ${next.length} bölmə`)
+    else if (next.length > 1) onTitle(t('Test: {length} bölmə', { length: next.length }))
     return next
   })
   const groups = lesSel.map(l => ({ l, items: (qByFile[l.id] || []).map(q => fromBank(q, l.src, l.label)) }))
@@ -185,19 +187,19 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
   const list = (k: string) => all(k).filter(l => showAll || !hiddenOf(l))
   const hidden = srcSel.reduce((n, k) => n + all(k).filter(hiddenOf).length, 0)
   return (
-    <fieldset disabled={disabled}><legend>{legend || (first ? '1. Viktorinadan: mənbələr və bölmələr' : 'Test bazasından (viktorina – avtomatik yenilənir)')}</legend>
+    <fieldset disabled={disabled}><legend>{legend || (first ? t('1. Viktorinadan: mənbələr və bölmələr') : t('Test bazasından (viktorina – avtomatik yenilənir)'))}</legend>
       <div className="stack">
         <div className="row" style={{ gap: 6 }}>
           {visible.map(s => <button key={s.key} type="button" className="chip" aria-pressed={srcSel.includes(s.key)} onClick={() => toggleSrc(s.key)}>{s.label} <span className="muted">({s.questions})</span></button>)}
-          {main && sources.length > visible.length && <button type="button" className="btn sm ghost" onClick={() => setMore(true)}>+ Digər mənbələr</button>}
+          {main && sources.length > visible.length && <button type="button" className="btn sm ghost" onClick={() => setMore(true)}>{t('+ Digər mənbələr')}</button>}
         </div>
         {srcSel.length > 0 && (
           <>
-            <input className="sel" placeholder="Bölmə / alt mövzu axtar" value={filter} onChange={e => setFilter(e.target.value)} />
+            <input className="sel" placeholder={t('Bölmə / alt mövzu axtar')} value={filter} onChange={e => setFilter(e.target.value)} />
             {srcSel.some(k => (lessons[k] || []).some(l => l.held_on)) && dates.bar}
             {(hidden > 0 || showAll) && (given || grades) && <label className="check small">
               <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
-              Verilmiş və başqa sinfin sınaqlarını da göstər <span className="muted">({hidden} gizlədilib – seçilsə, göndərəndə təsdiq soruşulacaq)</span></label>}
+              {t('Verilmiş və başqa sinfin sınaqlarını da göstər')} <span className="muted">({hidden} {t('gizlədilib – seçilsə, göndərəndə təsdiq soruşulacaq)')}</span></label>}
             <div className="jlist" style={{ maxHeight: tall ? '60vh' : 220, overflow: 'auto' }}>
               {srcSel.map(k => (
                 <div key={k}>
@@ -207,29 +209,29 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
                       <div className="small muted" style={{ padding: '6px 12px 2px', fontWeight: 600 }}>{bankGroup(k, l.label)}</div>}
                     <label className="check" style={{ padding: '0 12px', minHeight: 36 }}>
                       <input type="checkbox" checked={lesSel.some(x => x.id === l.id)} onChange={() => toggleLes(l, k)} />
-                      <span className="small">{heldLabel(l) && <><Pill tone="info">{heldLabel(l)}</Pill> </>}{l.label} <span className="muted">({l.questions}{l.grades?.length ? ` · ${l.grades.join(', ')}-cu sinif` : ''})</span>
-                        {wasGiven(l) && <> <Pill tone="warn">verilib · {given![l.id].classes.filter(c => c.full).map(c => `${c.class_name} ${ddmm(c.at)}`).join(', ')}</Pill></>}
-                        {!wasGiven(l) && given?.[l.id] && <> <Pill>qismən istifadə olunub</Pill></>}
-                        {otherGrade(l) && <> <Pill tone="warn">{l.grades?.length ? 'başqa sinfin' : 'sinfi göstərilməyib'}</Pill></>}</span></label></div>))}
-                  {!lessons[k] && <p className="small muted" style={{ padding: '0 12px' }}>Yüklənir…</p>}
+                      <span className="small">{heldLabel(l) && <><Pill tone="info">{heldLabel(l)}</Pill> </>}{l.label} <span className="muted">({l.questions}{l.grades?.length ? (' · ' + t('{x1}-cu sinif', { x1: l.grades.join(', ') })) : ''})</span>
+                        {wasGiven(l) && <> <Pill tone="warn">{t('verilib ·')} {given![l.id].classes.filter(c => c.full).map(c => `${c.class_name} ${ddmm(c.at)}`).join(', ')}</Pill></>}
+                        {!wasGiven(l) && given?.[l.id] && <> <Pill>{t('qismən istifadə olunub')}</Pill></>}
+                        {otherGrade(l) && <> <Pill tone="warn">{l.grades?.length ? t('başqa sinfin') : t('sinfi göstərilməyib')}</Pill></>}</span></label></div>))}
+                  {!lessons[k] && <p className="small muted" style={{ padding: '0 12px' }}>{t('Yüklənir…')}</p>}
                 </div>))}
             </div>
           </>)}
         {lesSel.length > 0 && (
           <>
             <div className="row">
-              <span className="small">{lesSel.length} bölmə · {pool.length} sual</span>
-              <button type="button" className="btn sm primary" onClick={() => add(pool)}>Hamısını əlavə et</button>
-              <span className="small">Təsadüfi</span>
+              <span className="small">{lesSel.length} {t('bölmə ·')} {pool.length} {t('sual')}</span>
+              <button type="button" className="btn sm primary" onClick={() => add(pool)}>{t('Hamısını əlavə et')}</button>
+              <span className="small">{t('Təsadüfi')}</span>
               <select className="grade-sel" value={n} onChange={e => setN(Number(e.target.value))}>{[5, 10, 15, 20, 25, 30, 40].map(x => <option key={x}>{x}</option>)}</select>
-              <button type="button" className="btn sm" onClick={random}>seç</button>
+              <button type="button" className="btn sm" onClick={random}>{t('seç')}</button>
             </div>
             <div className="jlist" style={{ maxHeight: 340, overflow: 'auto' }}>
               {groups.map(({ l, items }) => (
                 <div key={l.id}>
                   <div className="row small" style={{ padding: '6px 12px', background: 'var(--surface-2)' }}>
                     <b className="grow">{l.label}</b>
-                    <button type="button" className="btn sm ghost" onClick={() => add(items)}>hamısı ({items.length})</button>
+                    <button type="button" className="btn sm ghost" onClick={() => add(items)}>{t('hamısı (')}{items.length})</button>
                   </div>
                   {items.map(q => (
                     <label key={q.key} className="jrow cols" style={{ ['--cols' as any]: '24px minmax(0,1fr) auto', ['--mcols' as any]: '1fr', cursor: 'pointer' }}>
@@ -237,7 +239,7 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
                       <span className="small clamp2"><MathText text={q.text} />{q.image ? ' 🖼' : ''}</span>
                       <Pill>{q.kind === 'mcq' ? 'variantlı' : 'açıq'}</Pill>
                     </label>))}
-                  {!qByFile[l.id] && <p className="small muted" style={{ padding: '0 12px' }}>Yüklənir…</p>}
+                  {!qByFile[l.id] && <p className="small muted" style={{ padding: '0 12px' }}>{t('Yüklənir…')}</p>}
                 </div>))}
             </div>
           </>)}
@@ -248,6 +250,7 @@ export function BankPicker({ has, add, remove, onTitle, disabled, first, kinds, 
 
 // ---------------------------------------------------------------- sual redaktəsi
 function QEdit({ q, onSave, onCancel }: { q: Q; onSave: (q: Q) => void; onCancel: () => void }) {
+  const t = useT()
   const [x, setX] = useState<Q>({ ...q, options: q.options.length ? [...q.options] : ['', '', '', ''] })
   const valid = x.text.trim() && (x.kind === 'mcq' ? x.options.filter(o => o.trim()).length >= 2 && (x.options[x.correct] || '').trim() : x.answer.trim())
   const save = () => {
@@ -257,26 +260,27 @@ function QEdit({ q, onSave, onCancel }: { q: Q; onSave: (q: Q) => void; onCancel
   const preview = useMemo(() => x.text, [x.text])
   return (
     <div className="jrow cols" style={{ ['--cols' as any]: '1fr', ['--mcols' as any]: '1fr', gap: 8, background: 'var(--surface-2)' }}>
-      <div className="row"><b className="grow">Sualı redaktə et</b>
-        <select className="grade-sel" value={x.kind} onChange={e => setX({ ...x, kind: e.target.value as Q['kind'] })}><option value="mcq">variantlı</option><option value="open">açıq cavab</option></select></div>
+      <div className="row"><b className="grow">{t('Sualı redaktə et')}</b>
+        <select className="grade-sel" value={x.kind} onChange={e => setX({ ...x, kind: e.target.value as Q['kind'] })}><option value="mcq">{t('variantlı')}</option><option value="open">{t('açıq cavab')}</option></select></div>
       <textarea className="sel" style={{ minHeight: 70, padding: 10 }} value={x.text} onChange={e => setX({ ...x, text: e.target.value })} />
-      {preview && /[$\\]/.test(preview) && <div className="small">Önbaxış: <MathText text={preview} /></div>}
+      {preview && /[$\\]/.test(preview) && <div className="small">{t('Önbaxış:')} <MathText text={preview} /></div>}
       {x.image && <img className="q-img" src={x.image} alt="" style={{ maxHeight: 160 }} />}
       {x.kind === 'mcq' ? x.options.map((o, i) => (
         <label key={i} className="row" style={{ flexWrap: 'nowrap' }}>
           <input type="radio" checked={x.correct === i} onChange={() => setX({ ...x, correct: i })} aria-label={'Düzgün: ' + 'ABCDE'[i]} />
           <b>{'ABCDE'[i]})</b><input className="sel grow" value={o} onChange={e => { const y = [...x.options]; y[i] = e.target.value; setX({ ...x, options: y }) }} />
-        </label>)) : <Field label="Düzgün cavab" hint="bir neçə qəbul edilən cavab «|» ilə: 2,5|5/2"><input value={x.answer} onChange={e => setX({ ...x, answer: e.target.value })} /></Field>}
-      {x.kind === 'mcq' && x.options.length < 5 && <button type="button" className="btn sm ghost" onClick={() => setX({ ...x, options: [...x.options, ''] })}>+ variant</button>}
-      <Field label="İzah (istəyə görə)"><textarea value={x.explanation} onChange={e => setX({ ...x, explanation: e.target.value })} /></Field>
-      <div className="row"><button type="button" className="btn primary sm" disabled={!valid} onClick={save}>Yadda saxla</button><button type="button" className="btn sm" onClick={onCancel}>Ləğv et</button></div>
+        </label>)) : <Field label={t('Düzgün cavab')} hint="bir neçə qəbul edilən cavab «|» ilə: 2,5|5/2"><input value={x.answer} onChange={e => setX({ ...x, answer: e.target.value })} /></Field>}
+      {x.kind === 'mcq' && x.options.length < 5 && <button type="button" className="btn sm ghost" onClick={() => setX({ ...x, options: [...x.options, ''] })}>{t('+ variant')}</button>}
+      <Field label={t('İzah (istəyə görə)')}><textarea value={x.explanation} onChange={e => setX({ ...x, explanation: e.target.value })} /></Field>
+      <div className="row"><button type="button" className="btn primary sm" disabled={!valid} onClick={save}>{t('Yadda saxla')}</button><button type="button" className="btn sm" onClick={onCancel}>{t('Ləğv et')}</button></div>
     </div>
   )
 }
 
 export function OwnQuestion({ onAdd }: { onAdd: (q: Q) => void }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
-  if (!open) return <button type="button" className="btn sm" style={{ marginTop: 8 }} onClick={() => setOpen(true)}>+ Öz sualım</button>
+  if (!open) return <button type="button" className="btn sm" style={{ marginTop: 8 }} onClick={() => setOpen(true)}>{t('+ Öz sualım')}</button>
   const blank: Q = { key: 'c' + Date.now(), kind: 'mcq', text: '', options: ['', '', '', ''], correct: 0, answer: '', explanation: '', image: null, bank_id: null, source: 'müəllim', lesson: null, raw: null }
   return <QEdit q={blank} onCancel={() => setOpen(false)} onSave={q => { onAdd({ ...q, key: 'c' + Date.now() }); setOpen(false) }} />
 }

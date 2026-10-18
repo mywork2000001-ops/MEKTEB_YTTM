@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
+import { Fragment, lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { flushOutbox, get, outbox, put } from './api'
 import { toast } from './ui'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
@@ -9,22 +9,22 @@ import { SurveyNudge } from './pages/student/Surveys'
 // yeni sertifikat pəncərəsi (QR kitabxanası ilə) – yalnız şagirdə, ayrıca yüklənir
 const CertNudge = lazy(() => import('./pages/student/Achievements').then(m => ({ default: m.CertNudge })))
 
-export type NavItem = { to: string; icon: string; label: string; short?: string }
+export type NavItem = { to: string; icon: string; label: string; short?: string; group?: string }
 
 export const TEACHER_NAV: NavItem[] = [
-  { to: '/', icon: 'home', label: 'Əsas səhifə', short: 'Əsas' },
-  { to: '/classes', icon: 'classes', label: 'Siniflər və qruplar', short: 'Siniflər' },
-  { to: '/journal', icon: 'journal', label: 'Jurnal' },
-  { to: '/plan', icon: 'plan', label: 'Perspektiv plan', short: 'Plan' },
-  { to: '/daily', icon: 'edit', label: 'Gündəlik plan', short: 'Gündəlik' },
-  { to: '/timetable', icon: 'topics', label: 'Həftəlik cədvəl', short: 'Cədvəl' },
-  { to: '/tests', icon: 'online', label: 'Testlər və sınaqlar', short: 'Testlər' },   // mövzu testləri + sınaqlar + nəticələr
-  { to: '/surveys', icon: 'star', label: 'Şagird sorğusu', short: 'Sorğu' },
-  { to: '/materials', icon: 'clip', label: 'Materiallar' },
-  { to: '/reports', icon: 'reports', label: 'Analitika və hesabat', short: 'Hesabat' },
-  { to: '/homeroom', icon: 'classes', label: 'Sinif rəhbəri', short: 'Rəhbər' },
-  { to: '/chat', icon: 'feedback', label: 'Çat' },
-  { to: '/settings', icon: 'settings', label: 'Tənzimləmələr', short: 'Tənzimləmə' },
+  { to: '/', icon: 'home', label: 'Əsas səhifə', short: 'Əsas', group: 'Dərs' },
+  { to: '/journal', icon: 'journal', label: 'Jurnal', group: 'Dərs' },
+  { to: '/daily', icon: 'edit', label: 'Gündəlik plan', short: 'Gündəlik', group: 'Dərs' },
+  { to: '/plan', icon: 'plan', label: 'Perspektiv plan', short: 'Plan', group: 'Dərs' },
+  { to: '/timetable', icon: 'topics', label: 'Həftəlik cədvəl', short: 'Cədvəl', group: 'Dərs' },
+  { to: '/tests', icon: 'online', label: 'Testlər və sınaqlar', short: 'Testlər', group: 'Qiymətləndirmə' },   // mövzu testləri + sınaqlar + nəticələr
+  { to: '/reports', icon: 'reports', label: 'Analitika və hesabat', short: 'Hesabat', group: 'Qiymətləndirmə' },
+  { to: '/surveys', icon: 'star', label: 'Şagird sorğusu', short: 'Sorğu', group: 'Qiymətləndirmə' },
+  { to: '/classes', icon: 'classes', label: 'Siniflər və qruplar', short: 'Siniflər', group: 'Siniflər' },
+  { to: '/homeroom', icon: 'classes', label: 'Sinif rəhbəri', short: 'Rəhbər', group: 'Siniflər' },
+  { to: '/materials', icon: 'clip', label: 'Materiallar', group: 'Siniflər' },
+  { to: '/chat', icon: 'feedback', label: 'Çat', group: 'Ünsiyyət' },
+  { to: '/settings', icon: 'settings', label: 'Tənzimləmələr', short: 'Tənzimləmə', group: 'Ünsiyyət' },
 ]
 const TEACHER_TABS = ['/', '/journal', '/chat', '/reports']
 
@@ -53,7 +53,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(navigator.onLine)
   const [pending, setPending] = useState(outbox().length)
   useEffect(() => {
-    const sync = async () => { const r = await flushOutbox(); if (r.sent) toast(`${r.sent} oflayn yazı göndərildi`); if (r.failed) toast(`${r.failed} yazı göndərilmədi (məlumat səhvdir)`) }
+    const sync = async () => { const r = await flushOutbox(); if (r.sent) toast(t('{sent} oflayn yazı göndərildi', { sent: r.sent })); if (r.failed) toast(t('{failed} yazı göndərilmədi (məlumat səhvdir)', { failed: r.failed })) }
     const on = () => { setOnline(true); sync() }
     const off = () => setOnline(false)
     const upd = () => setPending(outbox().length)
@@ -70,6 +70,7 @@ export function Layout({ children }: { children: ReactNode }) {
   }, [me?.id, loc.pathname === '/settings'])
   const items = student ? STUDENT_NAV : TEACHER_NAV.filter(i => i.to !== '/homeroom' || homeroom)
   const tabs = student ? STUDENT_TABS : TEACHER_TABS
+  const moreItems = items.filter(i => !tabs.includes(i.to))
   const initials = (me?.full_name || '?').split(' ').slice(0, 2).map(w => w[0]).join('')
   const shortName = (me?.full_name || '').split(' ').slice(0, 2).join(' ')
   const active = (to: string) => (to === '/' ? loc.pathname === '/' : loc.pathname.startsWith(to))
@@ -79,11 +80,14 @@ export function Layout({ children }: { children: ReactNode }) {
       <div className={'app' + (me?.workspace === 'private' ? ' ws-private' : '')}>
         <aside className="side">
           <div className="brand"><span className="logo">M</span><div><b>Müəllim köməkçisi</b><span>{shortName} · 2026–2027</span></div></div>
-          <nav className="nav" aria-label="Bölmələr">
-            {items.map(i => (
-              <NavLink key={i.to} to={i.to} end={i.to === "/"} className="navlink">
-                {({ isActive }) => <button tabIndex={-1} aria-current={isActive ? 'page' : undefined}><Icon name={i.icon} />{t(i.label)}</button>}
-              </NavLink>
+          <nav className="nav" aria-label={t('Bölmələr')}>
+            {items.map((i, k) => (
+              <Fragment key={i.to}>
+                {i.group && i.group !== items[k - 1]?.group && <div className="nav-group">{t(i.group)}</div>}
+                <NavLink to={i.to} end={i.to === "/"} className="navlink" title={t(i.label)}>
+                  {({ isActive }) => <button tabIndex={-1} aria-current={isActive ? 'page' : undefined}><Icon name={i.icon} /><span className="nav-lbl">{t(i.label)}</span></button>}
+                </NavLink>
+              </Fragment>
             ))}
           </nav>
           <div className="side-foot">
@@ -97,21 +101,21 @@ export function Layout({ children }: { children: ReactNode }) {
             {!student && me?.has_private && <WorkspaceSwitch />}
             <button className="tb-user" style={{ marginLeft: me?.has_private ? 0 : 'auto' }} onClick={() => nav('/settings')} aria-label={t('Tənzimləmələr')}>
               <span className="uav">{initials}</span>
-              <span className="tb-uname"><b>{shortName}</b><small>{student ? t('Şagird') : me?.role === 'admin' ? 'Admin' : 'Müəllim'}</small></span>
+              <span className="tb-uname"><b>{shortName}</b><small>{student ? t('Şagird') : me?.role === 'admin' ? t('Admin') : t('Müəllim')}</small></span>
             </button>
           </div>
           {(!online || pending > 0) && (
             <div className="banner" role="status" style={{ background: online ? 'var(--info-soft)' : 'var(--warn-soft)', color: online ? 'var(--info)' : 'var(--warn)' }}>
-              {online ? '' : 'Oflayn rejim – son yüklənən məlumatlar göstərilir. '}{pending > 0 ? `${pending} jurnal yazısı göndərilməyi gözləyir${online ? ' – göndərilir…' : ' (internet qayıdanda avtomatik göndəriləcək)'}.` : ''}
+              {online ? '' : t('Oflayn rejim – son yüklənən məlumatlar göstərilir.') + ' '}{pending > 0 ? t('{n} jurnal yazısı göndərilməyi gözləyir', { n: pending }) + ' ' + (online ? t('– göndərilir…') : t('(internet qayıdanda avtomatik göndəriləcək)')) + '.' : ''}
             </div>)}
           {!student && (() => { try { return sessionStorage.getItem('mk-weak') === '1' } catch { return false } })() && (
-            <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>Parolunuz zəifdir (8 simvoldan qısa). Tənzimləmələr → Hesab bölməsində daha uzun parol qoyun.</div>)}
+            <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>{t('Parolunuz zəifdir (8 simvoldan qısa). Tənzimləmələr → Hesab bölməsində daha uzun parol qoyun.')}</div>)}
           {children}
         </main>
       </div>
       {student && <SurveyNudge />}
       {student && <Suspense fallback={null}><CertNudge /></Suspense>}
-      <nav className="tabbar" aria-label="Əsas bölmələr">
+      <nav className="tabbar" aria-label={t('Əsas bölmələr')}>
         {tabs.map(to => { const i = items.find(x => x.to === to)!; return (
           <button key={to} aria-current={active(to) ? 'page' : undefined} onClick={() => nav(to)}><Icon name={i.icon} />{t(i.short || i.label)}</button>) })}
         <button aria-current={!tabs.some(active) ? 'page' : undefined} onClick={() => setMore(true)}><Icon name="more" />{t('Daha çox')}</button>
@@ -119,8 +123,11 @@ export function Layout({ children }: { children: ReactNode }) {
       {more && (
         <Drawer title={t('Daha çox')} onClose={() => setMore(false)}>
           <div className="nav" style={{ gap: 6 }}>
-            {items.filter(i => !tabs.includes(i.to)).map(i => (
-              <button key={i.to} className="btn" style={{ justifyContent: 'flex-start' }} onClick={() => { setMore(false); nav(i.to) }}><Icon name={i.icon} />{t(i.label)}</button>
+            {moreItems.map((i, k) => (
+              <Fragment key={i.to}>
+                {i.group && i.group !== moreItems[k - 1]?.group && <div className="nav-group nav-group-more">{t(i.group)}</div>}
+                <button className="btn" style={{ justifyContent: 'flex-start' }} onClick={() => { setMore(false); nav(i.to) }}><Icon name={i.icon} />{t(i.label)}</button>
+              </Fragment>
             ))}
             <button className="btn danger" onClick={logout}>{t('Çıxış')}</button>
           </div>
@@ -133,6 +140,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
 /** Məkan: məktəb və ya fərdi hazırlıq (repetitor) – fərdi məkan məktəbin hesabatlarına və siyahılarına düşmür. */
 function WorkspaceSwitch() {
+  const t = useT()
   const { me } = useAuth()
   const [busy, setBusy] = useState(false)
   const go = async (kind: 'school' | 'private') => {
@@ -142,12 +150,12 @@ function WorkspaceSwitch() {
       const ws = await get<{ id: number; kind: string }[]>('/api/workspaces')
       const w = ws.find(x => x.kind === kind)
       if (w) { await put('/api/workspaces/active', { school_id: w.id }); location.reload() }
-    } catch { toast('Məkan dəyişdirilmədi'); setBusy(false) }
+    } catch { toast(t('Məkan dəyişdirilmədi')); setBusy(false) }
   }
   return (
-    <div className="ws-switch" role="group" aria-label="Məkan" style={{ marginLeft: 'auto' }}>
-      <button aria-pressed={me?.workspace !== 'private'} onClick={() => go('school')} title="Məktəb">Məktəb</button>
-      <button aria-pressed={me?.workspace === 'private'} onClick={() => go('private')} title="Fərdi hazırlıq – məktəbə aid deyil">Fərdi</button>
+    <div className="ws-switch" role="group" aria-label={t('Məkan')} style={{ marginLeft: 'auto' }}>
+      <button aria-pressed={me?.workspace !== 'private'} onClick={() => go('school')} title={t('Məktəb')}>{t('Məktəb')}</button>
+      <button aria-pressed={me?.workspace === 'private'} onClick={() => go('private')} title={t('Fərdi hazırlıq – məktəbə aid deyil')}>{t('Fərdi')}</button>
     </div>
   )
 }

@@ -24,7 +24,7 @@ export function LookPanel() {
       <section className="panel">
         <h2>{t('Dil')}</h2>
         <div className="stack">{LANGS.map(([k, n]) => <button key={k} className="chip" aria-pressed={me?.language === k} onClick={() => setLang(k)}>{n}</button>)}</div>
-        <p className="small muted" style={{ marginTop: 10 }}>Rəsmi sənədlər (plan, çap) həmişə Azərbaycan dilindədir.</p>
+        <p className="small muted" style={{ marginTop: 10 }}>{t('Rəsmi sənədlər (plan, çap) həmişə Azərbaycan dilindədir.')}</p>
       </section>
     </div>
   )
@@ -38,11 +38,11 @@ export function PasswordPanel({ student }: { student: boolean }) {
   const clean = (v: string) => (student ? v.replace(/\D/g, '').slice(0, 4) : v)
   return (
     <section className="panel" style={{ maxWidth: 440 }}>
-      <h2>{student ? t('PIN-i dəyiş') : 'Parolu dəyiş'}</h2>
+      <h2>{student ? t('PIN-i dəyiş') : t('Parolu dəyiş')}</h2>
       <div className="stack">
-        <Field label={student ? 'Köhnə PIN' : 'Köhnə parol'}><input type="password" inputMode={student ? 'numeric' : undefined} value={f.old} onChange={e => setF({ ...f, old: clean(e.target.value) })} /></Field>
-        <Field label={student ? 'Yeni PIN (4 rəqəm)' : 'Yeni parol (ən azı 8 simvol)'}><input type="password" inputMode={student ? 'numeric' : undefined} value={f.new} onChange={e => setF({ ...f, new: clean(e.target.value) })} /></Field>
-        <Field label="Təkrar" error={f.again && f.again !== f.new ? 'Uyğun gəlmir' : undefined}><input type="password" inputMode={student ? 'numeric' : undefined} value={f.again} onChange={e => setF({ ...f, again: clean(e.target.value) })} /></Field>
+        <Field label={student ? t('Köhnə PIN') : t('Köhnə parol')}><input type="password" inputMode={student ? 'numeric' : undefined} value={f.old} onChange={e => setF({ ...f, old: clean(e.target.value) })} /></Field>
+        <Field label={student ? t('Yeni PIN (4 rəqəm)') : t('Yeni parol (ən azı 8 simvol)')}><input type="password" inputMode={student ? 'numeric' : undefined} value={f.new} onChange={e => setF({ ...f, new: clean(e.target.value) })} /></Field>
+        <Field label={t('Təkrar')} error={f.again && f.again !== f.new ? t('Uyğun gəlmir') : undefined}><input type="password" inputMode={student ? 'numeric' : undefined} value={f.again} onChange={e => setF({ ...f, again: clean(e.target.value) })} /></Field>
         <AsyncBtn className="btn primary" disabled={!valid || f.new !== f.again || !f.old} ok="Dəyişdirildi"
           onClick={async () => { await post('/api/auth/password', { old: f.old, new: f.new }); setF({ old: '', new: '', again: '' }) }}>{t('Yadda saxla')}</AsyncBtn>
       </div>

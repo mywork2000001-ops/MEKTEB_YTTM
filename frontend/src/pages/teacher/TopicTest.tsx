@@ -9,6 +9,7 @@ import { sectionText } from './Plan'
 import { BankPicker, fromSnapshot, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
 import { StudentPicker } from './common'
 import { PointsSummary, previewPoints, QPoints } from '../../scoring'
+import { useT } from '../../i18n'
 
 type Peer = {
   ta_id: number; class_name: string; kind: string; current: boolean; students: number
@@ -36,6 +37,7 @@ function defaults(p: Peer): Row {
 }
 
 export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl: number; onClose: () => void; onDone: () => void }) {
+  const t = useT()
   const [d, setD] = useState<Peers | null>(null)
   const [rows, setRows] = useState<Record<number, Row>>({})
   const [plain, setPlain] = useState<Q[]>([])
@@ -77,17 +79,17 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
       }
     }, () => setToplu(null))
   }, [ta, pl])
-  const takePrev = (p: Prev) => { setQs(cur => [...cur, ...p.questions.map((q, i) => fromSnapshot(q, `p${p.task_id}-${i}`)).filter(q => !cur.some(c => c.key === q.key))]); toast(`${p.count} sual götürüldü`) }
+  const takePrev = (p: Prev) => { setQs(cur => [...cur, ...p.questions.map((q, i) => fromSnapshot(q, `p${p.task_id}-${i}`)).filter(q => !cur.some(c => c.key === q.key))]); toast(t('{count} sual götürüldü', { count: p.count })) }
 
   // «Test toplusu» dərsi: S/E/M aralığı, ev tapşırığı, fəsil testi və ya sınaq – P007 bankından (docs/ix-dim-toplu-perspektiv-promtu.md §4)
   const takeToplu = async (scope: 'lesson' | 'ev' | 'chapter') => {
     setTbusy(true)
     try {
       const r = await get<Toplu>(`/api/programs/toplu/questions?lesson_id=${pl}&scope=${scope}&n=${tn}`)
-      if (!r.questions.length) { toast('Bu aralıqda bazada sual yoxdur'); return }
+      if (!r.questions.length) { toast(t('Bu aralıqda bazada sual yoxdur')); return }
       add(r.questions.map(q => fromSnapshot(q, 'b' + q.bank_id)))
       if (r.title) setF(x => ({ ...x, title: r.title!.slice(0, 200) }))
-      toast(`${r.questions.length} sual götürüldü${r.missing.length ? ` · bazada yoxdur: ${r.missing.length}` : ''}`)
+      toast(t('{length} sual götürüldü{x2}', { length: r.questions.length, x2: r.missing.length ? (' · ' + t('bazada yoxdur: {length}', { length: r.missing.length })) : '' }))
     } catch (e) { setErr(e) } finally { setTbusy(false) }
   }
 
@@ -96,7 +98,7 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
     try {
       const r = await get<P0010>(`/api/plan/${ta}/topics/${pl}/p0010?file_id=${fileId}&n=${tn}`)
       add(r.questions.map(q => fromSnapshot(q, 'b' + q.bank_id)))
-      toast(`${r.questions.length} sual götürüldü`)
+      toast(t('{length} sual götürüldü', { length: r.questions.length }))
     } catch (e) { setErr(e) } finally { setTbusy(false) }
   }
 
@@ -113,11 +115,11 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
   }
 
   const noQs = variants ? !vqs['Orta'].length || LV.some(k => vqs[k].length > 100) : !plain.length
-  const problem = !f.title.trim() ? 'Testin adını yazın' : noQs ? (variants ? '«Orta» variantına ən azı 1 sual seçin (səviyyəsi olmayanlar onu alır)' : 'Ən azı 1 sual seçin') : !chosen.length ? 'Ən azı bir sinif seçin'
-    : chosen.some(c => !rows[c.ta_id].pl) ? 'Mövzusu tapılmayan sinifdə mövzunu seçin'
-    : chosen.some(c => rows[c.ta_id].ids?.length === 0) ? '«Kimə» bölməsində ən azı bir şagird seçin'
-    : chosen.some(c => { const r = rows[c.ta_id]; return iso(r.d2, r.t2) <= iso(r.d1, r.t1) }) ? 'Bitmə vaxtı başlamadan sonra olmalıdır'
-    : !variants && plain.length > 100 ? 'Bir testdə ən çoxu 100 sual' : ''
+  const problem = !f.title.trim() ? t('Testin adını yazın') : noQs ? (variants ? t('«Orta» variantına ən azı 1 sual seçin (səviyyəsi olmayanlar onu alır)') : t('Ən azı 1 sual seçin')) : !chosen.length ? t('Ən azı bir sinif seçin')
+    : chosen.some(c => !rows[c.ta_id].pl) ? t('Mövzusu tapılmayan sinifdə mövzunu seçin')
+    : chosen.some(c => rows[c.ta_id].ids?.length === 0) ? t('«Kimə» bölməsində ən azı bir şagird seçin')
+    : chosen.some(c => { const r = rows[c.ta_id]; return iso(r.d2, r.t2) <= iso(r.d1, r.t1) }) ? t('Bitmə vaxtı başlamadan sonra olmalıdır')
+    : !variants && plain.length > 100 ? t('Bir testdə ən çoxu 100 sual') : ''
 
   const submit = async () => {
     if (problem) { setErr(new Error(problem)); return }
@@ -129,34 +131,33 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
         variants: variants ? Object.fromEntries(LV.filter(k => vqs[k].length).map(k => [k, { bank_ids: [], custom: vqs[k].map(toCustom) }])) : null,
         targets: chosen.map(c => { const x = rows[c.ta_id]; return { ta_id: c.ta_id, plan_lesson_id: x.pl, opens_at: iso(x.d1, x.t1), closes_at: iso(x.d2, x.t2), student_ids: x.ids } }),
       })
-      toast(r.tasks.length > 1 ? `Test ${r.tasks.length} sinfə göndərildi` : 'Test göndərildi')
+      toast(r.tasks.length > 1 ? t('Test {length} sinfə göndərildi', { length: r.tasks.length }) : t('Test göndərildi'))
       onDone()
     } catch (e) { setErr(e) } finally { setBusy(false) }
   }
 
   return (
-    <Drawer title="Mövzuya onlayn test" onClose={onClose}
-      footer={<><span className="small muted grow">{variants ? LV.map(k => `${k} ${vqs[k].length}`).join(' · ') : `${plain.length} sual`} · {chosen.length} sinif</span><button className="btn" onClick={onClose}>Ləğv et</button>
-        <button className="btn primary" disabled={busy} onClick={submit}>Göndər</button></>}>
+    <Drawer title={t('Mövzuya onlayn test')} onClose={onClose}
+      footer={<><span className="small muted grow">{variants ? LV.map(k => `${k} ${vqs[k].length}`).join(' · ') : t('{length} sual', { length: plain.length })} · {chosen.length} {t('sinif')}</span><button className="btn" onClick={onClose}>{t('Ləğv et')}</button>
+        <button className="btn primary" disabled={busy} onClick={submit}>{t('Göndər')}</button></>}>
       {!d ? (err ? <ErrorBox error={err} /> : <Loading />) : (
         <div className="stack">
           <div className="banner"><div>
             <b>№{d.topic.seq} {d.topic.topic}</b>{d.topic.section ? <span className="muted"> · {sectionText(d.topic.section)}</span> : null}
-            <div className="small" style={{ marginTop: 4 }}>{f.journal ? 'Test bağlananda nəticə (bal və qiymət) formativ jurnala – bu mövzunun dərsinə yazılır. Testi yazmayana qiymət yazılmır.' : 'Nəticə jurnala avtomatik yazılmayacaq.'}</div>
+            <div className="small" style={{ marginTop: 4 }}>{f.journal ? t('Test bağlananda nəticə (bal və qiymət) formativ jurnala – bu mövzunun dərsinə yazılır. Testi yazmayana qiymət yazılmır.') : t('Nəticə jurnala avtomatik yazılmayacaq.')}</div>
           </div></div>
           <div className="fg">
-            <Field label="Ad" full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
-            <Field label="Həll müddəti (dəq)" hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
-            <Field label="Düzgün cavablar görünsün"><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
-              <option value="after_close">test bağlandıqdan sonra</option><option value="after_submit">təhvil verdikdən dərhal sonra</option><option value="never">heç vaxt</option></select></Field>
-            <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> Sualların sırası hər şagirdə fərqli</label>
-            <label className="check full"><input type="checkbox" checked={f.journal} onChange={e => setF({ ...f, journal: e.target.checked })} /> Bağlananda formativ jurnala yaz</label>
-            <label className="check full"><input type="checkbox" checked={variants} onChange={e => setVariants(e.target.checked)} /> Səviyyəyə görə variant (Zəif / Orta / Güclü – hər qrupa öz sualları)</label>
+            <Field label={t('Ad')} full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
+            <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+            <Field label={t('Düzgün cavablar görünsün')}><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
+              <option value="after_close">{t('test bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvil verdikdən dərhal sonra')}</option><option value="never">{t('heç vaxt')}</option></select></Field>
+            <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> {t('Sualların sırası hər şagirdə fərqli')}</label>
+            <label className="check full"><input type="checkbox" checked={f.journal} onChange={e => setF({ ...f, journal: e.target.checked })} /> {t('Bağlananda formativ jurnala yaz')}</label>
+            <label className="check full"><input type="checkbox" checked={variants} onChange={e => setVariants(e.target.checked)} /> {t('Səviyyəyə görə variant (Zəif / Orta / Güclü – hər qrupa öz sualları)')}</label>
           </div>
-          {variants && <p className="small muted" style={{ margin: 0 }}>Hər şagird öz səviyyəsinin variantını alır (Jurnal → Səviyyə qrupları). Səviyyəsi təyin edilməyən və ya variantı boş qalan
-            qrupun şagirdləri «Orta» variantını alır. Qiymət hər şagirdin öz variantının sual sayından hesablanır. Şagird səviyyə adını görmür.</p>}
+          {variants && <p className="small muted" style={{ margin: 0 }}>{t('Hər şagird öz səviyyəsinin variantını alır (Jurnal → Səviyyə qrupları). Səviyyəsi təyin edilməyən və ya variantı boş qalan qrupun şagirdləri «Orta» variantını alır. Qiymət hər şagirdin öz variantının sual sayından hesablanır. Şagird səviyyə adını görmür.')}</p>}
 
-          <fieldset><legend>Siniflər – eyni mövzu ({d.subject}{d.grade ? `, ${d.grade}-cu sinif səviyyəsi` : ''})</legend>
+          <fieldset><legend>{t('Siniflər – eyni mövzu (')}{d.subject}{d.grade ? (', ' + t('{grade}-cu sinif səviyyəsi', { grade: d.grade })) : ''})</legend>
             <div className="jlist">
               {d.classes.map(c => {
                 const r = rows[c.ta_id]
@@ -165,93 +166,93 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
                   <div key={c.ta_id} className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 6 }}>
                     <label className="check" style={{ minHeight: 32 }}>
                       <input type="checkbox" checked={r.on} disabled={c.current} onChange={e => set(c.ta_id, { on: e.target.checked })} />
-                      <b>{c.class_name}</b><span className="small muted">{c.students} şagird</span>
-                      {c.current && <Pill tone="acc">bu sinif</Pill>}
-                      {c.already_has_test && <Pill tone="warn">bu mövzuya test artıq var</Pill>}
+                      <b>{c.class_name}</b><span className="small muted">{c.students} {t('şagird')}</span>
+                      {c.current && <Pill tone="acc">{t('bu sinif')}</Pill>}
+                      {c.already_has_test && <Pill tone="warn">{t('bu mövzuya test artıq var')}</Pill>}
                     </label>
                     {c.plan_lesson ? (
-                      <span className="small muted">№{c.plan_lesson.seq} {c.plan_lesson.topic}{c.working_date ? ` · dərs: ${fmtDate(c.working_date)}, ${c.period}-ci saat` : ' · işçi planda tarix yoxdur'}</span>
+                      <span className="small muted">№{c.plan_lesson.seq} {c.plan_lesson.topic}{c.working_date ? (' · ' + t('dərs: {x1}, {period}-ci saat', { x1: fmtDate(c.working_date), period: c.period })) : (' · ' + t('işçi planda tarix yoxdur'))}</span>
                     ) : r.on && (
                       <select className="sel" value={r.pl ?? ''} onChange={e => set(c.ta_id, { pl: Number(e.target.value) || null })}>
-                        <option value="">Mövzu tapılmadı – bu sinfin planından seçin</option>
+                        <option value="">{t('Mövzu tapılmadı – bu sinfin planından seçin')}</option>
                         {c.lessons?.map(l => <option key={l.id} value={l.id}>№{l.seq} {l.topic}</option>)}
                       </select>)}
                     {r.on && (
                       <div className="row" style={{ gap: 6 }}>
-                        <span className="small">Başlama</span>
+                        <span className="small">{t('Başlama')}</span>
                         <input type="date" className="sel" value={r.d1} onChange={e => set(c.ta_id, { d1: e.target.value })} />
                         <input type="time" className="sel" value={r.t1} onChange={e => set(c.ta_id, { t1: e.target.value })} />
-                        <span className="small">Bitmə</span>
+                        <span className="small">{t('Bitmə')}</span>
                         <input type="date" className="sel" value={r.d2} onChange={e => set(c.ta_id, { d2: e.target.value })} />
                         <input type="time" className="sel" value={r.t2} onChange={e => set(c.ta_id, { t2: e.target.value })} />
                       </div>)}
-                    {r.on && <StudentPicker ta={c.ta_id} legend={`Kimə – ${c.class_name}`} onChange={ids => set(c.ta_id, { ids })} />}
-                    {r.on && variants && r.ids && <span className="small muted">Seçilmiş şagirdlər öz səviyyəsinin variantını alır.</span>}
+                    {r.on && <StudentPicker ta={c.ta_id} legend={t('Kimə – {class_name}', { class_name: c.class_name })} onChange={ids => set(c.ta_id, { ids })} />}
+                    {r.on && variants && r.ids && <span className="small muted">{t('Seçilmiş şagirdlər öz səviyyəsinin variantını alır.')}</span>}
                   </div>)
               })}
             </div>
-            {d.classes.length > 1 && <button type="button" className="btn sm ghost" style={{ marginTop: 8 }} onClick={sameTime}>Hamısına bu sinfin vaxtını qoy</button>}
-            {d.classes.length === 1 && <p className="small muted">Eyni fənn və sinif səviyyəsində başqa sinfiniz yoxdur.</p>}
+            {d.classes.length > 1 && <button type="button" className="btn sm ghost" style={{ marginTop: 8 }} onClick={sameTime}>{t('Hamısına bu sinfin vaxtını qoy')}</button>}
+            {d.classes.length === 1 && <p className="small muted">{t('Eyni fənn və sinif səviyyəsində başqa sinfiniz yoxdur.')}</p>}
           </fieldset>
 
           {prev && prev.length > 0 && (
-            <fieldset><legend>Bu mövzu üçün əvvəlki testləriniz ({prev.length})</legend>
+            <fieldset><legend>{t('Bu mövzu üçün əvvəlki testləriniz (')}{prev.length})</legend>
               {prev.slice(0, 6).map(p => (
                 <div key={p.task_id} className="row small" style={{ borderTop: '1px solid var(--line)', padding: '6px 0' }}>
-                  <span className="grow"><b>{p.title}</b> <span className="muted">· {p.class_name} · {fmtDate(p.opens_at)} · {p.count} sual{p.avg_pct != null ? ` · orta ${p.avg_pct}%` : ''}</span></span>
-                  <button type="button" className="btn sm" onClick={() => takePrev(p)}>Sualları götür</button>
+                  <span className="grow"><b>{p.title}</b> <span className="muted">· {p.class_name} · {fmtDate(p.opens_at)} · {p.count} {t('sual')}{p.avg_pct != null ? (' · ' + t('orta {avg_pct}%', { avg_pct: p.avg_pct })) : ''}</span></span>
+                  <button type="button" className="btn sm" onClick={() => takePrev(p)}>{t('Sualları götür')}</button>
                 </div>))}
-              <p className="small muted" style={{ margin: '6px 0 0' }}>Keçən illərin testləri də burada görünür – yeni ildə eyni mövzuya sualları bir kliklə götürün.</p>
+              <p className="small muted" style={{ margin: '6px 0 0' }}>{t('Keçən illərin testləri də burada görünür – yeni ildə eyni mövzuya sualları bir kliklə götürün.')}</p>
             </fieldset>)}
           {toplu && (
-            <fieldset><legend>Toplu tapşırıqlarından (P007){toplu.chapter ? ` – ${toplu.chapter}` : ''}</legend>
+            <fieldset><legend>{t('Toplu tapşırıqlarından (P007)')}{toplu.chapter ? ` – ${toplu.chapter}` : ''}</legend>
               {!toplu.in_bank ? (
-                <p className="small muted" style={{ margin: 0 }}>Bu fəslin P007 testləri hələ test bazasında yoxdur (admin «Hamısını yenidən oxu» ilə yeniləyə bilər).{' '}
-                  {toplu.url && <a href={toplu.url} target="_blank" rel="noreferrer">P007-də aç</a>}</p>
+                <p className="small muted" style={{ margin: 0 }}>{t('Bu fəslin P007 testləri hələ test bazasında yoxdur (admin «Hamısını yenidən oxu» ilə yeniləyə bilər).')}{' '}
+                  {toplu.url && <a href={toplu.url} target="_blank" rel="noreferrer">{t('P007-də aç')}</a>}</p>
               ) : toplu.mode === 'chapter' ? (
                 <div className="row" style={{ gap: 6 }}>
-                  <button type="button" className="btn sm" disabled={tbusy} onClick={() => takeToplu('lesson')}>Dərsin tapşırıqları</button>
-                  {toplu.has_ev && <button type="button" className="btn sm" disabled={tbusy} onClick={() => takeToplu('ev')}>Ev tapşırığı (onlayn yoxlama)</button>}
-                  <button type="button" className="btn sm" disabled={tbusy} onClick={() => takeToplu('chapter')}>Fəsil testi:</button>
+                  <button type="button" className="btn sm" disabled={tbusy} onClick={() => takeToplu('lesson')}>{t('Dərsin tapşırıqları')}</button>
+                  {toplu.has_ev && <button type="button" className="btn sm" disabled={tbusy} onClick={() => takeToplu('ev')}>{t('Ev tapşırığı (onlayn yoxlama)')}</button>}
+                  <button type="button" className="btn sm" disabled={tbusy} onClick={() => takeToplu('chapter')}>{t('Fəsil testi:')}</button>
                   <input type="number" className="sel" style={{ width: 64 }} min={1} max={100} value={tn} onChange={e => setTn(Number(e.target.value) || 15)} />
-                  <span className="small muted">təsadüfi sual (qapalı : açıq ≈ 2 : 1)</span>
+                  <span className="small muted">{t('təsadüfi sual (qapalı : açıq ≈ 2 : 1)')}</span>
                 </div>
               ) : (
                 <div className="row" style={{ gap: 6 }}>
                   <button type="button" className="btn sm" disabled={tbusy} onClick={() => takeToplu('lesson')}>
-                    {toplu.mode === 'exam' ? '2025 imtahan tapşırıqlarını götür' : toplu.mode === 'diag' ? 'Diaqnostik test (hər fəsildən 1)' : 'Toplu sınağı (hər fəsildən 2)'}</button>
-                  {toplu.mode !== 'exam' && <span className="small muted">Bu sinfə əvvəl verilmiş suallar təkrarlanmır.</span>}
-                  {!!toplu.absent?.length && <span className="small muted">Bazada olmayan fəsillər: {toplu.absent.length}</span>}
+                    {toplu.mode === 'exam' ? t('2025 imtahan tapşırıqlarını götür') : toplu.mode === 'diag' ? t('Diaqnostik test (hər fəsildən 1)') : t('Toplu sınağı (hər fəsildən 2)')}</button>
+                  {toplu.mode !== 'exam' && <span className="small muted">{t('Bu sinfə əvvəl verilmiş suallar təkrarlanmır.')}</span>}
+                  {!!toplu.absent?.length && <span className="small muted">{t('Bazada olmayan fəsillər:')} {toplu.absent.length}</span>}
                 </div>)}
             </fieldset>)}
           {p10?.eligible && (
-            <fieldset><legend>{p10.source === 'p007' ? 'DİM 9 test toplusu' : 'P0010 testləri'} (mövzuya uyğun)</legend>
-              {!p10.matches.length ? <p className="small muted" style={{ margin: 0 }}>{p10.source === 'p007' ? 'DİM 9' : 'P0010'} test bazasında bu mövzuya uyğun fayl tapılmadı – aşağıdan əl ilə seçin.</p> : (<>
-                {p10.file && <p className="small" style={{ margin: '0 0 6px' }}>Avtomatik əlavə olundu: <b>{p10.file.label}</b> ({p10.questions.length} sual). Lazım olmayanları siyahıdan silin.</p>}
+            <fieldset><legend>{p10.source === 'p007' ? t('DİM 9 test toplusu') : t('P0010 testləri')} {t('(mövzuya uyğun)')}</legend>
+              {!p10.matches.length ? <p className="small muted" style={{ margin: 0 }}>{p10.source === 'p007' ? t('DİM 9') : 'P0010'} {t('test bazasında bu mövzuya uyğun fayl tapılmadı – aşağıdan əl ilə seçin.')}</p> : (<>
+                {p10.file && <p className="small" style={{ margin: '0 0 6px' }}>{t('Avtomatik əlavə olundu:')} <b>{p10.file.label}</b> ({p10.questions.length} {t('sual). Lazım olmayanları siyahıdan silin.')}</p>}
                 <div className="row" style={{ gap: 6 }}>
                   {p10.matches.map(m => <button key={m.file_id} type="button" className="btn sm" disabled={tbusy} onClick={() => takeP10(m.file_id)}>{m.label} <span className="muted">({m.count})</span></button>)}
                 </div>
-                <div className="row" style={{ gap: 6, marginTop: 6 }}><span className="small muted">Bir fayldan ən çoxu</span>
+                <div className="row" style={{ gap: 6, marginTop: 6 }}><span className="small muted">{t('Bir fayldan ən çoxu')}</span>
                   <input type="number" className="sel" style={{ width: 64 }} min={1} max={100} value={tn} onChange={e => setTn(Number(e.target.value) || 15)} />
-                  <span className="small muted">sual (çoxdursa təsadüfi, qapalı : açıq ≈ 2 : 1)</span></div>
+                  <span className="small muted">{t('sual (çoxdursa təsadüfi, qapalı : açıq ≈ 2 : 1)')}</span></div>
               </>)}
             </fieldset>)}
-          {variants && <div className="row"><span className="small">Variant:</span>
+          {variants && <div className="row"><span className="small">{t('Variant:')}</span>
             {LV.map(k => <button key={k} type="button" className="chip" aria-pressed={vk === k} onClick={() => setVk(k)}>{k} <span className="muted">({vqs[k].length})</span></button>)}</div>}
           <BankPicker has={has} add={add} remove={remove} onTitle={() => {}} disabled={false} first={false} kinds={['movzu', 'diaqnostik']}
             legend="Test bazasından – mövzu testləri (sınaqlar ayrıca bölmədədir)" />
-          <fieldset><legend>{variants ? `«${vk}» variantının sualları` : 'Seçilmiş suallar'} ({qs.length})</legend>
-            {qs.length === 0 ? <p className="small muted">Yuxarıdan test bazasından seçin və ya öz sualınızı yazın.</p> : (
+          <fieldset><legend>{variants ? t('«{vk}» variantının sualları', { vk }) : t('Seçilmiş suallar')} ({qs.length})</legend>
+            {qs.length === 0 ? <p className="small muted">{t('Yuxarıdan test bazasından seçin və ya öz sualınızı yazın.')}</p> : (
               <div className="jlist">
                 <PointsSummary qs={qs} />
                 {qs.map((q, i) => (
                   <div key={q.key} className="jrow cols" style={{ ['--cols' as any]: '28px minmax(0,1fr) auto', ['--mcols' as any]: '28px minmax(0,1fr)' }}>
                     <span className="num muted">{i + 1}.</span>
                     <span className="small"><span className="clamp2"><MathText text={q.text} /></span>
-                      <span className="muted">{q.raw ? `${q.source || ''}${q.lesson ? ' · ' + q.lesson : ''}` : 'öz sualım'}</span></span>
+                      <span className="muted">{q.raw ? `${q.source || ''}${q.lesson ? ' · ' + q.lesson : ''}` : t('öz sualım')}</span></span>
                     <span className="row" style={{ flexWrap: 'nowrap' }}>
                       <QPoints q={q} pts={previewPoints(qs)[i]} onLevel={l => setQs(cur => cur.map(x => (x.key === q.key ? { ...x, difficulty: l } : x)))} />
-                      <button className="btn sm ghost" onClick={() => remove(q.key)} aria-label="Sil">✕</button></span>
+                      <button className="btn sm ghost" onClick={() => remove(q.key)} aria-label={t('Sil')}>✕</button></span>
                   </div>))}
               </div>)}
             <OwnQuestion onAdd={q => add([q])} />

@@ -4,7 +4,7 @@ import { AsyncBtn, azDT, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gra
 import type { MyLesson } from './common'
 import { head, printDoc, SIGN, table } from '../../print'
 import { useAuth } from '../../auth'
-import { ml, tt } from '../../i18n'
+import { useT, ml, tt } from '../../i18n'
 import { printKey, printSheets, type KsqPrint } from '../../ksqPrint'
 import ScanCamera, { aiErrorText } from '../../scanCamera'
 import { printCards } from '../../examCardPrint'
@@ -16,6 +16,7 @@ type Planned = { kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string
 export const exLabel = (e: { kind: string; no: number; extra_seq?: number }) => `${e.kind}-${e.no}` + (e.extra_seq ? ` · ${tt('əlavə {n}', { n: e.extra_seq })}` : '')
 
 export default function Exams({ ta }: { ta: MyLesson }) {
+  const t = useT()
   const [d, err, , reload] = useLoad<{ has_summative: boolean; exams: Exam[]; planned: Planned[] }>(() => get(`/api/exams/${ta.id}`), [ta.id])
   const [create, setCreate] = useState<Planned | null>(null)
   const [open, setOpen] = useState<number | null>(null)
@@ -23,23 +24,23 @@ export default function Exams({ ta }: { ta: MyLesson }) {
   const [edit, setEdit] = useState<Exam | null>(null)
   const [delAsk, setDelAsk] = useState<Exam | null>(null)
   const [extra, setExtra] = useState<Exam | null>(null)
-  if (d && !d.has_summative) return <div className="empty">Bu qrupda KSQ/BSQ keçirilmir – bütöv sinifdə keçirilir.</div>
+  if (d && !d.has_summative) return <div className="empty">{t('Bu qrupda KSQ/BSQ keçirilmir – bütöv sinifdə keçirilir.')}</div>
   const byKey = new Map((d?.exams || []).filter(e => !e.extra_seq).map(e => [`${e.kind}-${e.semester}-${e.no}`, e]))
   const extrasOf = (id: number) => (d?.exams || []).filter(x => x.extra_of === id).sort((a, b) => (a.extra_seq || 0) - (b.extra_seq || 0))
   // əlavə imtahan – əsasın altında, eyni əməliyyatlarla (variant, skan, onlayn, nəticələr)
   const extraRows = (e: Exam) => extrasOf(e.id).map(x => (
     <div className="jrow cols" key={'ex' + x.id} style={{ ['--cols' as any]: 'minmax(0,1fr) auto auto', ['--mcols' as any]: 'minmax(0,1fr) auto', paddingLeft: 18 }}>
       <span>↳ <b>{exLabel(x)}</b> <span className="muted small">· {fmtDate(x.date)}</span><span className="sub small muted"><br />{x.extra_students ? tt('{n} şagird', { n: x.extra_students.length }) : tt('bütün sinif')}</span></span>
-      <Pill tone="ok">{x.max_points} bal{x.items ? ` · ${x.items.length} tapşırıq` : ''}</Pill>
+      <Pill tone="ok">{x.max_points} {t('bal')}{x.items ? (' · ' + t('{length} tapşırıq', { length: x.items.length })) : ''}</Pill>
       <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}><button className="btn sm ghost" onClick={() => setEdit(x)} title={tt('Tarixi və başlığı dəyiş')}>✏</button>
         <button className="btn sm ghost" onClick={() => setDelAsk(x)} title={tt('Sil')}>🗑</button>
         <button className="btn sm" onClick={() => setVars(x)}>🖨 {tt('Kağız variantlar')}</button>
-        <button className="btn sm primary" onClick={() => setOpen(x.id)}>Nəticələr</button></span>
+        <button className="btn sm primary" onClick={() => setOpen(x.id)}>{t('Nəticələr')}</button></span>
     </div>))
   return (
     <>
       <ErrorBox error={err} />
-      <p className="small muted">Bal → faiz → qiymət: 0–30% → 2, 31–60% → 3, 61–80% → 4, 81–100% → 5.</p>
+      <p className="small muted">{t('Bal → faiz → qiymət: 0–30% → 2, 31–60% → 3, 61–80% → 4, 81–100% → 5.')}</p>
       {/* arxiv: siniflər və tarix üzrə ZIP – Google Drive-da saxlamaq üçün; sonra kart şəkilləri serverdən silinə bilər */}
       {d && d.exams.length > 0 && <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
         <a className="btn sm" href={`/api/exam-archive/zip?ta_id=${ta.id}`} title={tt('Siniflər və tarix üzrə qovluqlar: variantlar, açar, nəticələr, kart şəkilləri')}>📦 {tt('KSQ arxivi (ZIP)')}</a>
@@ -53,13 +54,13 @@ export default function Exams({ ta }: { ta: MyLesson }) {
           return (
             <Fragment key={`${p.kind}${p.semester}${p.no}`}>
             <div className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr) auto auto', ['--mcols' as any]: 'minmax(0,1fr) auto' }}>
-              <span><b>{p.kind}-{p.no}</b> <span className="muted small">({p.semester}-ci yarımil) · {fmtDate(p.date)}</span><span className="sub small muted"><br />{p.topic}</span></span>
-              {e ? <Pill tone="ok">{e.max_points} bal{e.items ? ` · ${e.items.length} tapşırıq` : ''}</Pill> : <Pill>yaradılmayıb</Pill>}
+              <span><b>{p.kind}-{p.no}</b> <span className="muted small">({p.semester}{t('-ci yarımil) ·')} {fmtDate(p.date)}</span><span className="sub small muted"><br />{p.topic}</span></span>
+              {e ? <Pill tone="ok">{e.max_points} {t('bal')}{e.items ? (' · ' + t('{length} tapşırıq', { length: e.items.length })) : ''}</Pill> : <Pill>{t('yaradılmayıb')}</Pill>}
               {e ? <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}><button className="btn sm ghost" onClick={() => setEdit(e)} title={tt('Tarixi və başlığı dəyiş')}>✏</button>
                 <button className="btn sm ghost" onClick={() => setDelAsk(e)} title={tt('Sil')}>🗑</button>
                 <button className="btn sm" onClick={() => setVars(e)} title={tt('Hər şagirdə fərqli 30 sual · bir A4 + cavab kartı')}>🖨 {tt('Kağız variantlar')}</button>
                 <button className="btn sm ghost" onClick={() => setExtra(e)} title={tt('Buraxan, zəif yazan və ya qiymətini yaxşılaşdırmaq istəyən şagirdlər üçün')}>➕ {tt('Əlavə {kind}', { kind: e.kind })}</button>
-                <button className="btn sm primary" onClick={() => setOpen(e.id)}>Nəticələr</button></span> : <button className="btn sm" onClick={() => setCreate(p)}>Hazırla</button>}
+                <button className="btn sm primary" onClick={() => setOpen(e.id)}>{t('Nəticələr')}</button></span> : <button className="btn sm" onClick={() => setCreate(p)}>{t('Hazırla')}</button>}
               </div>
               {e && extraRows(e)}
             </Fragment>)
@@ -67,15 +68,15 @@ export default function Exams({ ta }: { ta: MyLesson }) {
         {/* yaradılmış, amma planda olmayan imtahanlar da görünsün (plan dəyişib və ya plansız yaradılıb) */}
         {(d?.exams || []).filter(e => !e.extra_seq && !(d?.planned || []).some(p => p.kind === e.kind && p.semester === e.semester && p.no === e.no)).map(e => (
           <Fragment key={'x' + e.id}><div className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr) auto auto', ['--mcols' as any]: 'minmax(0,1fr) auto' }}>
-            <span><b>{e.kind}-{e.no}</b> <span className="muted small">({e.semester}-ci yarımil) · {fmtDate(e.date)}</span><span className="sub small muted"><br />{tt('planda yoxdur')}</span></span>
-            <Pill tone="ok">{e.max_points} bal{e.items ? ` · ${e.items.length} tapşırıq` : ''}</Pill>
+            <span><b>{e.kind}-{e.no}</b> <span className="muted small">({e.semester}{t('-ci yarımil) ·')} {fmtDate(e.date)}</span><span className="sub small muted"><br />{tt('planda yoxdur')}</span></span>
+            <Pill tone="ok">{e.max_points} {t('bal')}{e.items ? (' · ' + t('{length} tapşırıq', { length: e.items.length })) : ''}</Pill>
             <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}><button className="btn sm ghost" onClick={() => setEdit(e)} title={tt('Tarixi və başlığı dəyiş')}>✏</button>
               <button className="btn sm ghost" onClick={() => setDelAsk(e)} title={tt('Sil')}>🗑</button>
               <button className="btn sm" onClick={() => setVars(e)}>🖨 {tt('Kağız variantlar')}</button>
               <button className="btn sm ghost" onClick={() => setExtra(e)}>➕ {tt('Əlavə {kind}', { kind: e.kind })}</button>
-              <button className="btn sm primary" onClick={() => setOpen(e.id)}>Nəticələr</button></span>
+              <button className="btn sm primary" onClick={() => setOpen(e.id)}>{t('Nəticələr')}</button></span>
           </div>{extraRows(e)}</Fragment>))}
-        {d && !d.planned.length && !d.exams.length && <div className="empty">Planda KSQ/BSQ yoxdur (plan yüklənməyib?).</div>}
+        {d && !d.planned.length && !d.exams.length && <div className="empty">{t('Planda KSQ/BSQ yoxdur (plan yüklənməyib?).')}</div>}
       </div>
       {create && <CreateExam ta={ta} p={create} prev={(d?.planned || []).filter(x => x.semester === create.semester && x.date < create.date).map(x => x.date).sort().pop() || null} onClose={() => setCreate(null)} onDone={id => { setCreate(null); reload(); setOpen(id) }} />}
       {open && <Scores ta={ta} examId={open} onClose={() => { setOpen(null); reload() }} />}
@@ -133,6 +134,7 @@ function ExtraExam({ ta, base, onClose, onDone }: { ta: MyLesson; base: Exam; on
 }
 
 function CreateExam({ ta, p, prev, onClose, onDone }: { ta: MyLesson; p: Planned; prev: string | null; onClose: () => void; onDone: (id: number) => void }) {
+  const t = useT()
   const [mode, setMode] = useState<'total' | 'items'>('items')
   const [plan] = useLoad<any[]>(() => get(`/api/plan/${ta.id}/official`), [ta.id])
   // bu summativin əhatə etdiyi mövzuların standartları: əvvəlki KSQ/BSQ-dan bu günə qədər (eyni yarımil)
@@ -150,28 +152,28 @@ function CreateExam({ ta, p, prev, onClose, onDone }: { ta: MyLesson; p: Planned
       if (mode === 'items') body.items = Array.from({ length: n }, (_, i) => ({ n: i + 1, points: pts, standard: itemStd[i + 1] || null }))
       else body.max_points = max
       const e = await post<Exam>(`/api/exams/${ta.id}`, body)
-      toast(`${p.kind}-${p.no} hazırlandı`)
+      toast(t('{kind}-{no} hazırlandı', { kind: p.kind, no: p.no }))
       onDone(e.id)
     } catch (x) { setErr(x) }
   }
   return (
-    <Drawer title={`${p.kind}-${p.no} hazırla`} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Ləğv et</button><button className="btn primary" onClick={submit}>Yadda saxla</button></>}>
+    <Drawer title={t('{kind}-{no} hazırla', { kind: p.kind, no: p.no })} onClose={onClose} footer={<><button className="btn" onClick={onClose}>{t('Ləğv et')}</button><button className="btn primary" onClick={submit}>{t('Yadda saxla')}</button></>}>
       <div className="stack">
-        <Field label="Tarix"><input type="date" value={date} onChange={e => setDate(e.target.value)} /></Field>
-        <div className="seg"><button aria-pressed={mode === 'items'} onClick={() => setMode('items')}>Tapşırıq üzrə (✓/✗)</button><button aria-pressed={mode === 'total'} onClick={() => setMode('total')}>Yalnız ümumi bal</button></div>
+        <Field label={t('Tarix')}><input type="date" value={date} onChange={e => setDate(e.target.value)} /></Field>
+        <div className="seg"><button aria-pressed={mode === 'items'} onClick={() => setMode('items')}>{t('Tapşırıq üzrə (✓/✗)')}</button><button aria-pressed={mode === 'total'} onClick={() => setMode('total')}>{t('Yalnız ümumi bal')}</button></div>
         {mode === 'items' ? (
           <div className="fg">
-            <Field label="Tapşırıq sayı"><select value={n} onChange={e => setN(Number(e.target.value))}>{Array.from({ length: 40 }, (_, i) => <option key={i + 1}>{i + 1}</option>)}</select></Field>
-            <Field label="Hər tapşırığın balı"><select value={pts} onChange={e => setPts(Number(e.target.value))}>{[0.5, 1, 1.5, 2, 2.5, 3, 4, 5].map(v => <option key={v}>{v}</option>)}</select></Field>
-            <p className="full small muted">Maksimal bal: <b>{n * pts}</b></p>
-            {stds.length > 0 && <fieldset className="full"><legend>Tapşırıq → məzmun standartı <span className="hint">(standart təhlili üçün)</span></legend>
+            <Field label={t('Tapşırıq sayı')}><select value={n} onChange={e => setN(Number(e.target.value))}>{Array.from({ length: 40 }, (_, i) => <option key={i + 1}>{i + 1}</option>)}</select></Field>
+            <Field label={t('Hər tapşırığın balı')}><select value={pts} onChange={e => setPts(Number(e.target.value))}>{[0.5, 1, 1.5, 2, 2.5, 3, 4, 5].map(v => <option key={v}>{v}</option>)}</select></Field>
+            <p className="full small muted">{t('Maksimal bal:')} <b>{n * pts}</b></p>
+            {stds.length > 0 && <fieldset className="full"><legend>{t('Tapşırıq → məzmun standartı')} <span className="hint">{t('(standart təhlili üçün)')}</span></legend>
               <div className="fg">{Array.from({ length: n }, (_, i) => (
                 <Field key={i} label={`№${i + 1}`}><select value={itemStd[i + 1] || ''} onChange={e => setItemStd({ ...itemStd, [i + 1]: e.target.value })}>
                   <option value="">—</option>{stds.map(s => <option key={s}>{s}</option>)}</select></Field>))}</div>
-              <p className="small muted" style={{ margin: 0 }}>Standartlar bu summativin əhatə etdiyi mövzulardan (perspektiv plan) götürülüb.</p>
+              <p className="small muted" style={{ margin: 0 }}>{t('Standartlar bu summativin əhatə etdiyi mövzulardan (perspektiv plan) götürülüb.')}</p>
             </fieldset>}
           </div>
-        ) : <Field label="Maksimal bal"><input type="number" min={1} value={max} onChange={e => setMax(Number(e.target.value))} /></Field>}
+        ) : <Field label={t('Maksimal bal')}><input type="number" min={1} value={max} onChange={e => setMax(Number(e.target.value))} /></Field>}
         <ErrorBox error={err} />
       </div>
     </Drawer>
@@ -179,6 +181,7 @@ function CreateExam({ ta, p, prev, onClose, onDone }: { ta: MyLesson; p: Planned
 }
 
 function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose: () => void }) {
+  const t = useT()
   const [d, err, , reload] = useLoad<any>(() => get(`/api/exams/${ta.id}/${examId}`), [ta.id, examId])
   const [rows, setRows] = useState<Record<number, { points: string; marks: number[] | null; absent: boolean; later: boolean; taken_on: string }>>({})
   const [days, setDays] = useState(3)                     // apelyasiya müddəti (gün)
@@ -206,8 +209,8 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
       {d && (
         <>
           <div className="kpis" style={{ marginBottom: 12 }}>
-            <div className="kpi"><b>{d.summary.written}</b><span>yazıb</span></div>
-            <div className="kpi"><b>{fmt(d.summary.avg_pct)}%</b><span>orta</span></div>
+            <div className="kpi"><b>{d.summary.written}</b><span>{t('yazıb')}</span></div>
+            <div className="kpi"><b>{fmt(d.summary.avg_pct)}%</b><span>{t('orta')}</span></div>
             <div className="kpi"><b>{[5, 4, 3, 2].map(g => d.summary.distribution[g]).join(' / ')}</b><span>5 / 4 / 3 / 2</span></div>
           </div>
           <div className="row" style={{ marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
@@ -232,10 +235,10 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
                 <div className="jrow cols" key={r.student_id} style={{ ['--cols' as any]: '1fr', ['--mcols' as any]: '1fr', gap: 6 }}>
                   <div className="row"><b className="grow">{r.full_name}</b>
                     {r.grade != null && <Pill tone={gradeTone(r.grade)}>{fmt(r.pct)}% → {r.grade}</Pill>}
-                    {r.taken_on && <Pill tone="info">sonradan: {fmtDate(r.taken_on)}</Pill>}
-                    <label className="check small"><input type="checkbox" checked={v.absent} onChange={e => set({ absent: e.target.checked, later: false })} /> yox idi</label>
-                    {!v.absent && <label className="check small" title="Üzrlü səbəbdən imtahan günü olmayıb, sonradan yazıb"><input type="checkbox" checked={v.later} onChange={e => set({ later: e.target.checked })} /> sonradan yazdı</label>}
-                    {!v.absent && v.later && <input type="date" className="sel" style={{ maxWidth: 160 }} min={d.exam.date} value={v.taken_on} onChange={e => set({ taken_on: e.target.value })} aria-label="Yazdığı tarix" />}
+                    {r.taken_on && <Pill tone="info">{t('sonradan:')} {fmtDate(r.taken_on)}</Pill>}
+                    <label className="check small"><input type="checkbox" checked={v.absent} onChange={e => set({ absent: e.target.checked, later: false })} /> {t('yox idi')}</label>
+                    {!v.absent && <label className="check small" title={t('Üzrlü səbəbdən imtahan günü olmayıb, sonradan yazıb')}><input type="checkbox" checked={v.later} onChange={e => set({ later: e.target.checked })} /> {t('sonradan yazdı')}</label>}
+                    {!v.absent && v.later && <input type="date" className="sel" style={{ maxWidth: 160 }} min={d.exam.date} value={v.taken_on} onChange={e => set({ taken_on: e.target.value })} aria-label={t('Yazdığı tarix')} />}
                   </div>
                   {(r.online || r.paper) && <div className="row small" style={{ gap: 8, flexWrap: 'wrap' }}>
                     <span>{tt('Onlayn')}: <b>{r.online ? `${fmt(r.online.points)} → ${r.online.grade}` : '—'}</b></span>
@@ -248,29 +251,29 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
                   {!v.absent && (items ? (
                     <div className="att-btns">
                       {items.map((it, i) => (
-                        <button key={i} className={v.marks ? (v.marks[i] ? 'var' : 'yox') : ''} aria-pressed={!!v.marks} title={`${it.n}: ${it.points} bal`}
+                        <button key={i} className={v.marks ? (v.marks[i] ? 'var' : 'yox') : ''} aria-pressed={!!v.marks} title={`${it.n}: ${it.points} ${tt('bal')}`}
                           onClick={() => { const m = [...(v.marks || items.map(() => 0))]; m[i] = m[i] ? 0 : 1; set({ marks: m }) }}>{it.n}{v.marks ? (v.marks[i] ? '✓' : '✗') : '·'}</button>))}
-                      {v.marks ? <span className="small muted">{v.marks.reduce((a, m, i) => a + m * items[i].points, 0)} bal</span>
-                        : <button className="btn sm ghost" onClick={() => set({ marks: items.map(() => 0) })}>daxil et</button>}
-                      {v.marks && <button className="btn sm ghost" onClick={() => set({ marks: null })} title="Nəticəni sil (hələ yazmayıb)">təmizlə</button>}
+                      {v.marks ? <span className="small muted">{v.marks.reduce((a, m, i) => a + m * items[i].points, 0)} {t('bal')}</span>
+                        : <button className="btn sm ghost" onClick={() => set({ marks: items.map(() => 0) })}>{t('daxil et')}</button>}
+                      {v.marks && <button className="btn sm ghost" onClick={() => set({ marks: null })} title={t('Nəticəni sil (hələ yazmayıb)')}>{t('təmizlə')}</button>}
                     </div>
                   ) : (
-                    <input className="sel" inputMode="decimal" style={{ maxWidth: 140 }} placeholder={`0–${d.exam.max_points}`} value={v.points} onChange={e => set({ points: e.target.value })} aria-label="Bal" />
+                    <input className="sel" inputMode="decimal" style={{ maxWidth: 140 }} placeholder={`0–${d.exam.max_points}`} value={v.points} onChange={e => set({ points: e.target.value })} aria-label={t('Bal')} />
                   ))}
                 </div>)
             })}
           </div>
           {d.items?.length > 0 && (
             <section className="panel" style={{ marginTop: 14 }}>
-              <h2>Tapşırıq təhlili</h2>
+              <h2>{t('Tapşırıq təhlili')}</h2>
               {d.items.map((it: any) => (
                 <div key={it.n} className="row small" style={{ marginBottom: 4 }}>
                   <span style={{ width: 38 }}>№{it.n}</span>
                   <div className="cmp grow" style={{ marginTop: 0 }}><i style={{ width: (it.pct || 0) + '%', background: (it.pct ?? 0) < 50 ? 'var(--bad)' : 'var(--accent)' }} /></div>
                   <span className="num" style={{ width: 48, textAlign: 'right' }}>{fmt(it.pct, 0)}%</span>
                 </div>))}
-              {d.standards.length > 0 && <><h2 style={{ marginTop: 12 }}>Standartlar</h2>
-                {d.standards.map((s: any) => <div key={s.standard} className="row small"><span className="grow">{s.standard}</span>{s.pct != null && s.pct < 50 && <Pill tone="bad">təkrar tövsiyə olunur</Pill>}<b>{fmt(s.pct, 0)}%</b></div>)}</>}
+              {d.standards.length > 0 && <><h2 style={{ marginTop: 12 }}>{t('Standartlar')}</h2>
+                {d.standards.map((s: any) => <div key={s.standard} className="row small"><span className="grow">{s.standard}</span>{s.pct != null && s.pct < 50 && <Pill tone="bad">{t('təkrar tövsiyə olunur')}</Pill>}<b>{fmt(s.pct, 0)}%</b></div>)}</>}
             </section>)}
         </>
       )}
