@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import scheduler
@@ -146,6 +146,19 @@ app.include_router(surveys.router)
 @app.get('/api/health')
 def health():
     return {'ok': True}
+
+
+@app.get('/api/health/db')
+def health_db():
+    from sqlalchemy import text
+    from .db import SessionLocal
+    try:
+        with SessionLocal() as db:
+            db.execute(text('SELECT 1'))
+    except Exception:                                        # noqa: BLE001
+        logging.getLogger('health').exception('db health failed')
+        return JSONResponse({'ok': False, 'db': False}, status_code=503)
+    return {'ok': True, 'db': True}
 
 
 # ---------------------------------------------------------------- interfeys (frontend/dist) – tək xidmət kimi yayım

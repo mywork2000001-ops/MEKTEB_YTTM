@@ -1,0 +1,15 @@
+# Baza yoxlaması: saatda bir (08:07–22:07 Bakı) /api/health/db. Baza əlçatmazdırsa iş düşür → GitHub sahibinə məktub.
+# Saatda bir – Neon arada yata bilsin (keepalive /api/health bazaya getmir). Repo variable: RENDER_URL.
+name: db-health
+on:
+  schedule:
+    - cron: '7 4-18 * * *'
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: /api/health/db
+        run: |
+          if [ -z "${{ vars.RENDER_URL }}" ]; then echo "RENDER_URL yoxdur"; exit 0; fi
+          curl -fsS --max-time 90 --retry 3 --retry-delay 20 "${{ vars.RENDER_URL }}/api/health/db"

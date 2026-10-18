@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     upload_dir: str | None = None                        # çat faylları; boşdursa – bazanın yanında data/uploads
     # Render pulsuz planı 15 dəq trafiksiz qalanda yatır: server öz ünvanına müraciət edir (Bakı vaxtı ilə saatlar)
     keepalive_url: str | None = None                     # boşdursa RENDER_EXTERNAL_URL (Render özü verir)
+    # dərs saatları (Bakı): bu saatlarda fon işləri tez-tez, qalanında saatda bir (Neon yatsın)
+    active_hours: str = '8-22'                           # MK_ACTIVE_HOURS (axşam sınaqları da vaxtında)
     keepalive_hours: str = '7-23'                        # 07:00–23:00 oyaq; gecə yatır
     # bir neçə uvicorn prosesi (MK_WORKERS) olanda: hər prosesin baza bağlantıları; fon işləri yalnız birində
     db_pool_size: int = 10

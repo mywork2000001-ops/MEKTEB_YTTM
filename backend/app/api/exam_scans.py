@@ -313,6 +313,8 @@ async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[Uplo
     audit(db, user, 'create', 'exam_scans', e.id, cards=len(found), problems=len(problems), already=len(dupes))
     db.commit()
     if found:
+        from .. import scheduler
+        scheduler.hint_scans()
         bg.add_task(_read_now, db.get_bind(), e.id, [x['scan_id'] for x in found])   # yeni kartlar növbəsiz, dərhal (kamera balı gözləyir)
     names = {s.id: s.full_name for s in exam_roster(db, ta, e)}
     return {'found': [{**x, 'full_name': names.get(x['student_id'])} for x in found],

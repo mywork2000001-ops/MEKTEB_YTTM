@@ -4,6 +4,9 @@ import datetime as dt
 import logging
 import os
 import tempfile
+import time
+
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -13,6 +16,8 @@ from .db import SessionLocal
 
 log = logging.getLogger('scheduler')
 _sched: BackgroundScheduler | None = None
+_scan_hint = True                                # yeni/gözləyən kart ola bilər (start-da True)
+_scan_last_db = 0.0                              # son bazaya baxış (monotonic)
 
 
 def _bank_job():
@@ -136,13 +141,36 @@ def leader() -> bool:
     return True
 
 
+def hint_scans():
+    """Yeni kart yarandı – növbəti fon yoxlaması bazaya baxsın."""
+    global _scan_hint
+    _scan_hint = True
+
+
+def _quiet(fn):
+    """Dərs saatlarında (active_hours) həmişə, qalanında yalnız saatın ilk 15 dəqiqəsində (~saatda bir) işləyir."""
+    def wrapper():
+        if awake_now(settings().active_hours) or dt.datetime.now(ZoneInfo('Asia/Baku')).minute < 15:
+            return fn()
+    wrapper.__name__ = getattr(fn, '__name__', 'quiet')
+    return wrapper
+
+
 def _ksq_scan_job():
-    """KSQ/BSQ cavab kartları: oxunmamışları Claude ilə oxuyur (app/domain/ksq_reader.py)."""
+    """KSQ/BSQ cavab kartları: oxunmamışları Claude ilə oxuyur (app/domain/ksq_reader.py).
+    Eyni vaxtda Neon yatsın deyə: ipucu yoxdursa və son baxışdan <1 saat keçibsə – bazaya getmir."""
+    global _scan_hint, _scan_last_db
+    if not _scan_hint and time.monotonic() - _scan_last_db < 3600:
+        return
+    from sqlalchemy import select
     from .domain.ksq_reader import read_pending
+    from .models import ExamScan
     with SessionLocal() as db:
         n = read_pending(db)
         if n:
             log.info('kart oxundu: %s', n)
+        _scan_last_db = time.monotonic()
+        _scan_hint = db.scalar(select(ExamScan.id).where(ExamScan.status == 'pending').limit(1)) is not None
 
 
 def _scan_cleanup_job():
@@ -186,15 +214,15 @@ def start():
     except Exception:                            # noqa: BLE001
         log.exception('close_interrupted failed')
     _sched = BackgroundScheduler(timezone='Asia/Baku')
-    _sched.add_job(_topic_journal_job, 'interval', minutes=15, id='topic_journal', max_instances=1, coalesce=True)
-    _sched.add_job(_certificates_job, 'interval', minutes=15, id='certificates', max_instances=1, coalesce=True,
+    _sched.add_job(_quiet(_topic_journal_job), 'interval', minutes=15, id='topic_journal', max_instances=1, coalesce=True)
+    _sched.add_job(_quiet(_certificates_job), 'interval', minutes=15, id='certificates', max_instances=1, coalesce=True,
                    next_run_time=dt.datetime.now() + dt.timedelta(minutes=4))
-    _sched.add_job(_exam_series_job, 'interval', minutes=15, id='exam_series', max_instances=1, coalesce=True,
+    _sched.add_job(_quiet(_exam_series_job), 'interval', minutes=15, id='exam_series', max_instances=1, coalesce=True,
                    next_run_time=dt.datetime.now() + dt.timedelta(minutes=3))
-    _sched.add_job(_auto_tests_job, 'interval', minutes=15, id='auto_tests', max_instances=1, coalesce=True,
+    _sched.add_job(_quiet(_auto_tests_job), 'interval', minutes=15, id='auto_tests', max_instances=1, coalesce=True,
                    next_run_time=dt.datetime.now() + dt.timedelta(minutes=2))
-    _sched.add_job(_ksq_scan_job, 'interval', minutes=2, id='ksq_scans', max_instances=1, coalesce=True)
-    _sched.add_job(_ksq_stale_job, 'interval', minutes=10, id='ksq_stale', max_instances=1, coalesce=True,
+    _sched.add_job(_ksq_scan_job, 'interval', minutes=10, id='ksq_scans', max_instances=1, coalesce=True)
+    _sched.add_job(_quiet(_ksq_stale_job), 'interval', minutes=10, id='ksq_stale', max_instances=1, coalesce=True,
                    next_run_time=dt.datetime.now())
     _sched.add_job(_scan_cleanup_job, 'cron', hour=3, minute=50, id='scan_cleanup', max_instances=1, coalesce=True)
     _sched.add_job(_difficulty_job, 'cron', hour=3, minute=30, id='difficulty', max_instances=1, coalesce=True)

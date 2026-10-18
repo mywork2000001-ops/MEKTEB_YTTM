@@ -1,0 +1,53 @@
+# Həftəlik şifrəli baza nüsxəsi → Google Drive («Backup silmek olmaz»). Bazar, 03:00 Bakı = şənbə 23:00 UTC.
+# Secrets: NEON_BACKUP_URL (yalnız oxuma rolu), BACKUP_PASSPHRASE, MK_GDRIVE_CLIENT_ID/SECRET/REFRESH_TOKEN,
+# BACKUP_DRIVE_FOLDER_ID. Xəta olsa – GitHub sahibinə məktub göndərir. Secret-lər yoxdursa – sakitcə keçir.
+name: db-backup
+on:
+  schedule:
+    - cron: '0 23 * * 6'
+  workflow_dispatch:
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      READY: ${{ secrets.NEON_BACKUP_URL != '' && secrets.BACKUP_PASSPHRASE != '' && secrets.MK_GDRIVE_REFRESH_TOKEN != '' }}
+    steps:
+      - name: Secret-lər
+        if: env.READY != 'true'
+        run: echo "::notice::Ehtiyat nüsxə hələ qurulmayıb (secret-lər yoxdur) – keçildi"
+      - uses: actions/checkout@v4
+        if: env.READY == 'true'
+      - name: PostgreSQL client 17
+        if: env.READY == 'true'
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+      - name: Dump + şifrələ
+        if: env.READY == 'true'
+        env:
+          NEON_BACKUP_URL: ${{ secrets.NEON_BACKUP_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          /usr/lib/postgresql/17/bin/pg_dump --format=custom --no-owner --no-privileges "$NEON_BACKUP_URL" > db.dump
+          ls -lh db.dump
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
+              --symmetric --cipher-algo AES256 -o db.dump.gpg db.dump
+          rm db.dump
+      - uses: actions/setup-python@v5
+        if: env.READY == 'true'
+        with:
+          python-version: '3.11'
+      - name: Drive-a yüklə
+        if: env.READY == 'true'
+        env:
+          MK_GDRIVE_CLIENT_ID: ${{ secrets.MK_GDRIVE_CLIENT_ID }}
+          MK_GDRIVE_CLIENT_SECRET: ${{ secrets.MK_GDRIVE_CLIENT_SECRET }}
+          MK_GDRIVE_REFRESH_TOKEN: ${{ secrets.MK_GDRIVE_REFRESH_TOKEN }}
+          BACKUP_DRIVE_FOLDER_ID: ${{ secrets.BACKUP_DRIVE_FOLDER_ID }}
+        run: |
+          pip install -q httpx==0.28.1
+          python backend/tools/backup_to_drive.py db.dump.gpg

@@ -92,6 +92,8 @@ def record(db: Session, t: OnlineTask, a: TaskAttempt) -> None:
                                             'read_by': sc.read_by}][-5:]
     sc.code, sc.reading, sc.read_by, sc.error, sc.lost = v.code, reading, 'online', None, None
     apply(db, e, sc)
+    from .. import scheduler
+    scheduler.hint_scans()
 
 
 @router.get('/{ta_id}/{exam_id}')

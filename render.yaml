@@ -1,12 +1,6 @@
 # Render Blueprint (pulsuz plan). Heç bir gizli dəyər repoda yoxdur:
-# baza bağlantısı Render tərəfindən avtomatik verilir, admin parolu Render tərəfindən yaradılır
+# baza – Neon (MK_DATABASE_URL Render panelində; köhnə Render muellim-db 18.10.2026 blueprint-dən çıxarıldı), admin parolu Render tərəfindən yaradılır
 # (Render → muellim-komekcisi → Environment → MK_ADMIN_PASSWORD).
-databases:
-  - name: muellim-db
-    plan: free
-    region: frankfurt
-    databaseName: muellim
-    user: muellim
 services:
   - type: web
     name: muellim-komekcisi
