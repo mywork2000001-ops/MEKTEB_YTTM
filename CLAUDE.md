@@ -14,7 +14,7 @@ ayrıca xahiş gözlənilmir:
 
 ## Agent sistemi (rollar, qənaət) – `docs/agent-sistemi-promtu.md`
 - **Rəhbər** = Claude (Pro abunə, limit həftəlik): plan, tapşırıq kartı (`docs/tasks/`), riskli iş (skan, miqrasiya, canlı DB, deploy), review, main-ə birləşmə.
-- **İcraçılar** (`claude-ds pro|flash|gemini|check|qwen`, OpenRouter, `mk-qwen` papkası, `qwen/*` budağı) – kod, tərcümə, materiallar; qaydalar QWEN.md.
-- **Pro limitinə qənaət:** Rəhbər kodu özü yazmır – dəqiq kart yazır; fayl hissə-hissə (Grep), i18n.ts heç vaxt tam; pytest yalnız aid testlər; uzun çıxış `tail`; ekran şəkli scale 0.5.
-- **Tokenlər təyinatı üzrə (istifadəçi tələbi, 14.10.2026):** Pro limiti yalnız kart, review və riskli işə; kod → `claude-ds pro`, tərcümə/təkrar düzəliş → `flash`, PDF/Word/şəkil → `gemini`, cavab açarı yoxlaması → `check`. Təkrar oxu, təkrar yoxlama və uzun izah yoxdur; kartda yalnız lazımi fayl və testlər – OpenRouter balansı da qorunur.
-- Sessiya əvvəli: `docs/HANDOFF.md` (son sətirlər) + `git branch -r | grep qwen/`.
+- **İcraçılar** (18.10.2026-dan yalnız Claude Pro; OpenRouter/`claude-ds`/Qwen silinib, QWEN.md – arxiv): Agent tool ilə bu sessiyadan –
+  kod → `kodcu`, tərcümə → `tercumeci`, PDF → `pdf-oxuyucu`, cavab açarı → `cavab-yoxlayici`, mexaniki iş → `yigici`. Paralel iş – `isolation: "worktree"`, birləşdikdən sonra worktree və budaq silinir.
+- **Pro limitinə qənaət:** Rəhbər kodu özü yazmır – dəqiq kart yazır; fayl hissə-hissə (Grep), i18n.ts heç vaxt tam; pytest yalnız aid testlər; uzun çıxış `tail`; ekran şəkli scale 0.5. Təkrar oxu, təkrar yoxlama və uzun izah yoxdur.
+- Sessiya əvvəli: `docs/HANDOFF.md` (son sətirlər) + `git worktree list`.

@@ -3,7 +3,7 @@
 Hər tapşırığın əvvəlində və sonunda bir sətir əlavə edin (yenisi aşağıda):
 `[YYYY-MM-DD HH:MM] CLAUDE|QWEN — başladı/bitirdi: <tapşırıq>; budaq: <branch>; fayllar: <siyahı>; yoxlanmalı: <...>`
 
-Qaydalar: QWEN.md (Qwen), CLAUDE.md (hər ikisi). Eyni faylı eyni vaxtda iki agent dəyişmir.
+Qaydalar: CLAUDE.md (QWEN.md – docs/arxiv/, 18.10.2026-dan istifadə olunmur). Eyni faylı eyni vaxtda iki agent dəyişmir.
 
 ---
 
