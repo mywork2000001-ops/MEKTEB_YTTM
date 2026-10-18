@@ -1,4 +1,4 @@
-import { Fragment, lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { flushOutbox, get, outbox, put } from './api'
 import { toast } from './ui'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
@@ -44,6 +44,56 @@ export const STUDENT_NAV: NavItem[] = [
 ]
 const STUDENT_TABS = ['/', '/lesson', '/tasks', '/results']
 
+function readOpen(key: string): Record<string, boolean> {
+  try { const v = JSON.parse(localStorage.getItem(key) || '{}'); return v && typeof v === 'object' ? v : {} } catch { return {} }
+}
+
+/** Qruplu menyu: başlıq düyməsi + açılıb-bağlanan siyahı (sidebar və telefonun «Daha çox» pəncərəsi üçün ortaq). */
+function NavGroups({ items, storageKey, defaultOpen, isActive, idPrefix, renderItem }: {
+  items: NavItem[]; storageKey: string; defaultOpen: (g: string) => boolean; isActive: (to: string) => boolean; idPrefix: string; renderItem: (i: NavItem) => ReactNode
+}) {
+  const t = useT()
+  const loc = useLocation()
+  const [open, setOpen] = useState<Record<string, boolean>>(() => readOpen(storageKey))
+  const groups: { name: string; list: NavItem[] }[] = []
+  for (const i of items) {
+    const name = i.group || ''
+    const last = groups[groups.length - 1]
+    if (last && last.name === name) last.list.push(i); else groups.push({ name, list: [i] })
+  }
+  const activeGroup = groups.find(g => g.list.some(i => isActive(i.to)))?.name
+  const save = (o: Record<string, boolean>) => { try { localStorage.setItem(storageKey, JSON.stringify(o)) } catch { /* yaddaş əlçatmazdır */ } }
+  // aktiv səhifənin qrupu hər keçiddə açılır
+  useEffect(() => {
+    if (!activeGroup) return
+    setOpen(o => { if (o[activeGroup] === true) return o; const n = { ...o, [activeGroup]: true }; save(n); return n })
+  }, [loc.pathname, activeGroup])
+  const toggle = (g: string, cur: boolean) => setOpen(o => { const n = { ...o, [g]: !cur }; save(n); return n })
+  return (
+    <>
+      {groups.map((g, k) => {
+        const isOpen = open[g.name] ?? (g.name === activeGroup || defaultOpen(g.name))
+        const id = `${idPrefix}-${k}`
+        const gname = t(g.name)
+        return (
+          <div key={g.name} className={'nav-sec' + (isOpen ? ' open' : '')}>
+            <button type="button" className="nav-ghead" aria-expanded={isOpen} aria-controls={id}
+              aria-label={isOpen ? t('{g} bölməsini bağla', { g: gname }) : t('{g} bölməsini aç', { g: gname })}
+              onClick={() => toggle(g.name, isOpen)}>
+              <span className="ng-name">{gname}</span>
+              {!isOpen && g.name === activeGroup && <span className="ng-dot" aria-hidden="true" />}
+              <span className="ng-cnt" aria-hidden="true">{g.list.length}</span>
+              <span className="ng-arrow" aria-hidden="true">▾</span>
+            </button>
+            <div className="nav-body" id={id} inert={!isOpen}>
+              <div className="nav-body-in">{g.list.map(renderItem)}</div>
+            </div>
+          </div>)
+      })}
+    </>
+  )
+}
+
 export function Layout({ children }: { children: ReactNode }) {
   const { me, logout } = useAuth()
   const t = useT()
@@ -81,14 +131,15 @@ export function Layout({ children }: { children: ReactNode }) {
         <aside className="side">
           <div className="brand"><span className="logo">M</span><div><b>Müəllim köməkçisi</b><span>{shortName} · 2026–2027</span></div></div>
           <nav className="nav" aria-label={t('Bölmələr')}>
-            {items.map((i, k) => (
-              <Fragment key={i.to}>
-                {i.group && i.group !== items[k - 1]?.group && <div className="nav-group">{t(i.group)}</div>}
-                <NavLink to={i.to} end={i.to === "/"} className="navlink" title={t(i.label)}>
+            {(() => {
+              const row = (i: NavItem) => (
+                <NavLink key={i.to} to={i.to} end={i.to === "/"} className="navlink" title={t(i.label)}>
                   {({ isActive }) => <button tabIndex={-1} aria-current={isActive ? 'page' : undefined}><Icon name={i.icon} /><span className="nav-lbl">{t(i.label)}</span></button>}
-                </NavLink>
-              </Fragment>
-            ))}
+                </NavLink>)
+              return items.some(i => i.group)
+                ? <NavGroups items={items} storageKey="mk-nav-open" defaultOpen={g => g === 'Dərs'} isActive={active} idPrefix="ng-d" renderItem={row} />
+                : items.map(row)
+            })()}
           </nav>
           <div className="side-foot">
             <p className="quote">«{t('Hər şagirdin öz addımı var. Əsas odur ki, irəliləsin.')}»</p><br />
@@ -122,13 +173,14 @@ export function Layout({ children }: { children: ReactNode }) {
       </nav>
       {more && (
         <Drawer title={t('Daha çox')} onClose={() => setMore(false)}>
-          <div className="nav" style={{ gap: 6 }}>
-            {moreItems.map((i, k) => (
-              <Fragment key={i.to}>
-                {i.group && i.group !== moreItems[k - 1]?.group && <div className="nav-group nav-group-more">{t(i.group)}</div>}
-                <button className="btn" style={{ justifyContent: 'flex-start' }} onClick={() => { setMore(false); nav(i.to) }}><Icon name={i.icon} />{t(i.label)}</button>
-              </Fragment>
-            ))}
+          <div className="nav nav-more" style={{ gap: 6 }}>
+            {(() => {
+              const row = (i: NavItem) => (
+                <button key={i.to} className="btn" style={{ justifyContent: 'flex-start' }} onClick={() => { setMore(false); nav(i.to) }}><Icon name={i.icon} />{t(i.label)}</button>)
+              return moreItems.some(i => i.group)
+                ? <NavGroups items={moreItems} storageKey="mk-nav-open-m" defaultOpen={() => true} isActive={active} idPrefix="ng-m" renderItem={row} />
+                : moreItems.map(row)
+            })()}
             <button className="btn danger" onClick={logout}>{t('Çıxış')}</button>
           </div>
         </Drawer>

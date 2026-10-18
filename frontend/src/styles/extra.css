@@ -300,8 +300,29 @@ body.exam-guard main{max-width:860px;margin:0 auto}
 @media (max-width:1100px){
   .side .nav{overflow-y:auto}
   .nav .nav-lbl{white-space:normal;overflow:visible;text-overflow:clip}
-  .nav-group{font-size:0;padding:0;margin:6px 8px 4px;border-top:1px solid var(--line);opacity:.5}
-  .side .nav-group{border-top-color:rgba(255,255,255,.18)}
+}
+/* açılan bölmələr (akkordeon) */
+.nav .nav-ghead{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:6px;width:100%;min-height:34px;padding:0 12px;border-radius:var(--r-sm);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.side .nav .nav-ghead{color:var(--side-muted)}
+.nav .nav-ghead:hover{background:var(--surface-2)}
+.side .nav .nav-ghead:hover{background:var(--side-hover);color:var(--side-ink)}
+.nav .nav-ghead:focus-visible{outline:2px solid var(--accent)}
+.nav-ghead .ng-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav-ghead .ng-cnt{font-size:11px;font-weight:500;opacity:.6;letter-spacing:0}
+.nav-ghead .ng-arrow{font-size:12px;transition:transform .18s}
+.nav-sec.open .ng-arrow{transform:rotate(180deg)}
+.nav-ghead .ng-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+.nav-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .18s ease}
+.nav-sec.open .nav-body{grid-template-rows:1fr}
+.nav-body-in{overflow:hidden;min-height:0;display:flex;flex-direction:column;gap:2px}
+.nav-more .nav-ghead{min-height:44px;font-size:12px}
+.nav-more .nav-body-in{gap:6px;padding-top:4px}
+@media (prefers-reduced-motion:reduce){.nav-body,.nav-ghead .ng-arrow{transition:none}}
+@media (max-width:1100px) and (min-width:701px){
+  .side .nav .nav-ghead{flex-wrap:wrap;justify-content:center;min-height:30px;padding:2px;font-size:10px;text-align:center;gap:0}
+  .nav-ghead .ng-name{flex:0 1 auto;white-space:normal}
+  .nav-ghead .ng-cnt{display:none}
+  .nav-ghead .ng-arrow{width:100%;line-height:1;text-align:center}
 }
 /* sinif seçimi: sürətli düymələr */
 .quickpick{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}

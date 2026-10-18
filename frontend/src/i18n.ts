@@ -251,6 +251,8 @@ const D: Record<string, [string, string]> = {
   'Mesaj yazın…': ['Type a message…', 'Напишите сообщение…'],
   'Göndər': ['Send', 'Отправить'],
   'Daha çox': ['More', 'Ещё'],
+  '{g} bölməsini aç': ['Expand {g}', 'Развернуть раздел {g}'],
+  '{g} bölməsini bağla': ['Collapse {g}', 'Свернуть раздел {g}'],
   'Hesab': ['Account', 'Аккаунт'],
   'Məktəb': ['School', 'Школа'],
   'Siniflər': ['Classes', 'Классы'],
