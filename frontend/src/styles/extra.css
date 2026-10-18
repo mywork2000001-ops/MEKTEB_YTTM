@@ -318,6 +318,7 @@ body.exam-guard main{max-width:860px;margin:0 auto}
   .grid{gap:12px}
   .side{padding-block:12px;gap:10px}
   .brand{padding-bottom:8px}
+  .side-foot .quote,.side-foot br{display:none}
 }
 /* Testlər: status chip-ləri və dövr seçicisi bir sətirdə */
 .tfilters{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}

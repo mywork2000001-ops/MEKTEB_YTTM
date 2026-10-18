@@ -506,6 +506,8 @@ const D: Record<string, [string, string]> = {
   // ümumi: dövr paneli, menyu şüarı, motivasiya, səviyyələr, nişanlar (12.10.2026)
   "Sıralama": ["Sort", "Сортировка"],
   "Tarix üzrə": ["By date", "По дате"],
+  "Sinif və mövzu üzrə": ["By class and topic", "По классу и теме"],
+  "Sinif, bölünmə qrupu, tədris qrupu və məşğələ qrupları": ["Classes, split groups, teaching groups and club groups", "Классы, группы деления, учебные группы и кружки"],
   "Dövr": ["Period", "Период"],
   "İl": ["Year", "Год"],
   "Əvvəlki dövr": ["Previous period", "Предыдущий период"],
