@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from ..bank_labels import label_ml
 from ..db import get_db
 from ..deps import require
 from ..domain.plan import view_range
@@ -602,6 +603,8 @@ def exam_card_view(exam_id: int, user: User = Depends(student_only), db: Session
     if c is not None:
         for q in c['questions']:
             q.pop('ref', None)                       # «altmövzu · №n · B<id>» texniki ünvan yalnız müəllimə; şagird yalnız altmövzu adını (topic) görür
+            if q.get('topic'):
+                q['topic'] = label_ml(q['topic'], user.language)   # altmövzu adı şagirdin dilində (RU/EN)
         c['appeal_until'] = e.appeal_until
         c['appeals'] = [{'id': a.id, 'slot': a.slot, 'source': a.source, 'status': a.status, 'reason': a.reason, 'teacher_reply': a.teacher_reply,
                          'apply_all': a.apply_all} for a in db.scalars(select(ExamAppeal).where(ExamAppeal.exam_id == e.id, ExamAppeal.student_id == s.id))]
