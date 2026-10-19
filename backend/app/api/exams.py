@@ -900,7 +900,8 @@ def annul_slot(ta_id: int, exam_id: int, slot: int, body: AnnulIn, user: User = 
 
 
 @router.get('/{ta_id}/{exam_id}/variants/print')
-def print_variants(ta_id: int, exam_id: int, students: str | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+def print_variants(ta_id: int, exam_id: int, students: str | None = None, blank: bool = False, user: User = Depends(staff),
+                   db: Session = Depends(get_db)):
     """Çap üçün: hər şagirdə bir A4 (iki üz) – suallar şagirdin dilində (yoxdursa AZ), cavab kartı üçün imzalı QR; müəllim açarı.
     Düzgün cavablar yalnız açarda (vərəqdə yox). students="5,7" – yalnız bu şagirdlərin vərəqi (məs. köçürmə şübhəsindən sonra)."""
     from ..domain.ksq_card import key_value, pick_lang, qr_payload, variant_rev
@@ -918,6 +919,19 @@ def print_variants(ta_id: int, exam_id: int, students: str | None = None, user: 
         if not vs:
             raise HTTPException(404, 'Bu şagirdin variantı yoxdur')
     vs.sort(key=lambda v: v.code)
+    if blank:                                      # boş forma: bütün variantlar eyni olanda (hamıya eyni suallar) – şagirdsiz bir vərəq
+        sig = {variant_rev(v.questions) for v in vs}
+        if len(sig) != 1:
+            raise HTTPException(409, 'Boş forma yalnız «hamıya eyni suallar» olan işdə mümkündür')
+        from ..domain.ksq_card import BLANK_CODE, blank_qr
+        ex = {**exam_out(e), 'class_name': (db.get(SchoolClass, ta.class_id).name if db.get(SchoolClass, ta.class_id) else ''),
+              'subject': ta.subject, 'school': header_school(user), 'teacher': user.full_name, 'label': exam_label(e)}
+        qs = sorted(vs[0].questions, key=lambda q: q['slot'])
+        return {'exam': ex, 'key': [], 'sheets': [{
+            'student_id': 0, 'full_name': '', 'code': BLANK_CODE, 'lang': 'az', 'qr': blank_qr(e.id),
+            'questions': [{'slot': q['slot'], 'kind': q['kind'], 'points': q['points'], 'text': pick_lang(q.get('text'), 'az'),
+                           'options': [pick_lang(o, 'az') for o in q.get('options') or []] if q['kind'] == 'mcq' else None,
+                           'image': q.get('image')} for q in qs]}]}
     studs = {s.id: s for s in db.scalars(select(Student).where(Student.id.in_([v.student_id for v in vs])))}
     langs = {u.id: u.language for u in db.scalars(select(User).where(User.id.in_([s.user_id for s in studs.values() if s.user_id] or [0])))}
     cls = db.get(SchoolClass, ta.class_id)
@@ -938,7 +952,7 @@ def print_variants(ta_id: int, exam_id: int, students: str | None = None, user: 
         v.printed_at = v.printed_at or _now()                 # çap olunub – fon işi bu variantlara toxunmur
     db.commit()
     return {'exam': {**exam_out(e), 'class_name': cls.name if cls else '', 'subject': ta.subject, 'school': header_school(user),
-                     'teacher': user.full_name},
+                     'teacher': user.full_name, 'label': exam_label(e)},
             'sheets': sheets, 'key': key}
 
 

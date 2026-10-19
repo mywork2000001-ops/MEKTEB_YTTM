@@ -11,7 +11,8 @@ import { Drawer } from './ui'
 
 type Found = { student_id: number; scan_id: number; full_name: string | null; exam: string; list: string }
 type Up = { found: Found[]; already: { student_id: number; full_name: string | null; exam: string; points: number | null }[]
-  problems: { file?: string; kind?: string; error: string; full_name?: string | null }[]; unmatched: number }
+  problems: { file?: string; kind?: string; error: string; full_name?: string | null }[]; unmatched: number
+  blank?: { file?: string; exam_id: number; exam: string }[] }
 type Opt = { ta_id: number; exam_id: number; label: string; class_name: string; date: string; recent: boolean; students: { id: number; full_name: string }[] }
 type Row = { id: number; status: string; points: number | null; flagged: number[]; error: string | null }
 
@@ -70,7 +71,7 @@ export default function GlobalScan() {
       files.forEach(f => form.append('files', f, f.name))
       const r = await api<Up>('/api/scans/any', { method: 'POST', form })
       setUp(r)
-      if (r.unmatched) setLoose(files.filter(f => !f.type.includes('pdf')))
+      if (r.unmatched || r.blank?.length) setLoose(files.filter(f => !f.type.includes('pdf')))
     } catch (x) { setErr((x as Error).message) } finally { setBusy(false); refresh() }
   }
 
@@ -109,6 +110,7 @@ export default function GlobalScan() {
                   <div key={i} className="muted">{show(a)} — {t('{name} artıq skan olunub', { name: a.full_name || '—' })}{a.points != null ? ` (${t('{n} bal', { n: a.points })})` : ''}</div>))}
                 {up.problems.filter(p => p.kind !== 'no_qr').map((p, i) => (
                   <div key={i} style={{ color: 'var(--bad)' }}>{p.full_name ? p.full_name + ': ' : ''}{p.error}</div>))}
+                {!!up.blank?.length && <div style={{ color: 'var(--warn)' }}>{t('Boş forma ({exam}): şagirdi siyahıdan seçin', { exam: up.blank[0].exam })}</div>}
                 {up.unmatched > 0 && <div style={{ color: 'var(--warn)' }}>{t('QR oxunmadı: {n} fayl – şagirdi və imtahanı özünüz seçin', { n: up.unmatched })}</div>}
                 {loose.map((f, i) => (
                   <div key={i}><button className="btn sm" onClick={() => setManual(f)}>{t('Şagird və imtahanı seçin')}: {f.name}</button></div>))}

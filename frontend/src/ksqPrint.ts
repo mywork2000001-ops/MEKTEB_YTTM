@@ -9,23 +9,29 @@ import { tt } from './i18n'
 export type KsqQ = { slot: number; kind: 'mcq' | 'open' | 'score'; points: number; text: string; options: string[] | null; image?: string | null }
 export type KsqSheet = { student_id: number; full_name: string; code: string; lang: string; qr: string; questions: KsqQ[] }
 export type KsqPrint = {
-  exam: { id: number; kind: string; no: number; semester: number; date: string; class_name: string; subject: string; school: string; teacher: string }
+  exam: { id: number; kind: string; no: number; semester: number; date: string; class_name: string; subject: string; school: string; teacher: string
+    title?: string | null; label?: string }
   sheets: KsqSheet[]; key: { code: string; full_name: string; answers: { slot: number; value: string; points: number; topic?: string | null; ref?: string | null }[] }[]
 }
 
 const L = 'ABCDE'
+const SCORE = ['0', '¼', '½', '¾', '1']          // «Müəllim balı» dairələri (həlli yazılan suallar; skan oxuyur)
+/** Ümumi vərəqənin adı: sınağın/işin adı, yoxsa «KSQ-1» */
+const nm = (ex: KsqPrint['exam']) => (ex.title && ex.title.trim()) || ex.label || `${ex.kind}-${ex.no}`
 const front = (n: number) => Math.ceil(n * 16 / 30)   // ön üzdə ~53% (30 sualda 1–16)
 const CELLS = 8                     // açıq cavab xanaları (backend CARD_MAX)
 const HELP: Record<string, string> = {
-  az: 'Test (1–9): düzgün cavabın dairəsini tam qaralayın. Açıq (10–30): hər xanaya bir simvol, soldan: 0–9  -  ,  /  ;   Nümunə: 3/7 · 2,5 · -4 · 1;4',
-  ru: 'Тест (1–9): полностью закрасьте кружок верного ответа. Открытые (10–30): по одному символу в клетку, слева: 0–9  -  ,  /  ;   Пример: 3/7 · 2,5 · -4 · 1;4',
-  en: 'Test (1–9): fill the circle of the correct answer completely. Open (10–30): one character per box, from the left: 0–9  -  ,  /  ;   Example: 3/7 · 2,5 · -4 · 1;4',
+  az: 'Test (1–9): düzgün cavabın dairəsini tam qaralayın (düzgün ●, səhv ⊗ ✓). Açıq (10–30): hər xanaya bir simvol, soldan: 0–9  -  ,  /  ;   Nümunə: 3/7 · 2,5 · -4 · 1;4',
+  ru: 'Тест (1–9): полностью закрасьте кружок верного ответа (верно ●, неверно ⊗ ✓). Открытые (10–30): по одному символу в клетку, слева: 0–9  -  ,  /  ;   Пример: 3/7 · 2,5 · -4 · 1;4',
+  en: 'Test (1–9): fill the circle of the correct answer completely (right ●, wrong ⊗ ✓). Open (10–30): one character per box, from the left: 0–9  -  ,  /  ;   Example: 3/7 · 2,5 · -4 · 1;4',
 }
 
 /** Kartın izahı – sual növlərinə görə; yalnız test olanda açıq hissə yazılmır (DİM sinif testi, 13.10.2026). */
-function help(lang: string, nMcq: number, n: number): string {
-  const h = (HELP[lang] || HELP.az).replace('1–9', `1–${nMcq}`).replace('10–30', `${nMcq + 1}–${n}`)
-  return nMcq >= n ? h.split('.')[0] + '.' : h
+function help(lang: string, kinds: string[]): string {
+  const n = kinds.length, nMcq = kinds.filter(k => k === 'mcq').length, nOpen = kinds.filter(k => k === 'open').length
+  const h = (HELP[lang] || HELP.az).replace('1–9', `1–${nMcq}`).replace('10–30', `${nMcq + 1}–${nMcq + nOpen}`)
+  const base = nOpen === 0 ? h.split('.')[0] + '.' : h
+  return nMcq === 0 && nOpen === 0 && n ? '' : base
 }
 
 const CSS = `
@@ -64,6 +70,12 @@ body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#000;-webkit-print-co
 .bx{display:flex}
 .box{width:5.4mm;height:6mm;border:1.1px solid #000;display:block;flex:0 0 auto;margin-left:-1.1px}
 .box:first-of-type{margin-left:0}
+.ln{display:inline-block;border-bottom:1px solid #000;height:4.5mm;vertical-align:bottom}
+.scoreh{font-size:8pt;font-weight:700;margin:2mm 0 1mm}
+.cfoot{position:absolute;left:10mm;right:10mm;bottom:5mm;display:flex;justify-content:space-between;font-size:8pt}
+.cinfo .bx{display:inline-flex;vertical-align:middle}
+.bk{column-count:2;column-gap:6mm;column-rule:.5px solid #bbb;font-size:10pt;line-height:1.3;padding:2mm}
+.bkh{border-bottom:1.5px solid #000;margin-bottom:3mm;padding:2mm;display:flex;justify-content:space-between}
 .key table{border-collapse:collapse;width:100%;font-size:8.5pt;margin-bottom:5mm;break-inside:avoid}
 .key td,.key th{border:1px solid #000;padding:.6mm 1mm;text-align:center}
 .key th{background:#eee}
@@ -76,27 +88,38 @@ function question(q: KsqQ): string {
   return `<div class="q"><span class="p">${pts} b</span><span class="n">${q.slot}</span>${mathHtml(q.text)}${q.image ? `<img src="${esc(q.image)}" alt="">` : ''}${opts}</div>`
 }
 
+/** Ümumi cavab vərəqəsi (bütün növlər: mövzu testi, sınaq, sərbəst iş, KSQ, BSQ): başlıq + QR/kod + şagird + A–E + 8 xana +
+ *  «Müəllim balı» + yekun bal/imza + 4 künc oriyentiri. QR sol-üstdə, cavab zonası onun altında (ksq_scan.ZONE ilə eyni). */
 function card(s: KsqSheet, ex: KsqPrint['exam'], qr: string): string {
-  const mcq = s.questions.filter(q => q.kind === 'mcq'), open = s.questions.filter(q => q.kind !== 'mcq')
+  const blank = s.student_id === 0
+  const mcq = s.questions.filter(q => q.kind === 'mcq'), open = s.questions.filter(q => q.kind === 'open'), score = s.questions.filter(q => q.kind === 'score')
   const mk = ['top:2mm;left:2mm', 'top:2mm;right:2mm', 'bottom:2mm;left:2mm', 'bottom:2mm;right:2mm'].map(p => `<i class="mk" style="${p}"></i>`).join('')
-  return `<div class="card"><span class="cut">✂ CAVAB KARTI</span>${mk}
+  const who = blank
+    ? `<div class="nm">Ad, soyad: <span class="ln" style="width:70mm"></span></div>`
+    : `<div class="nm">${esc(s.full_name)}</div>`
+  const code = blank ? `Kod: <span class="bx">${'<span class="box"></span>'.repeat(4)}</span>` : `variant <b>${esc(s.code)}</b>`
+  return `<div class="card" data-name="${esc(s.full_name || s.code)}"><span class="cut">✂ CAVAB KARTI</span>${mk}
     <div class="ctop"><img src="${qr}" alt="">
-      <div class="cinfo"><div class="nm">${esc(s.full_name)}</div>
-        ${esc(ex.class_name)} · ${esc(ex.subject)} · <b>${ex.kind}-${ex.no}</b> · ${fmtD(ex.date)} · variant <b>${esc(s.code)}</b> · 100 bal
-        <div class="help">${esc(help(s.lang, mcq.length, s.questions.length))}</div></div></div>
+      <div class="cinfo">${who}
+        ${esc(ex.school)} · ${esc(ex.class_name)} · ${esc(ex.subject)} · <b>${esc(nm(ex))}</b> · ${fmtD(ex.date)} · ${code} · 100 bal
+        <div class="help">${esc(help(s.lang, s.questions.map(q => q.kind)))}</div></div></div>
     <div class="mcq">${mcq.map(q => `<div class="row"><span class="no">${q.slot}</span>${[...L].map(c => `<span class="bub">${c}</span>`).join('')}</div>`).join('')}</div>
     <div class="open">${open.map(q => `<div class="row"><span class="no">${q.slot}</span><span class="bx">${'<span class="box"></span>'.repeat(CELLS)}</span></div>`).join('')}</div>
+    ${score.length ? `<div class="scoreh">Müəllim balı (yoxlayan müəllim qaralayır)</div><div class="open">${score.map(q => `<div class="row"><span class="no">${q.slot}</span>${SCORE.map(c => `<span class="bub">${c}</span>`).join('')}</div>`).join('')}</div>` : ''}
+    <div class="cfoot"><span>Yekun bal: <span class="ln" style="width:16mm"></span> / 100</span><span>Şagird imzası: <span class="ln" style="width:30mm"></span></span><span>Müəllim imzası: <span class="ln" style="width:30mm"></span></span></div>
   </div>`
 }
 
-function sheet(s: KsqSheet, ex: KsqPrint['exam'], qr: string): string {
-  const head = `<div class="band"><span><b class="t">${ex.kind}-${ex.no}</b> · ${esc(ex.subject)} · ${esc(ex.class_name)}</span><span>${esc(ex.school)} · ${fmtD(ex.date)}</span></div>
-    <div class="who"><div class="nm">${esc(s.full_name)}<br><b>variant ${esc(s.code)}</b> · ${s.questions.length} sual · 100 bal</div>
+function sheet(s: KsqSheet, ex: KsqPrint['exam'], qr: string, cardOnly = false): string {
+  const blank = s.student_id === 0
+  const head = `<div class="band"><span><b class="t">${esc(nm(ex))}</b> · ${esc(ex.subject)} · ${esc(ex.class_name)}</span><span>${esc(ex.school)} · ${fmtD(ex.date)}</span></div>
+    <div class="who"><div class="nm">${blank ? 'Ad, soyad: <span class="ln" style="width:80mm"></span>' : esc(s.full_name)}<br><b>${blank ? 'cavab vərəqi (boş forma)' : 'variant ' + esc(s.code)}</b> · ${s.questions.length} sual · 100 bal</div>
       <div class="sc"><div>Bal<b>____</b>/100</div><div>Qiymət<b>__</b></div></div></div>`
+  if (cardOnly) return `<section class="side">${head}<div style="flex:1"></div>${card(s, ex, qr)}</section>`   // sualları ayrıca kitabça daşıyır
   const F = front(s.questions.length)
   const fr = s.questions.filter(q => q.slot <= F), back = s.questions.filter(q => q.slot > F)
   return `<section class="side">${head}<div class="qs">${fr.map(question).join('')}</div></section>
-    <section class="side"><div class="hd" style="font-size:8pt"><span>${esc(s.full_name)} · ${esc(s.code)}</span><span>${ex.kind}-${ex.no} · 2-ci üz</span></div>
+    <section class="side"><div class="hd" style="font-size:8pt"><span>${esc(s.full_name)} · ${esc(s.code)}</span><span>${esc(nm(ex))} · 2-ci üz</span></div>
       <div class="qs">${back.map(question).join('')}</div>${card(s, ex, qr)}</section>`
 }
 
@@ -142,9 +165,11 @@ async function fit(doc: Document): Promise<{ bad: string[]; moved: string[] }> {
     }
     if (!shrink(bk)) { bk.style.outline = '2px solid red'; bad.push(name) }
     if (over(fr)) { fr.style.outline = '2px solid red' }
-    const cd = sides[i + 1].querySelector<HTMLElement>('.card')                  // cavab kartının bütün sətirləri vərəqdədir?
-    if (cd && (cd.scrollHeight > cd.clientHeight + 2 || cd.getBoundingClientRect().bottom > sides[i + 1].getBoundingClientRect().bottom + 1)) {
-      cd.style.outline = '2px solid red'; bad.push(name + ' – ' + tt('cavab kartı'))
+  }
+  for (const cd of doc.querySelectorAll<HTMLElement>('.card')) {                  // cavab kartının bütün sətirləri vərəqdədir?
+    const side = cd.closest('section.side') as HTMLElement
+    if (cd.scrollHeight > cd.clientHeight + 2 || cd.getBoundingClientRect().bottom > side.getBoundingClientRect().bottom + 1) {
+      cd.style.outline = '2px solid red'; bad.push((cd.dataset.name || '?') + ' – ' + tt('cavab kartı'))
     }
   }
   return { bad, moved }
@@ -191,16 +216,24 @@ export async function estimateOldCut(d: KsqPrint): Promise<Record<number, number
   } finally { fr.remove() }
 }
 
-export async function printSheets(d: KsqPrint) {
+/** Sual kitabçası: sinifə BİR nüsxə (hamıya eyni suallar) – 2 sütun, cavab vərəqəsi ayrıca (printSheets cardOnly). */
+export function printBooklet(d: KsqPrint) {
+  const ex = d.exam, s = d.sheets[0]
+  if (!s) return
+  open(`${ex.class_name} – ${nm(ex)} kitabça`, `<div class="bkh"><span><b>${esc(nm(ex))}</b> · ${esc(ex.subject)} · ${esc(ex.class_name)}</span><span>${esc(ex.school)} · ${fmtD(ex.date)} · sual kitabçası</span></div>
+    <div class="bk">${s.questions.map(question).join('')}</div>`)
+}
+
+export async function printSheets(d: KsqPrint, opts: { cardOnly?: boolean } = {}) {
   const qrs = await Promise.all(d.sheets.map(s => QRCode.toDataURL(s.qr, { margin: 0, width: 300, errorCorrectionLevel: 'M' })))
   const ex = d.exam
-  open(`${ex.class_name} – ${ex.kind}-${ex.no} vərəqlər`, d.sheets.map((s, i) => sheet(s, ex, qrs[i])).join(''), doc => {
+  open(`${ex.class_name} – ${nm(ex)} vərəqlər`, d.sheets.map((s, i) => sheet(s, ex, qrs[i], !!opts.cardOnly)).join(''), doc => {
     const m = doc.getElementById('m'), p = doc.getElementById('p') as HTMLButtonElement | null
     if (m) m.textContent = tt('Şəkillər yüklənir, səhifələr yoxlanılır…')
     if (p) p.disabled = true
     fit(doc).then(({ bad, moved }) => {
       if (p) p.disabled = false
-      if (m) m.textContent = tt('{n} şagird · {p} səhifə (iki üzlü çap edin)', { n: d.sheets.length, p: d.sheets.length * 2 })
+      if (m) m.textContent = tt('{n} şagird · {p} səhifə (iki üzlü çap edin)', { n: d.sheets.length, p: d.sheets.length * (opts.cardOnly ? 1 : 2) })
         + (bad.length ? ' · ⚠ ' + tt('suallar sığmır (qırmızı): {names}', { names: bad.join(', ') }) : ' · ✓ ' + tt('bütün suallar səhifədədir'))
         + (moved.length ? ' · ' + tt('13.10-dan əvvəl çap olunubsa, bu vərəqlərdə suallar kəsilmiş ola bilər – yenidən çap edin: {names}', { names: moved.join(', ') }) : '')
     })

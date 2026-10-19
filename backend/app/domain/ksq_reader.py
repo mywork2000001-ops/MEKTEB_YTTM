@@ -64,7 +64,7 @@ TOOL = {
             'type': 'object',
             'properties': {
                 'slot': {'type': 'integer', 'description': 'Sualın nömrəsi'},
-                'value': {'type': 'string', 'description': 'Test: A–E hərfi (boşdursa "", bir neçə – "*"); açıq sualda – ""'},
+                'value': {'type': 'string', 'description': 'Test: A–E hərfi (boşdursa "", bir neçə – "*"); açıq sualda – ""; müəllim balı: "0","1/4","1/2","3/4","1" (boşdursa "", bir neçə – "*")'},
                 'cells': {'type': 'array', 'items': {'type': 'string'},
                           'description': 'Yalnız açıq sual: 8 xananın hər biri ayrıca, soldan sağa; boş xana – "". Xana sərhədi simvol deyil'},
                 'confidence': {'type': 'number', 'description': '0–1: oxunuşa əminlik'}},
@@ -82,7 +82,8 @@ SYSTEM = ('Sən imtahan cavab kartlarını oxuyan diqqətli operatorsan. Yalnız
 
 def _instructions(slots: list[dict], only: list[int] | None = None) -> str:
     mcq = [s['slot'] for s in slots if s['kind'] == 'mcq']
-    opn = [s['slot'] for s in slots if s['kind'] != 'mcq']
+    opn = [s['slot'] for s in slots if s['kind'] == 'open']
+    scr = [s['slot'] for s in slots if s['kind'] == 'score']
     t = ('Şəkildə şagirdin cavab kartı var.\n'
          f'- Test sualları {mcq[0]}–{mcq[-1]}: hər sətirdə A B C D E dairələri. Tam qaralanmış dairənin hərfini yaz. '
          'Heç biri qaralanmayıbsa – "". İki və daha çox dairə qaralanıbsa – "*" və confidence 1.\n' if mcq else '')
@@ -92,6 +93,9 @@ def _instructions(slots: list[dict], only: list[int] | None = None) -> str:
           '«/» yalnız bir xananın İÇİNDƏ əl ilə çəkilmiş maili xətdir; «,» xananın içində aşağıda kiçik vergüldür. '
           'Nümunə: iki xanada «2» və «0» yazılıbsa – ["2","0","","","","","",""] (bu «20»-dir, «2/0» deyil). '
           'Pozulmuş/üstündən yazılmış simvolda son yazılanı oxu, aydın deyilsə confidence aşağı olsun.\n' if opn else '')
+    t += (f'- Müəllim balı, suallar {", ".join(map(str, scr))}: hər sətirdə «Müəllim balı» başlığı altında 5 dairə var: 0 · ¼ · ½ · ¾ · 1. '
+          'Müəllimin tam qaralanmış dairəsini yaz: value = "0", "1/4", "1/2", "3/4" və ya "1". Heç biri qaralanmayıbsa – "". '
+          'İki və daha çox dairə qaralanıbsa – "*" və confidence 1. Bu sətirlərdə cells yazma.\n' if scr else '')
     t += ('Kartda suallar 3 sütunda sətir-sətir düzülüb: hər sətirdə soldan sağa ardıcıl nömrələr (məs. 1, 2, 3; sonra 4, 5, 6). '
           'Hər cavabı nömrəsinin yanındakı sətirdən oxu – nömrəni şəkildəki rəqəmlə tutuşdur, sətirləri qarışdırma.\n')
     want = only or [s['slot'] for s in slots]
@@ -148,6 +152,12 @@ def _clean(blk_input: dict, slots: list[dict]) -> list[dict]:
         if kinds[slot] == 'mcq':
             v = str(a.get('value') or '').strip().upper()[:1]
             v = v if v in ('A', 'B', 'C', 'D', 'E', '*') else ''
+        elif kinds[slot] == 'score':                         # müəllim balı dairəsi: 0 · ¼ · ½ · ¾ · 1
+            raw = str(a.get('value') or '').strip().replace(' ', '').replace('¼', '1/4').replace('½', '1/2').replace('¾', '3/4')
+            raw = {'0,25': '1/4', '0.25': '1/4', '0,5': '1/2', '0.5': '1/2', '0,75': '3/4', '0.75': '3/4', '1/1': '1', '0/1': '0'}.get(raw, raw)
+            v = raw if raw in SCORE_VALUES or raw == '*' else ''
+            if raw and v == '':
+                conf = min(conf, LOW / 2)                    # tanınmayan bal – sarı
         else:
             cells = a.get('cells')
             v = ''.join(str(c or '').strip()[:1] for c in cells) if isinstance(cells, list) else str(a.get('value') or '')
@@ -158,6 +168,7 @@ def _clean(blk_input: dict, slots: list[dict]) -> list[dict]:
     return out
 
 
+SCORE_VALUES = ('0', '1/4', '1/2', '3/4', '1')              # «Müəllim balı» dairələri
 _NUM = r'-?\d+(?:,\d+)?'
 _OPEN_OK = re.compile(rf'^{_NUM}(?:/{_NUM})?(?:;{_NUM}(?:/{_NUM})?)*$')
 
@@ -166,6 +177,8 @@ def plausible(kind: str, v: str) -> bool:
     """Kartda yazıla bilən cavab formasıdır? «2/0», «7/», «Y/9», «3,» – yox (xana sərhədi və ya səhv oxunuş)."""
     if kind == 'mcq':
         return v in ('', 'A', 'B', 'C', 'D', 'E', '*')
+    if kind == 'score':
+        return v == '' or v in SCORE_VALUES
     if v == '':
         return True
     if not _OPEN_OK.match(v):
@@ -305,7 +318,7 @@ def _columns(slots: list[dict]) -> list[list[int]]:
     """Kartda hər sütundakı nömrələr: test və açıq qrupları ayrıca 3 sütunlu cədvəldir, sətir-sətir doldurulur."""
     cols: list[list[int]] = [[], [], []]
     for kind in ('mcq', 'open'):
-        for i, s in enumerate([s for s in slots if (s['kind'] == 'mcq') == (kind == 'mcq')]):
+        for i, s in enumerate([s for s in slots if s['kind'] == kind]):          # score sətirləri sütunda deyil – tam enli
             cols[i % 3].append(s['slot'])
     return cols
 
@@ -372,7 +385,7 @@ def read_card(key, jpeg: bytes, slots: list[dict], thorough: bool = False,
         return fn(c['key'], model, img, sl, only, text)
 
     kinds = {s['slot']: s['kind'] for s in slots}
-    opn = [s for s in slots if s['kind'] != 'mcq']
+    opn = [s for s in slots if s['kind'] == 'open']
     votes: dict[int, list[dict]] = {s['slot']: [] for s in slots}
     by = m1
     with ThreadPoolExecutor(2) as ex:                        # A və B eyni vaxtda

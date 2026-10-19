@@ -84,7 +84,7 @@ async def scan_any(bg: BackgroundTasks, files: list[UploadFile] = File(...), rep
     from ..domain.ksq_scan import find_cards, images_from_upload
     if len(files) > FILES_MAX:
         raise HTTPException(400, f'Bir dəfəyə ən çox {FILES_MAX} fayl')
-    found, problems, dupes, exams, vcache = [], [], [], {}, {}
+    found, problems, dupes, exams, vcache, blank = [], [], [], {}, {}, []
     forbidden = unmatched = 0
     for f in files:
         data = await f.read(UPLOAD_MAX + 1)
@@ -107,13 +107,16 @@ async def scan_any(bg: BackgroundTasks, files: list[UploadFile] = File(...), rep
                 problems.append({'file': f.filename, 'kind': 'forbidden', 'error': 'Bu kart sizin imtahanınıza aid deyil'})
                 continue
             exams[e.id] = e
+            if c['student_id'] == 0:                       # boş forma: imtahan məlumdur, şagirdi müəllim seçir (/any/manual)
+                blank.append({'file': f.filename, 'exam_id': e.id, 'ta_id': e.assignment_id, 'exam': _label(e)})
+                continue
             if e.id not in vcache:
                 vcache[e.id] = {v.student_id: v for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id))}
             n0, d0 = len(found), len(dupes)
             ingest_card(db, e, vcache[e.id], c, f.filename, found, problems, dupes, replace, force)
             for x in found[n0:] + dupes[d0:]:
                 x['_exam'] = e.id
-    if forbidden and not found and not dupes:
+    if forbidden and not found and not dupes and not blank:
         raise HTTPException(403, 'Bu kart sizin imtahanınıza aid deyil')
     audit(db, user, 'create', 'exam_scans', None, any_cards=len(found), problems=len(problems), already=len(dupes))
     db.commit()
@@ -122,7 +125,7 @@ async def scan_any(bg: BackgroundTasks, files: list[UploadFile] = File(...), rep
         scheduler.hint_scans()
         for eid in {x['_exam'] for x in found}:
             bg.add_task(_read_now, db.get_bind(), eid, [x['scan_id'] for x in found if x['_exam'] == eid])
-    return _result(db, found, problems, dupes, unmatched, exams)
+    return {**_result(db, found, problems, dupes, unmatched, exams), 'blank': blank}
 
 
 @router.post('/any/manual')

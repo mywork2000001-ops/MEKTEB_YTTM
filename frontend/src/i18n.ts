@@ -2820,6 +2820,10 @@ const D: Record<string, [string, string]> = {
   "Hər şagirdə fərqli suallar": ["Different questions per student", "Разные вопросы каждому ученику"],
   "Ad (istəyə görə)": ["Title (optional)", "Название (по желанию)"],
   "Nəticə jurnala da yazılsın": ["Also write the result to the journal", "Записать результат и в журнал"],
+  "Yalnız cavab vərəqləri": ["Answer sheets only", "Только бланки ответов"],
+  "Sual kitabçası": ["Question booklet", "Буклет с вопросами"],
+  "Boş forma": ["Blank form", "Пустой бланк"],
+  "Boş forma ({exam}): şagirdi siyahıdan seçin": ["Blank form ({exam}): pick the student from the list", "Пустой бланк ({exam}): выберите ученика из списка"],
   "✍️ Yazılı (kağız) iş": ["✍️ Written (paper) work", "✍️ Письменная (бумажная) работа"],
 }
 

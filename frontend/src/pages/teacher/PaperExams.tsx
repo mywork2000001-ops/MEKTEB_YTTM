@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { del, get, patch, post } from '../../api'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, Pill, PickFirst, toast, useLoad } from '../../ui'
 import { useT } from '../../i18n'
-import { printKey, printSheets, type KsqPrint } from '../../ksqPrint'
+import { printBooklet, printKey, printSheets, type KsqPrint } from '../../ksqPrint'
 
 type Paper = { id: number; kind: 'TEST' | 'SINAQ' | 'YI'; no: number; title: string | null; date: string; to_journal: boolean
   online_task_id: number | null; variants: number; printed: boolean; scanned: number; graded: number; variant_mode: string | null }
@@ -41,6 +41,11 @@ export default function PaperExams({ ta }: { ta: number | null }) {
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
                 <AsyncBtn className="btn sm primary" onClick={async () => { printSheets(await get<KsqPrint>(`/api/exams/${ta}/${p.id}/variants/print`)); reload() }}>🖨 {t('Vərəqləri çap et')}</AsyncBtn>
+                <AsyncBtn className="btn sm" onClick={async () => printSheets(await get<KsqPrint>(`/api/exams/${ta}/${p.id}/variants/print`), { cardOnly: true })}>{t('Yalnız cavab vərəqləri')}</AsyncBtn>
+                <AsyncBtn className="btn sm" onClick={async () => printBooklet(await get<KsqPrint>(`/api/exams/${ta}/${p.id}/variants/print`))}>{t('Sual kitabçası')}</AsyncBtn>
+                {p.variant_mode !== 'different' && <AsyncBtn className="btn sm" onClick={async () => {
+                  try { printSheets(await get<KsqPrint>(`/api/exams/${ta}/${p.id}/variants/print`, { blank: true }), { cardOnly: true }) } catch (x) { toast((x as Error).message) }
+                }}>{t('Boş forma')}</AsyncBtn>}
                 <AsyncBtn className="btn sm" onClick={async () => printKey(await get<KsqPrint>(`/api/exams/${ta}/${p.id}/variants/print`))}>{t('Açar')}</AsyncBtn>
                 <button className="btn sm" onClick={() => window.dispatchEvent(new Event('mk-open-scan'))}>📷 {t('Skan')}</button>
                 <button className="btn sm" onClick={() => setOpen(open === p.id ? null : p.id)}>{t('Nəticələr')}</button>
