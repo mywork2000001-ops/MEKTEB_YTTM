@@ -48,7 +48,9 @@ function ClassesTab() {
             <span><span className="badge" title={t('Sinif ID-si')}>{c.code}</span> <b>{c.name}</b> <span className="small muted">{kindLabel(c)}{c.parent_id ? ' · ' + ((classes || []).find(p => p.id === c.parent_id)?.name || '') : ''}{c.split_with ? ' · paralel: ' + c.split_with : ''} · {c.students} {t('şagird')}</span>{c.purpose && <> <Pill tone="acc">{PURPOSES[c.purpose] || c.purpose}</Pill></>}
               <span className="sub small muted"><br />{c.teachers.map(t => `${t.name} (${t.subject})`).join(', ') || t('müəllim yoxdur')}</span>
               {c.kind !== 'qrup' && <span className="sub small muted"><br />{t('Sinif rəhbəri:')} {c.homeroom?.name || '—'}</span>}</span>
-            <span className="row">{c.mine ? <Pill tone="ok">{c.mine.subject} · {c.mine.weekly_hours} {c.mine.times ? "dərs" : "saat"}</Pill> : <Pill>{t('qoşulmamısınız')}</Pill>}</span>
+            <span className="row">{c.mine ? <Pill tone="ok">{c.mine.subject} · {c.mine.times
+              ? `${[...new Set(c.mine.times.map(x => DAYS7[x.weekday].replace('Çərşənbə axşamı', 'Ç.a.').replace('Çərşənbə', 'Ç.').replace('Cümə axşamı', 'C.a.').replace('Cümə', 'C.').replace('Bazar ertəsi', 'B.e.').replace('Şənbə', 'Ş.').replace(/^Bazar$/, 'B.')))].join(', ')} · ${c.mine.times.map(x => unitsOf(x.start, x.end) * 45 + (unitsOf(x.start, x.end) - 1) * 5).join('/')} ${t('dəq.')}`
+              : `${c.mine.weekly_hours} ${t('saat')}`}</Pill> : <Pill>{t('qoşulmamısınız')}</Pill>}</span>
             <span className="row">
               <button className="btn sm" onClick={() => setJoin(c)}>{c.mine ? 'Cədvəl' : 'Qoşul'}</button>
               {c.can_open && <button className="btn sm" onClick={() => setEdit(c)}>{t('Redaktə')}</button>}
@@ -238,7 +240,7 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   const [lib] = useLoad<any[]>(() => (cls.mine ? Promise.resolve([]) : get('/api/programs', { class_id: String(cls.id), ...(grade ? { grade_hint: grade } : {}) })), [cls.id, grade])
   const [auto, setAuto] = useState(true)
   // seçilən proqram bu cədvəl və kurs müddəti ilə neçə dərsə açılır, nə sığmır – qoşulmazdan əvvəl
-  const [est, setEst] = useState<{ lessons: number; slots: number; warnings: string[]; lint?: { key: string; params: Record<string, any>; message: string }[]; hours_mismatch?: boolean; program_hours?: number | null; class_hours?: number } | null>(null)
+  const [est, setEst] = useState<{ lessons: number; slots: number; warnings: string[]; lint?: { key: string; params: Record<string, any>; message: string }[]; hours_mismatch?: boolean; program_hours?: number | null; class_hours?: number; budget?: any } | null>(null)
   const estKey = JSON.stringify([prog, priv ? times : slots, course, summ])
   useEffect(() => {
     setEst(null)
@@ -254,8 +256,13 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
     const best = lib.find(p => p.purpose_fits && p.fits)
     setProg(best ? String(best.id) : '')
   }, [lib, auto, cls.purpose])
-  const hours = priv ? times.length : Object.values(slots).reduce((a, v) => a + v.length, 0)
-  const minutes = times.reduce((a, t) => a + Math.max(0, toMin(t.end) - toMin(t.start)), 0)
+  const hours = priv ? times.reduce((a, x) => a + unitsOf(x.start, x.end), 0) : Object.values(slots).reduce((a, v) => a + v.length, 0)
+  // mövcud qrupun büdcəsi: seçilmiş proqramın bu cədvəllə önbaxışı
+  const [bud, setBud] = useState<any>(null)
+  useEffect(() => {
+    if (!cls.mine?.program_id || !priv) return
+    get<any>(`/api/programs/${cls.mine.program_id}/preview/${cls.mine.ta_id}`).then(r => setBud(r.budget)).catch(() => setBud(null))
+  }, [cls.id])
   const toggle = (d: number, p: number) => {
     const cur = new Set(slots[d] || [])
     cur.has(p) ? cur.delete(p) : cur.add(p)
@@ -263,7 +270,7 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   }
   return (
     <Drawer title={`${cls.name} – ${cls.mine ? t('dərs cədvəli') : t('sinfə qoşul')}`} onClose={onClose}
-      footer={<><span className="small muted grow">{priv ? t('Həftədə {hours} dərs · {x2} saat{x3}', { hours, x2: Math.floor(minutes / 60), x3: minutes % 60 ? ` ${minutes % 60} dəq.` : '' }) : t('Həftədə {hours} saat', { hours })}</span><button className="btn" onClick={onClose}>{t('Ləğv et')}</button>
+      footer={<><span className="small muted grow">{priv ? t('Həftədə {n} görüş · {m} saat', { n: times.length, m: hours }) : t('Həftədə {hours} saat', { hours })}</span><button className="btn" onClick={onClose}>{t('Ləğv et')}</button>
         <button className="btn primary" disabled={!hours || !subject} onClick={async () => { try { await post(`/api/classes/${cls.id}/join`, { subject, weekly_hours: hours, slots: priv ? {} : slots, ...(priv ? { times } : {}), has_summative: summ, program_id: prog ? Number(prog) : null, grade: grade ? Number(grade) : null, starts_on: course.from || null, ends_on: course.to || null }); toast('Yadda saxlanıldı'); onDone() } catch (e) { setErr(e) } }}>{t('Yadda saxla')}</button></>}>
       <div className="stack">
         <Field label={t('Fənn')}><input value={subject} onChange={e => setSubject(e.target.value)} /></Field>
@@ -274,7 +281,9 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
         {!cls.mine && <Field label={t('Əsas perspektiv plan proqramı')} hint="jurnal və tarixlər ona görə; sinfə uyğun olanlar öndə. Əlavə proqramları qoşulandan sonra əlavə edə bilərsiniz">
           <select value={prog} onChange={e => { setAuto(false); setProg(e.target.value) }}><option value="">{t('— sonra seçəcəm (və ya Word planı yükləyəcəm) —')}</option>
             {(lib || []).map(p => <option key={p.id} value={p.id}>{p.purpose_fits ? '★ ' : p.fits && p.grade ? '✓ ' : ''}{p.title}{p.level ? ` · ${p.level}` : ''}</option>)}</select></Field>}
+        {bud && <BudgetPill b={bud} />}
         {est && <div className="small" style={{ margin: 0 }}>
+          <BudgetPill b={est.budget} />
           <span className="muted">{t('Proqram:')} {est.lessons} {t('dərs · kursda')} {est.slots} {t('dərs yuvası')}</span>
           {est.warnings.map(w => <p key={w} style={{ color: 'var(--warn)', margin: '4px 0 0' }}>⚠ {w}</p>)}
           {est.hours_mismatch && <p style={{ color: 'var(--warn)', margin: '4px 0 0' }}>⚠ {t('Proqram həftədə {p} saatlıqdır, cədvəldə isə {c} saat var', { p: est.program_hours, c: est.class_hours })}</p>}
@@ -305,37 +314,58 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
 const DAYS7 = ['Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə', 'Bazar']
 const toMin = (t: string) => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m }
 
-/** Fərdi qrupun dərs vaxtları: gün + başlama + bitmə (günlərə görə fərqli ola bilər). */
+// görüş = N akademik saat: saat 45 dəq., aralarında 5 dəq. fasilə (server: meeting_units/meeting_end ilə eyni qayda)
+const fmtMin = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+export const unitsOf = (s: string, e: string) => Math.max(1, Math.round((toMin(e) - toMin(s) + 5) / 50))
+const endOf = (s: string, u: number) => fmtMin(toMin(s) + u * 45 + (u - 1) * 5)
+
+/** Fərdi qrupun görüşləri: gün + başlama + saat sayı (45/90/135 dəq.) → bitmə avtomatik. */
 function LessonTimes({ v, onChange }: { v: { weekday: number; start: string; end: string }[]; onChange: (v: { weekday: number; start: string; end: string }[]) => void }) {
   const t = useT()
-  const set = (i: number, k: 'weekday' | 'start' | 'end', x: string) => onChange(v.map((t, j) => (j === i ? { ...t, [k]: k === 'weekday' ? Number(x) : x } : t)))
+  const upd = (i: number, p: Partial<{ weekday: number; start: string; units: number }>) => onChange(v.map((x, j) => {
+    if (j !== i) return x
+    const start = p.start ?? x.start
+    return { weekday: p.weekday ?? x.weekday, start, end: endOf(start, p.units ?? unitsOf(x.start, x.end)) }
+  }))
   const add = () => {
     const last = v[v.length - 1]
-    const dur = last ? toMin(last.end) - toMin(last.start) : 90
-    const wd = last ? (last.weekday + 2) % 7 : 1
     const st = last?.start || '17:00'
-    const f = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
-    onChange([...v, { weekday: wd, start: st, end: f(toMin(st) + (dur > 0 ? dur : 90)) }])
+    onChange([...v, { weekday: last ? (last.weekday + 2) % 7 : 1, start: st, end: endOf(st, last ? unitsOf(last.start, last.end) : 2) }])
   }
+  const total = v.reduce((a, x) => a + unitsOf(x.start, x.end), 0)
   return (
     <fieldset style={{ margin: 0 }}><legend>{t('Dərs vaxtları')}</legend>
-      <p className="small muted" style={{ marginTop: 0 }}>{t('Fərdi hazırlıqda məktəb zəngi yoxdur – hər dərsin gününü və real vaxtını yazın (məs. Ç.a. 17:00–18:30, Ş. 10:00–11:30).')}</p>
+      <p className="small muted" style={{ marginTop: 0 }}>{t('Fərdi hazırlıqda məktəb zəngi yoxdur – hər görüşün gününü, başlama vaxtını və saat sayını seçin (məs. Ç.a. 17:00, 2 saat). Bitmə avtomatik hesablanır.')}</p>
       {v.length === 0 && <p className="small muted">{t('Hələ dərs vaxtı yoxdur.')}</p>}
-      {v.map((t, i) => {
-        const bad = toMin(t.end) <= toMin(t.start)
+      {v.map((x, i) => {
+        const u = unitsOf(x.start, x.end)
         return (
           <div key={i} className="row" style={{ gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
-            <select value={t.weekday} onChange={e => set(i, 'weekday', e.target.value)} aria-label={tt('Gün')}>{DAYS7.map((d, k) => <option key={k} value={k}>{d}</option>)}</select>
-            <input type="time" value={t.start} onChange={e => set(i, 'start', e.target.value)} aria-label={tt('Başlayır')} style={{ width: 110 }} />
-            <span>–</span>
-            <input type="time" value={t.end} onChange={e => set(i, 'end', e.target.value)} aria-label={tt('Bitir')} style={{ width: 110 }} />
-            <span className="small" style={{ color: bad ? 'var(--bad)' : 'var(--muted)' }}>{bad ? tt('bitmə başlamadan sonra olmalıdır') : tt('{x1} dəq.', { x1: toMin(t.end) - toMin(t.start) })}</span>
+            <select value={x.weekday} onChange={e => upd(i, { weekday: Number(e.target.value) })} aria-label={tt('Gün')}>{DAYS7.map((d, k) => <option key={k} value={k}>{d}</option>)}</select>
+            <input type="time" value={x.start} onChange={e => upd(i, { start: e.target.value })} aria-label={tt('Başlayır')} style={{ width: 110 }} />
+            <select value={u} onChange={e => upd(i, { units: Number(e.target.value) })} aria-label={tt('Saat sayı')}>
+              <option value={1}>{t('1 saat (45 dəq.)')}</option><option value={2}>{t('2 saat (45+5+45)')}</option><option value={3}>{t('3 saat')}</option><option value={4}>{t('4 saat')}</option></select>
+            <span className="small muted">{t('bitir')} {endOf(x.start, u)}</span>
             <button className="btn sm ghost right" onClick={() => onChange(v.filter((_, j) => j !== i))} aria-label={tt('Sil')}>✕</button>
           </div>)
       })}
       <button className="btn sm" onClick={add}>{t('+ Dərs vaxtı')}</button>
+      {v.length > 0 && <p className="small muted" style={{ margin: '6px 0 0' }}>{t('Həftədə {n} görüş · {m} saat', { n: v.length, m: total })}</p>}
     </fieldset>
   )
+}
+
+/** Büdcə nişanı: yaşıl – sığır, sarı – ehtiyat < 5%, qırmızı – çatmır. */
+export function BudgetPill({ b }: { b?: { meetings: number; hours: number; need: number | null; spare: number | null; status: string | null; from?: string | null; to?: string | null } | null }) {
+  const t = useT()
+  if (!b) return null
+  const tone = b.status === 'short' ? 'bad' : b.status === 'tight' ? 'warn' : 'ok'
+  return <div className="small" style={{ margin: 0 }}>
+    <Pill tone={tone as any}>{t('{n} görüş · {h} saat', { n: b.meetings, h: b.hours })}</Pill>{' '}
+    {b.need != null && b.spare != null && <span className="muted">{b.spare >= 0
+      ? t('plan {need} saat tələb edir · ehtiyat {x} saat', { need: b.need, x: b.spare })
+      : t('plan {need} saat tələb edir · çatmır: {x} saat. Həftəyə 1 görüş əlavə edin və ya bölmələri azaldın', { need: b.need, x: -b.spare })}</span>}
+  </div>
 }
 
 /** Qrupun kurs müddəti: dərslər, jurnal və proqram yalnız bu aralıqda (boş – tədris ilinin əvvəli / sonu). */

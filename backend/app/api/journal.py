@@ -92,6 +92,13 @@ def day(ta_id: int, date: dt.date | None = None, user: User = Depends(staff), db
     d = date or today()
     everyone = roster(db, ta, since=d)           # həmin gün hələ sinifdə olub sonra çıxanlar da (J2)
     lessons = []
+    meet: dict[int, dict] = {}          # fərdi qrup: 2+ saatlıq görüşün hissələri (sıra → {part, of, time})
+    if ta.times:
+        from .classes import times_groups
+        for g in times_groups(ta):
+            if g['weekday'] == d.weekday() and g['units'] > 1:
+                for i, p_ in enumerate(g['periods']):
+                    meet[p_] = {'part': i + 1, 'of': g['units'], 'time': f"{g['start']}–{g['end']}"}
     prev = None                     # həmin gün əvvəlki YAZILMIŞ dərs: {period, attendance} (docs/jurnal-gundelik-promtu.md)
     for s in sorted((x for x in ctx.slots if x.date == d), key=lambda x: x.period):
         e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == d,
@@ -99,6 +106,7 @@ def day(ta_id: int, date: dt.date | None = None, user: User = Depends(staff), db
         ent = _entry_payload(db, e)
         written = ent['exists'] and not ent.get('auto')
         lessons.append({'period': s.period, 'time': bell(db, ctx.cls, s.period, ctx.ta, s.date), 'held': s.held, 'shift': s.shift,
+                        'meeting': meet.get(s.period),
                         'plan': lesson_out(taught_lesson(ctx, s, e)), 'entry': ent,
                         'homework_to_check': _prev_homework(db, ta.id, d, s.period),
                         # davamiyyət yalnız YAZILMAMIŞ dərsə təklif olunur (müəllim saxlamasa – heç nə yazılmır); qiymət köçmür
