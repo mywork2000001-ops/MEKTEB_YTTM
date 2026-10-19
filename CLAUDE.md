@@ -12,6 +12,12 @@ ayrıca xahiş gözlənilmir:
 
 Ətraflı: `docs/rus-dili-promtu.md`.
 
+## Mövzu testlərinin təyini – tək mühərrik (istifadəçi tələbi, 19.10.2026)
+Perspektiv plandan mövzu testinin seçimi/təyini ilə bağlı **hər yeni imkan** (yeni bank mənbəyi, sinif/nömrə qaydası, variant,
+səviyyə, öz rəqəmləri, paralel siniflər) yalnız `backend/app/plan_tests.py`-ə (RESOLVERS / POST_STEPS / opts) əlavə olunur;
+skript `scripts/plan_tests.py`, API `/api/plan-tests/*`, düymə və gündəlik `auto_tests` onu oradan alır; test – `tests/test_plan_tests.py`.
+Ətraflı: `docs/plan-testleri-skripti-promtu.md`.
+
 ## Agent sistemi (rollar, qənaət) – `docs/agent-sistemi-promtu.md`
 - **Rəhbər** = Claude (Pro abunə, limit həftəlik): plan, tapşırıq kartı (`docs/tasks/`), riskli iş (skan, miqrasiya, canlı DB, deploy), review, main-ə birləşmə.
 - **İcraçılar** (18.10.2026-dan yalnız Claude Pro; OpenRouter/`claude-ds`/Qwen silinib, QWEN.md – arxiv): Agent tool ilə bu sessiyadan –
