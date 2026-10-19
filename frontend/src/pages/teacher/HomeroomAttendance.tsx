@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { get, put } from '../../api'
 import { esc, head, printDoc, table } from '../../print'
-import { AsyncBtn, Empty, ErrorBox, fmt, fmtDate, isoDate, Loading, ord, Pill, Seg, toast, useLoad, useNarrow, ordT } from '../../ui'
+import { AsyncBtn, Disclosure, Empty, ErrorBox, fmt, fmtDate, isoDate, Loading, ord, Pill, Seg, toast, useLoad, useNarrow, ordT } from '../../ui'
 import { useT, tt } from '../../i18n'
 
 type Cell = { status: string; source: string; reason: string | null } | null
@@ -166,12 +166,12 @@ function DayMobile({ d, val, set, locked, wholeDay, absentNow, changed, save }: 
             {c?.status === 'üzrlü' && !locked(c) && (
               <select className="sel w100" style={{ minHeight: 44 }} value={c.reason || ''} aria-label={t('Üzrlü səbəb')} onChange={e => set(s.id, cur.period, 'üzrlü', e.target.value || null)}>
                 <option value="">{t('səbəb seçin')}</option>{REASONS.map(r => <option key={r} value={r}>{t(r)}</option>)}</select>)}
-            <details><summary className="small muted" style={{ cursor: 'pointer', padding: '6px 0' }}>{t('Bütün gün…')}</summary>
+            <Disclosure variant="flat" title={<span className="small muted">{t('Bütün gün…')}</span>}>
               <div className="row" style={{ gap: 8, marginTop: 6 }}>
                 <button className="btn" style={{ minHeight: 44 }} onClick={() => wholeDay(s, 'yox')}>{t('Bütün gün qayıb')}</button>
                 <button className="btn" style={{ minHeight: 44 }} onClick={() => wholeDay(s, 'üzrlü')}>{t('Bütün gün üzrlü')}</button>
                 <button className="btn" style={{ minHeight: 44 }} onClick={() => wholeDay(s, 'var')}>{t('Bütün gün var')}</button>
-              </div></details>
+              </div></Disclosure>
           </div>)
       })}</div>
       {changed > 0 && <div style={{ position: 'sticky', bottom: 84, zIndex: 5, marginTop: 12, padding: '8px 0', background: 'var(--bg)' }}>

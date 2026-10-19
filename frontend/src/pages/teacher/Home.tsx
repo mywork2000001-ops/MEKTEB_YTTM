@@ -1,9 +1,9 @@
-import { useEffect, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { get } from '../../api'
 import { useAuth } from '../../auth'
 import { useT } from '../../i18n'
-import { ErrorBox, fmt, Icon, isoDate, longDateT, Pill, Stat, useLoad, wdT, hourN, lessonWhen } from '../../ui'
+import { Disclosure, ErrorBox, fmt, Icon, isoDate, longDateT, Pill, setAllDisclosures, Stat, SumChip, useLoad, wdT, hourN, lessonWhen } from '../../ui'
 
 type Cell = { ta_id: number; class_name: string; subject: string; time: string | null; topic: string | null; assessment_type: string | null }
 type TT = { days: { date: string; weekday: string; periods: Record<string, Cell[]> }[] }
@@ -13,35 +13,6 @@ function span(t: string | null) {
   if (!t) return null
   const [a, b] = t.replace('–', '-').split('-')
   return [toMin(a), toMin(b)] as const
-}
-
-const OPEN_KEY = 'mk-home-open'
-function readOpen(): Record<string, boolean> {
-  try { return JSON.parse(localStorage.getItem(OPEN_KEY) || '{}') || {} } catch { return {} }
-}
-/** Açılan bölmə: başlıq düyməsi + animasiyalı gövdə; vəziyyət localStorage-də (mk-home-open). */
-function Sec({ id, title, hint, extra, className, style, children }: { id: string; title: string; hint?: ReactNode; extra?: ReactNode; className?: string; style?: CSSProperties; children: ReactNode }) {
-  const t = useT()
-  const bid = useId()
-  const [open, setOpen] = useState(() => readOpen()[id] !== false)
-  const flip = () => {
-    const v = !open
-    setOpen(v)
-    try { localStorage.setItem(OPEN_KEY, JSON.stringify({ ...readOpen(), [id]: v })) } catch { /* yaddaş yoxdur */ }
-  }
-  return (
-    <section className={'panel sec' + (open ? ' open' : '') + (className ? ' ' + className : '')} style={style}>
-      <h2 className="sec-h">
-        <button type="button" className="sec-tog" aria-expanded={open} aria-controls={bid}
-          aria-label={open ? t('{g} bölməsini bağla', { g: title }) : t('{g} bölməsini aç', { g: title })} onClick={flip}>
-          <span className="sec-name">{title}</span>{hint != null && <small>{hint}</small>}
-          <span className="ng-arrow" aria-hidden="true">▾</span>
-        </button>
-        {extra}
-      </h2>
-      <div className="sec-body" id={bid} inert={!open}><div className="sec-in">{children}</div></div>
-    </section>
-  )
 }
 
 export default function Home() {
@@ -68,6 +39,30 @@ export default function Home() {
   const next = lessons.find(l => { const s = span(l.time); return s && mins < s[0] })
   const curSpan = cur ? span(cur.time) : null
   const pct = curSpan ? Math.min(100, ((mins - curSpan[0]) / (curSpan[1] - curSpan[0])) * 100) : 0
+  const lessonSum = (
+    <>
+      <SumChip>{t('{n} dərs', { n: lessons.length })}</SumChip>
+      {cur ? <SumChip tone="ok">{t('İndi: {when} · {cls}', { when: hourN(cur.period), cls: cur.class_name })}</SumChip>
+        : next ? <SumChip tone="acc">{t('Növbəti {time} · {cls}', { time: (next.time || '').split(/[–-]/)[0], cls: next.class_name })}</SumChip>
+        : lessons.length ? <SumChip>{t('Dərslər bitdi')}</SumChip> : null}
+    </>)
+  const stuN = (ov || []).reduce((a, c) => a + c.students, 0)
+  const redN = (ov || []).reduce((a, c) => a + (c.risk?.['Qırmızı'] || 0), 0)
+  const classSum = ov ? (
+    <>
+      <SumChip>{t('{n} sinif', { n: ov.length })}</SumChip>
+      <SumChip>{t('{n} şagird', { n: stuN })}</SumChip>
+      {redN > 0 && <SumChip tone="bad">{t('⚠ {n} yüksək risk', { n: redN })}</SumChip>}
+    </>) : null
+  const progList = (prog || []).filter(p => p.total)
+  const behind = progList.filter(p => p.delta < 0)
+  const worst = behind.reduce<any>((w, p) => (!w || p.delta < w.delta ? p : w), null)
+  const progSum = progList.length ? (
+    behind.length ? (
+      <>
+        <SumChip tone="warn">{t('{n} sinif geri qalır', { n: behind.length })}</SumChip>
+        <SumChip tone={worst.delta <= -3 ? 'bad' : 'warn'}>{worst.class_name} {worst.delta} {t('dərs')}</SumChip>
+      </>) : <SumChip tone="ok">{t('Hamısı planda ✓')}</SumChip>) : null
   const first = (me?.full_name || '').split(' ')[1] || ''
   const hh = String(now.getHours()).padStart(2, '0'), mm = String(now.getMinutes()).padStart(2, '0'), ss = String(now.getSeconds()).padStart(2, '0')
 
@@ -98,8 +93,12 @@ export default function Home() {
       </section>
       <ErrorBox error={err1 || err2} />
       <Weekly />
-      <div className="grid g2">
-        <Sec id="lessons" title={t('Bugünkü dərslər')} hint={lessons.length}>
+      <div className="disc-all">
+        <button type="button" onClick={() => setAllDisclosures(true)}>{t('Hamısını aç')}</button>
+        <button type="button" onClick={() => setAllDisclosures(false)}>{t('Hamısını bağla')}</button>
+      </div>
+      <div className="grid g2" style={{ alignItems: 'start' }}>
+        <Disclosure id="home.lessons" icon="today" defaultOpen title={t('Bugünkü dərslər')} summary={lessonSum}>
           {lessons.length ? (
             <ol className="timeline">
               {lessons.map(l => (
@@ -110,8 +109,8 @@ export default function Home() {
                 </li>))}
             </ol>
           ) : <p className="muted">{t('Bu gün dərsiniz yoxdur.')}</p>}
-        </Sec>
-        <Sec id="classes" title={t('Siniflərim')}>
+        </Disclosure>
+        <Disclosure id="home.classes" icon="classes" title={t('Siniflərim')} summary={classSum}>
           <div className="stack">
             {(ov || []).map(c => (
               <div key={c.ta_id} className="row" style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--line)', paddingBottom: 8 }}>
@@ -130,10 +129,10 @@ export default function Home() {
               <Stat value={ov.reduce((a, c) => a + c.lessons_written, 0)} label={t('yazılmış dərs')} />
               <Stat value={ov.reduce((a, c) => a + (c.risk?.['Qırmızı'] || 0), 0)} label={t('yüksək risk')} />
             </div>)}
-        </Sec>
+        </Disclosure>
       </div>
       {prog && prog.some(p => p.total) && (
-        <Sec id="progress" title={t('Mövzu icrası')} hint={t('rəsmi plana nisbətən')} style={{ marginTop: 16 }}>
+        <Disclosure id="home.progress" icon="topics" title={t('Mövzu icrası')} summary={progSum} style={{ marginTop: 16 }}>
           <div className="stack" style={{ gap: 8 }}>{prog.filter(p => p.total).map(p => (
             <button key={p.ta_id} className="row" style={{ justifyContent: 'space-between', textAlign: 'left', background: 'none', border: 0, borderBottom: '1px solid var(--line)', padding: '0 0 8px', cursor: 'pointer', color: 'inherit' }}
               onClick={() => { try { sessionStorage.setItem('mk-pick-journal', String(p.ta_id)) } catch { /* yaddaş yoxdur */ } nav('/journal') }}>
@@ -144,7 +143,7 @@ export default function Home() {
                 {p.shortfall > 0 && <Pill tone="bad">{t('sığmır: {n}', { n: p.shortfall })}</Pill>}
               </span>
             </button>))}</div>
-        </Sec>)}
+        </Disclosure>)}
     </>
   )
 }
@@ -160,40 +159,35 @@ function Weekly() {
   if (!w || !w.items.length || seen || closed === key) return null
   const hide = () => { try { localStorage.setItem(key, '1') } catch { /* noop */ } setClosed(key) }
   return (
-    <Sec id="weekly" className="weekly" style={{ marginBottom: 16 }} title={t('Bu həftə diqqət')} hint={t('siniflərim üzrə')}
-      extra={<button type="button" className="btn sm ghost right" onClick={hide}>{t('Oxudum')}</button>}>
+    <Disclosure id="home.weekly" icon="risk" defaultOpen className="weekly" style={{ marginBottom: 16 }} title={t('Bu həftə diqqət')}
+      summary={<SumChip tone="warn">{t('{n} sinif', { n: w.items.length })}</SumChip>}
+      actions={<button type="button" className="btn sm ghost" onClick={hide}>{t('Oxudum')}</button>}>
       {w.items.map((x: any) => <WkRow key={x.ta_id} x={x} />)}
       <div className="row" style={{ marginTop: 10 }}>
         <button className="btn sm" onClick={() => nav('/journal')}>{t('Jurnala keç')}</button>
         <button className="btn sm" onClick={() => nav('/reports')}>{t('Analitika → Risk')}</button>
       </div>
-    </Sec>
+    </Disclosure>
   )
 }
 
 /** Sinif sətri: başlıq (sinif + çiplər); şagird siyahısı standart olaraq bağlıdır. */
 function WkRow({ x }: { x: any }) {
   const t = useT()
-  const bid = useId()
-  const [open, setOpen] = useState(false)
   const names: string[] = [...new Set<string>([...x.red, ...x.absence])]
-  const head = (
+  const chips = (
     <>
-      <b className="wk-name">{x.class_name} <span className="small muted">{x.subject}</span></b>
-      <span className="row wk-chips">
-        {x.missing_week.length > 0 && <Pill tone="warn">{t('son 7 gündə yazılmayıb: {n} dərs', { n: x.missing_week.length })}</Pill>}
-        {x.red.length > 0 && <Pill tone="bad">{t('qırmızı risk: {n}', { n: x.red.length })}</Pill>}
-        {x.absence.length > 0 && <Pill tone="warn">{t('25%+ buraxır: {n}', { n: x.absence.length })}</Pill>}
-      </span>
+      {x.missing_week.length > 0 && <Pill tone="warn">{t('son 7 gündə yazılmayıb: {n} dərs', { n: x.missing_week.length })}</Pill>}
+      {x.red.length > 0 && <Pill tone="bad">{t('qırmızı risk: {n}', { n: x.red.length })}</Pill>}
+      {x.absence.length > 0 && <Pill tone="warn">{t('25%+ buraxır: {n}', { n: x.absence.length })}</Pill>}
     </>
   )
-  if (!names.length) return <div className="wk-row"><div className="wk-head static">{head}</div></div>
+  const title = <>{x.class_name} <span className="small muted">{x.subject}</span></>
+  if (!names.length) return (
+    <div className="wk-row"><div className="wk-head static"><b className="wk-name">{title}</b><span className="row wk-chips">{chips}</span></div></div>)
   return (
-    <div className={'wk-row sec' + (open ? ' open' : '')}>
-      <button type="button" className="wk-head" aria-expanded={open} aria-controls={bid} onClick={() => setOpen(!open)}>
-        {head}<span className="ng-arrow" aria-hidden="true">▾</span>
-      </button>
-      <div className="sec-body" id={bid} inert={!open}><div className="sec-in"><p className="small muted wk-names">{names.join(', ')}</p></div></div>
-    </div>
+    <Disclosure variant="flat" title={title} summary={chips}>
+      <p className="small muted wk-names">{names.join(', ')}</p>
+    </Disclosure>
   )
 }

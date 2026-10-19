@@ -1,5 +1,5 @@
 // Ümumi UI komponentləri – maketin CSS sinifləri ilə.
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ICONS } from './icons-data'
 import { ApiError } from './api'
@@ -236,5 +236,56 @@ export function Chips<T extends string>({ value, onChange, options, label }: { v
       {options.map(([k, l, n]) => <button key={k} className="chip" aria-pressed={value === k} onClick={() => onChange(k)}>
         {tt(l)}{n != null && <span className="chip-n">{n}</span>}</button>)}
     </div>
+  )
+}
+
+const discKey = (id: string) => `mk.disc.${id}`
+function readDisc(id: string | undefined, def: boolean): boolean {
+  if (!id) return def
+  try { const v = localStorage.getItem(discKey(id)); return v === '1' ? true : v === '0' ? false : def } catch { return def }
+}
+/** Hamısını aç / bağla: eyni səhifədəki bütün (id-li) Disclosure-lar bu hadisəni dinləyir. */
+export const DISC_ALL = 'mk-disc-all'
+export const setAllDisclosures = (open: boolean) => window.dispatchEvent(new CustomEvent(DISC_ALL, { detail: open }))
+
+/** Xülasə çipi (bağlı bölmənin başlığında görünür). */
+export function SumChip({ tone, children }: { tone?: 'ok' | 'warn' | 'bad' | 'acc'; children: ReactNode }) {
+  return <span className={'sum-chip' + (tone ? ' ' + tone : '')}>{children}</span>
+}
+
+/**
+ * Vahid açılan bölmə. Başlıq sətri bütövlükdə klik sahəsidir; bağlıyken də `summary` (xülasə çipləri) görünür.
+ * `id` verilsə, açıq/bağlı vəziyyət localStorage-də (`mk.disc.<id>`) yadda qalır; verilməsə – yalnız `defaultOpen`.
+ * variant: 'card' (defolt, çərçivəli kart) · 'flat' (çərçivəsiz, kiçik – sətir/alt-bölmə üçün).
+ */
+export function Disclosure({ id, title, icon, summary, actions, defaultOpen = false, variant = 'card', className, style, children }: {
+  id?: string; title: ReactNode; icon?: string; summary?: ReactNode; actions?: ReactNode; defaultOpen?: boolean
+  variant?: 'card' | 'flat'; className?: string; style?: CSSProperties; children: ReactNode
+}) {
+  const bid = useId()
+  const [open, setOpen] = useState(() => readDisc(id, defaultOpen))
+  const set = useCallback((v: boolean) => {
+    setOpen(v)
+    if (id) { try { localStorage.setItem(discKey(id), v ? '1' : '0') } catch { /* yaddaş yoxdur */ } }
+  }, [id])
+  useEffect(() => {
+    if (!id) return
+    const h = (e: Event) => set(!!(e as CustomEvent).detail)
+    window.addEventListener(DISC_ALL, h)
+    return () => window.removeEventListener(DISC_ALL, h)
+  }, [id, set])
+  return (
+    <section className={'disc ' + variant + (open ? ' open' : '') + (className ? ' ' + className : '')} style={style}>
+      <div className="disc-h">
+        <button type="button" className="disc-tog" aria-expanded={open} aria-controls={bid} onClick={() => set(!open)}>
+          {icon && <Icon name={icon} className="ico disc-ico" />}
+          <span className="disc-title">{title}</span>
+          {summary != null && summary !== false && <span className="disc-sum">{summary}</span>}
+          <span className="disc-arrow" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+        </button>
+        {actions && <div className="disc-act">{actions}</div>}
+      </div>
+      <div className="disc-body" id={bid} inert={!open}><div className="disc-in"><div className="disc-pad">{children}</div></div></div>
+    </section>
   )
 }

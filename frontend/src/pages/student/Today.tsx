@@ -5,7 +5,7 @@ import { useT } from '../../i18n'
 import { NextExtra } from './Extra'
 import Notifications from './Notifications'
 import { examLabel } from './Plan'
-import { azDT, azRange, ErrorBox, fmtDate, gradeTone, isoDate, Loading, longDate, Pill, useLoad, WD } from '../../ui'
+import { azDT, azRange, Disclosure, ErrorBox, fmtDate, gradeTone, isoDate, Loading, longDate, Pill, useLoad, WD } from '../../ui'
 
 export default function Today() {
   const t = useT()
@@ -80,12 +80,11 @@ function Prepare() {
       {u.exams.length > 0 && (
         <section className="panel"><h2>{tt('Hazırlaş')} <small>{tt('yaxınlaşan summativ')}</small></h2>
           {u.exams.map((e: any, i: number) => (
-            <details key={i} open={i === 0} style={{ marginBottom: 8 }}>
-              <summary style={{ cursor: 'pointer' }}><Pill tone="warn">{e.kind}{e.no ? '-' + e.no : ''}</Pill> <b>{e.subject}</b> · {fmtDate(e.date)} <span className="small muted">({when(e.days)})</span></summary>
+            <Disclosure key={i} variant="flat" defaultOpen={i === 0} title={<span style={{ fontWeight: 500 }}><Pill tone="warn">{e.kind}{e.no ? '-' + e.no : ''}</Pill> <b>{e.subject}</b> · {fmtDate(e.date)} <span className="small muted">({when(e.days)})</span></span>}>
               <p className="small muted" style={{ margin: '6px 0' }}>{tt('Təkrarlanacaq mövzular')} ({e.topics.length}):</p>
               <ol className="small" style={{ margin: 0, paddingLeft: 18, maxHeight: 260, overflowY: 'auto' }}>{e.topics.map((x: any) => <li key={x.seq}>{x.topic}{x.tt_pages && <span className="muted"> · {x.tt_pages}</span>}</li>)}</ol>
               {e.standards.length > 0 && <p className="small" style={{ margin: '6px 0 0' }}>{tt('Standartlar')}: <b>{e.standards.join(', ')}</b></p>}
-            </details>))}
+            </Disclosure>))}
         </section>)}
     </div>
   )

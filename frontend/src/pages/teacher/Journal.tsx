@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { del, get, post, put } from '../../api'
-import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, Loading, PickFirst, Pill, Seg, toast, Top, useLoad, hourN, lessonWhen } from '../../ui'
+import { AsyncBtn, Disclosure, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, Loading, PickFirst, Pill, Seg, toast, Top, useLoad, hourN, lessonWhen } from '../../ui'
 import { ATT, HW, LessonSelect, type MyLesson, useMyLessons, usePick } from './common'
 import Exams from './Exams'
 import { fmtN, head, printDoc, SIGN, table } from '../../print'
@@ -160,8 +160,8 @@ function LessonCard({ ta, date, lesson, students, onSaved, onDirty }: { ta: MyLe
         {e.exists && !e.auto && <Pill tone="ok">{t('yazılıb')}</Pill>}
         {e.auto && <Pill tone="info">{t('onlayn test qiymətləri var · dərs hələ yazılmayıb')}</Pill>}
       </h2>
-      <details className="jsec" open={!written(lesson)}>
-        <summary><b>{tt('Mövzu və ev tapşırığı')}</b> <span className="small muted">{(topic || lesson.plan?.topic || '').slice(0, 70)}</span></summary>
+      <Disclosure key={String(written(lesson))} style={{ marginBottom: 12 }} icon="journal" defaultOpen={!written(lesson)} title={tt('Mövzu və ev tapşırığı')}
+        summary={<span className="small muted">{(topic || lesson.plan?.topic || '').slice(0, 70)}</span>}>
       <div className="fg" style={{ margin: '10px 0 12px' }}>
         <label className="f full">{t('Mövzu')} <span className="hint">{t('perspektiv plandan avtomatik')}{lesson.plan ? ` (№${lesson.plan.seq})` : ''}</span>
           <textarea value={topic || lesson.plan?.topic || ''} onChange={x => setTopic(x.target.value)} rows={2} />
@@ -176,7 +176,7 @@ function LessonCard({ ta, date, lesson, students, onSaved, onDirty }: { ta: MyLe
         <label className="f full">{t('Dərs qeydi')} <span className="hint">{t('istəyə görə: dərsin gedişi, fərdi iş, tədbir')}</span>
           <input value={note} onChange={x => setNote(x.target.value)} maxLength={2000} placeholder={t('məs. Qrup işi; 3 şagirdlə əlavə iş')} /></label>
       </div>
-      </details>
+      </Disclosure>
       {future ? <p className="small muted">{t('Gələcək dərs: indi yalnız mövzu və ev tapşırığı yazılır. Davamiyyət və qiymət dərs günü qeyd olunur.')}</p> : <>
       {copied && <div className="jcopy">↪ {tt('Davamiyyət {n}-ci saatdan köçürüldü – yalnız dəyişəni düzəldin: dərsdə yoxdursa «Q», sonradan gəlibsə «V» və ya «G». Saxlayana qədər yazılmır.', { n: copied.period })}</div>}
       <p className="small" style={{ margin: '4px 0 8px' }}>{tt('Sinifdə {n}', { n: students.length })} · {tt('gəlib')} <b>{present}</b> · {tt('qayıb')} <b>{cnt('yox')}</b> · {tt('üzrlü')} <b>{cnt('üzrlü')}</b> · {tt('gecikib')} <b>{cnt('gecikdi')}</b></p>

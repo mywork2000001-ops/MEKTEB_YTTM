@@ -3,7 +3,7 @@ import CertificatesPanel from './CertificatesPanel'
 import { useNavigate } from 'react-router-dom'
 import { get } from '../../api'
 import { useAuth } from '../../auth'
-import { Drawer, ErrorBox, toast, fmt, fmtDate, gradeTone, levelTone, Loading, PickFirst, Pill, riskTone, Seg, Stat, Top, useLoad, useNarrow, hourN } from '../../ui'
+import { Disclosure, Drawer, ErrorBox, toast, fmt, fmtDate, gradeTone, levelTone, Loading, PickFirst, Pill, riskTone, Seg, Stat, Top, useLoad, useNarrow, hourN } from '../../ui'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { Contacts, IPlans } from './Classes'
 import SchoolReport from './SchoolReport'
@@ -157,9 +157,8 @@ function Risk({ a, ta }: { a: any; ta: number }) {
   return (
     <>
       <div className="jlist">{rows.map((r: any) => (
-        <details key={r.student_id} className="jrow" style={{ display: 'block' }}>
-          <summary className="row" style={{ cursor: 'pointer' }}><b className="grow">{r.full_name}</b>
-            {r.extra && <Pill tone="info">{t('məşğələdə')}</Pill>}<Pill tone={riskTone(r.risk.status)}>{r.risk.status} · {r.risk.score}</Pill></summary>
+        <Disclosure key={r.student_id} variant="flat" title={r.full_name}
+          summary={<>{r.extra && <Pill tone="info">{t('məşğələdə')}</Pill>}<Pill tone={riskTone(r.risk.status)}>{r.risk.status} · {r.risk.score}</Pill></>}>
           <ul className="small" style={{ margin: '8px 0 0' }}>{r.risk.factors.map((f: any) => <li key={f.amil}>{f.izah} {f.bal ? <b>(+{f.bal})</b> : ''}</li>)}
             <li>{t('Əlavə məşğələ:')} {r.extra ? t('{x1} · davamiyyət {x2}%', { x1: r.extra.courses.join(', '), x2: fmt(r.extra.attendance_pct) }) : 'yazılmayıb'}</li>
             {r.attendance_all_pct != null && <li>{t('Bütün dərslər üzrə davamiyyət (sinif rəhbərinin qeydi ilə):')} {fmt(r.attendance_all_pct)}%</li>}</ul>
@@ -168,7 +167,7 @@ function Risk({ a, ta }: { a: any; ta: number }) {
             <button className="btn sm" onClick={() => setOpen({ sid: r.student_id, name: r.full_name, kind: 'plans' })}>{t('Fərdi iş planı')}</button>
             <button className="btn sm" onClick={test}>{t('Test təyin et')}</button>
           </div>
-        </details>))}</div>
+        </Disclosure>))}</div>
       {open && <Drawer title={`${open.name} – ${t(open.kind === 'contacts' ? 'valideynlə əlaqə' : 'fərdi iş planı')}`} onClose={() => setOpen(null)}>
         {open.kind === 'contacts' ? <Contacts sid={open.sid} /> : <IPlans sid={open.sid} />}</Drawer>}
     </>

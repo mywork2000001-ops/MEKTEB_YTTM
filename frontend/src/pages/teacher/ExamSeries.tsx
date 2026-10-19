@@ -2,7 +2,7 @@
 // görünəndə növbəyə düşür (docs/sinaq-seriyasi-promtu.md).
 import { useEffect, useMemo, useState } from 'react'
 import { del as apiDel, get, patch, post } from '../../api'
-import { azDT, Drawer, ErrorBox, Field, Loading, Pill, Seg, toast, useLoad } from '../../ui'
+import { azDT, Disclosure, Drawer, ErrorBox, SumChip, Field, Loading, Pill, Seg, toast, useLoad } from '../../ui'
 import { bankGroup } from './TaskEditor'
 import { heldLabel, useExamDates, type Dated } from './examDates'
 import { useT, tt } from '../../i18n'
@@ -49,7 +49,7 @@ export default function ExamSeriesPanel() {
                 <button className="btn sm" onClick={() => act(() => patch(`/api/exam-series/${s.id}`, { auto_new: !s.auto_new }), t('Saxlandı'))}>{s.auto_new ? t('Yeniləri avtomatik əlavə etmə') : t('Yeniləri avtomatik əlavə et')}</button>
                 <button className="btn sm ghost" onClick={() => act(() => apiDel(`/api/exam-series/${s.id}`), t('Seriya silindi (göndərilmiş sınaqlar qalır)'))}>{t('Sil')}</button>
               </div>
-              {s.queue.length > 0 && <details><summary className="small">{t('Növbə (')}{s.queue.length})</summary>
+              {s.queue.length > 0 && <Disclosure variant="flat" title={t('Növbə')} summary={<SumChip>{s.queue.length}</SumChip>}>
                 {s.queue.map((q, i) => (
                   <div key={q.id} className="row small" style={{ gap: 6 }}><span className="grow">{i + 1}. {q.label}
                     {q.skip ? <> <Pill tone="warn">{t('atlanacaq –')} {q.given.length ? t('verilib: {x1}', { x1: q.given.join(', ') }) : t('sinfə uyğun deyil')}</Pill></>
@@ -58,7 +58,7 @@ export default function ExamSeriesPanel() {
                     <button className="btn sm ghost" disabled={i === 0} onClick={() => { const x = s.queue.map(y => y.id); [x[i - 1], x[i]] = [x[i], x[i - 1]]; act(() => patch(`/api/exam-series/${s.id}`, { queue: x }), t('Sıra dəyişdi')) }}>↑</button>
                     <button className="btn sm ghost" onClick={() => act(() => patch(`/api/exam-series/${s.id}`, { queue: s.queue.map(y => y.id).filter(y => y !== q.id) }), t('Növbədən çıxarıldı'))}>✕</button>
                   </div>))}
-              </details>}
+              </Disclosure>}
             </div>))}
         </div>)}
       {creating && <NewSeries onClose={() => setCreating(false)} onDone={() => { setCreating(false); reload() }} />}

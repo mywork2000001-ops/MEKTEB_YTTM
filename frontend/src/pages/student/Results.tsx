@@ -3,7 +3,7 @@ import { tt } from '../../i18n'
 import { ml } from '../../i18n'
 import { del, get, post } from '../../api'
 import { useT } from '../../i18n'
-import { Drawer, ErrorBox, fmt, fmtDate, gradeTone, Loading, Pill, Stat, Top, useLoad } from '../../ui'
+import { Disclosure, Drawer, ErrorBox, fmt, fmtDate, gradeTone, Loading, Pill, Stat, Top, useLoad } from '../../ui'
 import { MathText } from '../../MathText'
 import { useAuth } from '../../auth'
 import { printMistakes, printResults } from './studentPrint'
@@ -110,12 +110,11 @@ export default function Results() {
       <section className="panel">
         <h2>{t('Səhvlərim')} <small>{d.mistakes.length}</small>{d.mistakes.length > 0 && <button className="btn sm right no-print" onClick={() => printMistakes(d, me, true)}>{tt('Səhv dəftəri – çap')}</button>}</h2>
         {d.mistakes.length === 0 ? <p className="muted">{tt('Səhv yoxdur və ya cavablar hələ açılmayıb.')}</p> : d.mistakes.slice(0, allMistakes ? undefined : 10).map((m: any, k: number) => (
-          <details key={k} style={{ borderBottom: '1px solid var(--line)', padding: '8px 0' }}>
-            <summary style={{ cursor: 'pointer' }}><MathText text={ml(m.text)} /> <span className="small muted">· {m.task}</span></summary>
+          <Disclosure key={k} variant="flat" title={<span style={{ fontWeight: 500 }}><MathText text={ml(m.text)} /> <span className="small muted">· {m.task}</span></span>}>
             {m.image && <img className="q-img" src={m.image} alt="" />}
             <p className="small">{tt('Sizin cavab')}: <b style={{ color: 'var(--bad)' }}>{m.kind === 'mcq' ? (m.given != null ? <MathText text={ml(m.options?.[m.given])} /> : '—') : m.given || '—'}</b> · {tt('Düzgün')}: <b style={{ color: 'var(--ok)' }}>{m.kind === 'mcq' ? <MathText text={ml(m.options?.[m.correct])} /> : String(m.answer).split('|')[0]}</b></p>
             {m.explanation && <p className="small muted" style={{ whiteSpace: 'pre-wrap' }}><MathText text={ml(m.explanation)} /></p>}
-          </details>))}
+          </Disclosure>))}
         {!allMistakes && d.mistakes.length > 10 && <button className="btn show-more" onClick={() => setAllMistakes(true)}>{tt('Hamısını göstər')} ({d.mistakes.length})</button>}
       </section>
       {review && <Review id={review} onClose={() => setReview(null)} />}

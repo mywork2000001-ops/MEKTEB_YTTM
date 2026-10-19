@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { tt } from '../../i18n'
 import { get } from '../../api'
 import { useT } from '../../i18n'
-import { azDT, ErrorBox, fmtDate, isoDate, Loading, Pill, Seg, Top, useLoad } from '../../ui'
+import { azDT, Disclosure, ErrorBox, SumChip, fmtDate, isoDate, Loading, Pill, Seg, Top, useLoad } from '../../ui'
 import { useAuth } from '../../auth'
 import { printPlan } from './studentPrint'
 
@@ -97,10 +97,10 @@ function Progress() {
         </div>
         {r.review.length > 0 && <p className="small" style={{ margin: '0 0 6px' }}><b>{tt('Təkrar etməyi tövsiyə edirik')}:</b> {r.review.map(x => `№${x.seq} ${x.topic}`).join('; ')}</p>}
         {r.next.length > 0 && <p className="small" style={{ margin: '0 0 6px' }}><b>{tt('Növbəti mövzular')}:</b> {r.next.map(x => `№${x.seq} ${x.topic}${examLabel(x) ? ' (' + examLabel(x) + ')' : ''}`).join('; ')}</p>}
-        {r.recent.length > 0 && <details><summary className="small" style={{ cursor: 'pointer' }}>{tt('Son keçilən mövzular')}</summary>
-          <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{r.recent.map(x => <li key={x.seq}>№{x.seq} {x.topic} <span className="muted">· {fmtDate(x.done_on)}</span></li>)}</ul></details>}
-        {r.sections.length > 1 && <details><summary className="small" style={{ cursor: 'pointer' }}>{tt('Bölmələr üzrə')}</summary>
-          <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{r.sections.map((x, k) => <li key={k}>{x.section}: {x.done}/{x.total}</li>)}</ul></details>}
+        {r.recent.length > 0 && <Disclosure variant="flat" title={tt('Son keçilən mövzular')} summary={<SumChip>{r.recent.length}</SumChip>}>
+          <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{r.recent.map(x => <li key={x.seq}>№{x.seq} {x.topic} <span className="muted">· {fmtDate(x.done_on)}</span></li>)}</ul></Disclosure>}
+        {r.sections.length > 1 && <Disclosure variant="flat" title={tt('Bölmələr üzrə')} summary={<SumChip>{r.sections.length}</SumChip>}>
+          <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{r.sections.map((x, k) => <li key={k}>{x.section}: {x.done}/{x.total}</li>)}</ul></Disclosure>}
       </section>))}
       <p className="small muted">{tt('Qara xətt – plana görə bu günə qədər keçilməli olan yer.')}</p>
     </div>

@@ -83,8 +83,8 @@ function NavGroups({ items, storageKey, defaultOpen, isActive, idPrefix, renderI
               onClick={() => toggle(g.name, isOpen)}>
               <span className="ng-name">{gname}</span>
               {!isOpen && g.name === activeGroup && <span className="ng-dot" aria-hidden="true" />}
-              <span className="ng-cnt" aria-hidden="true">{g.list.length}</span>
-              <span className="ng-arrow" aria-hidden="true">▾</span>
+              {!isOpen && <span className="ng-cnt" aria-hidden="true">{g.list.length}</span>}
+              <span className="ng-arrow" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
             </button>
             <div className="nav-body" id={id} inert={!isOpen}>
               <div className="nav-body-in">{g.list.map(renderItem)}</div>

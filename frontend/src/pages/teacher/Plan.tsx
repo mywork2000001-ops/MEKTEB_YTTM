@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { get, put } from '../../api'
-import { ErrorBox, toast, fmtDate, isoDate, lessonWhen, Loading, PickFirst, Pill, Top, useLoad } from '../../ui'
+import { Disclosure, ErrorBox, SumChip, toast, fmtDate, isoDate, lessonWhen, Loading, PickFirst, Pill, Top, useLoad } from '../../ui'
 import { docCtx } from '../../doccontext'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { ProgramBox } from './Programs'
@@ -98,8 +98,9 @@ export default function Plan() {
           {([['day', 'Gün'], ['week', 'Həftə'], ['month', 'Ay'], ['sem1', 'I yarımil'], ['sem2', 'II yarımil'], ['year', 'Bütün il']] as const).map(([k, l]) => <option key={k} value={k}>{t(l)}</option>)}</select>}
       </div>
       {lessons && lessons.length === 0 && <div className="empty"><p>{t('Bu məkanda heç bir sinif və ya qrupa qoşulmamısınız. Perspektiv plan qoşulduğunuz sinfə təyin olunur: Tənzimləmələr → Siniflər → sinfin kartında «Qoşul» – orada əsas proqramı da seçə bilərsiniz.')}</p></div>}
-      {ta && <details className="prog-details no-print" open={cur ? !cur.program : undefined}><summary>{t('Proqramlar')}: <b>{cur?.program || t('əsas proqram seçilməyib')}</b>{cur?.extra_programs ? ` · ${t('əlavə')}: ${cur.extra_programs}` : ''} <span className="small muted">– {t('seç / dəyiş')}</span></summary>
-        <ProgramBox ta={ta} onChanged={() => { reload(); reloadLessons() }} /></details>}
+      {ta && <Disclosure className="no-print" style={{ marginBottom: 14 }} icon="plan" defaultOpen={cur ? !cur.program : false} title={t('Proqramlar')}
+        summary={<><SumChip tone={cur?.program ? 'acc' : 'warn'}>{cur?.program || t('əsas proqram seçilməyib')}</SumChip>{cur?.extra_programs ? <SumChip>{`${t('əlavə')}: ${cur.extra_programs}`}</SumChip> : null}</>}>
+        <ProgramBox ta={ta} onChanged={() => { reload(); reloadLessons() }} /></Disclosure>}
       {!ta ? (lessons?.length === 0 ? null : <PickFirst text={t('Yuxarıda sinif və ya qrupu seçin')} />) : loading && !d ? <Loading /> : d && (
         <>
           <div className="row" style={{ marginBottom: 12 }}>

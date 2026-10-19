@@ -4,7 +4,7 @@ import { useAuth } from '../../auth'
 import { esc, head, printDoc, table } from '../../print'
 import { kindLabel } from './common'
 import { ProgramBox, PURPOSES } from './Programs'
-import { AsyncBtn, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, isoDate, Loading, PickFirst, Pill, Seg, toast, useLoad, hourN } from '../../ui'
+import { AsyncBtn, ConfirmName, Disclosure, Drawer, ErrorBox, Field, fmt, fmtDate, isoDate, Loading, PickFirst, Pill, Seg, toast, useLoad, hourN } from '../../ui'
 import { useT, tt } from '../../i18n'
 
 type Cls = { id: number; name: string; code: string; kind: string; purpose?: string | null; parent_id: number | null; group_type?: 'bölünmə' | 'tədris' | null; split_with: string | null; utis_class: string | null; grade?: number | null; grade_set?: number | null
@@ -76,8 +76,7 @@ function PlansUpload({ onDone }: { onDone: () => void }) {
   const [files, setFiles] = useState<File[]>([])
   const [res, setRes] = useState<any[] | null>(null)
   return (
-    <details className="panel" style={{ marginBottom: 12 }}>
-      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>{t('Rəsmi perspektiv planları yüklə (hamısı birlikdə)')}</summary>
+    <Disclosure icon="plan" style={{ marginBottom: 12 }} title={t('Rəsmi perspektiv planları yüklə (hamısı birlikdə)')}>
       <div className="stack" style={{ marginTop: 10 }}>
         <p className="small muted">{t('Word (.docx) fayllarını seçin – fayl adına görə sinfə özü bağlanır (məs. «X-e sinif – Riyaziyyat perspektiv plan…» → X e). Jurnal qeydləri qorunur.')}</p>
         <input type="file" accept=".docx" multiple onChange={e => setFiles(Array.from(e.target.files || []))} />
@@ -92,7 +91,7 @@ function PlansUpload({ onDone }: { onDone: () => void }) {
             {x.ok ? <Pill tone="ok">{x.class_name}: {x.lessons} {t('dərs · KSQ')} {x.ksq} {t('· BSQ')} {x.bsq}</Pill> : <Pill>{x.message}</Pill>}
           </div>))}</div>}
       </div>
-    </details>
+    </Disclosure>
   )
 }
 
@@ -281,7 +280,7 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
         </div>}
         {!cls.mine && cls.purpose && <p className="small muted" style={{ margin: 0 }}>{t('Qrupun məqsədi:')} <b>{PURPOSES[cls.purpose] || cls.purpose}</b> {t('– ★ uyğun proqramlar öndədir.')}</p>}
         {me?.workspace === 'private' || course.from || course.to ? <CourseDates v={course} onChange={setCourse} />
-          : <details><summary className="small muted">{t('Kurs müddəti (istəyə görə)')}</summary><CourseDates v={course} onChange={setCourse} /></details>}
+          : <Disclosure variant="flat" title={<span className="small muted">{t('Kurs müddəti (istəyə görə)')}</span>}><CourseDates v={course} onChange={setCourse} /></Disclosure>}
         {legacy && !toTimes && <p className="small" style={{ margin: 0 }}>{t('Bu qrupun cədvəli köhnə qaydada (dərs saatı ilə) yazılıb.')}{' '}
           <button className="btn sm" onClick={() => setToTimes(true)}>{t('Real dərs vaxtlarına keç')}</button></p>}
         {priv ? <LessonTimes v={times} onChange={setTimes} /> : <>
@@ -744,8 +743,7 @@ function RosterImport({ onDone }: { onDone: () => void }) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'giris_kodlari.csv'; a.click()
   }
   return (
-    <details className="panel" style={{ marginBottom: 14 }}>
-      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>{t('UTİS siyahısından şagird idxalı (admin)')}</summary>
+    <Disclosure icon="classes" style={{ marginBottom: 14 }} title={t('UTİS siyahısından şagird idxalı (admin)')}>
       <div className="stack" style={{ marginTop: 10 }}>
         <p className="small muted">{t('Siniflər «UTİS sinfi» sahəsinə görə uyğunlaşdırılır (məs. X e = 10 e). Uşaq İD, şəxsiyyət vəsiqəsi, pinkod saxlanmır; mövcud şagirdlər təkrarlanmır.')}</p>
         <label className="f">{t('UTİS faylı (.xlsx və ya .pdf)')}<input type="file" accept=".xlsx,.pdf" onChange={e => setUtis(e.target.files?.[0] || null)} /></label>
@@ -761,7 +759,7 @@ function RosterImport({ onDone }: { onDone: () => void }) {
             <p className="small muted">{t('PIN-lər yalnız indi göstərilir – faylı yükləyin, çap edib paylayın.')}</p></>}
         </>)}
       </div>
-    </details>
+    </Disclosure>
   )
 }
 
