@@ -10,6 +10,7 @@ import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, Loading, PickFirst, Pi
 import { esc, fmtD, fmtN, head, kpis, printDoc, SIGN, table } from '../../print'
 import { periodRange, type Period } from '../../periods'
 import { useMyLessons, type MyLesson } from './common'
+import StudentReport, { download } from './StudentReport'
 
 type Kind = 'movzu' | 'sinaq'
 type KF = 'all' | Kind
@@ -409,6 +410,7 @@ function StudentPanel({ f, id, setId, kinds, kf }: { f: PP; id: number | null; s
       <ErrorBox error={err} />
       {!id ? <PickFirst text="Şagird seçin – mövzu testləri və sınaqlar üzrə fəaliyyəti açılacaq" /> : loading && !d ? <Loading /> : d && (
         <div className="grid g2">
+          <StudentReport id={id} params={f.params} label={f.label} />
           <section className="panel" style={{ gridColumn: '1 / -1' }}>
             <h2>{d.student.full_name} <small>{d.student.class_name}</small></h2>
             <div className="grid g2">{kinds.map(k => { const s = d.parts[k].summary
@@ -471,6 +473,10 @@ function ClassPanel({ f, lessons, onStudent, kinds, kf, fixedTa }: { f: PP; less
   const [d, err, loading] = useLoad<CData>(() => get(ta ? `/api/results-center/class/${ta}` : '/api/results-center/class', { ...(level !== 'all' ? { level } : {}), ...f.params }), [ta, level, f.label])
   const [review, setReview] = useState<Review | null>(null)
   const title = d ? `${d.class_name} · ${d.subject}${d.level ? (' · ' + t('{level} qrup', { level: d.level })) : ''}` : ''
+  // hər şagird ayrıca səhifə (valideyn iclası): rəsmi forma AZ, valideyn nüsxəsi AZ|RU
+  const bulk = (lang: 'az' | 'ru', parent: boolean) => download(
+    `/api/results-center/class/${ta}/reports?` + new URLSearchParams({ ...(f.params.date_from ? { from: f.params.date_from } : {}), ...(f.params.date_to ? { to: f.params.date_to } : {}),
+      format: 'pdf', lang, parent: String(parent) }).toString(), `hesabatlar-${d?.class_name || ta}.pdf`)
   const print = () => d && printDoc({
     title: `Sinif hesabatı – ${title}`, signers: [SIGN.teacher(), SIGN.deputy()],
     body: head(d.level ? 'Səviyyə qrupunun onlayn test nəticələri' : 'Sinfin onlayn test nəticələri', `${title} · ${f.label}`) +
@@ -488,7 +494,9 @@ function ClassPanel({ f, lessons, onStudent, kinds, kf, fixedTa }: { f: PP; less
       <div className="toolbar no-print">
         {fixedTa === undefined && <ClassSelect lessons={lessons} value={ta} onChange={setTa} />}
         <Seg label={t('Səviyyə')} value={level} onChange={setLevel} options={[['all', 'Hamısı'], ['Zəif', 'Zəif'], ['Orta', 'Orta'], ['Güclü', 'Güclü']]} />
-        {d && <button className="btn sm right" onClick={print}>{t('Çap / PDF')}</button>}
+        {ta && <AsyncBtn className="btn sm right" ok={t('PDF hazırdır')} onClick={() => bulk('az', false)}>{t('Bütün şagirdlərin hesabatı (PDF)')}</AsyncBtn>}
+        {ta && <AsyncBtn className="btn sm" ok={t('PDF hazırdır')} onClick={() => bulk('ru', true)}>{t('Valideyn iclası (RU)')}</AsyncBtn>}
+        {d && <button className={'btn sm' + (ta ? '' : ' right')} onClick={print}>{t('Çap / PDF')}</button>}
       </div>
       <ErrorBox error={err} />
       {loading && !d ? <Loading /> : d && (

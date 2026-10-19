@@ -3016,6 +3016,28 @@ const D: Record<string, [string, string]> = {
   "Proqramda {top} sinif mövzuları var, qrup – {grp}. Qrupun keçdiyi bölmələri seçmək məsləhətdir": [
     "The program has grade {top} topics, the group is in grade {grp}. Selecting only the sections the group has covered is recommended",
     "В программе есть темы {top} класса, группа – {grp} класс. Рекомендуется выбрать только пройденные группой разделы"],
+  // ---- şagirdin fərdi hesabatı (docs/sagird-ferdi-hesabat-promtu.md)
+  "Bal, %": ["Score, %", "Балл, %"],
+  "Bu dövrdə nəticə yoxdur.": ["No results in this period.", "В этом периоде результатов нет."],
+  "Əsas çatışmazlıq yoxdur – eyni tempdə davam edin.": ["No major gaps – keep going at the same pace.", "Существенных пробелов нет – продолжайте в том же темпе."],
+  "Fayl hazırlanmadı": ["The file could not be prepared", "Файл не удалось подготовить"],
+  "İştirak aşağıdır ({pct}%) – buraxılmış testləri yazması təmin edilməlidir.": ["Participation is low ({pct}%) – the missed tests should be taken.", "Низкое участие ({pct}%) – нужно написать пропущенные тесты."],
+  "iştirak, %": ["participation, %", "участие, %"],
+  "jurnal": ["journal", "журнал"],
+  "nəşr olunmayıb": ["not published", "не опубликовано"],
+  "orta, %": ["average, %", "средний, %"],
+  "son nəticə, %": ["latest result, %", "последний результат, %"],
+  "Son nəticələr enir ({delta} bal) – səbəbi aydınlaşdırın.": ["Recent results are falling ({delta} points) – find out why.", "Последние результаты снижаются ({delta}) – выясните причину."],
+  "Təkrar edin: {topic} ({pct}%) – təkrar testi təyin edin.": ["Revise: {topic} ({pct}%) – assign a repeat test.", "Повторите: {topic} ({pct}%) – назначьте повторный тест."],
+  "Təkrar testi təyin et": ["Assign a repeat test", "Назначить повторный тест"],
+  "Tövsiyə": ["Recommendation", "Рекомендация"],
+  "trend (son 3)": ["trend (last 3)", "тренд (последние 3)"],
+  "Valideyn nüsxəsi (AZ)": ["Parent copy (AZ)", "Копия для родителей (AZ)"],
+  "Valideyn nüsxəsi (RU)": ["Parent copy (RU)", "Копия для родителей (RU)"],
+  "Zəif mövzular (≤ 50%)": ["Weak topics (≤ 50%)", "Слабые темы (≤ 50%)"],
+  "Bütün şagirdlərin hesabatı (PDF)": ["All students' reports (PDF)", "Отчёты всех учеников (PDF)"],
+  "Valideyn iclası (RU)": ["Parents' meeting (RU)", "Родительское собрание (RU)"],
+  "PDF hazırdır": ["PDF is ready", "PDF готов"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

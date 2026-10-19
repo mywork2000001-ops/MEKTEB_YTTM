@@ -484,6 +484,16 @@ def topic_rating(user: User = Depends(student_only), db: Session = Depends(get_d
     return out
 
 
+@router.get('/my/report')
+def my_report(date_from: dt.date | None = None, date_to: dt.date | None = None, user: User = Depends(student_only),
+              db: Session = Depends(get_db)):
+    """Fərdi hesabatım: onlayn + kağız nəticələr, adı ilə sınaqlar, KSQ/BSQ. Yalnız nəşr olunmuş; sinif ortası – ≥5 nəticə olanda."""
+    from ..student_report import my_results
+    rep = my_results(db, me_student(db, user), date_from, date_to)
+    db.commit()
+    return rep
+
+
 def _card(db: Session, e: Exam, sid: int) -> dict | None:
     """Şagirdin öz cavab kartı (docs/kart-skanlarini-silme-promtu.md): kartın şəkli, sistemin oxuduğu cavab və sistemdəki düz
     cavab – şagird oxunuşun dəqiqliyini özü yoxlayır, səhv görsə müəllimə deyir. Yalnız qiymətləndirilmiş kart."""
