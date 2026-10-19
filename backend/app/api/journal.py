@@ -184,7 +184,7 @@ def grid(ta_id: int, month: str | None = None, user: User = Depends(staff), db: 
     mk: dict = {}
     for x in db.scalars(select(Mark).where(Mark.entry_id.in_(eids))):
         mk.setdefault((x.entry_id, x.student_id), []).append(x.grade)
-    exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.date >= a, Exam.date <= b)))
+    exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.to_journal.is_(True), Exam.date >= a, Exam.date <= b)))
     ex_first = {}
     for k in keys:                                     # KSQ/BSQ qiyməti həmin günün ilk dərs sütununa
         ex_first.setdefault(k[0], k)

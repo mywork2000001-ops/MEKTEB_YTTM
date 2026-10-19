@@ -54,6 +54,12 @@ export default function GlobalScan() {
     return () => { stop = true; clearTimeout(timer) }
   }, [up])
 
+  useEffect(() => {                                        // başqa səhifədən (məs. Yazılı iş) «📷 Skan» açmaq
+    const open = () => { setUp(null); setErr(null); setLoose([]); setMode('menu') }
+    window.addEventListener('mk-open-scan', open)
+    return () => window.removeEventListener('mk-open-scan', open)
+  }, [])
+
   if (!staff) return null
 
   const send = async (files: File[]) => {

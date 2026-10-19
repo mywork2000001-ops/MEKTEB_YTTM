@@ -55,7 +55,8 @@ def exam_out(e: Exam) -> dict:
     return {'id': e.id, 'kind': e.kind, 'no': e.no, 'semester': e.semester, 'date': e.date,
             'max_points': e.max_points, 'items': e.items, 'title': e.title,
             'extra_of': e.extra_of, 'extra_seq': e.extra_seq or 0, 'extra_students': e.extra_students, 'label': exam_label(e),
-            'results_published_at': e.results_published_at, 'appeal_until': e.appeal_until}
+            'results_published_at': e.results_published_at, 'appeal_until': e.appeal_until,
+            'online_task_id': e.online_task_id, 'batch_id': e.batch_id, 'to_journal': e.to_journal, 'variant_mode': e.variant_mode}
 
 
 def _exam(db: Session, ta_id: int, exam_id: int) -> Exam:
@@ -68,7 +69,7 @@ def _exam(db: Session, ta_id: int, exam_id: int) -> Exam:
 @router.get('/{ta_id}')
 def list_exams(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)
-    created = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id)
+    created = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.kind.in_(("KSQ", "BSQ")))
                               .order_by(Exam.semester, Exam.date, Exam.kind, Exam.extra_seq)))
     have = {(e.kind, e.semester, e.no) for e in created if not e.extra_seq}
     planned = [{'kind': pl.assessment_type, 'no': pl.exam_no, 'semester': pl.semester, 'date': pl.date,
@@ -390,7 +391,7 @@ def semester(ta_id: int, sem: int, user: User = Depends(staff), db: Session = De
     ta = own_assignment(db, user, ta_id)
     if sem not in (1, 2):
         raise HTTPException(400, 'yarımil: 1 və ya 2')
-    exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.semester == sem)
+    exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.semester == sem, Exam.kind.in_(("KSQ", "BSQ")))
                             .order_by(Exam.kind.desc(), Exam.no)))
     scores = {(sc.exam_id, sc.student_id): sc for sc in db.scalars(
         select(ExamScore).where(ExamScore.exam_id.in_([e.id for e in exams])))}
@@ -799,7 +800,7 @@ def fix_stale_all(db: Session) -> int:
     from ..domain.ksq_variants import RULES_V
     from ..models import TeachingAssignment
     n = 0
-    for e in db.scalars(select(Exam).where(Exam.id.in_(select(ExamVariant.exam_id).distinct()))):
+    for e in db.scalars(select(Exam).where(Exam.kind.in_(("KSQ", "BSQ")), Exam.id.in_(select(ExamVariant.exam_id).distinct()))):
         if db.scalar(select(ExamScore.exam_id).where(ExamScore.exam_id == e.id, ExamScore.points.is_not(None)).limit(1)):
             continue
         if db.scalar(select(ExamVariant.exam_id).where(ExamVariant.exam_id == e.id, ExamVariant.printed_at.is_not(None)).limit(1)):

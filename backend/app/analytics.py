@@ -52,7 +52,7 @@ def _collect(db: Session, ta_id: int, p: Period):
     marks = list(db.scalars(select(Mark).where(Mark.entry_id.in_(ids))))
     att = list(db.scalars(select(Attendance).where(Attendance.entry_id.in_(ids))))
     hw = list(db.scalars(select(HomeworkCheck).where(HomeworkCheck.entry_id.in_(ids))))
-    exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta_id, Exam.date >= p.a, Exam.date <= p.b)
+    exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta_id, Exam.to_journal.is_(True), Exam.date >= p.a, Exam.date <= p.b)
                             .order_by(Exam.date)))
     scores = list(db.scalars(select(ExamScore).where(ExamScore.exam_id.in_([e.id for e in exams]))))
     tasks = [t.id for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta_id,   # sınaq – ayrıca blokda

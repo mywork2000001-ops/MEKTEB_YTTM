@@ -6,7 +6,7 @@ import { esc, fmtD, mathHtml } from './print'
 import { toast } from './ui'
 import { tt } from './i18n'
 
-export type KsqQ = { slot: number; kind: 'mcq' | 'open'; points: number; text: string; options: string[] | null; image?: string | null }
+export type KsqQ = { slot: number; kind: 'mcq' | 'open' | 'score'; points: number; text: string; options: string[] | null; image?: string | null }
 export type KsqSheet = { student_id: number; full_name: string; code: string; lang: string; qr: string; questions: KsqQ[] }
 export type KsqPrint = {
   exam: { id: number; kind: string; no: number; semester: number; date: string; class_name: string; subject: string; school: string; teacher: string }
