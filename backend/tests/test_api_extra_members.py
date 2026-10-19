@@ -17,10 +17,10 @@ def test_group_members_from_classes(world, clock, monkeypatch):
     admin, ta, cid, st, ids = setup(world)                                     # X e – 3 şagird
     xc = admin.post('/api/classes', json={'name': 'X c'}).json()['id']
     admin.post(f'/api/classes/{xc}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'slots': {}})
-    xs = [admin.post('/api/students', json={'full_name': f'X c Şagird{i} oğlu', 'class_id': xc}).json() for i in range(2)]
+    xs = [admin.post('/api/students', json={'full_name': f'X c Şagird{i} oğlu', 'class_id': xc, 'force': True}).json() for i in range(2)]
     fz = admin.post('/api/classes', json={'name': 'X f'}).json()['id']
     admin.post(f'/api/classes/{fz}/join', json={'subject': 'Fizika', 'weekly_hours': 1, 'slots': {}})
-    fs = admin.post('/api/students', json={'full_name': 'Fizika Şagird oğlu', 'class_id': fz}).json()
+    fs = admin.post('/api/students', json={'full_name': 'Fizika Şagird oğlu', 'class_id': fz, 'force': True}).json()
     c = admin.post('/api/extra', json={**BODY, 'ta_ids': [ta], 'student_ids': [st[0]['id']]}).json()
     gid = c['id']
 

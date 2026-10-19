@@ -18,7 +18,7 @@ def _two_classes(world, clock, monkeypatch, **kw):
     admin, ta, cid, st, ids = setup(world)
     xc = admin.post('/api/classes', json={'name': 'X c'}).json()['id']
     admin.post(f'/api/classes/{xc}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'slots': {}})
-    xs = [admin.post('/api/students', json={'full_name': f'X c Şagird{i} oğlu', 'class_id': xc}).json() for i in range(2)]
+    xs = [admin.post('/api/students', json={'full_name': f'X c Şagird{i} oğlu', 'class_id': xc, 'force': True}).json() for i in range(2)]
     with S() as db:
         ta_c = db.query(TeachingAssignment).filter_by(class_id=xc).one().id
     clock.t = dt.datetime(2026, 9, 29, 10, 0, tzinfo=UTC)

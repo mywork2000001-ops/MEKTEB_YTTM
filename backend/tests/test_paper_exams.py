@@ -134,7 +134,7 @@ def test_private_workspace_paper_exam(world):
     cid = il.post('/api/classes', json={'name': 'IX hazırlıq', 'kind': 'adi', 'private': True}).json()['id']
     il.post(f'/api/classes/{cid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 2, 'has_summative': False, 'slots': {'0': [7], '2': [7]}})
     for i in range(2):
-        il.post('/api/students', json={'full_name': f'Fərdi Şagird{i} oğlu', 'class_id': cid})
+        il.post('/api/students', json={'full_name': f'Fərdi Şagird{i} oğlu', 'class_id': cid, 'force': True})
     ta = il.get('/api/my/lessons').json()[0]['assignment_id'] if 'assignment_id' in il.get('/api/my/lessons').json()[0] else None
     if ta is None:
         from app.models import TeachingAssignment

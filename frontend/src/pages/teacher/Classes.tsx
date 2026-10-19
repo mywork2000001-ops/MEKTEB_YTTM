@@ -70,6 +70,9 @@ function StudentList({ cls, all, onOpen }: { cls: Cls; all: Cls[]; onOpen: (s: S
   const [add, setAdd] = useState(false)
   const [other, setOther] = useState(false)
   const lc = (x: string) => x.toLocaleLowerCase('az')
+  const { me } = useAuth()
+  // səviyyə IX riyaziyyat balından hesablanır – riyaziyyat dərsi olmayan müəllimə göstərilmir
+  const math = me?.role === 'admin' || all.length === 0 || all.some(c => /riyaz|math|матем|алгебр|həndəs|hendes/i.test(c.mine?.subject || ''))
   // əlavə üzv: əsas sinfi başqadır (bir şagird bir neçə sinifdə) və ya qrup üzvü – buradan çıxarmaq olar
   const extra = (s: Stud) => cls.kind === 'qrup' || s.class_name !== cls.name
   const list = (rows || []).filter(s => !q || lc(s.full_name).includes(lc(q)) || lc(s.portal_code).includes(lc(q)))
@@ -87,14 +90,14 @@ function StudentList({ cls, all, onOpen }: { cls: Cls; all: Cls[]; onOpen: (s: S
       <ErrorBox error={err} />
       <div className="toolbar"><div className="search"><input placeholder={t('Ad və ya ID ilə axtar')} value={q} onChange={e => setQ(e.target.value)} /></div></div>
       <div className="tbl-wrap"><table>
-        <thead><tr><th>{t('Şagird')}</th><th>{t('ID (giriş kodu)')}</th><th className="r">{t('IX riyaziyyat')}</th><th className="r">{t('Yekun bal')}</th><th>{t('Səviyyə (IX)')}</th></tr></thead>
+        <thead><tr><th>{t('Şagird')}</th><th>{t('ID (giriş kodu)')}</th><th className="r">{t('IX riyaziyyat')}</th><th className="r">{t('Yekun bal')}</th>{math && <th>{t('Səviyyə (IX riyaziyyat üzrə)')}</th>}</tr></thead>
         <tbody>{list.map(s => (
           <tr key={s.id} className="click" onClick={() => onOpen(s)}>
             <td><b>{s.full_name}</b><span className="sub">{fmtDate(s.birth_date)} · {s.gender || ''}{s.class_name !== cls.name ? (' · ' + t('əsas sinif: {class_name}', { class_name: s.class_name })) : ''}</span>
               {extra(s) && <span onClick={e => e.stopPropagation()}><AsyncBtn className="btn sm ghost" ok="Çıxarıldı"
                 onClick={async () => { await apiDel(`/api/classes/${cls.id}/members/${s.id}`); reload() }}>✕ {cls.kind === 'qrup' ? 'qrupdan' : t('bu sinifdən')} {t('çıxar')}</AsyncBtn></span>}</td>
             <td className="mono">{s.portal_code}</td><td className="r num">{fmt(s.score_math)}</td><td className="r num">{fmt(s.score_total)}</td>
-            <td>{s.level ? <Pill tone={levelTone(LV[s.level])}>{LV[s.level]}</Pill> : <span className="muted">{t('bal yoxdur')}</span>}</td>
+            {math && <td>{s.level ? <Pill tone={levelTone(LV[s.level])}>{LV[s.level]}</Pill> : <span className="muted">{t('bal yoxdur')}</span>}</td>}
           </tr>))}</tbody>
       </table></div>
       {rows?.length === 0 && <div className="empty">{cls.kind === 'qrup' && !cls.parent_id ? t('Qrupda üzv yoxdur – Tənzimləmələr → Siniflər → «Üzvlər».') : <>{t('Şagird yoxdur – «+ Şagird» ilə əlavə edin')}{cls.parent_id ? (' ' + t('və ya Tənzimləmələr → «Bölünmə / şagird» ilə ana sinifdən seçin')) : ''}.</>}</div>}

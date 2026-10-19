@@ -16,7 +16,7 @@ def setup_class(world, login='admin', has_summative=True, n=6):
     cid = c.post('/api/classes', json={'name': 'X e'}).json()['id']
     c.post(f'/api/classes/{cid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 3, 'slots': SLOTS,
                                                'has_summative': has_summative})
-    studs = [c.post('/api/students', json={'full_name': f'Şagird Nömrə{i} oğlu', 'class_id': cid}).json()['id']
+    studs = [c.post('/api/students', json={'full_name': f'Şagird Nömrə{i} oğlu', 'class_id': cid, 'force': True}).json()['id']
              for i in range(3)]
     with S() as db:
         ta = db.query(TeachingAssignment).filter_by(class_id=cid).one()

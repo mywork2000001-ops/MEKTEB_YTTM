@@ -14,7 +14,7 @@ def setup(world, monkeypatch, tmp_path):
     c = as_('admin')
     cid = c.post('/api/classes', json={'name': 'X e'}).json()['id']
     c.post(f'/api/classes/{cid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'slots': {'0': [1]}})
-    st = [c.post('/api/students', json={'full_name': f'Şagird Mat{i} oğlu', 'class_id': cid}).json() for i in range(2)]
+    st = [c.post('/api/students', json={'full_name': f'Şagird Mat{i} oğlu', 'class_id': cid, 'force': True}).json() for i in range(2)]
     ta = next(l['id'] for l in c.get('/api/my/lessons').json())
     return c, ta, st
 

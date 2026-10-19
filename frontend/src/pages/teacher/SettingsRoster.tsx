@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, ApiError, del, get, patch, post, put } from '../../api'
+import { api, ApiError, del, detailText, get, patch, post, put } from '../../api'
 import { useAuth } from '../../auth'
 import { esc, head, printDoc, table } from '../../print'
 import { kindLabel } from './common'
@@ -122,7 +122,7 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
       if (!cls && where === 'private' && me?.workspace !== 'private') { toast(t('Fərdi sinif yaradıldı – fərdi məkana keçilir')); setTimeout(() => location.reload(), 600); return }
       toast('Yadda saxlanıldı'); onDone()
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409 && (e.data as any)?.detail?.class_id) setErr(new Error((e.data as any).detail.message))
+      if (e instanceof ApiError && e.status === 409 && (e.data as any)?.detail?.class_id) setErr(new Error(detailText((e.data as any).detail)))
       else setErr(e)
     }
   }
@@ -137,8 +137,9 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
         </fieldset>}
         <div className="fg">
           <Field label={t('Ad')} full hint={group ? t('məs. X b (riyaziyyat qrupu), Olimpiada qrupu') : t('məs. X e, XI peşə sinfi')}><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
-          {cls && <Field label={t('Sinif ID-si')} hint="hərf və rəqəm; şagird ID-ləri bununla başlayır (XB-001). Köhnə şagird ID-ləri dəyişmir">
-            <input value={f.code} maxLength={8} onChange={e => setF({ ...f, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} /></Field>}
+          {cls && <Field label={t('Sinif ID-si')} hint={t('hərf və rəqəm; şagird ID-ləri bununla başlayır (XB-001). Köhnə şagird ID-ləri dəyişmir')}>
+            <input value={f.code} maxLength={8} onChange={e => setF({ ...f, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} />
+            {f.code && f.code !== cls.code && <span className="small" style={{ color: 'var(--warn)', display: 'block', marginTop: 4 }}>⚠ {t('Artıq yaradılmış şagirdlərin kodları dəyişmir – yalnız yeni şagirdlər yeni ID ilə başlayacaq.')}</span>}</Field>}
           <Field label={t('Növ')} hint={cls && group ? t('qrupun növü dəyişmir') : cls ? t('TOM ↔ adi dəyişir') : undefined}>
             <select value={f.type} disabled={!!cls && group} onChange={e => setF({ ...f, type: e.target.value })}>
               <option value="TOM">{t('TOM sinfi')}</option><option value="adi">{t('Adi sinif')}</option>
@@ -237,7 +238,7 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   const [lib] = useLoad<any[]>(() => (cls.mine ? Promise.resolve([]) : get('/api/programs', { class_id: String(cls.id), ...(grade ? { grade_hint: grade } : {}) })), [cls.id, grade])
   const [auto, setAuto] = useState(true)
   // seçilən proqram bu cədvəl və kurs müddəti ilə neçə dərsə açılır, nə sığmır – qoşulmazdan əvvəl
-  const [est, setEst] = useState<{ lessons: number; slots: number; warnings: string[] } | null>(null)
+  const [est, setEst] = useState<{ lessons: number; slots: number; warnings: string[]; lint?: { key: string; params: Record<string, any>; message: string }[]; hours_mismatch?: boolean; program_hours?: number | null; class_hours?: number } | null>(null)
   const estKey = JSON.stringify([prog, priv ? times : slots, course, summ])
   useEffect(() => {
     setEst(null)
@@ -276,6 +277,8 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
         {est && <div className="small" style={{ margin: 0 }}>
           <span className="muted">{t('Proqram:')} {est.lessons} {t('dərs · kursda')} {est.slots} {t('dərs yuvası')}</span>
           {est.warnings.map(w => <p key={w} style={{ color: 'var(--warn)', margin: '4px 0 0' }}>⚠ {w}</p>)}
+          {est.hours_mismatch && <p style={{ color: 'var(--warn)', margin: '4px 0 0' }}>⚠ {t('Proqram həftədə {p} saatlıqdır, cədvəldə isə {c} saat var', { p: est.program_hours, c: est.class_hours })}</p>}
+          {(est.lint || []).map(w => <p key={w.message} style={{ color: 'var(--warn)', margin: '4px 0 0' }}>⚠ {t(w.key, w.params)}</p>)}
           {est.warnings.length > 0 && <p className="muted" style={{ margin: '4px 0 0' }}>{t('Qoşulandan sonra «Cədvəl» → «Bölmələri seç» ilə lazım olan bölmələri seçə bilərsiniz.')}</p>}
         </div>}
         {!cls.mine && cls.purpose && <p className="small muted" style={{ margin: 0 }}>{t('Qrupun məqsədi:')} <b>{PURPOSES[cls.purpose] || cls.purpose}</b> {t('– ★ uyğun proqramlar öndədir.')}</p>}
@@ -427,6 +430,20 @@ export function NewStudent({ classId, groupId, className, onDone }: { classId: n
   const [made, setMade] = useState<{ full_name: string; portal_code: string; initial_pin: string | null } | null>(null)
   const [err, setErr] = useState<unknown>()
   const [dupArch, setDupArch] = useState<{ id: number; message: string } | null>(null)
+  type Sim = { id: number; full_name: string; class_name: string; class_id: number }
+  const [similar, setSimilar] = useState<Sim[] | null>(null)
+  const submit = async (force: boolean) => {
+    setErr(undefined); setDupArch(null); setSimilar(null)
+    try {
+      const r = await post('/api/students', { full_name: f.full_name.trim(), class_id: classId, birth_date: f.birth_date || null, gender: f.gender || null, ...(groupId ? { group_id: groupId } : {}), ...(force ? { force: true } : {}) })
+      setMade(r); setF({ full_name: '', birth_date: '', gender: '' }); onDone({ id: r.id, full_name: r.full_name })
+    } catch (e) {
+      const d = e instanceof ApiError ? (e.data as any)?.detail : null
+      if (d?.archived && d?.student_id) setDupArch({ id: d.student_id, message: detailText(d) })
+      else if (d?.possible_duplicate?.length) setSimilar(d.possible_duplicate)
+      else setErr(e)
+    }
+  }
   const words = f.full_name.trim().split(/\s+/).filter(Boolean).length
   return (
     <div className="stack">
@@ -437,20 +454,21 @@ export function NewStudent({ classId, groupId, className, onDone }: { classId: n
       </div>
       <ErrorBox error={err} />
       {f.full_name.trim() && words < 2 && <p className="small muted" style={{ margin: 0 }}>{t('Soyadı və adı yazın (ata adı da tövsiyə olunur).')}</p>}
+      {similar && <div className="confirm" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+        <b>{t('Oxşar şagird artıq var')}</b>
+        {similar.map(s => <div key={s.id} className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <span className="grow">{s.full_name} · <span className="muted">{s.class_name}</span></span>
+          {s.class_id !== classId && <AsyncBtn className="btn sm primary" ok="Şagird bu sinfə əlavə sinif kimi əlavə olundu" onClick={async () => {
+            await post(`/api/classes/${classId}/members/add`, { student_ids: [s.id] }); setSimilar(null); setF({ full_name: '', birth_date: '', gender: '' }); onDone({ id: s.id, full_name: s.full_name })
+          }}>{t('Onu bu sinfə əlavə sinif kimi əlavə et')}</AsyncBtn>}
+        </div>)}
+        <div className="row" style={{ gap: 8 }}><AsyncBtn className="btn sm" onClick={() => submit(true)}>{t('Bu başqa şagirddir')}</AsyncBtn>
+          <button className="btn sm ghost" onClick={() => setSimilar(null)}>{t('Ləğv et')}</button></div></div>}
       {dupArch && <div className="confirm"><span className="grow">{dupArch.message}</span>
         <AsyncBtn className="btn sm primary" ok="Şagird geri qaytarıldı" onClick={async () => {
           await post(`/api/students/${dupArch.id}/restore`); setDupArch(null); setErr(undefined); onDone({ id: dupArch.id, full_name: f.full_name.trim() })
         }}>{t('Arxivdən geri qaytar')}</AsyncBtn></div>}
-      <AsyncBtn className="btn primary" disabled={words < 2 || f.full_name.trim().length < 5} onClick={async () => {
-        setErr(undefined); setDupArch(null)
-        try {
-          const r = await post('/api/students', { full_name: f.full_name.trim(), class_id: classId, birth_date: f.birth_date || null, gender: f.gender || null, ...(groupId ? { group_id: groupId } : {}) })
-          setMade(r); setF({ full_name: '', birth_date: '', gender: '' }); onDone({ id: r.id, full_name: r.full_name })
-        } catch (e) {
-          const d = e instanceof ApiError ? (e.data as any)?.detail : null
-          if (d?.archived && d?.student_id) setDupArch({ id: d.student_id, message: d.message }); else setErr(e)
-        }
-      }}>{t('Şagirdi əlavə et')}</AsyncBtn>
+      <AsyncBtn className="btn primary" disabled={words < 2 || f.full_name.trim().length < 5} onClick={() => submit(false)}>{t('Şagirdi əlavə et')}</AsyncBtn>
       {made && <div className="banner" style={{ background: 'var(--ok-soft)', color: 'var(--ok)', flexWrap: 'wrap' }}>
         <span className="grow">✓ <b>{made.full_name}</b> {t('əlavə olundu · ID')} <b className="mono">{made.portal_code}</b>{made.initial_pin && <> {t('· PIN')} <b className="mono">{made.initial_pin}</b> {t('(yazın – yalnız indi görünür)')}</>}</span>
         {made.initial_pin && <button className="btn sm" onClick={async () => printDoc({ title: `${made.full_name} – giriş vərəqəsi`,

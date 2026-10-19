@@ -8,7 +8,7 @@ import { useT } from '../../i18n'
 import { LessonSelect, useMyLessons, usePick } from './common'
 import { head, printDoc, SIGN, table } from '../../print'
 
-type Prog = { id: number; key?: string | null; title: string; subject: string; grade: number | null; grade_roman: string | null; kind: 'fixed' | 'adaptive'
+type Prog = { hours_mismatch?: boolean; class_hours?: number | null; id: number; key?: string | null; title: string; subject: string; grade: number | null; grade_roman: string | null; kind: 'fixed' | 'adaptive'
   source: string | null; description: string | null; weekly_hours: number | null; lessons: number | null; topics: number | null
   level: string | null; mine: boolean; builtin: boolean; used_by: string[]; fits: boolean; workspace: 'school' | 'private' | null
   course: boolean; toplu?: boolean; tasks?: number | null; purposes: string[] }
@@ -123,6 +123,7 @@ function ProgLine({ p }: { p: Prog }) {
         : p.kind === 'adaptive' ? t('{n} mövzu · sinfin cədvəlinə uyğunlaşır', { n: p.topics ?? 0 }) : t('{n} dərs', { n: p.lessons ?? 0 }),
         p.weekly_hours && t('{n} saat', { n: p.weekly_hours }), p.source].filter(Boolean).join(' · ')}</span>
       <span className="row" style={{ gap: 4, marginTop: 4 }}>
+        {p.hours_mismatch ? <Pill tone="warn">{t('{n} saatlıq proqram, sinifdə {c} saat', { n: p.weekly_hours, c: p.class_hours })}</Pill> : null}
         {p.fits && p.grade ? <Pill tone="ok">{t('uyğun')}</Pill> : null}{!p.fits ? <Pill tone="warn">{t('başqa sinif')}</Pill> : null}
         {p.toplu ? <Pill tone="info">{t('P007 testləri')}</Pill> : p.course && <Pill tone="info">{t('kurs')}</Pill>}{p.purposes.filter(x => x !== 'sinif').map(x => <Pill key={x} tone="acc">{t(PURPOSES[x] || x)}</Pill>)}
         {p.level ? <Pill tone={levelTone(p.level)}>{t(p.level)}</Pill> : <Pill>{t('ümumi')}</Pill>}
@@ -224,6 +225,8 @@ function ApplyProgram({ p, ta, init, onClose, onDone }: { p: Prog; ta: number; i
           <div className="kpi"><b>{pv.written_lessons}</b><span>{t('jurnalda yazılıb')}</span></div>
         </div>}
         {pv.warnings.map((w: string) => <p key={w} className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {w}</p>)}
+        {pv.hours_mismatch && <p className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {t('Proqram həftədə {p} saatlıqdır, cədvəldə isə {c} saat var', { p: pv.program_hours, c: pv.class_hours })}</p>}
+        {(pv.lint || []).map((w: any) => <p key={w.message} className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {t(w.key, w.params)}</p>)}
         <p className="small muted">{t('Tətbiq olunanda: hazırkı plan kitabxanada «əvvəlki plan» kimi qalır (geri qaytarmaq olar); jurnalda yazılmış dərslərin mövzusu dəyişmir; yeni dərslər sinfin cədvəlinə görə tarixlənir. Proqram başqa proqramla qarışdırılmır.')}</p>
         <ol className="small" style={{ paddingLeft: 22, maxHeight: 360, overflow: 'auto' }}>{pv.list.map((l: any) => (
           <li key={l.seq}>{l.topic}{l.assessment_type !== 'formativ' && <b> · {l.assessment_type}</b>}</li>))}</ol>

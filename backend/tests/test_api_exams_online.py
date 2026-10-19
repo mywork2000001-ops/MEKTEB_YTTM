@@ -37,11 +37,11 @@ def test_online_exam_journal_rating_privacy(world, clock, monkeypatch):
     admin, ta, cid, st, ids = setup(world)                                     # X e – admin, 3 şagird
     xc = admin.post('/api/classes', json={'name': 'X c'}).json()['id']
     admin.post(f'/api/classes/{xc}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'slots': {}})
-    xs = [admin.post('/api/students', json={'full_name': f'X c Şagird{i} oğlu', 'class_id': xc}).json() for i in range(2)]
+    xs = [admin.post('/api/students', json={'full_name': f'X c Şagird{i} oğlu', 'class_id': xc, 'force': True}).json() for i in range(2)]
     xd = admin.post('/api/classes', json={'name': 'X d'}).json()['id']
     ilqar = as_('ilqar')
     ilqar.post(f'/api/classes/{xd}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'slots': {}})
-    ds = [admin.post('/api/students', json={'full_name': 'X d Şagird oğlu', 'class_id': xd}).json()]
+    ds = [admin.post('/api/students', json={'full_name': 'X d Şagird oğlu', 'class_id': xd, 'force': True}).json()]
     with S() as db:
         ta_c = db.query(TeachingAssignment).filter_by(class_id=xc).one().id
         ta_d = db.query(TeachingAssignment).filter_by(class_id=xd).one().id

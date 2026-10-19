@@ -25,9 +25,22 @@ class ConfirmIn(BaseModel):
     confirm: str                 # silmək üçün adı yazmaq lazımdır
 
 
+class ForceIn(BaseModel):
+    """Arxivləşdirmə: admin xəbərdarlığa baxmayaraq davam edə bilər (ConfirmIn-ə toxunmadan ayrıca model)."""
+    confirm: str
+    force: bool = False
+
+
+def bad(status: int, template: str, **params) -> HTTPException:
+    """Dinamik mətnli xəta: detail = {message: hazır AZ mətn, key: AZ şablon ({n}, {name}), params}.
+    Frontend (api.ts::message) key + params ilə istifadəçinin dilində göstərir; message köhnə istifadə üçün qalır."""
+    safe = {k: (v if isinstance(v, (int, float, str, bool)) or v is None else str(v)) for k, v in params.items()}
+    return HTTPException(status, {'message': template.format(**safe), 'key': template, 'params': safe})
+
+
 def check_confirm(expected: str, got: str):
     if ' '.join(got.split()).casefold() != ' '.join(expected.split()).casefold():
-        raise HTTPException(400, f'Təsdiq üçün adı dəqiq yazın: «{expected}»')
+        raise bad(400, 'Təsdiq üçün adı dəqiq yazın: «{expected}»', expected=expected)
 
 
 def need_school(user: User) -> int:
@@ -52,6 +65,19 @@ def my_class_ids(db: Session, user: User) -> set[int] | None:
     parents = set(db.scalars(select(SchoolClass.parent_id).where(SchoolClass.id.in_(ids),
                                                                  SchoolClass.parent_id.is_not(None))))
     return ids | parents
+
+
+def my_student_ids(db: Session, user: User) -> set[int] | None:
+    """Müəllimin görə biləcəyi şagirdlər: öz siniflərinin şagirdləri + dərs dediyi qrup/əlavə siniflərin üzvləri.
+    Admin üçün None = məktəbin hamısı."""
+    cids = my_class_ids(db, user)
+    if cids is None:
+        return None
+    if not cids:
+        return set()
+    ids = set(db.scalars(select(Student.id).where(Student.school_id == user.school_id, Student.class_id.in_(cids))))
+    ids |= set(db.scalars(select(GroupMember.student_id).where(GroupMember.group_id.in_(cids))))
+    return ids
 
 
 def can_see_class(db: Session, user: User, cls: SchoolClass) -> bool:
@@ -104,9 +130,9 @@ def admin_only_unlocked(user: User = Depends(settings_unlocked)) -> User:
 def get_or_404(db: Session, model, id_, what='Qeyd'):
     obj = db.get(model, id_)
     if obj is None:
-        raise HTTPException(404, f'{what} tapılmadı')
+        raise bad(404, '{what} tapılmadı', what=what)
     return obj
 
 
-__all__ = ['audit', 'ConfirmIn', 'check_confirm', 'need_school', 'current_year', 'my_class_ids', 'can_see_class',
+__all__ = ['audit', 'ConfirmIn', 'ForceIn', 'bad', 'my_student_ids', 'check_confirm', 'need_school', 'current_year', 'my_class_ids', 'can_see_class',
            'settings_token', 'settings_unlocked', 'get_or_404', 'get_db']

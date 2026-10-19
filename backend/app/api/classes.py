@@ -21,7 +21,8 @@ from ..deps import staff
 from ..domain.classes import grade_of
 from ..models import GroupMember, Role, SchoolClass, Student, TeachingAssignment, User
 from ..services import class_grade
-from .common import (ConfirmIn, audit, can_see_class, check_confirm, current_year, get_or_404, my_class_ids,
+from .common import bad as bad_
+from .common import (ConfirmIn, ForceIn, audit, bad, can_see_class, check_confirm, current_year, get_or_404, my_class_ids,
                      need_school, settings_unlocked)
 
 router = APIRouter(prefix='/api/classes', tags=['classes'])
@@ -54,24 +55,47 @@ def group_type(c: SchoolClass) -> str | None:
     return None if c.kind != 'qrup' else 'bölünmə' if c.parent_id else 'tədris'
 
 
-def class_out(db: Session, c: SchoolClass, user: User, mine: set[int] | None):
-    teachers = db.execute(select(User.id, User.full_name, TeachingAssignment.subject)
-                          .join(TeachingAssignment, TeachingAssignment.teacher_id == User.id)
-                          .where(TeachingAssignment.class_id == c.id, TeachingAssignment.archived_at.is_(None))).all()
-    my_ta = db.scalar(select(TeachingAssignment).where(TeachingAssignment.class_id == c.id,
-                                                       TeachingAssignment.teacher_id == user.id,
-                                                       TeachingAssignment.archived_at.is_(None)))
+def _ctx(db: Session, classes: list[SchoolClass], user: User) -> dict:
+    """Sinif siyahısı üçün lazım olan hər şey bir neçə qruplanmış sorğu ilə (N+1 yoxdur)."""
+    ids = [c.id for c in classes]
+    teachers: dict[int, list] = {}
+    my_ta: dict[int, TeachingAssignment] = {}
+    prim: dict[int, int] = {}
+    extra: dict[int, int] = {}
+    homerooms: dict[int, User] = {}
+    if ids:
+        for cid, i, nm, sb in db.execute(select(TeachingAssignment.class_id, User.id, User.full_name, TeachingAssignment.subject)
+                                         .join(User, TeachingAssignment.teacher_id == User.id)
+                                         .where(TeachingAssignment.class_id.in_(ids), TeachingAssignment.archived_at.is_(None))):
+            teachers.setdefault(cid, []).append((i, nm, sb))
+        for ta in db.scalars(select(TeachingAssignment).where(TeachingAssignment.class_id.in_(ids),
+                                                              TeachingAssignment.teacher_id == user.id,
+                                                              TeachingAssignment.archived_at.is_(None))):
+            my_ta.setdefault(ta.class_id, ta)
+        prim = dict(db.execute(select(Student.class_id, func.count()).where(Student.class_id.in_(ids), Student.archived_at.is_(None))
+                               .group_by(Student.class_id)).all())
+        # qrup/əlavə sinif üzvləri (arxivdəkilər sayılmır); əsas sinfi bu olan şagird iki dəfə sayılmır
+        extra = dict(db.execute(select(GroupMember.group_id, func.count()).join(Student, Student.id == GroupMember.student_id)
+                                .where(GroupMember.group_id.in_(ids), Student.archived_at.is_(None),
+                                       Student.class_id != GroupMember.group_id).group_by(GroupMember.group_id)).all())
+        hids = {c.homeroom_id for c in classes if c.homeroom_id}
+        if hids:
+            homerooms = {u.id: u for u in db.scalars(select(User).where(User.id.in_(hids)))}
+    return {'teachers': teachers, 'my_ta': my_ta, 'prim': prim, 'extra': extra, 'homerooms': homerooms}
+
+
+def class_out(db: Session, c: SchoolClass, user: User, mine: set[int] | None, ctx: dict | None = None):
+    ctx = ctx or _ctx(db, [c], user)
+    my_ta = ctx['my_ta'].get(c.id)
     visible = mine is None or c.id in mine
-    n = db.scalar(select(func.count()).select_from(Student).where(Student.archived_at.is_(None), or_(
-        Student.class_id == c.id, Student.id.in_(select(GroupMember.student_id).where(GroupMember.group_id == c.id)))))
-    if c.kind == 'qrup':
-        n = db.scalar(select(func.count()).select_from(GroupMember).where(GroupMember.group_id == c.id))
+    n = ctx['extra'].get(c.id, 0) if c.kind == 'qrup' else ctx['prim'].get(c.id, 0) + ctx['extra'].get(c.id, 0)
+    hr = ctx['homerooms'].get(c.homeroom_id) if c.homeroom_id else None
     return {'id': c.id, 'name': c.name, 'code': c.code, 'kind': c.kind, 'parent_id': c.parent_id,
             'group_type': group_type(c),
             'utis_class': c.utis_class, 'grade': class_grade(db, c), 'grade_set': c.grade, 'purpose': c.purpose, 'exam_date': c.exam_date, 'bells': c.bells, 'split_with': c.split_with,
             'archived': c.archived_at is not None, 'students': n, 'can_open': visible,
-            'homeroom': (lambda u: u and {'id': u.id, 'name': u.full_name})(db.get(User, c.homeroom_id) if c.homeroom_id else None),
-            'teachers': [{'id': i, 'name': nm, 'subject': sb} for i, nm, sb in teachers],
+            'homeroom': hr and {'id': hr.id, 'name': hr.full_name},
+            'teachers': [{'id': i, 'name': nm, 'subject': sb} for i, nm, sb in ctx['teachers'].get(c.id, [])],
             'mine': my_ta and {'ta_id': my_ta.id, 'subject': my_ta.subject, 'weekly_hours': my_ta.weekly_hours, 'slots': my_ta.slots,
                                'has_summative': my_ta.has_summative, 'program_id': my_ta.program_id,
                                'starts_on': my_ta.starts_on, 'ends_on': my_ta.ends_on, 'times': times_out(my_ta)}}
@@ -84,8 +108,9 @@ def list_classes(archived: bool = False, user: User = Depends(staff), db: Sessio
     st = select(SchoolClass).where(SchoolClass.school_id == sid, SchoolClass.year_id == year.id,
                                    SchoolClass.archived_at.is_not(None) if archived else SchoolClass.archived_at.is_(None))
     mine = my_class_ids(db, user)
-    rows = db.scalars(st.order_by(SchoolClass.name))
-    return [class_out(db, c, user, mine) for c in rows]
+    rows = list(db.scalars(st.order_by(SchoolClass.name)))
+    ctx = _ctx(db, rows, user)
+    return [class_out(db, c, user, mine, ctx) for c in rows]
 
 
 # fərdi hazırlıq qrupunun məqsədi (docs/repetitor-proqramlar-promtu.md §7)
@@ -132,8 +157,9 @@ def create_class(body: ClassIn, user: User = Depends(settings_unlocked), db: Ses
     dup = db.scalar(select(SchoolClass).where(SchoolClass.school_id == sid, SchoolClass.year_id == year.id,
                                               func.lower(SchoolClass.name) == name.lower()))
     if dup:
-        raise HTTPException(409, {'message': f'«{dup.name}» sinfi artıq var – ona qoşulun',
-                                  'class_id': dup.id, 'archived': dup.archived_at is not None})
+        e = bad(409, '«{name}» sinfi artıq var – ona qoşulun', name=dup.name)
+        e.detail.update(class_id=dup.id, archived=dup.archived_at is not None)
+        raise e
     if body.purpose and not _private_school(db, sid):
         raise HTTPException(400, 'Hazırlıq məqsədi yalnız fərdi (repetitor) məkanın qruplarında')
     if body.parent_id and body.kind != 'qrup':
@@ -189,14 +215,14 @@ def update_class(cid: int, body: ClassPatch, user: User = Depends(settings_unloc
         data['code'] = data['code'].upper()
         if db.scalar(select(SchoolClass.id).where(SchoolClass.school_id == c.school_id, SchoolClass.year_id == c.year_id,
                                                   func.upper(SchoolClass.code) == data['code'], SchoolClass.id != c.id)):
-            raise HTTPException(409, f'«{data["code"]}» ID-si başqa sinifdədir')
+            raise bad(409, '«{code}» ID-si başqa sinifdədir', code=data['code'])
     if 'name' in data:
         data['name'] = norm_name(data['name'])
         dup = db.scalar(select(SchoolClass).where(SchoolClass.school_id == c.school_id, SchoolClass.year_id == c.year_id,
                                                   func.lower(SchoolClass.name) == data['name'].lower(),
                                                   SchoolClass.id != c.id))
         if dup:
-            raise HTTPException(409, f'«{dup.name}» adlı sinif artıq var')
+            raise bad(409, '«{name}» adlı sinif artıq var', name=dup.name)
     for k, v in data.items():
         setattr(c, k, v)
     audit(db, user, 'update', 'class', c.id, **{k: str(v) for k, v in data.items()})
@@ -225,12 +251,12 @@ def private_times(db: Session, user: User, c: SchoolClass, ta: TeachingAssignmen
     for x in rows:
         dur = _mins(x.end) - _mins(x.start)
         if dur <= 0:
-            raise HTTPException(400, f'{WEEKDAYS[x.weekday]} {x.start}–{x.end}: bitmə başlamadan sonra olmalıdır')
+            raise bad(400, '{day} {start}–{end}: bitmə başlamadan sonra olmalıdır', day=WEEKDAYS[x.weekday], start=x.start, end=x.end)
         if not 20 <= dur <= 240:
-            raise HTTPException(400, f'{WEEKDAYS[x.weekday]} {x.start}–{x.end}: dərsin müddəti 20 dəqiqə – 4 saat olmalıdır')
+            raise bad(400, '{day} {start}–{end}: dərsin müddəti 20 dəqiqə – 4 saat olmalıdır', day=WEEKDAYS[x.weekday], start=x.start, end=x.end)
     for a, b in zip(rows, rows[1:]):
         if a.weekday == b.weekday and _mins(b.start) < _mins(a.end):
-            raise HTTPException(400, f'{WEEKDAYS[a.weekday]}: {a.start}–{a.end} və {b.start}–{b.end} üst-üstə düşür')
+            raise bad(400, '{day}: {a1}–{a2} və {b1}–{b2} üst-üstə düşür', day=WEEKDAYS[a.weekday], a1=a.start, a2=a.end, b1=b.start, b2=b.end)
     others = db.scalars(select(TeachingAssignment).join(SchoolClass).where(
         TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None), SchoolClass.school_id == c.school_id,
         SchoolClass.archived_at.is_(None), TeachingAssignment.class_id != c.id, TeachingAssignment.times.is_not(None)))
@@ -241,7 +267,7 @@ def private_times(db: Session, user: User, c: SchoolClass, ta: TeachingAssignmen
             s2, e2 = v.split('–')
             for x in rows:
                 if x.weekday == wd and _mins(x.start) < _mins(e2) and _mins(s2) < _mins(x.end):
-                    raise HTTPException(409, f'{WEEKDAYS[wd]} {x.start}–{x.end} – «{oc.name}» qrupunun dərsi ({v}) ilə üst-üstə düşür')
+                    raise bad(409, '{day} {start}–{end} – «{name}» qrupunun dərsi ({v}) ilə üst-üstə düşür', day=WEEKDAYS[wd], start=x.start, end=x.end, name=oc.name, v=v)
     old_by_day: dict[int, dict[str, int]] = {}
     for k, v in ((ta.times or {}) if ta else {}).items():
         wd, p = map(int, k.split(':'))
@@ -251,7 +277,7 @@ def private_times(db: Session, user: User, c: SchoolClass, ta: TeachingAssignmen
     for wd in sorted({x.weekday for x in rows}):
         day = [x for x in rows if x.weekday == wd]
         if len(day) > 10:
-            raise HTTPException(400, f'{WEEKDAYS[wd]}: gündə ən çox 10 dərs')
+            raise bad(400, '{day}: gündə ən çox 10 dərs', day=WEEKDAYS[wd])
         prev = old_by_day.get(wd, {})
         used: set[int] = set()
         assigned: list[tuple[TimeIn, int]] = []
@@ -325,12 +351,12 @@ def join_class(cid: int, body: JoinIn, user: User = Depends(settings_unlocked), 
         y = db.get(AcademicYear, c.year_id)
         a, b = body.starts_on or y.start, body.ends_on or y.end
         if not (y.start <= a <= b <= y.end):
-            raise HTTPException(400, f'Kurs müddəti tədris ilinin daxilində olmalıdır ({y.start:%d.%m.%Y} – {y.end:%d.%m.%Y}) '
-                                     'və başlama bitmədən əvvəl olmalıdır')
+            raise bad(400, 'Kurs müddəti tədris ilinin daxilində olmalıdır ({a} – {b}) və başlama bitmədən əvvəl olmalıdır',
+                      a=f'{y.start:%d.%m.%Y}', b=f'{y.end:%d.%m.%Y}')
     if body.program_id and not body.slots:
         raise HTTPException(400, 'Proqramı tətbiq etmək üçün dərs saatlarını işarələyin')
     if sum(len(v) for v in body.slots.values()) not in (0, body.weekly_hours):
-        raise HTTPException(400, f'Cədvəldə {body.weekly_hours} saat olmalıdır')
+        raise bad(400, 'Cədvəldə {n} saat olmalıdır', n=body.weekly_hours)
     ta = db.scalar(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id,
                                                     TeachingAssignment.class_id == cid,
                                                     TeachingAssignment.subject == body.subject))
@@ -352,6 +378,8 @@ def join_class(cid: int, body: JoinIn, user: User = Depends(settings_unlocked), 
         db.add(ta)
         action = 'create'
     db.flush()
+    from ..programs import ensure_current
+    ensure_current(db, user)                     # mövcud planlar kitabxanada proqram kimi saxlanılsın (GET-lər yazmır)
     audit(db, user, action, 'teaching', ta.id, class_id=cid, subject=body.subject)
     if body.program_id and body.program_id != ta.program_id and ta.slots:
         from ..models import PlanProgram
@@ -436,7 +464,7 @@ def set_members(cid: int, body: MembersIn, user: User = Depends(settings_unlocke
     bad = set(body.student_ids) - ok
     if bad:
         where = 'ana sinifdə' if c.parent_id else 'məktəbin siniflərində'
-        raise HTTPException(400, f'Bu şagirdlər {where} deyil: {sorted(bad)}')
+        raise bad_(400, 'Bu şagirdlər {where} deyil: {ids}', where=where, ids=sorted(bad))
     db.query(GroupMember).filter(GroupMember.group_id == cid).delete()
     db.add_all(GroupMember(group_id=cid, student_id=s) for s in ok)
     audit(db, user, 'update', 'group_members', cid, count=len(ok))
@@ -469,7 +497,8 @@ def add_members(cid: int, body: AddMembersIn, user: User = Depends(settings_unlo
     ok = set(db.scalars(_member_query(c, body.student_ids)))
     bad = set(body.student_ids) - ok
     if bad:
-        raise HTTPException(400, 'Bu şagirdlər ' + ('ana sinifdə' if c.parent_id else 'bu məkanın başqa siniflərində') + f' deyil: {sorted(bad)}')
+        raise bad_(400, 'Bu şagirdlər {where} deyil: {ids}',
+                     where='ana sinifdə' if c.parent_id else 'bu məkanın başqa siniflərində', ids=sorted(bad))
     have = set(db.scalars(select(GroupMember.student_id).where(GroupMember.group_id == cid)))
     new = ok - have
     db.add_all(GroupMember(group_id=cid, student_id=s) for s in new)
@@ -520,7 +549,7 @@ def student_groups(sid: int, user: User = Depends(staff), db: Session = Depends(
 
 # ---------------------------------------------------------------- arxiv
 @router.post('/{cid}/archive')
-def archive_class(cid: int, body: ConfirmIn, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+def archive_class(cid: int, body: ForceIn, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
     c = get_or_404(db, SchoolClass, cid, 'Sinif')
     _editable(db, user, c)
     check_confirm(c.name, body.confirm)
@@ -529,8 +558,11 @@ def archive_class(cid: int, body: ConfirmIn, user: User = Depends(settings_unloc
         TeachingAssignment.archived_at.is_(None)))
     if others and user.role != Role.admin:
         raise HTTPException(409, 'Bu sinifdə başqa müəllimlər də dərs deyir – yalnız öz dərsinizdən çıxa bilərsiniz')
+    active = db.scalar(select(func.count()).select_from(Student).where(Student.class_id == cid, Student.archived_at.is_(None))) or 0
+    if active and not (body.force and user.role == Role.admin):
+        raise bad(409, 'Sinifdə {n} aktiv şagird var – əvvəlcə onları başqa sinfə keçirin və ya arxivə göndərin', n=active)
     c.archived_at = dt.datetime.now(dt.timezone.utc)
-    audit(db, user, 'archive', 'class', c.id, name=c.name)
+    audit(db, user, 'archive', 'class', c.id, name=c.name, forced=bool(active))
     db.commit()
     return {'ok': True}
 
@@ -554,6 +586,15 @@ def delete_class(cid: int, body: ConfirmIn, user: User = Depends(settings_unlock
     check_confirm(c.name, body.confirm)
     if db.scalar(select(func.count()).select_from(Student).where(Student.class_id == cid)):
         raise HTTPException(409, 'Sinifdə şagirdlər var – əvvəlcə onları başqa sinfə keçirin və ya silin')
+    from ..models import Exam, JournalEntry
+    ta_ids = select(TeachingAssignment.id).where(TeachingAssignment.class_id == cid)
+    others = db.scalar(select(func.count()).select_from(TeachingAssignment).where(
+        TeachingAssignment.class_id == cid, TeachingAssignment.teacher_id != user.id)) or 0
+    entries = db.scalar(select(func.count()).select_from(JournalEntry).where(JournalEntry.assignment_id.in_(ta_ids))) or 0
+    exams = db.scalar(select(func.count()).select_from(Exam).where(Exam.assignment_id.in_(ta_ids))) or 0
+    if others or entries or exams:
+        raise bad(409, 'Sinfi silmək olmaz: başqa müəllimlərin {t} bağlılığı, {j} jurnal yazısı və {e} imtahan var – '
+                       'silmək bunların hamısını yox edər', t=others, j=entries, e=exams)
     db.query(GroupMember).filter(GroupMember.group_id == cid).delete()
     db.query(TeachingAssignment).filter(TeachingAssignment.class_id == cid).delete()
     audit(db, user, 'delete', 'class', c.id, name=c.name)

@@ -17,8 +17,10 @@ from ..deps import staff
 from ..domain.rules import level
 from ..models import GroupMember, Role, SchoolClass, Student, User
 from ..security import hash_password, make_qr_token, new_pin, pin_decrypt, pin_encrypt
-from .common import (ConfirmIn, audit, can_see_class, check_confirm, get_or_404, my_class_ids, need_school,
-                     settings_unlocked)
+from sqlalchemy.exc import IntegrityError
+
+from .common import (ConfirmIn, audit, bad, can_see_class, check_confirm, get_or_404, my_class_ids, my_student_ids,
+                     need_school, settings_unlocked)
 
 router = APIRouter(prefix='/api/students', tags=['students'])
 
@@ -52,8 +54,8 @@ def list_students(class_id: int | None = None, archived: bool = False, q: str | 
         else:                                   # əsas sinif + əlavə üzvlər
             st = st.where(or_(Student.class_id == class_id,
                               Student.id.in_(select(GroupMember.student_id).where(GroupMember.group_id == class_id))))
-    elif mine is not None:
-        st = st.where(Student.class_id.in_(mine))
+    elif mine is not None:                      # öz siniflərim + dərs dediyim qrup/əlavə siniflərin üzvləri
+        st = st.where(Student.id.in_(my_student_ids(db, user)))
     if q:
         st = st.where(func.lower(Student.full_name).contains(q.strip().lower()))
     return [student_out(s, n) for s, n in db.execute(st.order_by(SchoolClass.name, Student.full_name))]
@@ -69,6 +71,7 @@ class StudentIn(BaseModel):
     score_math: float | None = Field(None, ge=0, le=100)
     score_foreign: float | None = Field(None, ge=0, le=100)
     group_id: int | None = None                    # bölünmə qrupundan əlavə edəndə – dərhal qrupa üzv olur
+    force: bool = False                            # «Bu başqa şagirddir» – oxşar ad xəbərdarlığına baxmayaraq yarat
 
 
 def _class_for_write(db: Session, user: User, class_id: int) -> SchoolClass:
@@ -87,15 +90,17 @@ def _dup(db: Session, school_id: int, name: str, birth: dt.date | None, exclude:
         st = st.where(Student.birth_date == birth)
     for s, cname in db.execute(st):
         if s.id != exclude and (birth or s.birth_date is None):
-            where = f'{cname} sinfində' + (' (arxivdə – passivdir)' if s.archived_at else '')
-            raise HTTPException(409, {'message': f'Bu şagird artıq var: {s.full_name}, {where}', 'student_id': s.id,
-                                      'archived': s.archived_at is not None, 'class_name': cname})
+            tmpl = ('Bu şagird artıq var: {name}, {cname} sinfində (arxivdə – passivdir)' if s.archived_at
+                    else 'Bu şagird artıq var: {name}, {cname} sinfində')
+            e = bad(409, tmpl, name=s.full_name, cname=cname)
+            e.detail.update(student_id=s.id, archived=s.archived_at is not None, class_name=cname)
+            raise e
 
 
-def next_portal_code(db: Session, c: SchoolClass) -> str:
+def next_portal_code(db: Session, c: SchoolClass, bump: int = 0) -> str:
     """Sinif ID-si + növbəti nömrə (XB-021). Həm şagird kodları, həm də istifadəçi loginləri ilə toqquşmur."""
     codes = db.scalars(select(Student.portal_code).where(Student.portal_code.like(f'{c.code}-%')))
-    n = max((int(x.rsplit('-', 1)[1]) for x in codes if x.rsplit('-', 1)[1].isdigit()), default=0) + 1
+    n = max((int(x.rsplit('-', 1)[1]) for x in codes if x.rsplit('-', 1)[1].isdigit()), default=0) + 1 + bump
     while True:
         code = f'{c.code}-{n:03d}'
         if not (db.scalar(select(Student.id).where(func.upper(Student.portal_code) == code))
@@ -117,15 +122,29 @@ def create_student(body: StudentIn, user: User = Depends(settings_unlocked), db:
         if grp.kind != 'qrup' or grp.parent_id != c.id:
             raise HTTPException(400, 'Qrup bu sinfin bölünmə qrupu deyil')
     _dup(db, sid, name, body.birth_date)
-    code = next_portal_code(db, c)
+    if not body.force:                               # yumşaq yoxlama: «Huseyn» ≈ «Hüseyn», söz sırası, ata adı
+        similar = similar_students(db, sid, name, body.birth_date)
+        if similar:
+            e = bad(409, 'Oxşar şagird artıq var: {name} ({cls}). Eyni şagirddirsə – onu bu sinfə əlavə sinif kimi əlavə edin',
+                    name=similar[0]['full_name'], cls=similar[0]['class_name'])
+            e.detail['possible_duplicate'] = similar
+            raise e
     pin = new_pin()
-    acc = User(role=Role.student, login=code, password_hash=hash_password(pin), full_name=name, school_id=sid)
-    db.add(acc)
-    db.flush()
-    s = Student(school_id=sid, created_by=user.id, portal_code=code, user_id=acc.id, initial_pin=pin_encrypt(pin),
-                **{**body.model_dump(exclude={'group_id'}), 'full_name': name})
-    db.add(s)
-    db.flush()
+    for attempt in range(5):                         # eyni anda iki idxal eyni kodu götürsə – növbəti nömrə ilə təkrar
+        code = next_portal_code(db, c, attempt)
+        try:
+            with db.begin_nested():
+                acc = User(role=Role.student, login=code, password_hash=hash_password(pin), full_name=name, school_id=sid)
+                db.add(acc)
+                db.flush()
+                s = Student(school_id=sid, created_by=user.id, portal_code=code, user_id=acc.id, initial_pin=pin_encrypt(pin),
+                            **{**body.model_dump(exclude={'group_id', 'force'}), 'full_name': name})
+                db.add(s)
+                db.flush()
+            break
+        except IntegrityError:
+            if attempt == 4:
+                raise bad(409, 'Şagird kodu yaradıla bilmədi – bir az sonra yenidən yoxlayın')
     if grp:
         db.add(GroupMember(group_id=grp.id, student_id=s.id))
     audit(db, user, 'create', 'student', s.id, class_id=c.id)
@@ -145,10 +164,18 @@ class StudentPatch(BaseModel):
     portal_code: str | None = Field(None, min_length=3, max_length=16, pattern=r'^[A-Za-z0-9\-]+$')   # giriş ID-si
 
 
-def _student_for_write(db: Session, user: User, sid_: int) -> Student:
+def _student_for_write(db: Session, user: User, sid_: int, primary: bool = False) -> Student:
+    """Redaktə (ad, PIN, doğum tarixi, sinfə keçirmə): öz sinfimin və ya dərs dediyim qrup/əlavə sinfin şagirdi.
+    primary=True (arxiv, bərpa, silmə): yalnız şagirdin ƏSAS sinfinin müəllimi və ya admin."""
     s = get_or_404(db, Student, sid_, 'Şagird')
-    c = db.get(SchoolClass, s.class_id)
-    if s.school_id != user.school_id or not can_see_class(db, user, c):
+    if s.school_id != user.school_id:
+        raise HTTPException(403, 'Bu şagird sizin siniflərinizdən deyil')
+    if primary:
+        if not can_see_class(db, user, db.get(SchoolClass, s.class_id)):
+            raise HTTPException(403, 'Arxivə göndərmək, bərpa etmək və silmək yalnız şagirdin əsas sinfinin müəllimi və ya admin üçündür')
+        return s
+    ids = my_student_ids(db, user)
+    if ids is not None and s.id not in ids:
         raise HTTPException(403, 'Bu şagird sizin siniflərinizdən deyil')
     return s
 
@@ -168,12 +195,14 @@ def update_student(sid_: int, body: StudentPatch, user: User = Depends(settings_
             taken = db.scalar(select(Student.id).where(func.upper(Student.portal_code) == code, Student.id != s.id)) or \
                 db.scalar(select(User.id).where(func.upper(User.login) == code, User.id != (s.user_id or 0)))
             if taken:
-                raise HTTPException(409, f'«{code}» giriş kodu artıq istifadə olunur')
+                raise bad(409, '«{code}» giriş kodu artıq istifadə olunur', code=code)
             if s.user_id:
                 db.get(User, s.user_id).login = code          # şagird yeni kodla daxil olur
         data['portal_code'] = code
+    moved_from = None
     if 'class_id' in data and data['class_id'] != s.class_id:
         _class_for_write(db, user, data['class_id'])
+        moved_from = s.class_id
         old_split = select(SchoolClass.id).where(SchoolClass.parent_id == s.class_id)
         db.query(GroupMember).filter(GroupMember.student_id == s.id, or_(GroupMember.group_id.in_(old_split),
                                      GroupMember.group_id == data['class_id'])).delete(synchronize_session=False)   # köhnə sinfin bölünmə qrupları
@@ -181,7 +210,8 @@ def update_student(sid_: int, body: StudentPatch, user: User = Depends(settings_
         setattr(s, k, v)
     if 'full_name' in data and s.user_id:
         db.get(User, s.user_id).full_name = s.full_name
-    audit(db, user, 'update', 'student', s.id, fields=sorted(data))
+    extra = {'from_class': moved_from, 'to_class': s.class_id} if moved_from is not None else {}
+    audit(db, user, 'update', 'student', s.id, fields=sorted(data), **extra)
     db.commit()
     return student_out(s, db.get(SchoolClass, s.class_id).name)
 
@@ -221,7 +251,7 @@ def archive_student(sid_: int, body: LeaveIn, user: User = Depends(settings_unlo
                     db: Session = Depends(get_db)):
     """Passiv et (məktəbdən gedib): siyahılardan, jurnaldan və portaldan çıxır, qiymətləri və tarixçəsi QALIR;
     «Arxiv»dən geri qaytarmaq və ya həmişəlik silmək olar."""
-    s = _student_for_write(db, user, sid_)
+    s = _student_for_write(db, user, sid_, primary=True)
     check_confirm(s.full_name, body.confirm)
     s.archived_at = dt.datetime.now(dt.timezone.utc)
     s.left_reason = (body.reason or '').strip() or None
@@ -235,7 +265,7 @@ def archive_student(sid_: int, body: LeaveIn, user: User = Depends(settings_unlo
 
 @router.post('/{sid_}/restore')
 def restore_student(sid_: int, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
-    s = _student_for_write(db, user, sid_)
+    s = _student_for_write(db, user, sid_, primary=True)
     s.archived_at = None
     s.left_reason, s.left_on = None, None
     if s.user_id:
@@ -248,7 +278,7 @@ def restore_student(sid_: int, user: User = Depends(settings_unlocked), db: Sess
 @router.delete('/{sid_}')
 def delete_student(sid_: int, body: ConfirmIn, user: User = Depends(settings_unlocked),
                    db: Session = Depends(get_db)):
-    s = _student_for_write(db, user, sid_)
+    s = _student_for_write(db, user, sid_, primary=True)
     if not s.archived_at:
         raise HTTPException(409, 'Əvvəlcə arxivə göndərin')
     check_confirm(s.full_name, body.confirm)
@@ -406,15 +436,11 @@ def _weight(db: Session, sid_: int) -> dict:
     return {'marks': n(Mark), 'attempts': n(TaskAttempt), 'attendance': n(Attendance)}
 
 
-@router.get('/duplicates')
-def duplicates(user: User = Depends(staff), db: Session = Depends(get_db)):
-    """Ehtimal olunan təkrar şagirdlər (aktiv, eyni məkan): ad sözləri eyni və ya biri digərinin içində («Nihad» – «Nihad Əliyev»,
-    «Əhmədov Hüseyn» – «Hüseyn Əhmədov»); doğum tarixləri fərqlidirsə – təkrar deyil."""
-    _admin(user)
+def dup_pairs(db: Session, school_id: int) -> list[dict]:
+    """Ehtimal olunan təkrar şagird cütləri (aktiv, eyni məkan): ad sözləri eyni və ya biri digərinin içində («Nihad» – «Nihad Əliyev»,
+    «Əhmədov Hüseyn» – «Hüseyn Əhmədov»); doğum tarixləri fərqlidirsə – təkrar deyil. [{level, a, b, class_a, class_b}]"""
     rows = list(db.execute(select(Student, SchoolClass.name).join(SchoolClass, SchoolClass.id == Student.class_id)
-                           .where(Student.school_id == need_school(user), Student.archived_at.is_(None))))
-    one = lambda s, c: {'id': s.id, 'full_name': s.full_name, 'class_name': c, 'portal_code': s.portal_code,
-                        'birth_date': s.birth_date, **_weight(db, s.id)}
+                           .where(Student.school_id == school_id, Student.archived_at.is_(None))))
     toks = [name_tokens(s.full_name) for s, _ in rows]
     out = []
     for i in range(len(rows)):
@@ -427,7 +453,35 @@ def duplicates(user: User = Depends(staff), db: Session = Depends(get_db)):
             same = ' '.join(a.full_name.split()).casefold() == ' '.join(b.full_name.split()).casefold()
             lvl = ('tam' if same and a.birth_date and a.birth_date == b.birth_date else 'eyni ad' if same
                    else 'ad və soyad eyni' if ta == tb and len(ta) >= 2 else 'oxşar ad')
-            out.append({'level': lvl, 'a': one(a, ca), 'b': one(b, cb)})
+            out.append({'level': lvl, 'a': a, 'b': b, 'class_a': ca, 'class_b': cb})
+    return out
+
+
+def similar_students(db: Session, school_id: int, name: str, birth: dt.date | None) -> list[dict]:
+    """Yeni şagirdə oxşar aktiv şagirdlər (ad sözlərinin altçoxluğu; doğum tarixi ziddiyyət təşkil etmir)."""
+    tn = name_tokens(name)
+    if not tn:
+        return []
+    out = []
+    for s, cname in db.execute(select(Student, SchoolClass.name).join(SchoolClass, SchoolClass.id == Student.class_id)
+                               .where(Student.school_id == school_id, Student.archived_at.is_(None))):
+        t = name_tokens(s.full_name)
+        if not (tn <= t or t <= tn):
+            continue
+        if birth and s.birth_date and birth != s.birth_date:
+            continue
+        out.append({'id': s.id, 'full_name': s.full_name, 'class_name': cname, 'class_id': s.class_id, 'birth_date': s.birth_date})
+    return out[:5]
+
+
+@router.get('/duplicates')
+def duplicates(user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Ehtimal olunan təkrar şagirdlər (yalnız admin)."""
+    _admin(user)
+    one = lambda s, c: {'id': s.id, 'full_name': s.full_name, 'class_name': c, 'portal_code': s.portal_code,
+                        'birth_date': s.birth_date, **_weight(db, s.id)}
+    out = [{'level': p['level'], 'a': one(p['a'], p['class_a']), 'b': one(p['b'], p['class_b'])}
+           for p in dup_pairs(db, need_school(user))]
     rank = {'tam': 0, 'eyni ad': 1, 'ad və soyad eyni': 2, 'oxşar ad': 3}
     return sorted(out, key=lambda x: (rank[x['level']], x['a']['full_name']))
 

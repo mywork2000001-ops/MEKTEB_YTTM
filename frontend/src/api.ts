@@ -1,4 +1,5 @@
-// API müştərisi: kuki ilə sessiya, JSON, xətaların Azərbaycan dilində göstərilməsi, Tənzimləmələr açarı.
+// API müştərisi: kuki ilə sessiya, JSON, xətaların istifadəçinin dilində göstərilməsi, Tənzimləmələr açarı.
+import { tt } from './i18n'
 
 export class ApiError extends Error {
   status: number
@@ -19,22 +20,37 @@ export function setSettingsToken(t: string | null) {
   try { t ? sessionStorage.setItem(SETTINGS_KEY, t) : sessionStorage.removeItem(SETTINGS_KEY) } catch { /* noop */ }
 }
 
+/** Server `detail`-ı istifadəçinin dilində: sətir → tt(sətir); {key, params, message} → tt(key, params) (params-dakı sətirlər də tərcümə olunur);
+ *  lüğətdə yoxdursa AZ mətn qalır. */
+export function detailText(d: any): string {
+  if (typeof d === 'string') return tt(d)
+  if (d && typeof d === 'object' && !Array.isArray(d)) {
+    if (typeof d.key === 'string') {
+      const p: Record<string, string | number | null> = {}
+      for (const [k, v] of Object.entries(d.params || {})) p[k] = typeof v === 'string' ? tt(v) : (v as any)
+      return tt(d.key, p)
+    }
+    if (d.message) return tt(String(d.message))
+  }
+  return ''
+}
+
 function message(status: number, data: any): string {
   const d = data?.detail
-  if (typeof d === 'string') return d
-  if (d && typeof d === 'object' && !Array.isArray(d) && d.message) return d.message
+  const txt = detailText(d)
+  if (txt) return txt
   if (Array.isArray(d)) {
     // Pydantic: ilk xətanı insan dilində
     const e = d[0]
     const msg = String(e?.msg || '').replace(/^Value error, /, '')
     const field = Array.isArray(e?.loc) ? e.loc.slice(1).join('.') : ''
-    return field ? `${field}: ${msg}` : msg || 'Məlumat düzgün deyil'
+    return field ? `${field}: ${tt(msg)}` : tt(msg) || tt('Məlumat düzgün deyil')
   }
-  if (status === 401) return 'Daxil olun'
-  if (status === 403) return 'Bu bölmə sizin üçün deyil'
-  if (status === 404) return 'Tapılmadı'
-  if (status >= 500) return 'Serverdə xəta baş verdi. Bir az sonra yenidən yoxlayın'
-  return 'Xəta baş verdi'
+  if (status === 401) return tt('Daxil olun')
+  if (status === 403) return tt('Bu bölmə sizin üçün deyil')
+  if (status === 404) return tt('Tapılmadı')
+  if (status >= 500) return tt('Serverdə xəta baş verdi. Bir az sonra yenidən yoxlayın')
+  return tt('Xəta baş verdi')
 }
 
 type Opts = { method?: string; body?: unknown; form?: FormData; params?: Record<string, unknown> }
@@ -63,7 +79,7 @@ export async function api<T = any>(path: string, opts: Opts = {}): Promise<T> {
       outboxAdd({ path: url.pathname, body: opts.body, at: Date.now() })
       return { queued: true } as T
     }
-    throw new ApiError(0, 'İnternet bağlantısı yoxdur')
+    throw new ApiError(0, tt('İnternet bağlantısı yoxdur'))
   }
   const ct = res.headers.get('content-type') || ''
   const data = ct.includes('application/json') ? await res.json().catch(() => null) : null
