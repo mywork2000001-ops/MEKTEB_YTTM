@@ -2855,6 +2855,10 @@ const D: Record<string, [string, string]> = {
   "Sual kitabçası": ["Question booklet", "Буклет с вопросами"],
   "Boş forma": ["Blank form", "Пустой бланк"],
   "Boş forma ({exam}): şagirdi siyahıdan seçin": ["Blank form ({exam}): pick the student from the list", "Пустой бланк ({exam}): выберите ученика из списка"],
+  "Viktorina": ["Quiz", "Викторина"],
+  "Heç birini": ["None", "Ни одной"],
+  "Seçdiyiniz mövzulardan təsadüfi suallar – bütün viktorina bazasından, bir neçə layihədən ola bilər.": ["Random questions from the topics you pick – from the whole quiz bank, possibly several projects.", "Случайные вопросы по выбранным темам – из всей базы викторины, возможно из нескольких проектов."],
+  "Bu sinif üçün mövzu tapılmadı": ["No topics found for this class", "Для этого класса темы не найдены"],
   "✍️ Yazılı (kağız) iş": ["✍️ Written (paper) work", "✍️ Письменная (бумажная) работа"],
 }
 
