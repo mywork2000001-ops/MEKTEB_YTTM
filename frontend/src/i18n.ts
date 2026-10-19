@@ -3008,6 +3008,14 @@ const D: Record<string, [string, string]> = {
   "Tarix: {a} – {b}": ["Date: {a} – {b}", "Дата: {a} – {b}"],
   "Tarix: {a}": ["Date: {a}", "Дата: {a}"],
   "↳ yenidən göndəriş: {who}, {date}": ["↳ resent: {who}, {date}", "↳ повторная отправка: {who}, {date}"],
+  "{g} sinif": ["grade {g}", "{g} класс"],
+  "Dərsin sinfi ({g})": ["Lesson's grade ({g})", "Класс урока ({g})"],
+  "Testlər: {a}/{b} mövzu tapıldı": ["Tests: {a}/{b} topics found", "Тесты: найдено тем {a}/{b}"],
+  "{n} yoxdur": ["{n} missing", "нет: {n}"],
+  "Yalnız qrupun sinfinə qədər bölmələri seç": ["Select only sections up to the group's grade", "Выбрать только разделы до класса группы"],
+  "Proqramda {top} sinif mövzuları var, qrup – {grp}. Qrupun keçdiyi bölmələri seçmək məsləhətdir": [
+    "The program has grade {top} topics, the group is in grade {grp}. Selecting only the sections the group has covered is recommended",
+    "В программе есть темы {top} класса, группа – {grp} класс. Рекомендуется выбрать только пройденные группой разделы"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

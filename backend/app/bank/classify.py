@@ -10,7 +10,8 @@ import re
 from ..domain.classes import ROMAN
 
 # mənbə -> sinif(lər); boş – addan
-SOURCE_GRADES = {'p001': [5], 'p011': [6], 'p007': [9], 'p009': [11], 'p012': [11], 'p003': list(range(5, 12))}
+SOURCE_GRADES = {'p001': [5], 'p011': [6], 'p007': [9], 'p009': [11], 'p012': [11], 'p003': list(range(5, 12)),
+                 'p013': list(range(5, 12))}
 # «Sınaqlar» qovluğu (viktorina `sinaqlar`) – yalnız 3-cü tərəf sınaqlarıdır, adında «sınaq» olmasa da (OBM mövzu sınaqları, RF MS1…)
 SOURCE_KIND = {'p009': 'sinaq', 'p012': 'sinaq', 'p004': 'sinaq', 'sinaqlar': 'sinaq'}
 _SINAQ = re.compile(r'sınaq|sınağ|\bBSİ\b|\bMSİ\b|\bÜSİ\b|\bMS\d|^variant\s*\d|imtahan', re.I)

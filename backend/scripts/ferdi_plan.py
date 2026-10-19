@@ -70,7 +70,7 @@ def times_map(times: list[tuple[int, str, str]]) -> dict[str, str]:
 def build(tpl: dict, tmap: dict[str, str], start: dt.date, end: dt.date, off: dict, sem1_end: dt.date | None = None):
     """(dərslər, yuvalar, hesabat) – yalnız verilənlərdən (DB-siz)."""
     from app.domain.calendar import lesson_slots
-    from app.programs import budget_summary, expand_course, meeting_sizes
+    from app.programs import budget_summary, course_need, expand_course, meeting_sizes
     slots_by_day: dict[int, list[int]] = {}
     for k in tmap:
         wd, p = map(int, k.split(':'))
@@ -79,8 +79,7 @@ def build(tpl: dict, tmap: dict[str, str], start: dt.date, end: dt.date, off: di
     sizes = meeting_sizes(SimpleNamespace(times=tmap), slots)
     sem1_end = sem1_end or dt.date(start.year if start.month >= 9 else start.year - 1, 12, 27)
     lessons, warnings = expand_course(tpl, [d for d, _ in slots], sem1_end, sizes)
-    n_top = sum(len(s['topics']) for s in tpl['sections'])
-    rep = {'warnings': warnings, 'budget': budget_summary(slots, sizes, n_top * (min(sizes) if sizes else 1))}
+    rep = {'warnings': warnings, 'budget': budget_summary(slots, sizes, course_need(tpl, sizes))}
     return lessons, slots, rep
 
 

@@ -17,8 +17,21 @@ type Item = { date: string; weekday: string; period: number; time: string | null
   lesson: { seq: number; topic: string; section: string | null; assessment_type: string; exam_no: number | null; official_date: string
     id: number; standards?: string[] | null; tt_pages?: string | null; tests?: TopicTestInfo[]
     tasks?: { kind: string; start: number; end: number }[] | null
-    p0010?: { file_id: number; label: string; url: string } | null; p0010_manual?: boolean; p0010_src?: string } | null }
-const SRC_NAME = (s?: string) => (s === 'p007' ? 'DİM 9' : 'P0010')     // IX – DİM 9 test toplusu (P007), X–XI – P0010
+    p0010?: { file_id: number; label: string; url: string; grades?: number[] } | null; p0010_manual?: boolean; p0010_src?: string
+    lesson_grade?: number | null; p0010_sources?: string[] } | null }
+// IX – DİM 9 test toplusu (P007), X–XI – P0010; V–VIII: P001 / P011 / «Sinif testləri» (P013)
+const SRC_NAMES: Record<string, string> = { p007: 'DİM 9', p003: 'P0010', p001: 'P001', p011: 'P011', p013: 'Sinif testləri' }
+const SRC_NAME = (s?: string) => SRC_NAMES[s || ''] || 'P0010'
+const ALL_SRC = ['p001', 'p011', 'p013', 'p003', 'p007']
+const ROMAN_G: Record<number, string> = { 5: 'V', 6: 'VI', 7: 'VII', 8: 'VIII', 9: 'IX', 10: 'X', 11: 'XI' }
+/** Test nişanında sinif çipi: faylın sinfi; dərsin sinfindən fərqlidirsə qırmızı ⚠ (fayl etiketsizdirsə – xəbərdarlıq yoxdur). */
+function GradeChip({ fileGrades, lessonGrade }: { fileGrades?: number[]; lessonGrade?: number | null }) {
+  const t = useT()
+  if (!fileGrades?.length) return null
+  const bad = !!lessonGrade && !fileGrades.includes(lessonGrade)
+  const txt = fileGrades.length > 2 ? `${ROMAN_G[fileGrades[0]]}–${ROMAN_G[fileGrades[fileGrades.length - 1]]}` : fileGrades.map(g => ROMAN_G[g] || g).join(', ')
+  return <Pill tone={bad ? 'bad' : 'info'}>{bad ? '⚠ ' : ''}{t('{g} sinif', { g: txt })}</Pill>
+}
 const TASK_LETTER: Record<string, string> = { sinif: 'S', ev: 'E', mustaqil: 'M' }
 /** [{kind:'sinif',start:1,end:14}, …] -> «S 1–14, E 15–24, M 25–27» (Test toplusu tapşırıqları) */
 const tasksText = (ts?: { kind: string; start: number; end: number }[] | null) =>
@@ -40,19 +53,25 @@ const step = (d: string, view: string, dir: number) => {
   return isoDate(x)
 }
 
-type BankFileRow = { id: number; label: string; questions: number }
+type BankFileRow = { id: number; label: string; questions: number; grades?: number[]; src?: string }
 const p0010All: Record<string, Promise<BankFileRow[]> | undefined> = {}        // mənbənin faylları bir dəfə yüklənir
 
-/** X–XI: dərsin P0010 faylını müəllim dəyişir – avtomatik / bağlantı yoxdur / istənilən fayl. */
-function P0010Edit({ ta, l, onDone }: { ta: number; l: { id: number; p0010?: { file_id: number } | null; p0010_manual?: boolean; p0010_src?: string }; onDone: () => void }) {
+/** Dərsin test faylını müəllim dəyişir – avtomatik / bağlantı yoxdur / fayl. Defolt süzgəc «Dərsin sinfi»; «Bütün siniflər» – əl ilə. */
+function P0010Edit({ ta, l, onDone }: { ta: number; l: { id: number; p0010?: { file_id: number } | null; p0010_manual?: boolean; p0010_src?: string
+  lesson_grade?: number | null; p0010_sources?: string[] }; onDone: () => void }) {
+  const t = useT()
   const src = l.p0010_src || 'p003', NAME = SRC_NAME(src)
   const [opts, setOpts] = useState<{ match: { file_id: number; label: string }[]; all: BankFileRow[] } | null>(null)
+  const [allGrades, setAllGrades] = useState(false)
   const [busy, setBusy] = useState(false)
-  const open = async () => {
-    p0010All[src] = p0010All[src] || get<BankFileRow[]>('/api/bank/lessons', { source: src }).catch(e => { p0010All[src] = undefined; throw e })
+  const lg = l.lesson_grade
+  const open = async (wide = allGrades) => {
+    const list = wide ? ALL_SRC : [...new Set([...(l.p0010_sources || []), src])]
+    list.forEach(s => { p0010All[s] = p0010All[s] || get<BankFileRow[]>('/api/bank/lessons', { source: s }).then(r => r.map(f => ({ ...f, src: s })))
+      .catch(e => { p0010All[s] = undefined; throw e }) })
     try {
-      const [m, all] = await Promise.all([get<any>(`/api/plan/${ta}/topics/${l.id}/p0010`, { n: 1 }), p0010All[src]!])
-      setOpts({ match: m.matches || [], all })
+      const [m, ...parts] = await Promise.all([get<any>(`/api/plan/${ta}/topics/${l.id}/p0010`, { n: 1 }), ...list.map(s => p0010All[s]!)])
+      setOpts({ match: m.matches || [], all: parts.flat() })
     } catch (e: any) { toast(e?.message || tt('{s} siyahısı açılmadı', { s: NAME })) }
   }
   const save = async (v: string) => {
@@ -63,14 +82,20 @@ function P0010Edit({ ta, l, onDone }: { ta: number; l: { id: number; p0010?: { f
       setOpts(null); onDone()
     } catch (e: any) { toast(e?.message || tt('Saxlanmadı')) } finally { setBusy(false) }
   }
-  if (!opts) return <button type="button" className="btn sm ghost" style={{ padding: '0 6px', minHeight: 0 }} title={tt('{s} faylını dəyiş', { s: NAME })} onClick={open}>✎</button>
+  if (!opts) return <button type="button" className="btn sm ghost" style={{ padding: '0 6px', minHeight: 0 }} title={tt('{s} faylını dəyiş', { s: NAME })} onClick={() => open()}>✎</button>
   const groups: Record<string, BankFileRow[]> = {}
-  for (const f of opts.all) (groups[f.label.split(' — ')[0]] ||= []).push(f)
+  const shown = allGrades || !lg ? opts.all : opts.all.filter(f => !f.grades?.length || f.grades.includes(lg))     // defolt: dərsin sinfi
+  for (const f of shown) (groups[(allGrades ? SRC_NAME(f.src) + ' · ' : '') + f.label.split(' — ')[0]] ||= []).push(f)
+  const onPick = (v: string) => {
+    if (v === 'wide' || v === 'narrow') { const w = v === 'wide'; setAllGrades(w); setOpts(null); open(w); return }
+    save(v)
+  }
   return (
     <select className="sel" autoFocus disabled={busy} value={l.p0010_manual ? (l.p0010 ? String(l.p0010.file_id) : 'none') : 'auto'}
-      onChange={e => save(e.target.value)} onBlur={() => !busy && setOpts(null)} style={{ maxWidth: '100%' }}>
+      onChange={e => onPick(e.target.value)} onBlur={() => !busy && setOpts(null)} style={{ maxWidth: '100%' }}>
       <option value="auto">{tt('Avtomatik (mövzuya görə)')}</option>
       <option value="none">{tt('{s} bağlantısı yoxdur', { s: NAME })}</option>
+      {lg ? (allGrades ? <option value="narrow">{t('Dərsin sinfi ({g})', { g: ROMAN_G[lg] || lg })}</option> : <option value="wide">{t('Bütün siniflər')}</option>) : null}
       {opts.match.length > 0 && <optgroup label={tt('Mövzuya uyğun')}>{opts.match.map(m => <option key={'m' + m.file_id} value={m.file_id}>{m.label}</option>)}</optgroup>}
       {Object.entries(groups).map(([g, fs]) => <optgroup key={g} label={g}>{fs.map(f => <option key={f.id} value={f.id}>{f.label.split(' — ').slice(1).join(' — ') || f.label} ({f.questions})</option>)}</optgroup>)}
     </select>
@@ -141,7 +166,7 @@ export default function Plan() {
                     <span className="plan-what">
                       {l ? <><span className="plan-topic">{l.topic}</span><span className="plan-meta">{meta.join(' · ')}</span>
                         {(l.p0010 !== undefined || l.p0010_manual) && <span className="plan-meta">{SRC_NAME(l.p0010_src)}{l.p0010_manual ? ` (${t('seçilib')})` : ''}: {l.p0010
-                          ? <a href={l.p0010.url} target="_blank" rel="noreferrer" title={t('{s} test faylını aç', { s: SRC_NAME(l.p0010_src) })}>{l.p0010.label}</a> : <span className="muted">{t('yoxdur')}</span>}
+                          ? <><GradeChip fileGrades={l.p0010.grades} lessonGrade={l.lesson_grade} />{' '}<a href={l.p0010.url} target="_blank" rel="noreferrer" title={t('{s} test faylını aç', { s: SRC_NAME(l.p0010_src) })}>{l.p0010.label}</a></> : <span className="muted">{t('yoxdur')}</span>}
                           {ta && <P0010Edit ta={ta} l={l} onDone={reload} />}</span>}</> : <span className="muted">{t('Perspektiv planda mövzu yoxdur')}</span>}
                     </span>
                     {l && <span className="plan-tags">

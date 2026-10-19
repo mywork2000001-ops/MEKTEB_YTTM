@@ -365,7 +365,7 @@ class JoinIn(BaseModel):
     subject: str = Field(min_length=2, max_length=60)
     weekly_hours: int = Field(ge=1, le=12)
     slots: dict[str, list[int]] = Field(default_factory=dict)     # {"0": [3, 5]} – həftə günü -> dərs saatları
-    has_summative: bool = True
+    has_summative: bool | None = None      # boş: məktəbdə – hə (KSQ/BSQ), fərdi (repetitor) məkanda – yox
     program_id: int | None = None          # əsas perspektiv plan proqramı (kitabxanadan) – qoşulanda əvvəldən seçilir
     grade: int | None = Field(None, ge=1, le=12)   # sinif rəqəmi müəyyən deyilsə (qarışıq qrup) – proqram uyğunluğu üçün
     starts_on: dt.date | None = None       # kurs müddəti (fərdi qrup); boş – tədris ilinin əvvəli / sonu
@@ -388,6 +388,8 @@ def join_class(cid: int, body: JoinIn, user: User = Depends(settings_unlocked), 
         raise HTTPException(404, 'Sinif tapılmadı')
     from ..models import School
     private = db.get(School, c.school_id).kind == 'private'
+    if body.has_summative is None:
+        body.has_summative = not private
     ta_prev = db.scalar(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id, TeachingAssignment.class_id == cid,
                                                          TeachingAssignment.subject == body.subject))
     before = (dict(ta_prev.times or {}), dict(ta_prev.slots or {}), ta_prev.starts_on, ta_prev.ends_on) \
