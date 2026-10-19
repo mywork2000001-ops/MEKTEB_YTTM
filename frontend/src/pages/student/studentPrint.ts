@@ -17,7 +17,9 @@ export function printResults(d: any, ex: any, me: Who, withMistakes: boolean, tr
   for (const s of d.subjects) {
     body += `<h2>${esc(s.subject)} <span class="muted">· ${esc(s.class_name)} · ${esc(s.teacher)}</span></h2>` +
       kpis([[fmtN(s.avg_grade, 2), tt('orta qiymət')], [fmtN(s.attendance_pct) + '%', tt('davamiyyət')], [fmtN(s.homework_pct) + '%', tt('ev tapşırığı')],
-        [s.semester_grades[1] ?? '—', tt('I yarımil')], [s.semester_grades[2] ?? '—', tt('II yarımil')]])
+        [(s.semester_grades[1] ?? '—') + (s.semester_missed_ksq?.[1]?.length && s.semester_grades[1] != null ? ' ⚠' : ''), tt('I yarımil')],
+        [(s.semester_grades[2] ?? '—') + (s.semester_missed_ksq?.[2]?.length && s.semester_grades[2] != null ? ' ⚠' : ''), tt('II yarımil')],
+        [s.year_grade ?? '—', tt('İllik')]])
     if (s.exams.length) body += table([tt('İmtahan'), tt('Tarix'), tt('Bal'), '%', tt('Qiymət'), tt('Tapşırıqlar (✓ düz, ✗ səhv)'), tt('Təkrarla – standart')],
       s.exams.map((e: any) => [`${e.kind}-${e.no} (${tt('{n}-ci yarımil', { n: e.semester })})`, fmtD(e.date) + (e.taken_on ? ` (${tt('sonradan')}: ${fmtD(e.taken_on)})` : ''),
         e.absent ? tt('yox idi') : e.hidden ? '—' : e.points != null ? `${fmtN(e.points, 1)} / ${e.max_points}` : '—', fmtN(e.pct), e.grade ?? '—',

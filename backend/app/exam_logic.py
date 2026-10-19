@@ -74,3 +74,10 @@ def final_grades(exams: list[Exam], grade_of: Callable[[Exam], int | None]) -> t
     ksq = [(e.no, eff(e)) for e in base if e.kind == 'KSQ']
     bsq = next((eff(e) for e in base if e.kind == 'BSQ'), None)
     return ksq, bsq
+
+
+def missed_ksq(exams: list[Exam], ksq: list[tuple[int, int | None]], today) -> list[int]:
+    """Keçirilmiş (tarixi gəlib çatmış), lakin şagirdin qiyməti olmayan (buraxıb / bal yoxdur) KSQ nömrələri –
+    yarımil qiyməti «şərti» sayılır, çatışmayan KSQ əlavə təyin edilməlidir (metodik qayda)."""
+    held = {e.no for e in exams if e.kind == 'KSQ' and not e.extra_seq and e.date <= today}
+    return [n for n, g in ksq if g is None and n in held]

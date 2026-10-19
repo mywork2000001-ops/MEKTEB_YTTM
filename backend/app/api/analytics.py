@@ -17,7 +17,7 @@ from ..analytics import Period, analyze, attendance_map
 from ..db import get_db
 from ..deps import admin_only, staff
 from ..models import AuditLog, IndividualPlan, ParentContact, Student, TeachingAssignment, User
-from ..services import own_assignment, plan_ctx
+from ..services import own_assignment, plan_ctx, roster
 from .common import audit, can_see_student, get_or_404
 
 router = APIRouter(prefix='/api', tags=['analytics'])
@@ -95,9 +95,13 @@ def weekly(user: User = Depends(staff), db: Session = Depends(get_db)):
         recent = [m for m in lc['missing_list'] if (t - m['date']).days <= 7]
         red = [r['full_name'] for r in a['students'] if r['risk']['status'] == 'Qırmızı']
         absent = [r['full_name'] for r in a['students'] if r['absence_warning']]
-        if red or absent or recent:
+        from .journal import no_marks_recent                     # J10: 14 gündür qiyməti olmayanlar
+        stu = roster(db, ta)
+        nm = set(no_marks_recent(db, ta, stu))
+        no_marks = [s.full_name for s in stu if s.id in nm]
+        if red or absent or recent or no_marks:
             out.append({'ta_id': ta.id, 'class_name': ctx.cls.name, 'subject': ta.subject, 'red': red,
-                        'absence': absent, 'missing_week': recent, 'missing_total': lc['missing']})
+                        'absence': absent, 'missing_week': recent, 'missing_total': lc['missing'], 'no_marks': no_marks})
     y, w, _ = t.isocalendar()
     return {'week': f'{y}-W{w:02d}', 'today': t, 'items': sorted(out, key=lambda x: x['class_name'])}
 

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import HTTPException
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from .domain.plan import Slot, working_plan
@@ -27,15 +27,24 @@ def ws_cond(user):
     return TeachingAssignment.class_id.in_(select(SchoolClass.id).where(SchoolClass.school_id == user.school_id))
 
 
-def roster(db: Session, ta: TeachingAssignment) -> list[Student]:
+def roster(db: Session, ta: TeachingAssignment, since: dt.date | None = None) -> list[Student]:
+    """Sinfin/qrupun aktiv şagirdləri. since verilibsə – həmin tarixdə və ya sonra (left_on >= since) çıxmış şagirdlər də
+    (rəsmi jurnalda öz dövrünün qiymətləri qalsın); birləşdirilmiş dublikatlar («Birləşdirildi…») heç vaxt göstərilmir."""
     c = db.get(SchoolClass, ta.class_id)
-    st = select(Student).where(Student.archived_at.is_(None))
-    if c.kind == 'qrup':
-        st = st.join(GroupMember, GroupMember.student_id == Student.id).where(GroupMember.group_id == c.id)
-    else:                                   # əsas sinfi bu olanlar + əlavə üzvlər (bir şagird bir neçə sinifdə – məs. IX və XI)
-        st = st.where(or_(Student.class_id == c.id,
-                          Student.id.in_(select(GroupMember.student_id).where(GroupMember.group_id == c.id))))
-    return list(db.scalars(st.order_by(Student.full_name)))
+    member = Student.id.in_(select(GroupMember.student_id).where(GroupMember.group_id == c.id))
+    # qrup – yalnız üzvlər; sinif – əsas sinfi bu olanlar + əlavə üzvlər (bir şagird bir neçə sinifdə – məs. IX və XI)
+    scope = member if c.kind == 'qrup' else or_(Student.class_id == c.id, member)
+    alive = Student.archived_at.is_(None)
+    if since is not None:
+        alive = or_(alive, and_(Student.archived_at.is_not(None), Student.left_on.is_not(None), Student.left_on >= since,
+                                or_(Student.left_reason.is_(None), ~Student.left_reason.startswith('Birləşdirildi'))))
+    return list(db.scalars(select(Student).where(scope, alive).order_by(Student.full_name)))
+
+
+def student_out(s: Student) -> dict:
+    """Jurnal cavablarında şagird: çıxmış (arxiv) şagirdin left_on tarixi var, aktivin – None."""
+    return {'id': s.id, 'full_name': s.full_name, 'portal_code': s.portal_code,
+            'left_on': s.left_on if s.archived_at else None}
 
 
 def class_grade(db: Session, c: SchoolClass) -> int | None:

@@ -16,6 +16,7 @@ const MN = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'İyun', 'İyul', 'Avqus
 const ATT: Record<string, string> = { var: 'var', yox: 'q', 'üzrlü': 'ü', gecikdi: 'g' }
 const PER_TABLE = 22                                  // albom A4-də bir cədvəldə ən çox dərs sütunu
 const NOTE = (t: string) => `<p class="note">${esc(t)}</p>`
+const nm = (s: any) => s.full_name + (s.left_on ? ` (köçüb ${fmtD(s.left_on).slice(0, 5)})` : '')      // çıxmış şagird (rəsmi çap – AZ)
 
 function months(a: string, b: string): string[] {
   const out: string[] = []
@@ -59,7 +60,7 @@ export default function JournalPrint({ ta, all, date, onClose }: { ta: MyLesson;
             .map((m: any) => m.kind === 'test' ? `${m.test_correct}/${m.test_total} → ${m.grade}` : `${m.grade} (${m.kind})`).join('; ')
           html += `<h3>${ord(ls.period)} saat${ls.time ? ` · ${esc(ls.time)}` : ''} – ${esc(ls.plan?.topic || e.topic || '—')}</h3>` +
             `<p class="note">Ev tapşırığı: ${esc((empty ? '' : e.homework) || '________________________________')}${ls.homework_to_check ? ` · yoxlanılacaq: ${esc(ls.homework_to_check)}` : ''}</p>` +
-            table(['№', 'Şagird', 'Davamiyyət', 'Qiymət', 'Ev tapşırığı', 'Qeyd'], d.students.map((s: any, i: number) => [i + 1, s.full_name,
+            table(['№', 'Şagird', 'Davamiyyət', 'Qiymət', 'Ev tapşırığı', 'Qeyd'], d.students.map((s: any, i: number) => [i + 1, nm(s),
               empty ? '' : ATT[e.attendance?.[s.id]] || '', empty ? '' : mk(s.id), empty ? '' : e.homework_checks?.[s.id] || '', '']))
         }
         html += NOTE('Davamiyyət: var, q – qayıb, ü – üzrlü, g – gecikmə. ' + (blank ? 'Boş vərəq – əl ilə doldurmaq üçün.' : ''))
@@ -72,7 +73,7 @@ export default function JournalPrint({ ta, all, date, onClose }: { ta: MyLesson;
             if (from || gi) started = true
             html += `${started ? '<div class="pb"></div>' : ''}<h2>Jurnal səhifəsi – ${monthName(ms[gi])}${g.columns.length > PER_TABLE ? ` (${from / PER_TABLE + 1})` : ''}</h2>` +
               table(['№', 'Şagird', ...cols.map((c: any) => (c.sinaq ? 'Sınaq ' : c.assessment ? c.assessment + ' ' : '') + fmtD(c.date).slice(0, 5)), ...(last ? ['Orta', 'Buraxıb'] : [])],
-                g.rows.map((r: any, i: number) => [i + 1, r.full_name, ...r.cells.slice(from, from + PER_TABLE).map((c: any) =>
+                g.rows.map((r: any, i: number) => [i + 1, nm(r), ...r.cells.slice(from, from + PER_TABLE).map((c: any) =>
                   [...c.marks, c.att, c.exam && c.exam.split(': ')[1], c.sinaq].filter(Boolean).join(' ')), ...(last ? [fmtN(r.avg, 2), r.missed || ''] : [])]))
                 .replace('<table>', '<table class="jg">')
           }
@@ -87,9 +88,9 @@ export default function JournalPrint({ ta, all, date, onClose }: { ta: MyLesson;
         if (!l.has_summative) { html += '<h2>Yarımil qiymətləri</h2>' + NOTE('Bu qrupda KSQ/BSQ keçirilmir – bütöv sinifdə keçirilir.'); continue }
         for (const s of sems) {
           const d = await get<any>(`/api/exams/${l.id}/semester/${s}`)
-          html += `<h2>${s}-ci yarımil qiymətləri</h2>` + table(['№', 'Şagird', 'KSQ', 'KSQ orta', 'BSQ', 'Yarımil', ...(d.exams ? ['Sınaq orta %'] : [])],
-            d.students.map((x: any, i: number) => [i + 1, x.full_name, x.ksq.map(([n, g]: [number, number | null]) => `${n}: ${g ?? '—'}`).join('  '),
-              fmtN(x.ksq_avg, 2), x.bsq ?? '—', x.semester_grade ?? '—', ...(d.exams ? [fmtN(x.exam_pct)] : [])]), [3, 4, 5]) + NOTE(d.formula || '')
+          html += `<h2>${s}-ci yarımil qiymətləri</h2>` + table(['№', 'Şagird', 'KSQ', 'KSQ orta', 'BSQ', 'Yarımil', ...(s === 2 ? ['İllik'] : []), ...(d.exams ? ['Sınaq orta %'] : [])],
+            d.students.map((x: any, i: number) => [i + 1, nm(x), x.ksq.map(([n, g]: [number, number | null]) => `${n}: ${g ?? '—'}`).join('  '),
+              fmtN(x.ksq_avg, 2), x.bsq ?? '—', (x.semester_grade ?? '—') + (x.conditional ? ' ⚠' : ''), ...(s === 2 ? [x.year_grade ?? '—'] : []), ...(d.exams ? [fmtN(x.exam_pct)] : [])]), [3, 4, 5, 6]) + NOTE(d.formula || '') + (d.students.some((x: any) => x.conditional) ? NOTE('⚠ – buraxılmış KSQ var: qiymət mövcud KSQ-lərə görə hesablanıb (şərti), əlavə KSQ təyin edilməlidir.') : '') + (s === 2 ? NOTE('İllik qiymət = iki yarımil qiymətinin ortası (adi yuvarlaqlaşdırma).') : '')
         }
       }
       if (k === 'progress') {
@@ -104,9 +105,9 @@ export default function JournalPrint({ ta, all, date, onClose }: { ta: MyLesson;
         for (const s of (period === 'year' ? ['all'] : sems.map(String))) {
           const d = await get<any>(`/api/journal/${l.id}/summary`, s === 'all' ? {} : { semester: s })
           html += `<h2>Xülasə – ${s === 'all' ? 'tədris ili' : s + '-ci yarımil'}</h2>` + kpis([[d.lessons_written, 'yazılmış dərs'], [d.students.length, 'şagird']]) +
-            table(['№', 'Şagird', 'Orta qiymət', 'Qiymət sayı', 'Test %', 'Davamiyyət %', 'Ev tapşırığı %', ...(d.exams ? ['Sınaq orta %'] : [])],
-              d.students.map((x: any, i: number) => [i + 1, x.full_name, fmtN(x.avg_grade, 2), x.marks, fmtN(x.test_pct), fmtN(x.attendance_pct), fmtN(x.homework_pct),
-                ...(d.exams ? [fmtN(x.exam_pct)] : [])]), [2, 3, 4, 5, 6, 7])
+            table(['№', 'Şagird', 'Orta qiymət', 'Plan testləri', 'Sinifdə', 'Qiymət sayı', 'Test %', 'Davamiyyət %', 'Ev tapşırığı %', 'Köçürüb', ...(d.exams ? ['Sınaq orta %'] : [])],
+              d.students.map((x: any, i: number) => [i + 1, nm(x), fmtN(x.avg_grade, 2), fmtN(x.avg_plan_tests, 2), fmtN(x.avg_class, 2), x.marks, fmtN(x.test_pct), fmtN(x.attendance_pct), fmtN(x.homework_pct), x.copied || '',
+                ...(d.exams ? [fmtN(x.exam_pct)] : [])]), [2, 3, 4, 5, 6, 7, 8, 9, 10])
         }
       }
     }

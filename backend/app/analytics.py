@@ -86,7 +86,8 @@ def _metrics(sid: int, entries, marks, att, hw, exams, scores, attempts) -> dict
         'ksq_avg_pct': _avg(ksq_pct), 'last_ksq_pct': ksq_pct[-1] if ksq_pct else None,
         'ksq_grades': [grade_from_points(s.points, e.max_points) for e, s in ksq],
         'online_pct': _avg(online), 'online_count': len(online),
-        'homework_pct': homework_pct, 'lessons': len(a), 'missed': missed, 'attendance_pct': attendance_pct,
+        'homework_pct': homework_pct, 'hw_copied': sum(x.status == 'köçürüb' for x in hw if x.student_id == sid),
+        'lessons': len(a), 'missed': missed, 'attendance_pct': attendance_pct,
         'absence_warning': absence_warning(missed, len(a)),
         'rating': rating_score(avg_grade, _avg(ksq_pct), homework_pct, attendance_pct),
     }

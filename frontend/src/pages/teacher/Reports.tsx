@@ -120,7 +120,7 @@ function Rating({ a }: { a: any }) {
             <tr key={r.student_id}><td>{r.full_name}</td><td className="r num">{place(r)}</td>
               <td className="r num"><b>{fmt(r.rating)}</b></td>
               <td className="r num" style={{ color: progressTone(r.progress) }}>{progressText(r)}</td>
-              <td className="r num">{fmt(r.avg_grade, 2)}</td><td className="r num">{fmt(r.ksq_avg_pct)}</td><td className="r num">{fmt(r.homework_pct)}</td>
+              <td className="r num">{fmt(r.avg_grade, 2)}</td><td className="r num">{fmt(r.ksq_avg_pct)}</td><td className="r num">{fmt(r.homework_pct)}{r.hw_copied > 0 && <span title={t("Ev tapşırığını köçürənlərin sayı")} style={{ color: "var(--bad)" }}> ({t("köçürüb")}: {r.hw_copied})</span>}</td>
               <td className="r num">{fmt(r.attendance_pct)}%</td><td className="r num">{fmt(r.online_pct)}</td><td className="r num">{fmt(r.sinaq_pct)}</td></tr>))}</tbody></table></div>
       )}
     </>

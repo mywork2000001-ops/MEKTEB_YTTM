@@ -16,7 +16,7 @@ from ..bank_labels import label_ml
 from ..db import get_db
 from ..deps import require
 from ..domain.plan import view_range
-from ..domain.rules import grade_from_points, semester_grade
+from ..domain.rules import grade_from_points, semester_grade, year_grade
 from ..models import (Attendance, Exam, ExamAppeal, ExamScore, GroupMember, HomeworkCheck, JournalEntry, Mark, OnlineTask, PlanLesson,
                       Role, SchoolClass, Student, TaskAttempt, TeachingAssignment, User, now)
 from ..services import SCHOOL_TZ, journal_entries, plan_ctx, roster, taught_lesson, today
@@ -677,6 +677,14 @@ def _sem_args(exams: list, gmap: dict, sem: int) -> tuple:
     return [g for _, g in ksq if g is not None], bsq
 
 
+def _sem_missed(exams: list, gmap: dict, sem: int) -> list[int]:
+    """Keçirilmiş, lakin qiyməti olmayan (buraxılmış) KSQ nömrələri – yarımil qiyməti «şərti»."""
+    from ..exam_logic import final_grades, missed_ksq
+    xs = [x for x in exams if x.semester == sem]
+    ksq, _ = final_grades(xs, lambda x: gmap.get(x.id))
+    return missed_ksq(xs, ksq, today())
+
+
 @router.get('/results')
 def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
     s = me_student(db, user)
@@ -707,9 +715,12 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
                             'pct': round(sc.points * 100 / e.max_points, 1) if g else None, 'grade': g,
                             'absent': bool(sc and sc.absent), 'taken_on': sc.taken_on if sc and g else None,
                             'items': items, 'weak_standards': weak, 'card': _card(db, e, s.id)})
+        sem_g = {k: None if k in hidden_sems else semester_grade(*_sem_args(exams, gmap, k)) for k in (1, 2)}
         subjects.append({'subject': ta.subject, 'class_name': c.name, 'teacher': _teacher(db, ta),
                          'exams': ex_rows, **_stats(db, _entries(db, ta.id), s.id),
-                         'semester_grades': {k: None if k in hidden_sems else semester_grade(*_sem_args(exams, gmap, k)) for k in (1, 2)}})
+                         'semester_grades': sem_g, 'year_grade': year_grade(sem_g[1], sem_g[2]),
+                         # buraxılmış KSQ – yarımil qiyməti «şərti» (müəllim əlavə KSQ təyin edə bilər)
+                         'semester_missed_ksq': {k: [] if k in hidden_sems else _sem_missed(exams, gmap, k) for k in (1, 2)}})
     task_rows, mistakes = [], []
     done = []
     for t in _my_tasks(db, s):

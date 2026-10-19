@@ -16,6 +16,8 @@ from app.security import hash_password
 @pytest.fixture
 def world(monkeypatch):
     monkeypatch.setattr('app.scheduler.start', lambda: None)
+    # yarımil bağlanması (J6) real tarixdən asılı olmasın: testlərdə «bu gün» 2026-cı ilin payızıdır (bağlama testləri öz tarixini qoyur)
+    monkeypatch.setattr('app.api.journal.lock_today', lambda: dt.date(2026, 10, 19))
     eng = create_engine('sqlite://', connect_args={'check_same_thread': False}, poolclass=StaticPool)
     Base.metadata.create_all(eng)
     S = sessionmaker(eng, expire_on_commit=False)

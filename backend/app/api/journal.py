@@ -14,8 +14,8 @@ from ..db import get_db
 from ..deps import staff
 from ..domain.plan import slot_at
 from ..domain.rules import summative_grade
-from ..models import Attendance, HomeworkCheck, JournalEntry, Mark, User
-from ..services import lesson_out, own_assignment, plan_ctx, roster, taught_lesson, today
+from ..models import AcademicYear, Attendance, HomeworkCheck, JournalEntry, Mark, Role, User
+from ..services import lesson_out, own_assignment, plan_ctx, roster, student_out, taught_lesson, today
 from .common import audit
 from .plan import WEEKDAYS, bell
 
@@ -23,6 +23,43 @@ router = APIRouter(prefix='/api/journal', tags=['journal'])
 ATT = ('var', 'yox', 'üzrlü', 'gecikdi')
 HW = ('etdi', 'qismən', 'etmədi', 'köçürüb')
 SUMMATIVE = ('KSQ', 'BSQ')          # summativ dərsdə formativ qiymət qoyulmur (metodik qayda)
+DIAGNOSTIC = 'diaqnostik'           # diaqnostik qiymətləndirmə günü də bal (2–5) qoyulmur; onlayn testlər istisnadır
+CLOSED_MSG = 'Yarımil bağlanıb – dəyişiklik yalnız admin icazəsi ilə'
+NO_MARKS_DAYS, NO_MARKS_MIN_LESSONS = 14, 3     # J10: 14 gün qiymətsiz (həmin dövrdə ən azı 3 yazılmış dərs olduqda)
+
+
+def lock_today() -> dt.date:
+    """Yarımilin bağlanması üçün «bu gün» (testlərdə ayrıca əvəzlənir)."""
+    return today()
+
+
+def is_closed(year: AcademicYear, d: dt.date, t: dt.date | None = None) -> bool:
+    """Dərs tarixi bağlanmış yarımilə düşür: 1-ci yarımil – sem1_end-dən sonra, 2-ci – tədris ili bitəndən sonra."""
+    t = t or lock_today()
+    return (d <= year.sem1_end < t) or (d >= year.sem2_start and t > year.end)
+
+
+def check_open(year: AcademicYear, d: dt.date, user: User, reason: str | None) -> str | None:
+    """Bağlanmış yarımildə əl ilə dəyişiklik: yalnız admin və səbəblə (≥ 5 simvol). Qaytarır: istifadə olunan səbəb və ya None."""
+    if not is_closed(year, d):
+        return None
+    if user.role != Role.admin:
+        raise HTTPException(409, CLOSED_MSG)
+    r = (reason or '').strip()
+    if len(r) < 5:
+        raise HTTPException(409, f'{CLOSED_MSG}. Səbəb yazın (ən azı 5 simvol)')
+    return r
+
+
+def no_marks_recent(db: Session, ta, students: list) -> list[int]:
+    """J10: son 14 gündə bu fənn üzrə heç bir qiyməti olmayan AKTİV şagirdlər (dövrdə ≥ 3 yazılmış dərs varsa)."""
+    t = today()
+    es = list(db.execute(select(JournalEntry.id, JournalEntry.auto).where(
+        JournalEntry.assignment_id == ta.id, JournalEntry.date >= t - dt.timedelta(days=NO_MARKS_DAYS), JournalEntry.date <= t)))
+    if sum(not a for _, a in es) < NO_MARKS_MIN_LESSONS:
+        return []
+    got = set(db.scalars(select(Mark.student_id).where(Mark.entry_id.in_([i for i, _ in es]))))
+    return [s.id for s in students if not s.archived_at and s.id not in got]
 
 
 def _entry_payload(db: Session, e: JournalEntry | None) -> dict:
@@ -53,8 +90,9 @@ def day(ta_id: int, date: dt.date | None = None, user: User = Depends(staff), db
     ta = own_assignment(db, user, ta_id)
     ctx = plan_ctx(db, ta)
     d = date or today()
+    everyone = roster(db, ta, since=d)           # həmin gün hələ sinifdə olub sonra çıxanlar da (J2)
     lessons = []
-    prev = None                      # həmin gün əvvəlki YAZILMIŞ dərs: {period, attendance} (docs/jurnal-gundelik-promtu.md)
+    prev = None                     # həmin gün əvvəlki YAZILMIŞ dərs: {period, attendance} (docs/jurnal-gundelik-promtu.md)
     for s in sorted((x for x in ctx.slots if x.date == d), key=lambda x: x.period):
         e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == d,
                                                  JournalEntry.period == s.period))
@@ -71,8 +109,9 @@ def day(ta_id: int, date: dt.date | None = None, user: User = Depends(staff), db
     return {'date': d, 'weekday': WEEKDAYS[d.weekday()],
             'prev_day': max((x for x in days if x < d), default=None), 'next_day': min((x for x in days if x > d), default=None),
             'class_name': ctx.cls.name, 'subject': ta.subject, 'lessons': lessons,
-            'students': [{'id': s.id, 'full_name': s.full_name, 'portal_code': s.portal_code}
-                         for s in roster(db, ta)]}
+            'students': [student_out(s) for s in everyone],        # çıxmışlarda left_on var (məlumat yazıla bilməz)
+            'no_marks_14d': no_marks_recent(db, ta, everyone),
+            'locked': is_closed(ctx.year, d), 'can_unlock': user.role == Role.admin}
 
 
 class MarkIn(BaseModel):
@@ -103,6 +142,7 @@ class EntryIn(BaseModel):
     attendance: dict[int, Literal['var', 'yox', 'üzrlü', 'gecikdi']] = Field(default_factory=dict)
     marks: list[MarkIn] = Field(default_factory=list)
     homework_checks: dict[int, Literal['etdi', 'qismən', 'etmədi', 'köçürüb']] = Field(default_factory=dict)
+    unlock_reason: str | None = Field(None, max_length=300)   # yalnız admin: bağlanmış yarımildə düzəliş səbəbi
 
 
 @router.put('/{ta_id}/entry')
@@ -115,8 +155,13 @@ def save_entry(ta_id: int, body: EntryIn, user: User = Depends(staff), db: Sessi
         raise HTTPException(400, 'Bu tarixdə və saatda dərsiniz yoxdur (bayram, tətil və ya cədvəldə yoxdur)')
     if body.date > today() + dt.timedelta(days=14):
         raise HTTPException(400, 'Gələcək dərs üçün jurnal yazıla bilməz (ev tapşırığı üçün 14 günə qədər)')
+    unlock = check_open(ctx.year, body.date, user, body.unlock_reason)       # J6: bağlanmış yarımil
     ids = {st.id for st in roster(db, ta)}
-    extra = (set(body.attendance) | {m.student_id for m in body.marks} | set(body.homework_checks)) - ids
+    left_ids = {st.id for st in roster(db, ta, since=body.date)} - ids        # çıxmışların köhnə yazıları qorunur
+    sent = set(body.attendance) | {m.student_id for m in body.marks} | set(body.homework_checks)
+    if sent & left_ids:
+        raise HTTPException(400, 'Sinifdən çıxmış şagirdə yeni məlumat yazıla bilməz')
+    extra = sent - ids
     if extra:
         raise HTTPException(400, f'Bu şagirdlər bu sinifdə/qrupda deyil: {sorted(extra)}')
     if body.date > today() and (body.attendance or body.marks or body.homework_checks):
@@ -139,6 +184,9 @@ def save_entry(ta_id: int, body: EntryIn, user: User = Depends(staff), db: Sessi
     pl = taught_lesson(ctx, s, e)          # düzəliş zamanı yazılmış mövzu dəyişmir
     if pl and pl.assessment_type in SUMMATIVE and body.marks:
         raise HTTPException(400, f'{pl.assessment_type} günü formativ qiymət yazılmır – nəticələr «KSQ / BSQ» bölməsində')
+    if pl and pl.assessment_type == DIAGNOSTIC and any(not _from_task(m) for m in body.marks):
+        raise HTTPException(400, 'Diaqnostik qiymətləndirmə günü bal (2–5) yazılmır – yalnız davamiyyət, dərs qeydi və ev tapşırığı. '
+                                 'Diaqnostika nəticəsi səviyyəni müəyyən etmək üçündür')
     if e is None:
         e = JournalEntry(assignment_id=ta.id, date=body.date, period=body.period)
         db.add(e)
@@ -147,14 +195,28 @@ def save_entry(ta_id: int, body: EntryIn, user: User = Depends(staff), db: Sessi
     e.homework, e.note = body.homework, body.note
     e.auto = False                         # müəllim saxladı – dərs yazılıb
     db.flush()
+    # J6: audit üçün «bu dəfə nə dəyişdi» – qiymətlər (şagird, növ, köhnə → yeni) və davamiyyət dəyişənlərinin sayı
+    old_marks = {(m.student_id, m.kind): m.grade for m in db.scalars(select(Mark).where(Mark.entry_id == e.id))}
+    old_att = {a.student_id: a.status for a in db.scalars(select(Attendance).where(Attendance.entry_id == e.id))}
+    new_marks = {(m.student_id, m.kind): m.grade for m in body.marks}
+    diff = [{'student_id': k[0], 'kind': k[1], 'old': old_marks.get(k), 'new': new_marks.get(k)}
+            for k in sorted(set(old_marks) | set(new_marks)) if k[0] not in left_ids and old_marks.get(k) != new_marks.get(k)]
+    att_changed = sum(old_att.get(k) != body.attendance.get(k) for k in (set(old_att) | set(body.attendance)) - left_ids)
     for model in (Attendance, Mark, HomeworkCheck):
-        db.query(model).filter(model.entry_id == e.id).delete()
+        db.query(model).filter(model.entry_id == e.id, model.student_id.not_in(list(left_ids) or [0])).delete(synchronize_session=False)
     db.add_all(Attendance(entry_id=e.id, student_id=k, status=v) for k, v in body.attendance.items())
     db.add_all(Mark(entry_id=e.id, task_id=_from_task(m), **m.model_dump()) for m in body.marks)
     db.add_all(HomeworkCheck(entry_id=e.id, student_id=k, status=v) for k, v in body.homework_checks.items())
-    audit(db, user, 'update', 'journal', e.id, date=str(body.date), period=body.period)
+    audit(db, user, 'update', 'journal', e.id, date=str(body.date), period=body.period, marks_diff=diff,
+          attendance_changed=att_changed, **({'unlock_reason': unlock} if unlock else {}))
     db.commit()
-    return {'id': e.id, **_entry_payload(db, e)}
+    # J9: davamiyyət göndərilib, lakin bəzi şagirdlər boş qalıb – bloklanmır, xəbərdarlıq
+    warnings = []
+    missing = len(ids - set(body.attendance)) if body.attendance else 0
+    if missing:
+        warnings.append({'key': '{n} şagirdin davamiyyəti yazılmayıb', 'params': {'n': missing},
+                         'message': f'{missing} şagirdin davamiyyəti yazılmayıb'})
+    return {'id': e.id, **_entry_payload(db, e), 'warnings': warnings}
 
 
 CELL_ATT = {'yox': 'q', 'üzrlü': 'ü', 'gecikdi': 'g'}
@@ -211,7 +273,8 @@ def grid(ta_id: int, month: str | None = None, user: User = Depends(staff), db: 
                                                                   pl.assessment_type if pl and pl.assessment_type != 'formativ' else None),
                      'homework': e.homework if e else None, 'future': k[0] > today()})
     rows = []
-    for s in roster(db, ta):
+    studs = roster(db, ta, since=a)             # ay ərzində çıxanlar da (J2)
+    for s in studs:
         cells = []
         for _, is_ex, _, k in order:
             if is_ex:
@@ -227,10 +290,12 @@ def grid(ta_id: int, month: str | None = None, user: User = Depends(staff), db: 
                 c['att'] = CELL_ATT.get(att.get((e.id, s.id)))
             cells.append(c)
         g = [x for c in cells for x in c['marks']]
-        rows.append({'student_id': s.id, 'full_name': s.full_name, 'cells': cells, **exam_stats(exs, s.id),
+        rows.append({'student_id': s.id, 'full_name': s.full_name, 'left_on': s.left_on if s.archived_at else None,
+                     'cells': cells, **exam_stats(exs, s.id),
                      'avg': round(sum(g) / len(g), 2) if g else None, 'missed': sum(c['att'] in ('q', 'ü') for c in cells)})
     return {'month': f'{a:%Y-%m}', 'from': a, 'to': b, 'class_name': ctx.cls.name, 'subject': ta.subject,
-            'year_start': ctx.year.start, 'year_end': ctx.year.end, 'columns': cols, 'rows': rows, 'exams': len(exs)}
+            'year_start': ctx.year.start, 'year_end': ctx.year.end, 'columns': cols, 'rows': rows, 'exams': len(exs),
+            'no_marks_14d': no_marks_recent(db, ta, studs)}
 
 
 @router.get('/{ta_id}/summary')
@@ -251,12 +316,19 @@ def summary(ta_id: int, semester: int | None = None, user: User = Depends(staff)
     hw = list(db.scalars(select(HomeworkCheck).where(HomeworkCheck.entry_id.in_(eids))))
     hw_w = {'etdi': 1.0, 'qismən': 0.5, 'etmədi': 0.0, 'köçürüb': 0.0}
     out = []
-    for s in roster(db, ta):
+    since = ctx.year.sem2_start if semester == 2 else ctx.year.start
+    avg = lambda v: round(sum(v) / len(v), 2) if v else None
+    for s in roster(db, ta, since=since):                   # dövr ərzində çıxanlar da (J2)
         g = [m.grade for m in marks if m.student_id == s.id]
         t = [m for m in marks if m.student_id == s.id and m.kind == 'test']
+        # J5/J7: perspektiv plan testləri (onlayn mövzu testi, task_id) ayrıca; sinifdə şifahi/yazılı/əl ilə test – ayrıca
+        gp = [m.grade for m in t if m.task_id is not None]
+        gc = [m.grade for m in marks if m.student_id == s.id and not (m.kind == 'test' and m.task_id is not None)]
         a = [x.status for x in att if x.student_id == s.id]
         h = [hw_w[x.status] for x in hw if x.student_id == s.id]
-        out.append({'student_id': s.id, 'full_name': s.full_name,
+        out.append({'student_id': s.id, 'full_name': s.full_name, 'left_on': s.left_on if s.archived_at else None,
+                    'avg_plan_tests': avg(gp), 'plan_tests': len(gp), 'avg_class': avg(gc), 'class_marks': len(gc),
+                    'copied': sum(x.status == 'köçürüb' for x in hw if x.student_id == s.id),
                     'avg_grade': round(sum(g) / len(g), 2) if g else None, 'marks': len(g),
                     'tests': len(t), 'test_pct': round(sum(m.test_correct for m in t) * 100 / sum(m.test_total for m in t), 1) if t else None,
                     'lessons': len(a), 'absent': a.count('yox') + a.count('üzrlü'), 'late': a.count('gecikdi'),
@@ -264,3 +336,49 @@ def summary(ta_id: int, semester: int | None = None, user: User = Depends(staff)
                     'homework_pct': round(sum(h) * 100 / len(h), 1) if h else None, **exam_stats(exs, s.id)})
     written = db.scalar(select(func.count()).select_from(JournalEntry).where(JournalEntry.id.in_(eids), JournalEntry.auto.is_(False))) if eids else 0
     return {'lessons_written': written, 'students': out, 'exams': len(exs)}
+
+
+CLASS_AVG_MIN_STUDENTS = 5          # sinif ortası 5-dən az şagirddə göstərilmir (portaldakı qayda ilə eyni)
+
+
+@router.get('/{ta_id}/standards')
+def standards(ta_id: int, semester: int | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Standartlar / mövzular üzrə mənimsəmə (J5). Formativ qiymətləndirmə = perspektiv plan testləri: jurnalda
+    task_id olan «test» qiymətləri, standart və mövzu – dərsin plan sətrindən (JournalEntry.plan_lesson_id → PlanLesson).
+    Hər standart/mövzu üçün: test sayı, sinif üzrə və şagirdlər üzrə orta faiz (düzgün / sual)."""
+    from ..performance import sem_range
+    ta = own_assignment(db, user, ta_id)
+    ctx = plan_ctx(db, ta)
+    a, b = sem_range(ctx, semester)
+    studs = {s.id: s for s in roster(db, ta, since=a)}
+    lessons = {pl.id: pl for pl in ctx.lessons}
+    rows = db.execute(select(Mark, JournalEntry.plan_lesson_id).join(JournalEntry, JournalEntry.id == Mark.entry_id).where(
+        JournalEntry.assignment_id == ta.id, JournalEntry.date >= a, JournalEntry.date <= b,
+        Mark.kind == 'test', Mark.task_id.is_not(None), Mark.test_total.is_not(None), Mark.test_total > 0))
+    by_std: dict[str, dict] = {}
+    by_topic: dict[str, dict] = {}
+    unlinked = 0
+    for m, plid in rows:
+        pl = lessons.get(plid)
+        if pl is None or m.student_id not in studs:
+            unlinked += pl is None
+            continue
+        pct = (m.test_correct or 0) * 100 / m.test_total
+        for bucket, key in [(by_std, k) for k in dict.fromkeys(pl.standards or [])] + ([(by_topic, pl.topic)] if pl.topic else []):
+            g = bucket.setdefault(key, {'tasks': set(), 'per': {}})
+            g['tasks'].add(m.task_id)
+            g['per'].setdefault(m.student_id, []).append(pct)
+    hidden = sum(1 for s in studs.values() if not s.archived_at) < CLASS_AVG_MIN_STUDENTS
+
+    def build(bucket: dict, field: str) -> list[dict]:
+        out = []
+        for key, g in sorted(bucket.items()):
+            allp = [p for v in g['per'].values() for p in v]
+            out.append({field: key, 'tests': len(g['tasks']), 'results': len(allp),
+                        'class_pct': None if hidden else round(sum(allp) / len(allp), 1),
+                        'students': sorted(({'student_id': sid, 'full_name': studs[sid].full_name,
+                                             'tests': len(v), 'pct': round(sum(v) / len(v), 1)} for sid, v in g['per'].items()),
+                                           key=lambda x: x['pct'])})
+        return out
+    return {'semester': semester, 'standards': build(by_std, 'standard'), 'topics': build(by_topic, 'topic'),
+            'class_avg_hidden': hidden, 'unlinked': unlinked}

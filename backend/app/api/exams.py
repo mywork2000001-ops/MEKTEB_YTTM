@@ -13,10 +13,10 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import staff
-from ..domain.rules import grade_from_points, semester_grade
+from ..domain.rules import grade_from_points, semester_grade, year_grade
 from ..models import BankQuestion, Exam, ExamAppeal, ExamScan, ExamScore, ExamVariant, OnlineTask, SchoolClass, TeachingAssignment, User, now
 from ..appeals import freeze_refs, ref_of
-from ..exam_logic import exam_label, exam_roster, final_grades, recompute_score, scan_of
+from ..exam_logic import exam_label, exam_roster, final_grades, missed_ksq, recompute_score, scan_of
 from ..services import own_assignment, plan_ctx, roster, today
 from .common import audit, get_or_404
 
@@ -392,22 +392,33 @@ def semester(ta_id: int, sem: int, user: User = Depends(staff), db: Session = De
     ta = own_assignment(db, user, ta_id)
     if sem not in (1, 2):
         raise HTTPException(400, 'yarımil: 1 və ya 2')
-    exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.semester == sem, Exam.kind.in_(("KSQ", "BSQ")))
-                            .order_by(Exam.kind.desc(), Exam.no)))
+    all_exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.kind.in_(("KSQ", "BSQ")))
+                                .order_by(Exam.kind.desc(), Exam.no)))
     scores = {(sc.exam_id, sc.student_id): sc for sc in db.scalars(
-        select(ExamScore).where(ExamScore.exam_id.in_([e.id for e in exams])))}
+        select(ExamScore).where(ExamScore.exam_id.in_([e.id for e in all_exams])))}
     from ..services import plan_ctx
     from .exams_online import class_exams, exam_stats
     y = plan_ctx(db, ta).year
     exs = class_exams(db, ta, None if sem == 1 else y.sem2_start, y.sem1_end if sem == 1 else None)
-    out = []
-    for s in roster(db, ta):
-        mine = [e for e in exams if e.extra_students is None or s.id in e.extra_students]
+    now_d = today()
+
+    def calc(k: int, s):
+        mine = [e for e in all_exams if e.semester == k and (e.extra_students is None or s.id in e.extra_students)]
         ksq, bsq = final_grades(mine, lambda e: _row(e, scores.get((e.id, s.id)))['grade'])
-        ksq_grades = [g for _, g in ksq if g is not None]
-        out.append({'student_id': s.id, 'full_name': s.full_name, 'ksq': ksq, 'bsq': bsq,
+        grades = [g for _, g in ksq if g is not None]
+        return ksq, bsq, grades, semester_grade(grades, bsq), missed_ksq(mine, ksq, now_d)
+    out = []
+    for s in roster(db, ta, since=y.start if sem == 1 else y.sem2_start):      # dövr ərzində çıxanlar da (rəsmi jurnal)
+        ksq, bsq, ksq_grades, sg, missed = calc(sem, s)
+        other = calc(2 if sem == 1 else 1, s)[3]
+        out.append({'student_id': s.id, 'full_name': s.full_name, 'left_on': s.left_on if s.archived_at else None,
+                    'ksq': ksq, 'bsq': bsq,
                     'ksq_avg': round(sum(ksq_grades) / len(ksq_grades), 2) if ksq_grades else None,
-                    'semester_grade': semester_grade(ksq_grades, bsq), **exam_stats(exs, s.id)})
+                    'semester_grade': sg,
+                    # buraxılmış KSQ var – qiymət mövcud KSQ-lərə görə hesablanır, lakin «şərti» (⚠: əlavə KSQ təyin edin)
+                    'conditional': bool(missed), 'missed_ksq': missed,
+                    'year_grade': year_grade(*((sg, other) if sem == 1 else (other, sg))),
+                    **exam_stats(exs, s.id)})
     return {'semester': sem, 'formula': '(KSQ qiymətləri cəmi / sayı) × 0,4 + BSQ × 0,6', 'students': out,
             'exams': len(exs)}
 

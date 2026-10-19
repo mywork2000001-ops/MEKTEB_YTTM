@@ -161,6 +161,13 @@ def semester_grade(ksq_grades: list[int], bsq_grade: int | None) -> int | None:
     return int(v.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
 
+def year_grade(sem1: int | None, sem2: int | None) -> int | None:
+    """İllik qiymət = iki yarımil qiymətinin ortası, adi yuvarlaqlaşdırma (2,5 → 3). Biri yoxdursa – yoxdur."""
+    if sem1 is None or sem2 is None:
+        return None
+    return round_half_up((sem1 + sem2) / 2)
+
+
 def grade_from_points(points: float, max_points: float) -> int:
     """KSQ/BSQ bal → qiymət. Faiz xam dəyərdən hesablanır (ikiqat yuvarlaqlaşdırma olmasın)."""
     if max_points <= 0:

@@ -174,12 +174,14 @@ function Weekly() {
 /** Sinif sətri: başlıq (sinif + çiplər); şagird siyahısı standart olaraq bağlıdır. */
 function WkRow({ x }: { x: any }) {
   const t = useT()
-  const names: string[] = [...new Set<string>([...x.red, ...x.absence])]
+  const nomarks: string[] = x.no_marks || []
+  const names: string[] = [...new Set<string>([...x.red, ...x.absence, ...nomarks])]
   const chips = (
     <>
       {x.missing_week.length > 0 && <Pill tone="warn">{t('son 7 gündə yazılmayıb: {n} dərs', { n: x.missing_week.length })}</Pill>}
       {x.red.length > 0 && <Pill tone="bad">{t('qırmızı risk: {n}', { n: x.red.length })}</Pill>}
       {x.absence.length > 0 && <Pill tone="warn">{t('25%+ buraxır: {n}', { n: x.absence.length })}</Pill>}
+      {nomarks.length > 0 && <Pill tone="warn">{t('14 gündür qiymətsiz: {n}', { n: nomarks.length })}</Pill>}
     </>
   )
   const title = <>{x.class_name} <span className="small muted">{x.subject}</span></>
@@ -187,7 +189,7 @@ function WkRow({ x }: { x: any }) {
     <div className="wk-row"><div className="wk-head static"><b className="wk-name">{title}</b><span className="row wk-chips">{chips}</span></div></div>)
   return (
     <Disclosure variant="flat" title={title} summary={chips}>
-      <p className="small muted wk-names">{names.join(', ')}</p>
+      <p className="small muted wk-names">{names.join(", ")}</p>
     </Disclosure>
   )
 }

@@ -19,9 +19,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .domain.rules import grade_from_points, round_half_up, semester_grade
-from .exam_logic import final_grades
+from .exam_logic import final_grades, missed_ksq
 from .models import Exam, ExamScore, JournalEntry, Mark
-from .services import PlanCtx, roster
+from .services import PlanCtx, roster, today
 
 SOU_W = {5: 100, 4: 64, 3: 36, 2: 16}
 MIN_MARKS = 3        # yarımil qiyməti yoxdursa, formativ ortadan fənn qiyməti ən azı bu qədər qiymətlə çıxarılır
@@ -83,7 +83,9 @@ def semester_grades(db: Session, ta_id: int, sem: int, sids: list[int]) -> dict[
     for sid in sids:
         ksq_p, bsq = final_grades(exams, lambda e: g(e, sid))          # əlavə imtahan ayrıca sayılmır
         ksq = [x for _, x in ksq_p if x is not None]
-        out[sid] = {'ksq': ksq, 'bsq': bsq, 'semester_grade': semester_grade(ksq, bsq)}
+        missed = missed_ksq(exams, ksq_p, today())
+        out[sid] = {'ksq': ksq, 'bsq': bsq, 'semester_grade': semester_grade(ksq, bsq),
+                    'conditional': bool(missed), 'missed_ksq': missed}    # buraxılmış KSQ var – qiymət «şərti»
     return out
 
 

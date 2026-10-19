@@ -567,6 +567,7 @@ def _own_task(db: Session, user: User, ta_id: int, task_id: int) -> OnlineTask:
 class ToJournalIn(BaseModel):
     date: dt.date | None = None          # boş – testin açıldığı gün (Bakı vaxtı)
     period: int | None = Field(None, ge=0, le=9)
+    unlock_reason: str | None = Field(None, max_length=300)   # admin: bağlanmış yarımildə köçürmə səbəbi
 
 
 @router.post('/{ta_id}/{task_id}/to-journal')
@@ -577,7 +578,7 @@ def to_journal(ta_id: int, task_id: int, body: ToJournalIn, user: User = Depends
     from ..domain.plan import slot_at
     from ..models import Attendance, JournalEntry, Mark
     from ..services import SCHOOL_TZ, plan_ctx, taught_lesson, today
-    from .journal import SUMMATIVE
+    from .journal import SUMMATIVE, check_open
     t = _own_task(db, user, ta_id, task_id)
     if t.kind == 'extra':
         raise HTTPException(400, 'Əlavə məşğələ testi jurnala köçürülmür – nəticə məşğələ statistikasındadır')
@@ -601,6 +602,7 @@ def to_journal(ta_id: int, task_id: int, body: ToJournalIn, user: User = Depends
         raise HTTPException(400, f'{d:%d.%m.%Y} tarixində bu sinifdə dərs yoxdur – dərsi (tarix və saat) seçin')
     if d > today():
         raise HTTPException(400, 'Gələcək dərsə qiymət yazılmır')
+    unlock = check_open(ctx.year, d, user, body.unlock_reason)         # bağlanmış yarımil: yalnız admin + səbəb
     e = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == d,
                                              JournalEntry.period == s.period))
     pl = taught_lesson(ctx, s, e)
@@ -630,7 +632,7 @@ def to_journal(ta_id: int, task_id: int, body: ToJournalIn, user: User = Depends
         m.test_correct, m.test_total = a.correct, a.total
         m.grade = summative_grade(apct(a))
         m.comment, m.task_id = f'Onlayn test: {t.title}'[:300], t.id
-    audit(db, user, 'update', 'journal', e.id, from_task=t.id, copied=copied, updated=updated)
+    audit(db, user, 'update', 'journal', e.id, from_task=t.id, copied=copied, updated=updated, **({'unlock_reason': unlock} if unlock else {}))
     db.commit()
     return {'date': d, 'period': s.period, 'topic': (e.topic or (pl.topic if pl else None)), 'copied': copied,
             'updated': updated, 'skipped': skipped}

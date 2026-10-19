@@ -12,18 +12,18 @@ import { tt, useT } from '../../i18n'
 import { useSearchParams } from 'react-router-dom'
 import LevelGroups from './LevelGroups'
 
-type Stud = { id: number; full_name: string; portal_code: string }
-type MarkRow = { student_id: number; kind: 'şifahi' | 'yazılı' | 'test'; grade?: number | null; test_correct?: number | null; test_total?: number | null; comment?: string | null }
+type Stud = { id: number; full_name: string; portal_code: string; left_on?: string | null }
+type MarkRow = { student_id: number; task_id?: number | null; kind: 'şifahi' | 'yazılı' | 'test'; grade?: number | null; test_correct?: number | null; test_total?: number | null; comment?: string | null }
 type Lesson = {
   period: number; time: string | null; held: boolean; shift: number; homework_to_check: string | null
   plan: { topic: string; assessment_type: string; section: string | null; resources: string | null; seq: number; standards: string[] | null; tasks: { kind: string; label: string; start: number; end: number }[] | null } | null
   entry: { exists: boolean; auto?: boolean; topic?: string | null; homework?: string | null; note?: string | null; attendance: Record<string, string>; marks: MarkRow[]; homework_checks: Record<string, string> }
   prev_attendance: { period: number; attendance: Record<string, string> } | null      // həmin gün əvvəlki yazılmış dərsdən (təklif)
 }
-type Day = { date: string; weekday: string | null; class_name: string; lessons: Lesson[]; students: Stud[]; prev_day: string | null; next_day: string | null }
+type Day = { date: string; weekday: string | null; class_name: string; lessons: Lesson[]; students: Stud[]; no_marks_14d: number[]; locked: boolean; can_unlock: boolean; prev_day: string | null; next_day: string | null }
 const written = (l: Lesson) => l.entry.exists && !l.entry.auto
 
-const TABS = [['day', 'Gündəlik'], ['grid', 'Jurnal səhifəsi'], ['students', 'Şagirdlər'], ['levels', 'Səviyyə qrupları'], ['exams', 'KSQ / BSQ'], ['semester', 'Yarımil'], ['topics', 'Mövzular və irəliləyiş'], ['summary', 'Xülasə']] as const
+const TABS = [['day', 'Gündəlik'], ['grid', 'Jurnal səhifəsi'], ['students', 'Şagirdlər'], ['levels', 'Səviyyə qrupları'], ['exams', 'KSQ / BSQ'], ['semester', 'Yarımil'], ['topics', 'Mövzular və irəliləyiş'], ['summary', 'Xülasə'], ['standards', 'Standartlar üzrə mənimsəmə']] as const
 
 export default function Journal() {
   const t = useT()
@@ -59,6 +59,7 @@ export default function Journal() {
           {tab === 'semester' && <Semester ta={cur} />}
           {tab === 'topics' && <Topics ta={cur} />}
           {tab === 'summary' && <Summary ta={cur} />}
+          {tab === 'standards' && <Standards ta={cur} />}
         </>
       )}
     </>
@@ -99,17 +100,23 @@ function DayView({ ta, date, setDate }: { ta: MyLesson; date: string; setDate: (
                     {`${i + 1}. ${lessonWhen(l.period, l.time)}${l.time && lessonWhen(l.period, l.time) !== l.time ? ` (${l.time})` : ''} – ${(l.plan?.topic || l.entry.topic || '').slice(0, 50)} · ${written(l) ? '✓ ' + tt('yazılıb') : '● ' + tt('yazılmayıb')}`}</option>)}
                 </select></label>
             </div>)}
-          {cur && <LessonCard key={`${date}-${cur.period}`} ta={ta} date={date} lesson={cur} students={day.students}
+          {cur && <LessonCard key={`${date}-${cur.period}`} ta={ta} date={date} lesson={cur} students={day.students.filter(s => !s.left_on)}
+            left={day.students.filter(s => !!s.left_on)} noMarks={day.no_marks_14d || []} locked={!!day.locked} canUnlock={!!day.can_unlock}
             onSaved={() => { setDirty(false); reload() }} onDirty={setDirty} />}
         </>)}
     </>
   )
 }
 
-function LessonCard({ ta, date, lesson, students, onSaved, onDirty }: { ta: MyLesson; date: string; lesson: Lesson; students: Stud[]; onSaved: () => void; onDirty?: (v: boolean) => void }) {
+const dm = (d?: string | null) => fmtDate(d).slice(0, 5)         // 12.11
+
+function LessonCard({ ta, date, lesson, students, left, noMarks, locked, canUnlock, onSaved, onDirty }: { ta: MyLesson; date: string; lesson: Lesson; students: Stud[]
+  left: Stud[]; noMarks: number[]; locked: boolean; canUnlock: boolean; onSaved: () => void; onDirty?: (v: boolean) => void }) {
   const t = useT()
   const nav = useNavigate()
   const e = lesson.entry
+  const [unlock, setUnlock] = useState('')
+  const ro = locked && !canUnlock                  // bağlanmış yarımil: adi müəllim yalnız oxuyur, admin səbəblə dəyişə bilər
   const [topic, setTopic] = useState(e.topic || '')
   const [homework, setHomework] = useState(e.homework || '')
   const [note, setNote] = useState(e.note || '')
@@ -132,11 +139,17 @@ function LessonCard({ ta, date, lesson, students, onSaved, onDirty }: { ta: MyLe
     return n
   })
   const save = async () => {
-    const ms = Object.values(marks).filter(m => (m.kind === 'test' ? m.test_correct != null : m.grade)).map(m =>
+    if (locked && unlock.trim().length < 5) { toast(t('Admin: bağlanmış yarımildə düzəliş səbəbini yazın (ən azı 5 simvol)')); return }
+    let ms = Object.values(marks).filter(m => (m.kind === 'test' ? m.test_correct != null : m.grade)).map(m =>
       m.kind === 'test' ? { student_id: m.student_id, kind: 'test', test_correct: m.test_correct, test_total: testTotal, comment: m.comment || null } : { student_id: m.student_id, kind: m.kind, grade: m.grade, comment: m.comment || null })
-    const r = await put(`/api/journal/${ta.id}/entry`, { date, period: lesson.period, topic: topic || null, homework: homework || null, note: note.trim() || null, ...(future ? { attendance: {}, marks: [], homework_checks: {} } : { attendance: att, marks: isExam ? [] : ms, homework_checks: hw }) })
+    // diaqnostik gün: bal yazılmır – yalnız onlayn testdən gələn qiymətlər olduğu kimi qalır
+    if (isDiag) ms = ms.filter(m => e.marks.some(o => o.student_id === m.student_id && o.task_id))
+    const r = await put(`/api/journal/${ta.id}/entry`, { date, period: lesson.period, topic: topic || null, homework: homework || null, note: note.trim() || null,
+      ...(locked ? { unlock_reason: unlock.trim() } : {}),
+      ...(future ? { attendance: {}, marks: [], homework_checks: {} } : { attendance: att, marks: isExam ? [] : ms, homework_checks: hw }) })
     if (r?.queued) { toast(t('Oflayn – yazı növbəyə düşdü, internet qayıdanda göndəriləcək')); return }
     toast('Yadda saxlanıldı')
+    for (const w of r?.warnings || []) toast(tt(w.key, w.params))
     onSaved()
   }
   const hold = async () => {
@@ -151,9 +164,15 @@ function LessonCard({ ta, date, lesson, students, onSaved, onDirty }: { ta: MyLe
   const cnt = (v: string) => students.filter(s => att[s.id] === v).length
   const future = date > isoDate(new Date())
   const isExam = lesson.plan && ['KSQ', 'BSQ'].includes(lesson.plan.assessment_type)
+  const isDiag = lesson.plan?.assessment_type === 'diaqnostik'          // diaqnostik gün: bal (2–5) yazılmır
+  const unmarked = students.filter(s => !att[s.id])                       // davamiyyəti boş qalanlar
 
   return (
     <section className="panel" style={{ marginBottom: 16 }}>
+      {locked && <div className="jcopy" role="status">🔒 {t('Yarımil bağlanıb – dəyişiklik yalnız admin icazəsi ilə')}{ro ? <> · {t('Bu dərs yalnız oxumaq üçündür.')}</> : (
+        <label className="small row" style={{ marginTop: 6 }}>{t('Admin: bağlanmış yarımildə düzəliş səbəbi (≥ 5 simvol)')}
+          <input className="sel" style={{ minWidth: 260 }} maxLength={300} value={unlock} onChange={x => setUnlock(x.target.value)} /></label>)}</div>}
+      <fieldset disabled={ro} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <h2 style={{ flexWrap: 'wrap' }}>{lessonWhen(lesson.period, lesson.time)} {lessonWhen(lesson.period, lesson.time) !== lesson.time && <small>{lesson.time}</small>}
         {isExam && <Pill tone="warn">{lesson.plan!.assessment_type}</Pill>}
         {lesson.shift > 0 && <Pill tone="warn">{t('geriləmə:')} {lesson.shift} {t('dərs')}</Pill>}
@@ -189,17 +208,20 @@ function LessonCard({ ta, date, lesson, students, onSaved, onDirty }: { ta: MyLe
         {lesson.homework_to_check && <span className="small">{t('Yoxlanılacaq:')} <b>{lesson.homework_to_check}</b></span>}
         <button className="btn sm ghost right" onClick={() => { setAtt(Object.fromEntries(students.map(s => [s.id, 'var']))); setTouched(new Set(students.map(s => s.id))) }}>{tt('Hamısını «var» et')}</button>
       </div>
+      {unmarked.length > 0 && <div className="jcopy" role="status">⚠ {t('{n} şagirdin davamiyyəti yazılmayıb', { n: unmarked.length })}{' '}
+        <button type="button" className="btn sm" onClick={() => { setAtt(prev => ({ ...prev, ...Object.fromEntries(unmarked.map(s => [s.id, 'var'])) })); setTouched(prev => new Set([...prev, ...unmarked.map(s => s.id)])) }}>{t('Hamısı var')}</button></div>}
+      {isDiag && <p className="small" style={{ margin: '0 0 8px', color: 'var(--warn)' }}>{t('Diaqnostik qiymətləndirmə günü bal (2–5) yazılmır – yalnız davamiyyət, dərs qeydi və ev tapşırığı. Nəticə səviyyəni müəyyən etmək üçündür.')}</p>}
       <div className="jlist">
         {students.map(s => {
           const m = marks[s.id]
           const absent = out(att[s.id])
           return (
             <div className="jrow cols jmark" key={s.id} style={{ ['--cols' as any]: 'minmax(160px,1fr) auto auto auto' }}>
-              <span><b>{s.full_name}</b><span className="sub small muted"> {s.portal_code}</span></span>
+              <span><b>{s.full_name}</b><span className="sub small muted"> {s.portal_code}</span>{noMarks.includes(s.id) && <span title={t("Son 14 gündə heç bir qiyməti yoxdur")} style={{ color: "var(--warn)" }}> ⏳</span>}</span>
               <div className={'att-btns' + (copied && !touched.has(s.id) && att[s.id] !== 'var' ? ' copied' : '')} role="group" aria-label={t('Davamiyyət')}>
                 {ATT.map(([v, short, cls]) => <button key={v} className={cls} title={v} aria-pressed={att[s.id] === v} onClick={() => { setAtt({ ...att, [s.id]: v }); setTouched(t => new Set(t).add(s.id)); if (out(v)) { setMark(s.id, null); if (hw[s.id]) { const n = { ...hw }; delete n[s.id]; setHw(n) } } }}>{short}</button>)}
               </div>
-              <div className="row" aria-label={t('Qiymət')}>
+              {isDiag ? <span /> : <div className="row" aria-label={t('Qiymət')}>
                 <select className="grade-sel" disabled={absent || !!isExam} value={m?.kind || 'şifahi'} onChange={x => setMark(s.id, { kind: x.target.value as MarkRow['kind'] })}>
                   <option value="şifahi">{t('şifahi')}</option><option value="yazılı">{t('yazılı')}</option><option value="test">{t('test')}</option>
                 </select>
@@ -215,12 +237,17 @@ function LessonCard({ ta, date, lesson, students, onSaved, onDirty }: { ta: MyLe
                 )}
                 {m?.kind === 'test' && m.test_correct != null && <Pill tone={gradeTone(autoGrade(m.test_correct, testTotal))}>{Math.round(m.test_correct * 100 / testTotal)}% → {autoGrade(m.test_correct, testTotal)}</Pill>}
                 {m && (m.grade || m.test_correct != null) && <input className="sel" style={{ maxWidth: 220, minHeight: 36 }} maxLength={300} placeholder={t('rəy (istəyə görə)')} value={m.comment || ''} onChange={x => setMark(s.id, { comment: x.target.value })} aria-label={'Rəy: ' + s.full_name} />}
-              </div>
+              </div>}
               <select className="grade-sel" disabled={absent} value={hw[s.id] || ''} onChange={x => { const n = { ...hw }; if (x.target.value) n[s.id] = x.target.value; else delete n[s.id]; setHw(n) }} aria-label={t('Ev tapşırığı')}>
                 <option value="">{t('ev tap. —')}</option>{HW.map(h => <option key={h}>{h}</option>)}
               </select>
             </div>)
         })}
+        {left.map(s => (
+          <div className="jrow cols jmark" key={s.id} style={{ ['--cols' as any]: 'minmax(160px,1fr) auto', opacity: 0.55 }} title={t('Sinifdən çıxıb – məlumat yazılmır')}>
+            <span><b>{s.full_name}</b><span className="sub small muted"> {t('köçüb {d}', { d: dm(s.left_on) })}</span></span>
+            <span className="small muted">{e.attendance[s.id] ? ATT.find(a => a[0] === e.attendance[s.id])?.[1] : ''}</span>
+          </div>))}
       </div></>}
       <div className="row" style={{ marginTop: 12 }}>
         <AsyncBtn className="btn" onClick={hold}>{lesson.held ? t('Saxlamanı götür') : t('Mövzunu saxla')}</AsyncBtn>
@@ -231,6 +258,7 @@ function LessonCard({ ta, date, lesson, students, onSaved, onDirty }: { ta: MyLe
         <span className="small muted">{future ? 'Mövzu və ev tapşırığı' : t('İştirak: {present}/{length} · qiymət: {length2}', { present, length: students.length, length2: Object.values(marks).filter(m => m.kind === 'test' ? m.test_correct != null : m.grade).length })}</span>
         <AsyncBtn className="btn primary" onClick={save}>{t('Yadda saxla')}</AsyncBtn>
       </div>
+      </fieldset>
     </section>
   )
 }
@@ -246,26 +274,36 @@ function autoGrade(correct: number, total: number) {
   return p <= 30 ? 2 : p <= 60 ? 3 : p <= 80 ? 4 : 5
 }
 
+/** Çıxmış şagird: ad + «köçüb 12.11» (rəsmi çap – yalnız AZ). */
+const leftName = (s: { full_name: string; left_on?: string | null }) => s.full_name + (s.left_on ? ` (köçüb ${dm(s.left_on)})` : '')
+
 function Semester({ ta }: { ta: MyLesson }) {
   const t = useT()
   const [sem, setSem] = useState(1)
   const [d, err] = useLoad<any>(() => get(`/api/exams/${ta.id}/semester/${sem}`), [ta.id, sem])
   if (!ta.has_summative) return <div className="empty">{t('Bu qrupda KSQ/BSQ keçirilmir – bütöv sinifdə keçirilir.')}</div>
+  const cond = (s: any) => t('Şərti qiymət – KSQ {n} buraxılıb. Əlavə KSQ təyin edin.', { n: (s.missed_ksq || []).join(', ') })
+  const year = sem === 2
   return (
     <>
       <div className="row" style={{ marginBottom: 12 }}>
         {[1, 2].map(s => <button key={s} className="chip" aria-pressed={sem === s} onClick={() => setSem(s)}>{t('{n}-ci yarımil', { n: s })}</button>)}
         <span className="small muted">{d?.formula}</span>
-        {d && <button className="btn sm right" onClick={() => printDoc({ signers: sg(), title: `${ta.class_name} – ${sem}-ci yarımil qiymətləri`, body: head(`${ta.class_name} – ${ta.subject}: ${sem}-ci yarımil`, d.formula) + table(['№', 'Şagird', 'KSQ', 'KSQ orta', 'BSQ', 'Yarımil', ...(d.exams ? ['Sınaq', 'Sınaq orta %'] : [])], d.students.map((s: any, i: number) => [i + 1, s.full_name, s.ksq.map(([n, g]: [number, number | null]) => `${n}: ${g ?? '—'}`).join('  '), fmtN(s.ksq_avg, 2), s.bsq ?? '—', s.semester_grade ?? '—', ...(d.exams ? [`${s.exam_count}/${d.exams}`, fmtN(s.exam_pct)] : [])]), [3, 4, 5, 6, 7]) + (d.exams ? '<p>Sınaq imtahanları yarımil qiymətinə daxil deyil – ayrıca göstərilir.</p>' : '') + '<p class="sign">Müəllim: ____________</p>' })}>Çap / PDF</button>}
+        {d && <button className="btn sm right" onClick={() => printDoc({ signers: sg(), title: `${ta.class_name} – ${sem}-ci yarımil qiymətləri`, body: head(`${ta.class_name} – ${ta.subject}: ${sem}-ci yarımil`, d.formula) + table(['№', 'Şagird', 'KSQ', 'KSQ orta', 'BSQ', 'Yarımil', ...(year ? ['İllik'] : []), ...(d.exams ? ['Sınaq', 'Sınaq orta %'] : [])], d.students.map((s: any, i: number) => [i + 1, leftName(s), s.ksq.map(([n, g]: [number, number | null]) => `${n}: ${g ?? '—'}`).join('  '), fmtN(s.ksq_avg, 2), s.bsq ?? '—', (s.semester_grade ?? '—') + (s.conditional ? ' ⚠' : ''), ...(year ? [s.year_grade ?? '—'] : []), ...(d.exams ? [`${s.exam_count}/${d.exams}`, fmtN(s.exam_pct)] : [])]), [3, 4, 5, 6, 7, 8]) + (d.students.some((s: any) => s.conditional) ? '<p>⚠ – buraxılmış KSQ var: yarımil qiyməti mövcud KSQ-lərə görə hesablanıb (şərti), əlavə KSQ təyin edilməlidir.</p>' : '') + (year ? '<p>İllik qiymət = iki yarımil qiymətinin ortası (adi yuvarlaqlaşdırma).</p>' : '') + (d.exams ? '<p>Sınaq imtahanları yarımil qiymətinə daxil deyil – ayrıca göstərilir.</p>' : '') + '<p class="sign">Müəllim: ____________</p>' })}>Çap / PDF</button>}
       </div>
       <ErrorBox error={err} />
-      <div className="tbl-wrap"><table><thead><tr><th>{t('Şagird')}</th><th>KSQ</th><th className="r">{t('KSQ orta')}</th><th className="r">BSQ</th><th className="r">{t('Yarımil')}</th>{d?.exams > 0 && <><th className="r sinaq-col">{t('Sınaq')}</th><th className="r sinaq-col">{t('Sınaq orta %')}</th></>}</tr></thead>
+      <div className="tbl-wrap"><table><thead><tr><th>{t('Şagird')}</th><th>KSQ</th><th className="r">{t('KSQ orta')}</th><th className="r">BSQ</th><th className="r">{t('Yarımil')}</th>{year && <th className="r">{t('İllik')}</th>}{d?.exams > 0 && <><th className="r sinaq-col">{t('Sınaq')}</th><th className="r sinaq-col">{t('Sınaq orta %')}</th></>}</tr></thead>
         <tbody>{d?.students.map((s: any) => (
-          <tr key={s.student_id}><td>{s.full_name}</td>
+          <tr key={s.student_id} style={s.left_on ? { opacity: 0.6 } : undefined}>
+            <td>{s.full_name}{s.left_on && <span className="small muted"> · {t('köçüb {d}', { d: dm(s.left_on) })}</span>}</td>
             <td className="small">{s.ksq.map(([n, g]: [number, number | null]) => <span key={n} style={{ marginRight: 6 }}>{n}: <b>{g ?? '—'}</b></span>)}</td>
             <td className="r num">{fmt(s.ksq_avg, 2)}</td><td className="r num">{s.bsq ?? '—'}</td>
-            <td className="r">{s.semester_grade ? <Pill tone={gradeTone(s.semester_grade)}>{s.semester_grade}</Pill> : '—'}</td>
+            <td className="r">{s.semester_grade ? <Pill tone={gradeTone(s.semester_grade)}>{s.semester_grade}</Pill> : '—'}
+              {s.conditional && <span title={cond(s)} aria-label={cond(s)} style={{ color: 'var(--warn)', marginLeft: 4, cursor: 'help' }}>⚠</span>}</td>
+            {year && <td className="r">{s.year_grade ? <Pill tone={gradeTone(s.year_grade)}>{s.year_grade}</Pill> : '—'}</td>}
             {d.exams > 0 && <><td className="r num sinaq-col">{s.exam_count}/{d.exams}</td><td className="r num sinaq-col">{fmt(s.exam_pct)}</td></>}</tr>))}</tbody></table></div>
+      {d?.students.some((s: any) => s.conditional) && <p className="small" style={{ color: 'var(--warn)' }}>⚠ {t('Şərti qiymət: buraxılmış KSQ var – qiymət mövcud KSQ-lərə görə hesablanıb. Əlavə KSQ təyin edin («KSQ / BSQ» bölməsi).')}</p>}
+      {year && <p className="small muted">{t('İllik qiymət = iki yarımil qiymətinin ortası (adi yuvarlaqlaşdırma: 2,5 → 3).')}</p>}
       {d?.exams > 0 && <p className="small muted">{t('Sınaq imtahanları (')}{d.exams}{t(') yarımil qiymətinə daxil deyil – ayrıca, məlumat üçün göstərilir.')}</p>}
     </>
   )
@@ -453,15 +491,49 @@ function Summary({ ta }: { ta: MyLesson }) {
     <>
       <ErrorBox error={err} />
       <div className="row" style={{ marginBottom: 8 }}>{([['1', 'I yarımil'], ['2', 'II yarımil'], ['all', 'Bütün il']] as const).map(([k, l]) => <button key={k} className="chip" aria-pressed={sem === k} onClick={() => setSem(k)}>{l}</button>)}</div>
-      {d && <div className="row"><p className="muted small grow">Yazılmış dərs: {d.lessons_written}</p><button className="btn sm" onClick={() => printDoc({ signers: sg(), title: `${ta.class_name} – jurnal xülasəsi`, body: head(`${ta.class_name} – ${ta.subject}: jurnal xülasəsi (${sem === 'all' ? 'bütün il' : sem + '-ci yarımil'})`, `Yazılmış dərs: ${d.lessons_written}`) + table(['№', 'Şagird', 'Orta qiymət', 'Qiymət sayı', 'Test %', 'Davamiyyət %', 'Ev tapşırığı %', ...(d.exams ? ['Sınaq', 'Sınaq orta %', 'Son sınaq %', 'Dinamika'] : [])], d.students.map((s: any, i: number) => [i + 1, s.full_name, fmtN(s.avg_grade, 2), s.marks, fmtN(s.test_pct), fmtN(s.attendance_pct), fmtN(s.homework_pct), ...(d.exams ? [`${s.exam_count}/${d.exams}`, fmtN(s.exam_pct), fmtN(s.exam_last), s.exam_delta == null ? '' : (s.exam_delta > 0 ? '+' : '') + fmtN(s.exam_delta)] : [])]), [2, 3, 4, 5, 6, 7, 8, 9, 10]) + (d.exams ? '<p>Sınaq imtahanları formativ orta qiymətə daxil deyil – ayrıca göstərilir.</p>' : '') })}>Çap / PDF</button></div>}
-      <div className="tbl-wrap"><table><thead><tr><th>{t('Şagird')}</th><th className="r">{t('Orta qiymət')}</th><th className="r">{t('Qiymət sayı')}</th><th className="r">{t('Test %')}</th><th className="r">{t('Davamiyyət %')}</th><th className="r">{t('Ev tapşırığı %')}</th>
+      {d && <div className="row"><p className="muted small grow">Yazılmış dərs: {d.lessons_written}</p><button className="btn sm" onClick={() => printDoc({ signers: sg(), title: `${ta.class_name} – jurnal xülasəsi`, body: head(`${ta.class_name} – ${ta.subject}: jurnal xülasəsi (${sem === 'all' ? 'bütün il' : sem + '-ci yarımil'})`, `Yazılmış dərs: ${d.lessons_written}`) + table(['№', 'Şagird', 'Orta qiymət', 'Plan testləri (orta)', 'Sinifdə (orta)', 'Qiymət sayı', 'Test %', 'Davamiyyət %', 'Ev tapşırığı %', 'Köçürüb', ...(d.exams ? ['Sınaq', 'Sınaq orta %', 'Son sınaq %', 'Dinamika'] : [])], d.students.map((s: any, i: number) => [i + 1, leftName(s), fmtN(s.avg_grade, 2), fmtN(s.avg_plan_tests, 2), fmtN(s.avg_class, 2), s.marks, fmtN(s.test_pct), fmtN(s.attendance_pct), fmtN(s.homework_pct), s.copied || '', ...(d.exams ? [`${s.exam_count}/${d.exams}`, fmtN(s.exam_pct), fmtN(s.exam_last), s.exam_delta == null ? '' : (s.exam_delta > 0 ? '+' : '') + fmtN(s.exam_delta)] : [])]), [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]) + (d.exams ? '<p>Sınaq imtahanları formativ orta qiymətə daxil deyil – ayrıca göstərilir.</p>' : '') })}>Çap / PDF</button></div>}
+      <div className="tbl-wrap"><table><thead><tr><th>{t('Şagird')}</th><th className="r">{t('Orta qiymət')}</th><th className="r" title={t('Perspektiv plan testləri (onlayn mövzu testləri)')}>{t('Plan testləri')}</th><th className="r" title={t('Sinifdə: şifahi, yazılı, əl ilə yazılan test')}>{t('Sinifdə')}</th><th className="r">{t('Qiymət sayı')}</th><th className="r">{t('Test %')}</th><th className="r">{t('Davamiyyət %')}</th><th className="r">{t('Ev tapşırığı %')}</th><th className="r" title={t('Ev tapşırığını köçürənlərin sayı')}>{t('Köçürüb')}</th>
           {d?.exams > 0 && <><th className="r sinaq-col">{t('Sınaq')}</th><th className="r sinaq-col">{t('Sınaq orta %')}</th><th className="r sinaq-col">{t('Son sınaq %')}</th><th className="r sinaq-col">{t('Dinamika')}</th></>}</tr></thead>
         <tbody>{d?.students.map((s: any) => (
-          <tr key={s.student_id}><td>{s.full_name}</td><td className="r num">{fmt(s.avg_grade, 2)}</td><td className="r num">{s.marks}</td>
+          <tr key={s.student_id} style={s.left_on ? { opacity: 0.6 } : undefined}><td>{s.full_name}{s.left_on && <span className="small muted"> · {t('köçüb {d}', { d: dm(s.left_on) })}</span>}</td><td className="r num">{fmt(s.avg_grade, 2)}</td>
+            <td className="r num">{fmt(s.avg_plan_tests, 2)}</td><td className="r num">{fmt(s.avg_class, 2)}</td><td className="r num">{s.marks}</td>
             <td className="r num">{fmt(s.test_pct)}</td><td className="r num">{fmt(s.attendance_pct)}</td><td className="r num">{fmt(s.homework_pct)}</td>
+            <td className="r num">{s.copied > 0 ? <b style={{ color: 'var(--bad)' }}>{s.copied}</b> : ''}</td>
             {d.exams > 0 && <><td className="r num sinaq-col">{s.exam_count}/{d.exams}</td><td className="r num sinaq-col"><b>{fmt(s.exam_pct)}</b></td><td className="r num sinaq-col">{fmt(s.exam_last)}</td>
               <td className="r num sinaq-col" style={{ color: s.exam_delta > 0 ? 'var(--ok)' : s.exam_delta < 0 ? 'var(--bad)' : undefined }}>{s.exam_delta == null ? '' : (s.exam_delta > 0 ? '+' : '') + fmt(s.exam_delta)}</td></>}</tr>))}</tbody></table></div>
       {d?.exams > 0 && <p className="small muted">{t('Sınaq imtahanları ({n}) formativ orta qiymətə daxil deyil – ayrıca göstərilir. Hər sınaq jurnal səhifəsində keçirildiyi günün «Sınaq» sütunundadır.', { n: d.exams })}</p>}
+    </>
+  )
+}
+
+/** Standartlar / mövzular üzrə mənimsəmə: formativ qiymətləndirmə = perspektiv plan testləri (onlayn mövzu testləri). */
+function Standards({ ta }: { ta: MyLesson }) {
+  const t = useT()
+  const [sem, setSem] = useState<'1' | '2' | 'all'>('1')
+  const [d, err, loading] = useLoad<any>(() => get(`/api/journal/${ta.id}/standards`, sem === 'all' ? {} : { semester: sem }), [ta.id, sem])
+  const tone = (p: number | null) => (p == null ? undefined : p >= 70 ? 'ok' : p >= 50 ? 'warn' : 'bad')
+  const block = (title: string, key: 'standard' | 'topic', rows: any[]) => (
+    <section className="panel" style={{ marginBottom: 12 }}>
+      <h2>{title}</h2>
+      {!rows.length ? <div className="empty">{t('Hələ plan testi nəticəsi yoxdur. Mövzu testi təyin edin – nəticə burada standartlara görə toplanacaq.')}</div> : (
+        <div className="tbl-wrap"><table>
+          <thead><tr><th>{key === 'standard' ? t('Standart') : t('Mövzu')}</th><th className="r">{t('Test sayı')}</th><th className="r">{t('Sinif ortası %')}</th><th>{t('Şagirdlər (orta %, aşağıdan yuxarı)')}</th></tr></thead>
+          <tbody>{rows.map(r => (
+            <tr key={r[key]}><td><b>{r[key]}</b></td><td className="r num">{r.tests}</td>
+              <td className="r">{r.class_pct == null ? '—' : <Pill tone={tone(r.class_pct)}>{fmt(r.class_pct)}%</Pill>}</td>
+              <td className="small">{r.students.map((s: any) => <span key={s.student_id} style={{ marginRight: 8, whiteSpace: 'nowrap', color: s.pct < 50 ? 'var(--bad)' : undefined }}>{s.full_name.split(' ').slice(0, 2).join(' ')} <b>{fmt(s.pct)}%</b></span>)}</td></tr>))}</tbody>
+        </table></div>)}
+    </section>)
+  return (
+    <>
+      <ErrorBox error={err} />
+      <div className="row" style={{ marginBottom: 8 }}>{([['1', 'I yarımil'], ['2', 'II yarımil'], ['all', 'Bütün il']] as const).map(([k, l]) => <button key={k} className="chip" aria-pressed={sem === k} onClick={() => setSem(k)}>{t(l)}</button>)}</div>
+      <p className="small muted">{t('Formativ qiymətləndirmə perspektiv plan testlərinə əsaslanır: standart və mövzu dərsin plan sətrindən götürülür. Şifahi/yazılı qiymətlər burada yoxdur.')}</p>
+      {loading && !d ? <Loading /> : d && <>
+        {d.class_avg_hidden && <p className="small muted">{t('Sinif ortası 5-dən az şagirddə göstərilmir.')}</p>}
+        {block(t('Standartlar üzrə mənimsəmə'), 'standard', d.standards)}
+        {block(t('Mövzular üzrə mənimsəmə'), 'topic', d.topics)}
+      </>}
     </>
   )
 }
@@ -516,7 +588,7 @@ function Grid({ ta }: { ta: MyLesson }) {
     landscape: true, signers: sg(), title: `${ta.class_name} – jurnal ${title}`,
     body: head(`${ta.class_name} – ${ta.subject}: jurnal səhifəsi`, title) +
       table(['№', 'Şagird', ...d.columns.map((c: any) => (c.sinaq ? 'Sınaq ' : '') + fmtDate(c.date).slice(0, 5)), 'Orta', 'Buraxıb', ...(d.exams ? ['Sınaq orta %'] : [])],
-        d.rows.map((r: any, i: number) => [i + 1, r.full_name, ...r.cells.map(cellText), fmtN(r.avg, 2), r.missed || '', ...(d.exams ? [fmtN(r.exam_pct)] : [])])) +
+        d.rows.map((r: any, i: number) => [i + 1, leftName(r), ...r.cells.map(cellText), fmtN(r.avg, 2), r.missed || '', ...(d.exams ? [fmtN(r.exam_pct)] : [])])) +
       (d.exams ? '<h2>Sınaq imtahanları</h2>' + table(['Tarix', 'Sınaq'], d.columns.filter((c: any) => c.sinaq).map((c: any) => [fmtDate(c.date), c.sinaq])) : '') +
       '<h2>Keçilən mövzular və ev tapşırıqları</h2>' + table(['Tarix', 'Saat', '№', 'Mövzu', 'Ev tapşırığı'], d.columns.filter((c: any) => c.written).map((c: any) => [fmtDate(c.date), c.period, c.seq ?? '', (c.assessment ? c.assessment + ' · ' : '') + (c.topic || ''), c.homework || ''])) +
       '<p class="note">q – qayıb, ü – üzrlü, g – gecikmə; KSQ/BSQ qiyməti həmin günün sütunundadır. «Sınaq» sütunu – sınaq imtahanının faizi (keçirildiyi gün; formativ ortaya daxil deyil), «yox» – yazmayıb.</p>',
@@ -537,7 +609,7 @@ function Grid({ ta }: { ta: MyLesson }) {
               {fmtDate(c.date).slice(0, 5)}{c.assessment && <><br /><small>{c.assessment}</small></>}{!c.written && !c.future && <><br /><small style={{ color: 'var(--bad)' }}>{t('yazılmayıb')}</small></>}</th>))}
             <th className="r">{t('Orta')}</th><th className="r">{t('Buraxıb')}</th>{d.exams > 0 && <th className="r sinaq-col">{t('Sınaq orta %')}</th>}</tr></thead>
           <tbody>{d.rows.map((r: any) => (
-            <tr key={r.student_id}><td style={{ whiteSpace: 'nowrap' }}><ShortName name={r.full_name} /></td>
+            <tr key={r.student_id} style={r.left_on ? { opacity: 0.6 } : undefined}><td style={{ whiteSpace: "nowrap" }}><ShortName name={r.full_name} />{r.left_on && <small className="muted"> {t("köçüb {d}", { d: dm(r.left_on) })}</small>}{(d.no_marks_14d || []).includes(r.student_id) && <span title={t("Son 14 gündə heç bir qiyməti yoxdur")} style={{ color: "var(--warn)" }}> ⏳</span>}</td>
               {r.cells.map((c: any, i: number) => (
                 <td key={i} className={d.columns[i].sinaq ? 'sinaq-col' : undefined} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                   {c.sinaq && (c.sinaq === 'yox' ? <span className="muted small">{t('yox')}</span> : <b className="small">{c.sinaq}</b>)}

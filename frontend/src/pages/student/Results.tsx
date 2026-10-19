@@ -46,9 +46,12 @@ export default function Results() {
             <Stat value={fmt(s.avg_grade, 2)} label={tt('orta qiymət')} /><Stat value={s.attendance_pct != null ? fmt(s.attendance_pct) + '%' : '—'} label={tt('davamiyyət')} /><Stat value={s.homework_pct != null ? fmt(s.homework_pct) + '%' : '—'} label={tt('ev tapşırığı')} />
           </div>
           <div className="row" style={{ marginBottom: 8 }}>
-            {[1, 2].map(k => <Pill key={k} tone={gradeTone(s.semester_grades[k])}>{tt('{n}-ci yarımil', { n: k })}: {s.semester_grades[k] ?? '—'}</Pill>)}
+            {[1, 2].map(k => <Pill key={k} tone={gradeTone(s.semester_grades[k])}>{tt('{n}-ci yarımil', { n: k })}: {s.semester_grades[k] ?? '—'}{s.semester_missed_ksq?.[k]?.length > 0 && s.semester_grades[k] != null ? ' ⚠' : ''}</Pill>)}
+            {s.year_grade != null && <Pill tone={gradeTone(s.year_grade)}>{tt('İllik')}: {s.year_grade}</Pill>}
             <span className="small muted">= ({tt('KSQ ortası')}) × 0,4 + BSQ × 0,6</span>
           </div>
+          {[1, 2].filter(k => s.semester_missed_ksq?.[k]?.length > 0).map(k => (
+            <p key={k} className="small" style={{ color: 'var(--warn)', margin: '0 0 8px' }}>⚠ {tt('{n}-ci yarımil: KSQ {nums} buraxılıb – qiymət şərtidir. Müəllim əlavə KSQ təyin edə bilər.', { n: k, nums: s.semester_missed_ksq[k].join(', ') })}</p>))}
           {s.exams.length > 0 && (
             <div className="tbl-wrap"><table style={{ minWidth: 0 }}><thead><tr><th>{tt('İmtahan')}</th><th>{tt('Tarix')}</th><th className="r">{tt('Bal')}</th><th className="r">%</th><th className="r">{tt('Qiymət')}</th></tr></thead>
               <tbody>{s.exams.map((e: any, j: number) => (
