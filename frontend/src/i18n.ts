@@ -2860,6 +2860,18 @@ const D: Record<string, [string, string]> = {
   "Seçdiyiniz mövzulardan təsadüfi suallar – bütün viktorina bazasından, bir neçə layihədən ola bilər.": ["Random questions from the topics you pick – from the whole quiz bank, possibly several projects.", "Случайные вопросы по выбранным темам – из всей базы викторины, возможно из нескольких проектов."],
   "Bu sinif üçün mövzu tapılmadı": ["No topics found for this class", "Для этого класса темы не найдены"],
   "✍️ Yazılı (kağız) iş": ["✍️ Written (paper) work", "✍️ Письменная (бумажная) работа"],
+  "Məşğələ testləri": ["Practice tests", "Тренировочные тесты"],
+  "{n} göndəriş": ["{n} sends", "отправок: {n}"],
+  "yazılı var": ["written work exists", "письменная работа уже есть"],
+  "{g} sinif üçün": ["for grade {g}", "для {g} класса"],
+  "Ada görə axtar": ["Search by name", "Поиск по названию"],
+  "Bu növdə test yoxdur": ["No tests of this type", "Тестов этого типа нет"],
+  "Şagirdlər: hamı / {n}": ["Students: everyone / {n}", "Ученики: все / {n}"],
+  "Şagirdlər: {n}": ["Students: {n}", "Ученики: {n}"],
+  "Təhvil: {n}": ["Submitted: {n}", "Сдали: {n}"],
+  "Tarix: {a} – {b}": ["Date: {a} – {b}", "Дата: {a} – {b}"],
+  "Tarix: {a}": ["Date: {a}", "Дата: {a}"],
+  "↳ yenidən göndəriş: {who}, {date}": ["↳ resent: {who}, {date}", "↳ повторная отправка: {who}, {date}"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

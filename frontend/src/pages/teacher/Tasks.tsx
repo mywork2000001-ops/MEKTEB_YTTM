@@ -13,7 +13,7 @@ import { azDT } from '../../ui'
 
 type Task = { id: number; title: string; created_at?: string | null; opens_at: string; closes_at: string; duration_min: number; questions: number; submitted: number; avg_pct: number | null; student_ids: number[] | null
   kind?: string | null; topic?: { seq: number; topic: string } | null; journal_auto?: boolean; journal_done_at?: string | null
-  ta_id?: number; class_name?: string | null; batch_id?: number | null }
+  ta_id?: number; class_name?: string | null; batch_id?: number | null; group_key?: string; group_sends?: number; group_main_id?: number }
 const dt = (s: string) => azDT(new Date(s), { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const hm = (s: string) => azDT(new Date(s), { hour: '2-digit', minute: '2-digit' })
 export const taskLink = (id: number) => `${location.origin}/t/${id}`
@@ -50,8 +50,33 @@ export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta
       : Date.parse(b.opens_at) - Date.parse(a.opens_at)))
   const many = !ta                                       // «Bütün siniflərim» – hər testdə sinif nişanı
   // eyni test (bir paket) bir neçə sinfə verilibsə – bir kart, içində siniflər (səliqə: 3 sinif = 3 sətir yox)
+  // eyni testin yenidən göndərişləri (alt-qruplara) – əsas testin altında açılan sətir (yalnız görünüş; əməliyyatlar hər göndəriş üçün ayrıdır)
+  const kidsMap = new Map<number, Task[]>()
+  const kidIds = new Set<number>()
+  const byGk = new Map<string, Task[]>()
+  for (const t of shown) if (t.group_key) byGk.set(t.group_key, [...(byGk.get(t.group_key) || []), t])
+  for (const arr of byGk.values()) {
+    if (arr.length < 2) continue
+    const main = arr.find(x => x.id === x.group_main_id) || arr[0]
+    const kids = arr.filter(x => x !== main)
+    kidsMap.set(main.id, kids)
+    kids.forEach(k => kidIds.add(k.id))
+  }
+  const kidsOf = (t: Task) => kidsMap.get(t.id) || []
+  const sendsPill = (t: Task) => (t.group_sends ?? 1) > 1 ? <Pill>{tt('{n} göndəriş', { n: t.group_sends })}</Pill> : null
+  const kidRows = (t: Task) => kidsOf(t).length === 0 ? null : (
+    <div className="subrows">{kidsOf(t).map(k => (
+      <div key={k.id} className="subrow">
+        <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+          <span className="small muted grow">{tt('↳ yenidən göndəriş: {who}, {date}', {
+            who: k.student_ids ? tt('{length} şagird', { length: k.student_ids.length }) : tt('bütün sinif'),
+            date: azDT(new Date(k.opens_at), { day: '2-digit', month: '2-digit' }) })} · <b>{k.submitted}</b> {tt('təhvil')}</span>
+          {statePill(stateOf(k, now))}
+        </div>
+        {actions(k, stateOf(k, now))}
+      </div>))}</div>)
   const groups: { key: string; items: Task[] }[] = []
-  for (const t of shown) {
+  for (const t of shown.filter(x => !kidIds.has(x.id))) {
     const key = t.batch_id ? `b${t.batch_id}` : `t${t.id}`
     const g = groups.find(x => x.key === key)
     if (g) g.items.push(t)
@@ -121,18 +146,19 @@ export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta
                   <b className="grow">{head.title}</b>
                   {!one && <Pill>{g.items.length} {t('sinif')}</Pill>}
                   {one && head.journal_auto && <Pill tone={head.journal_done_at ? 'ok' : undefined}>{head.journal_done_at ? t('jurnala yazılıb') : t('jurnala yazılacaq')}</Pill>}
+                  {one && sendsPill(head)}
                   {statePill(s)}
                 </div>
                 {one ? <><span className="small muted">{when(head)} · {head.duration_min} {t('dəq ·')} {head.questions} {t('sual ·')} {head.student_ids ? t('{length} şagird', { length: head.student_ids.length }) : 'bütün sinif'} · <b>{head.submitted}</b> {t('təhvil')}{head.avg_pct != null ? <> {t('· orta')} <b>{fmt(head.avg_pct)}%</b></> : ''}</span>
-                  {actions(head, stateOf(head, now))}</>
+                  {actions(head, stateOf(head, now))}{kidRows(head)}</>
                   : <><span className="small muted">{head.duration_min} {t('dəq ·')} {head.questions} {t('sual ·')} <b>{sub}</b> {t('təhvil')}{avg != null ? <> {t('· orta')} <b>{fmt(avg)}%</b></> : ''}</span>
                     <div className="subrows">{g.items.map(t => (
                       <div key={t.id} className="subrow">
                         <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
-                          <Pill tone="info">{t.class_name}</Pill>{statePill(stateOf(t, now))}
+                          <Pill tone="info">{t.class_name}</Pill>{sendsPill(t)}{statePill(stateOf(t, now))}
                           <span className="small muted grow">{when(t)} · <b>{t.submitted}</b> {tt('təhvil')}{t.avg_pct != null ? <> {tt('· orta')} <b>{fmt(t.avg_pct)}%</b></> : ''}{t.journal_auto ? (t.journal_done_at ? (' · ' + tt('jurnala yazılıb')) : (' · ' + tt('jurnala yazılacaq'))) : ''}</span>
                         </div>
-                        {actions(t, stateOf(t, now))}
+                        {actions(t, stateOf(t, now))}{kidRows(t)}
                       </div>))}</div></>}
               </div>)
           })}

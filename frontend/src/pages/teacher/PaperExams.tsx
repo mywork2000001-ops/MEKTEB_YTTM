@@ -2,14 +2,20 @@
 // Plan tələb olunmur; məktəb və fərdi məkanda eyni. Çap – variants/print (ümumi vərəqə), skan – daimi «📷 Skan» düyməsi.
 import { useEffect, useState } from 'react'
 import { del, get, patch, post } from '../../api'
-import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, Pill, PickFirst, toast, useLoad } from '../../ui'
+import { AsyncBtn, azDT, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, Pill, PickFirst, toast, useLoad } from '../../ui'
 import { useT } from '../../i18n'
 import { printBooklet, printKey, printSheets, type KsqPrint } from '../../ksqPrint'
 import OwnNumbersReport, { type OwnReport } from '../../OwnNumbersReport'
 
 type Paper = { id: number; kind: 'TEST' | 'SINAQ' | 'YI' | 'VIK'; no: number; title: string | null; date: string; to_journal: boolean
   online_task_id: number | null; variants: number; printed: boolean; scanned: number; graded: number; variant_mode: string | null }
-type TaskRow = { id: number; title: string; kind: string | null; archived?: boolean }
+type SG = { key: string; main_task_id: number; task_ids: number[]; sends: number; students: 'all' | number; students_n: number | null; submitted: number
+  first_opens_at: string; last_opens_at: string; title: string; kind: string | null; seq: number | null; grade_hint: number | null
+  has_paper: boolean; grade_mismatch: boolean }
+type SK = 'movzu' | 'sinaq' | 'extra'
+const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI']
+const cut = (s: string, n = 80) => (s.length > n ? s.slice(0, n - 1) + '…' : s)
+const dm = (s: string) => azDT(new Date(s), { day: '2-digit', month: '2-digit' })
 type Res = { rows: { student_id: number; full_name: string; points: number | null; grade: number | null; paper_points: number | null
   online_points: number | null; differs: boolean }[] }
 type Src = { key: string; label: string; enabled: boolean }
@@ -95,7 +101,9 @@ function Create({ ta, onClose, onDone }: { ta: number; onClose: () => void; onDo
   const [groups, setGroups] = useState<VGroup[] | null>(null)
   const [vq, setVq] = useState('')
   const [shut, setShut] = useState<Record<string, boolean>>({})
-  const [tasks, setTasks] = useState<TaskRow[]>([])
+  const [srcs, setSrcs] = useState<Record<SK, SG[]> | null>(null)
+  const [sk, setSk] = useState<SK>('movzu')
+  const [tq, setTq] = useState('')
   const [taskId, setTaskId] = useState<number | ''>('')
   const [sources, setSources] = useState<Src[]>([])
   const [src, setSrc] = useState('')
@@ -107,7 +115,7 @@ function Create({ ta, onClose, onDone }: { ta: number; onClose: () => void; onDo
   const [title, setTitle] = useState('')
   const [journal, setJournal] = useState(false)
   const [fail, setFail] = useState<string | null>(null)
-  useEffect(() => { get<TaskRow[]>(`/api/tasks/${ta}`).then(setTasks, () => {}); get<Src[]>('/api/bank/sources').then(s => setSources(s.filter(x => x.enabled)), () => {}) }, [ta])
+  useEffect(() => { get<Record<SK, SG[]>>(`/api/paper-exams/${ta}/sources`).then(r => { setSrcs(r); setSk((['movzu', 'sinaq', 'extra'] as SK[]).find(k => r[k].length) || 'movzu') }, () => setSrcs({ movzu: [], sinaq: [], extra: [] })); get<Src[]>('/api/bank/sources').then(s => setSources(s.filter(x => x.enabled)), () => {}) }, [ta])
   useEffect(() => { if (src) get<BFile[]>('/api/bank/lessons', { source: src }).then(setFiles, () => setFiles([])); setPick([]) }, [src])
   useEffect(() => { get<{ grade: number | null }>(`/api/paper-exams/${ta}/grade`).then(r => setGrade(r.grade && r.grade >= 1 && r.grade <= 11 ? r.grade : ''), () => {}) }, [ta])
   useEffect(() => {
@@ -144,11 +152,42 @@ function Create({ ta, onClose, onDone }: { ta: number; onClose: () => void; onDo
         </div>
         {mode === 'task' ? (
           <>
-          <Field label={t('Test və ya sınaq')}>
-            <select value={taskId} onChange={e => setTaskId(e.target.value ? +e.target.value : '')}>
-              <option value="">—</option>
-              {tasks.map(x => <option key={x.id} value={x.id}>{x.title}{x.kind === 'sinaq' ? ' · ' + t('Sınaq') : ''}</option>)}
-            </select></Field>
+          <Field label={t('Növ')}>
+            <div className="seg" role="group">
+              {([['movzu', '📝 ' + t('Mövzu testləri')], ['sinaq', '🏆 ' + t('Sınaqlar')], ['extra', t('Məşğələ testləri')]] as [SK, string][])
+                .filter(([k]) => !srcs || srcs[k].length > 0).map(([k, l]) => (
+                  <button key={k} aria-pressed={sk === k} className="btn sm" onClick={() => { setSk(k); setTaskId(''); setTq('') }}>{l} ({srcs ? srcs[k].length : 0})</button>))}
+            </div></Field>
+          {!srcs ? <Loading /> : (() => {
+            const all = srcs[sk]
+            const q = tq.trim().toLowerCase()
+            const list = q ? all.filter(x => x.title.toLowerCase().includes(q)) : all
+            const sel = all.find(x => x.main_task_id === taskId)
+            return (
+              <>
+                {all.length >= 10 && <input value={tq} onChange={e => setTq(e.target.value)} placeholder={t('Ada görə axtar')} />}
+                <Field label={t('Test və ya sınaq')}>
+                  <select value={taskId} onChange={e => setTaskId(e.target.value ? +e.target.value : '')}>
+                    <option value="">—</option>
+                    {list.map(x => (
+                      <option key={x.key} value={x.main_task_id} disabled={x.has_paper} title={x.title}>
+                        {(sk === 'movzu' && x.seq != null ? '№' + x.seq + ' ' : '') + cut(x.title)}
+                        {sk === 'sinaq' ? ' · ' + dm(x.last_opens_at) : ''}
+                        {x.sends > 1 ? ' · ' + t('{n} göndəriş', { n: x.sends }) : ''}
+                        {x.has_paper ? ' · ' + t('yazılı var') : ''}
+                        {x.grade_mismatch && x.grade_hint ? ' · ' + t('{g} sinif üçün', { g: ROMAN[x.grade_hint] }) : ''}
+                      </option>))}
+                  </select></Field>
+                {all.length === 0 && <div className="empty">{t('Bu növdə test yoxdur')}</div>}
+                {sel && (
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    {sel.students === 'all' ? t('Şagirdlər: hamı / {n}', { n: sel.students_n ?? '' }) : t('Şagirdlər: {n}', { n: sel.students })}
+                    {' · '}{t('Təhvil: {n}', { n: sel.submitted })}{' · '}
+                    {dm(sel.first_opens_at) === dm(sel.last_opens_at) ? t('Tarix: {a}', { a: dm(sel.first_opens_at) })
+                      : t('Tarix: {a} – {b}', { a: dm(sel.first_opens_at), b: dm(sel.last_opens_at) })}
+                  </div>)}
+              </>)
+          })()}
             <Field label={t('Variantlar')}>
               <select value={vm === 'different' ? 'same' : vm} onChange={e => setVm(e.target.value as 'same' | 'same_numbers')}>
                 <option value="same">{t('Hamıya eyni suallar')}</option>
