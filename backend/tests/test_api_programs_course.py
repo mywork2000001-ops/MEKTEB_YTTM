@@ -115,7 +115,7 @@ def test_private_real_times(world):
     assert [(x['weekday'], x['start'], x['end']) for x in m['times']] == [(1, '17:00', '18:30'), (5, '10:00', '11:00')]
     # başqa fərdi qrupla toqquşma
     r2 = t.post(f'/api/classes/{b}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'times': [{'weekday': 1, 'start': '18:00', 'end': '19:00'}]})
-    assert r2.status_code == 409 and 'IX hazırlıq' in r2.json()['detail']
+    assert r2.status_code == 409 and 'IX hazırlıq' in r2.json()['detail']['message']
     # jurnal və həftəlik cədvəl real vaxtı göstərir
     ta = m['ta_id']
     day = t.get(f'/api/journal/{ta}/day', params={'date': '2026-10-06'}).json()

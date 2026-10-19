@@ -7,7 +7,7 @@ from .test_api_teaching import SLOTS, setup_class
 
 
 def _studs(c, cid, n, tag):
-    return [c.post('/api/students', json={'full_name': f'{tag} Şagird{i} oğlu', 'class_id': cid}).json()['id']
+    return [c.post('/api/students', json={'full_name': f'{tag} Şagird{i} oğlu', 'class_id': cid, 'force': True}).json()['id']
             for i in range(n)]
 
 

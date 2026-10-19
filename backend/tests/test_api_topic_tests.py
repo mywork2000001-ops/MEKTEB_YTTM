@@ -23,7 +23,7 @@ def _patch(monkeypatch, clock, day):
 def _join(admin, S, name, slots, topics, subject='Riyaziyyat', n_students=0):
     cid = admin.post('/api/classes', json={'name': name}).json()['id']
     admin.post(f'/api/classes/{cid}/join', json={'subject': subject, 'weekly_hours': 1, 'slots': slots})
-    st = [admin.post('/api/students', json={'full_name': f'{name} Şagird{i} oğlu', 'class_id': cid}).json()
+    st = [admin.post('/api/students', json={'full_name': f'{name} Şagird{i} oğlu', 'class_id': cid, 'force': True}).json()
           for i in range(n_students)]
     with S() as db:
         ta = db.query(TeachingAssignment).filter_by(class_id=cid, subject=subject).one()

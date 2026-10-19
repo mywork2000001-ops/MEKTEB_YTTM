@@ -10,7 +10,7 @@ def _class(admin, S, name, scores):
     admin.post(f'/api/classes/{cid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'slots': {}})
     ids = []
     for i, sc in enumerate(scores):
-        sid = admin.post('/api/students', json={'full_name': f'{name} Şagird{i:02d} oğlu', 'class_id': cid}).json()['id']
+        sid = admin.post('/api/students', json={'full_name': f'{name} Şagird{i:02d} oğlu', 'class_id': cid, 'force': True}).json()['id']
         ids.append(sid)
     with S() as db:
         for sid, sc in zip(ids, scores):

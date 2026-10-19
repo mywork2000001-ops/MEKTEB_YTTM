@@ -40,7 +40,7 @@ def setup(world):
     cid = admin.post('/api/classes', json={'name': 'X e'}).json()['id']
     admin.post(f'/api/classes/{cid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 2,
                                                  'slots': {'1': [1, 5]}})
-    st = [admin.post('/api/students', json={'full_name': f'Şagird Test{i} qızı', 'class_id': cid}).json()
+    st = [admin.post('/api/students', json={'full_name': f'Şagird Test{i} qızı', 'class_id': cid, 'force': True}).json()
           for i in range(3)]
     with S() as db:
         ta = db.query(TeachingAssignment).filter_by(class_id=cid).one()

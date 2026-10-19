@@ -62,7 +62,7 @@ def test_ai_settings_and_daily_plan(world, monkeypatch):
     assert 'Qrup işi olsun' in pr['user'] and 'ARTİ' in pr['system'] and '45 dəqiqə' in pr['system']
     assert 'növ: TOM' in pr['user']
     # sinfin səviyyə tərkibi (adlar yox): 3 şagird – 1 orta, 2 zəif → zəif sinif göstərişi
-    sids = [admin.post('/api/students', json={'full_name': f'Şagird Plan{i} qızı', 'class_id': admin.get('/api/my/lessons').json()[0]['class_id']}).json()['id']
+    sids = [admin.post('/api/students', json={'full_name': f'Şagird Plan{i} qızı', 'class_id': admin.get('/api/my/lessons').json()[0]['class_id'], 'force': True}).json()['id']
             for i in range(3)]
     for sid, lv in zip(sids, ('Orta', 'Zəif', 'Zəif')):
         assert admin.put(f'/api/analytics/{ta}/levels/{sid}', json={'level': lv}).status_code == 200

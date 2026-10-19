@@ -70,11 +70,20 @@ def _prep_template(src: dict, upto: int) -> dict:
 
 
 # ---------------------------------------------------------------- daxili proqramlar (kitabdan)
-def ensure_builtin(db: Session) -> None:
-    """DİM «Sinif testləri» – V–XI siniflər üçün ümumi (hamıya görünən) uyğunlaşan proqramlar və onların strukturundan
-    buraxılış/qəbul hazırlığı kursları; idempotent."""
+def _builtin_keys() -> set[str]:
     src = json.loads((DATA / 'sinif_testleri.json').read_text(encoding='utf-8'))
+    toplu = json.loads((DATA / 'dim_toplu_9_2025.json').read_text(encoding='utf-8'))
+    return {k for k, *_ in PREP} | {f"{src['key']}-{g}" for g in src['grades']} | {toplu['key']}
+
+
+def ensure_builtin(db: Session) -> bool:
+    """DİM «Sinif testləri» – V–XI siniflər üçün ümumi (hamıya görünən) uyğunlaşan proqramlar və onların strukturundan
+    buraxılış/qəbul hazırlığı kursları; idempotent. Tətbiq açılanda bir dəfə çağırılır (main.py); hamısı varsa heç nə yazmır.
+    Nəsə əlavə edilibsə True qaytarır (çağıran commit edir)."""
     have = set(db.scalars(select(PlanProgram.key).where(PlanProgram.key.is_not(None))))
+    if _builtin_keys() <= have:
+        return False
+    src = json.loads((DATA / 'sinif_testleri.json').read_text(encoding='utf-8'))
     for key, g, purp, title in PREP:
         if key in have:
             continue
@@ -110,6 +119,7 @@ def ensure_builtin(db: Session) -> None:
                          'Sinfin və ya qrupun cədvəlinə görə açılır; Cəbr və Həndəsəni ayrıca seçmək olar.'),
             data={'template': tpl, 'purposes': toplu['purposes'], 'source_short': toplu['source_short']}))
     db.flush()
+    return True
 
 
 def toplu_template(src: dict) -> dict:
@@ -145,15 +155,19 @@ def snapshot(db: Session, ta: TeachingAssignment, user: User | None, title: str 
     return p
 
 
-def ensure_current(db: Session, user: User) -> None:
-    """Müəllimin hər sinif/qrupunun mövcud planı kitabxanada proqram kimi olsun (əvvəlki planlar itməsin)."""
+def ensure_current(db: Session, user: User) -> int:
+    """Müəllimin hər sinif/qrupunun mövcud planı kitabxanada proqram kimi olsun (əvvəlki planlar itməsin).
+    Hər dərs bağlılığı üçün yalnız bir dəfə yazır (sonra program_id dolu olur); yazılan nüsxələrin sayını qaytarır."""
+    made = 0
     for ta in db.scalars(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id,
                                                           TeachingAssignment.archived_at.is_(None),
                                                           TeachingAssignment.program_id.is_(None))):
         p = snapshot(db, ta, user)
         if p:
             ta.program_id = p.id
+            made += 1
     db.flush()
+    return made
 
 
 # ---------------------------------------------------------------- yuvalar
@@ -550,6 +564,55 @@ def lessons_for(db: Session, program: PlanProgram, ta: TeachingAssignment,
            'ksq': sum(l['assessment_type'] == 'KSQ' for l in lessons), 'bsq': sum(l['assessment_type'] == 'BSQ' for l in lessons),
            'written_lessons': n_written, 'warnings': warnings, 'sections': sections}
     return lessons, rep
+
+
+# ---------------------------------------------------------------- planın yoxlanması (xəbərdarlıq – heç nəyi bloklamır)
+def _w(key: str, **params) -> dict:
+    return {'level': 'warn', 'key': key, 'params': params, 'message': key.format(**params)}
+
+
+def lint_plan(lessons: list[dict], year, summative: bool = True) -> list[dict]:
+    """Perspektiv planın metodik yoxlaması: hər yarımildə 1 BSQ (sonda), ən azı 1 KSQ, KSQ ilk 2 həftədə və ardıcıl iki dəfə
+    olmaz, BSQ-dan əvvəl təkrar dərsi, tarixlər yarımilin daxilində. lessons – dərs sözlükləri (semester, topic,
+    assessment_type, istəyə görə date); year – AcademicYear (start, sem1_end, sem2_start, end).
+    Qaytarır: [{level:'warn', key (AZ şablon), params, message}]. summative=False (kurs/BSQ-suz plan) – yoxlanmır."""
+    if not summative or not lessons:
+        return []
+    out: list[dict] = []
+    bounds = {1: (year.start, year.sem1_end), 2: (year.sem2_start, year.end)}
+    for sem in (1, 2):
+        rows = [(i + 1, l) for i, l in enumerate(lessons) if l.get('semester') == sem]
+        if not rows:
+            continue
+        types = [l.get('assessment_type') for _, l in rows]
+        n_bsq = types.count('BSQ')
+        if n_bsq != 1:
+            out.append(_w('{sem}-ci yarımildə {n} BSQ var – 1 olmalıdır', sem=sem, n=n_bsq))
+        elif types[-1] != 'BSQ':
+            out.append(_w('{sem}-ci yarımildə BSQ yarımilin son dərsi deyil', sem=sem))
+        if 'KSQ' not in types:
+            out.append(_w('{sem}-ci yarımildə KSQ yoxdur – ən azı 1 KSQ olmalıdır', sem=sem))
+        if n_bsq == 1:
+            k = types.index('BSQ')
+            if k > 0:
+                prev = (rows[k - 1][1].get('topic') or '').casefold()
+                if 'təkrar' not in prev and 'повтор' not in prev and 'review' not in prev:
+                    out.append(_w('{sem}-ci yarımildə BSQ-dan əvvəlki dərs (№ {seq}) təkrar dərsi deyil', sem=sem, seq=rows[k - 1][0]))
+        dated_rows = [(i, l) for i, l in rows if l.get('date')]
+        if dated_rows:
+            first = min(l['date'] for _, l in dated_rows)
+            early = [i for i, l in dated_rows if l.get('assessment_type') == 'KSQ' and (l['date'] - first).days < 14]
+            if early:
+                out.append(_w('{sem}-ci yarımildə KSQ ilk 2 həftədə planlaşdırılıb (dərs № {seq})', sem=sem, seq=early[0]))
+            lo, hi = bounds[sem]
+            outside = [i for i, l in dated_rows if not (lo <= l['date'] <= hi)]
+            if outside:
+                out.append(_w('{sem}-ci yarımildə {n} dərs yarımilin tarixlərindən kənardadır', sem=sem, n=len(outside)))
+        for (i1, a), (i2, b) in zip(rows, rows[1:]):
+            if a.get('assessment_type') == 'KSQ' and b.get('assessment_type') == 'KSQ':
+                out.append(_w('{sem}-ci yarımildə iki KSQ ardıcıl gəlir (dərs № {a} və {b})', sem=sem, a=i1, b=i2))
+                break
+    return out
 
 
 def apply(db: Session, program: PlanProgram, ta: TeachingAssignment, user: User, sections: list[str] | None = None) -> dict:

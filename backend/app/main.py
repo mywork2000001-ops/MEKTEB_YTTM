@@ -74,6 +74,14 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname
 async def lifespan(app: FastAPI):
     with scheduler.startup_lock():                   # bir neçə proses: miqrasiyalar növbə ilə
         bootstrap()
+    try:                                             # daxili proqramlar (DİM) bir dəfə – GET-lər bazaya yazmasın
+        from .db import SessionLocal
+        from .programs import ensure_builtin
+        with SessionLocal() as db:
+            if ensure_builtin(db):
+                db.commit()
+    except Exception:                                # noqa: BLE001 – açılışı dayandırmasın; list_programs ehtiyat kimi yaradır
+        logging.getLogger('bootstrap').exception('daxili proqramlar yaradılmadı')
     from . import joblog
     joblog.install()                                 # fon işlərinin mesajları bazaya («Son fon işləri»)
     if scheduler.leader():                           # fon işləri yalnız bir prosesdə (təkrar göndərmə olmasın)

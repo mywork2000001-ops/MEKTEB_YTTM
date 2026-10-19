@@ -17,12 +17,12 @@ from ..db import get_db
 from ..deps import staff
 from typing import Literal
 
-from ..models import (AssignmentProgram, BankFile, BankQuestion, BankSource, OnlineTask, PlanLesson, PlanProgram, SchoolClass,
+from ..models import (AcademicYear, AssignmentProgram, BankFile, BankQuestion, BankSource, OnlineTask, PlanLesson, PlanProgram, SchoolClass,
                       TeachingAssignment, User, now)
-from ..programs import (DATA, ROMAN, apply, check_sections, dated, ensure_builtin, ensure_current, is_course, is_toplu, lessons_for, purposes,
-                        section_names, snapshot, tpl_sections)
+from ..programs import (DATA, ROMAN, apply, capacity, check_sections, dated, ensure_builtin, ensure_current, is_course, is_toplu,
+                        lessons_for, lint_plan, purposes, section_names, snapshot, tpl_sections)
 from ..services import class_grade, own_assignment
-from .common import audit, settings_unlocked
+from .common import audit, bad, settings_unlocked
 from .tasks import _snapshot
 
 router = APIRouter(prefix='/api/programs', tags=['programs'])
@@ -56,7 +56,8 @@ def _workspace(p: PlanProgram) -> str | None:
     return s.kind if s else None
 
 
-def _out(p: PlanProgram, used: dict[int, list[str]], grade: int | None = None, purpose: str | None = None) -> dict:
+def _out(p: PlanProgram, used: dict[int, list[str]], grade: int | None = None, purpose: str | None = None,
+         hours: int | None = None) -> dict:
     tpl = p.data.get('template') if p.kind == 'adaptive' else None
     return {'id': p.id, 'key': p.key, 'title': p.title, 'subject': p.subject, 'grade': p.grade, 'grade_roman': ROMAN.get(p.grade),
             'kind': p.kind, 'source': p.source, 'description': p.description, 'weekly_hours': p.weekly_hours,
@@ -65,7 +66,9 @@ def _out(p: PlanProgram, used: dict[int, list[str]], grade: int | None = None, p
             'tasks': sum(s.get('tasks') or 0 for s in tpl_sections(tpl)) if tpl and is_toplu(p) else None,
             'level': p.level, 'mine': p.owner_id is not None, 'builtin': p.key is not None, 'used_by': used.get(p.id, []),
             'fits': grade is None or p.grade is None or p.grade == grade, 'created_at': p.created_at,
-            'workspace': _workspace(p), 'purpose_fits': bool(purpose) and purpose in purposes(p)}
+            'workspace': _workspace(p), 'purpose_fits': bool(purpose) and purpose in purposes(p),
+            # proqram həftədə N saatlıqdır, sinfin/qrupun cədvəli başqadır (P2)
+            'hours_mismatch': bool(p.weekly_hours and hours and p.weekly_hours != hours), 'class_hours': hours}
 
 
 @router.get('')
@@ -74,9 +77,10 @@ def list_programs(grade: int | None = None, subject: str | None = None, level: s
                   db: Session = Depends(get_db)):
     """Kitabxana. ta_id verilsə – həmin sinif/qrupun səviyyəsinə (sinif rəqəmi) uyğun olanlar «fits» ilə işarələnir;
     grade_hint – sinif rəqəmi müəyyən olunmayan qrup üçün qoşulma formasında seçilən rəqəm."""
-    ensure_builtin(db)
-    ensure_current(db, user)
-    db.commit()
+    # DİM proqramları tətbiq açılanda bir dəfə yaranır (main.py); burada yalnız ehtiyat. Cari planın nüsxəsi hər dərs
+    # bağlılığı üçün bir dəfə yazılır – commit yalnız həqiqətən nəsə yaranıbsa (adi açılışda GET bazaya yazmır)
+    if ensure_builtin(db) | bool(ensure_current(db, user)):
+        db.commit()
     st = select(PlanProgram).where(PlanProgram.archived_at.is_(None),
                                    or_(PlanProgram.owner_id.is_(None), PlanProgram.owner_id == user.id))
     if grade:
@@ -85,11 +89,11 @@ def list_programs(grade: int | None = None, subject: str | None = None, level: s
         st = st.where(PlanProgram.subject == subject)
     if level:
         st = st.where(PlanProgram.level == level)
-    tgrade, tpurpose = None, None
+    tgrade, tpurpose, thours = None, None, None
     if ta_id:
         ta = own_assignment(db, user, ta_id)
         tc = db.get(SchoolClass, ta.class_id)
-        tgrade, tpurpose = class_grade(db, tc), tc.purpose
+        tgrade, tpurpose, thours = class_grade(db, tc), tc.purpose, ta.weekly_hours
     elif class_id:                                       # qoşulmazdan əvvəl (sinif/qrup seçilib, dərs bağlılığı hələ yoxdur)
         c = db.get(SchoolClass, class_id)
         if c and c.school_id == user.school_id:
@@ -110,7 +114,7 @@ def list_programs(grade: int | None = None, subject: str | None = None, level: s
     # fərdi məkanda – əksinə
     rows.sort(key=lambda p: (bool(tpurpose) and tpurpose not in purposes(p), tgrade is not None and p.grade not in (None, tgrade),
                              is_course(p) != private, p.key is None, p.grade or 0, p.title))
-    return [_out(p, used, tgrade, tpurpose) for p in rows]
+    return [_out(p, used, tgrade, tpurpose, thours) for p in rows]
 
 
 @router.get('/{pid}')
@@ -171,7 +175,12 @@ def preview(pid: int, ta_id: int, sections: str | None = None, user: User = Depe
     p = _visible(db, user, pid)
     ta = own_assignment(db, user, ta_id)
     lessons, rep = lessons_for(db, p, ta, _sections(p, _q_sections(sections)))
-    return {**rep, 'program': p.title,
+    cap = capacity(db, ta)
+    dl = [{**l, 'date': d} for l, (d, _) in zip(lessons, cap['slots'])] + lessons[len(cap['slots']):]
+    year = db.get(AcademicYear, db.get(SchoolClass, ta.class_id).year_id)
+    return {**rep, 'program': p.title, 'lint': [] if is_course(p) or is_toplu(p) else lint_plan(dl, year, ta.has_summative),
+            'hours_mismatch': bool(p.weekly_hours and p.weekly_hours != ta.weekly_hours), 'program_hours': p.weekly_hours,
+            'class_hours': ta.weekly_hours,
             'list': [{'seq': i, 'semester': l['semester'], 'section': l.get('section'), 'topic': l['topic'],
                       'assessment_type': l['assessment_type'], 'standards': l.get('standards') or []} for i, l in enumerate(lessons, 1)]}
 
@@ -183,6 +192,7 @@ class ApplyIn(BaseModel):
 @router.post('/{pid}/apply/{ta_id}')
 def apply_program(pid: int, ta_id: int, body: ApplyIn | None = None, user: User = Depends(settings_unlocked),
                   db: Session = Depends(get_db)):
+    ensure_current(db, user)
     p = _visible(db, user, pid)
     ta = own_assignment(db, user, ta_id)
     rep = apply(db, p, ta, user, _sections(p, body.sections if body else None))
@@ -198,6 +208,7 @@ class SaveIn(BaseModel):
 
 @router.post('/save/{ta_id}')
 def save_current(ta_id: int, body: SaveIn, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    ensure_current(db, user)
     ta = own_assignment(db, user, ta_id)
     p = snapshot(db, ta, user, (body.title or '').strip() or None)
     if not p:
@@ -213,7 +224,7 @@ LEVELS = Literal['Zəif', 'Orta', 'Güclü']
 class PatchIn(BaseModel):
     title: str = Field(min_length=3, max_length=200)
     description: str | None = Field(None, max_length=2000)
-    grade: int | None = Field(None, ge=1, le=11)
+    grade: int | None = Field(None, ge=1, le=12)
     level: LEVELS | None = None
 
 
@@ -238,6 +249,11 @@ def archive(pid: int, user: User = Depends(settings_unlocked), db: Session = Dep
     if db.scalar(select(TeachingAssignment.id).where(TeachingAssignment.program_id == p.id,
                                                      TeachingAssignment.archived_at.is_(None))):
         raise HTTPException(409, 'Proqram hazırda sinif/qrupda istifadə olunur – əvvəlcə başqa proqram tətbiq edin')
+    extra = [n for (n,) in db.execute(select(SchoolClass.name).join(TeachingAssignment, TeachingAssignment.class_id == SchoolClass.id)
+                                      .join(AssignmentProgram, AssignmentProgram.assignment_id == TeachingAssignment.id)
+                                      .where(AssignmentProgram.program_id == p.id).distinct().order_by(SchoolClass.name))]
+    if extra:
+        raise bad(409, 'Proqram əlavə proqram kimi istifadə olunur: {names} – əvvəlcə onu oradan çıxarın', names=', '.join(extra))
     p.archived_at = now()
     audit(db, user, 'archive', 'plan_program', p.id)
     db.commit()
@@ -271,7 +287,13 @@ def estimate(pid: int, body: EstimateIn, user: User = Depends(staff), db: Sessio
     ta = TeachingAssignment(teacher_id=user.id, class_id=c.id, subject='', weekly_hours=1, slots=slots,
                             has_summative=body.has_summative, starts_on=body.starts_on, ends_on=body.ends_on)
     lessons, rep = lessons_for(db, p, ta)
-    return {'lessons': rep['lessons'], 'slots': rep['sem1_slots'] + rep['sem2_slots'], 'warnings': rep['warnings']}
+    cap = capacity(db, ta)
+    dl = [{**l, 'date': d} for l, (d, _) in zip(lessons, cap['slots'])] + lessons[len(cap['slots']):]
+    lint = [] if is_course(p) or is_toplu(p) else lint_plan(dl, db.get(AcademicYear, c.year_id), body.has_summative)
+    hours = sum(len(v) for v in slots.values())
+    return {'lessons': rep['lessons'], 'slots': rep['sem1_slots'] + rep['sem2_slots'], 'warnings': rep['warnings'], 'lint': lint,
+            'hours_mismatch': bool(p.weekly_hours and hours and p.weekly_hours != hours), 'program_hours': p.weekly_hours,
+            'class_hours': hours}
 
 
 # ---------------------------------------------------------------- Word planı birbaşa kitabxanaya
@@ -294,7 +316,7 @@ def import_word(file: UploadFile = File(...), title: str | None = Form(None), gr
         try:
             parsed = parse_plan(f)
         except Exception as e:                          # zədəli / plan cədvəli olmayan fayl
-            raise HTTPException(400, f'Plan oxunmadı: {e}')
+            raise bad(400, 'Plan oxunmadı: {err}', err=str(e))
     if not parsed.lessons:
         raise HTTPException(400, 'Faylda perspektiv plan cədvəli tapılmadı')
     lessons = []
@@ -396,16 +418,15 @@ def _for(db: Session, ta: TeachingAssignment) -> dict:
              for ap in db.scalars(select(AssignmentProgram).where(AssignmentProgram.assignment_id == ta.id)
                                   .order_by(AssignmentProgram.id))]
     return {'ta_id': ta.id, 'class_name': cls.name, 'subject': ta.subject, 'grade': class_grade(db, cls),
-            'grade_roman': ROMAN.get(class_grade(db, cls)), 'main': _out(main, {}) if main else None,
+            'grade_roman': ROMAN.get(class_grade(db, cls)), 'main': _out(main, {}, hours=ta.weekly_hours) if main else None,
             'main_sections': ta.program_sections if main else None, 'extra': extra}
 
 
 @router.get('/for/{ta_id}')
 def programs_for(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Sinif/qrupun proqramları: əsas (jurnal və tarixlər ona görə) və əlavə (səviyyə qrupu üçün də)."""
-    ensure_builtin(db)
-    ensure_current(db, user)
-    db.commit()
+    if ensure_current(db, user):
+        db.commit()
     return _for(db, own_assignment(db, user, ta_id))
 
 
@@ -418,6 +439,7 @@ class AttachIn(BaseModel):
 @router.post('/{pid}/attach/{ta_id}')
 def attach(pid: int, ta_id: int, body: AttachIn, user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
     """Əlavə proqram: jurnala qarışmır, ayrıca dərs siyahısı (sinfin cədvəlinə görə) kimi göstərilir və çap olunur."""
+    ensure_current(db, user)
     p = _visible(db, user, pid)
     ta = own_assignment(db, user, ta_id)
     if ta.program_id == p.id and body.level is None:
