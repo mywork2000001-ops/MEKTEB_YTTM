@@ -157,16 +157,56 @@ def student_report(sid: int, date_from: dt.date | None = Query(None, alias='from
     if format == 'docx':
         return Response(report_docx(rep, lang, parent), headers={'Content-Disposition': f'attachment; filename="{name}.docx"'},
                         media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    return Response(_render_pdf(report_html(rep, lang, parent)), media_type='application/pdf',
+                    headers={'Content-Disposition': f'attachment; filename="{name}.pdf"'})
+
+
+def _render_pdf(html: str) -> bytes:
     from .printing import _lock, render_pdf
     if not _lock.acquire(timeout=60):
         raise HTTPException(503, 'Server məşğuldur – bir az sonra yenidən yoxlayın')
     try:
-        data = render_pdf(report_html(rep, lang, parent))
+        return render_pdf(html)
     except Exception as e:                                   # noqa: BLE001
         raise HTTPException(500, f'PDF hazırlanmadı: {str(e)[:120]}')
     finally:
         _lock.release()
-    return Response(data, media_type='application/pdf', headers={'Content-Disposition': f'attachment; filename="{name}.pdf"'})
+
+
+MAX_BULK = 60
+
+
+@router.get('/class/{ta_id}/reports')
+def class_reports(ta_id: int, date_from: dt.date | None = Query(None, alias='from'), date_to: dt.date | None = Query(None, alias='to'),
+                  format: Literal['pdf', 'html'] = 'pdf', lang: Literal['az', 'ru', 'en'] = 'az', parent: bool = False,
+                  user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Sinfin bütün şagirdlərinin hesabatı – hər şagird ayrıca səhifə (valideyn iclası üçün). Yalnız öz dərsimin sinfi;
+    şagird adı ilə əlifba sırası. format=html – çap önbaxışı üçün hazır sənəd (testlər və brauzer)."""
+    from fastapi.responses import HTMLResponse, Response
+    from ..services import roster
+    from ..student_report import student_results
+    from ..student_report_print import report_html_many
+    ta = own_assignment(db, user, ta_id)
+    students = sorted(roster(db, ta), key=lambda s: s.full_name)
+    if len(students) > MAX_BULK:
+        raise HTTPException(400, f'Bir dəfəyə ən çox {MAX_BULK} şagird')
+    reps = []
+    for s in students:
+        try:
+            reps.append(student_results(db, user, s.id, date_from, date_to))
+        except HTTPException:
+            continue                                   # görünməyən şagird sənədə düşmür
+    if not reps:
+        raise HTTPException(404, 'Şagird tapılmadı')
+    db.commit()
+    if not parent:
+        lang = 'az'
+    audit(db, user, 'export', 'class_reports', str(ta_id), count=len(reps), parent=parent)
+    db.commit()
+    html = report_html_many(reps, lang, parent)
+    if format == 'html':
+        return HTMLResponse(html)
+    return Response(_render_pdf(html), media_type='application/pdf', headers={'Content-Disposition': f'attachment; filename="hesabatlar-{ta_id}.pdf"'})
 
 
 @router.get('/students')

@@ -3013,6 +3013,9 @@ const D: Record<string, [string, string]> = {
   "Valideyn nüsxəsi (AZ)": ["Parent copy (AZ)", "Копия для родителей (AZ)"],
   "Valideyn nüsxəsi (RU)": ["Parent copy (RU)", "Копия для родителей (RU)"],
   "Zəif mövzular (≤ 50%)": ["Weak topics (≤ 50%)", "Слабые темы (≤ 50%)"],
+  "Bütün şagirdlərin hesabatı (PDF)": ["All students' reports (PDF)", "Отчёты всех учеников (PDF)"],
+  "Valideyn iclası (RU)": ["Parents' meeting (RU)", "Родительское собрание (RU)"],
+  "PDF hazırdır": ["PDF is ready", "PDF готов"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

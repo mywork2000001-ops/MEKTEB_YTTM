@@ -208,6 +208,18 @@ def test_report_api(world, patched):
     assert s.get(f'/api/results-center/student/{sid}/report').status_code in (401, 403)
 
 
+def test_class_reports_bulk(world, patched):
+    as_, S = world
+    admin, ta, st, bid = _mk(world, patched)
+    r = admin.get(f'/api/results-center/class/{ta}/reports', params={'format': 'html'})
+    assert r.status_code == 200, r.text
+    assert r.text.count('<section') == 3 and r.text.count('page-break-before:always') == 2          # hər şagird ayrıca səhifə
+    assert all(s['full_name'] in r.text for s in st) and 'Şagirdin fərdi hesabatı' in r.text
+    ru = admin.get(f'/api/results-center/class/{ta}/reports', params={'format': 'html', 'parent': True, 'lang': 'ru'}).text
+    assert 'Краткий отчёт' in ru and 'Şagirdin fərdi hesabatı' not in ru
+    assert as_('yad').get(f'/api/results-center/class/{ta}/reports', params={'format': 'html'}).status_code == 404   # başqasının sinfi
+
+
 def test_report_api_private_workspace(world):
     as_, S = world
     admin, ilqar = as_('admin'), as_('ilqar')

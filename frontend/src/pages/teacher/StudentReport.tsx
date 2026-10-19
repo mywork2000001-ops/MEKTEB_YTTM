@@ -26,7 +26,7 @@ type Report = {
 const tone = (v: number | null | undefined) => (v == null ? undefined : v >= 70 ? 'ok' : v >= 40 ? 'warn' : 'bad') as 'ok' | 'warn' | 'bad' | undefined
 const sgn = (v: number | null | undefined) => (v == null ? '—' : (v > 0 ? '+' : '') + fmtN(v))
 
-async function download(url: string, name: string) {
+export async function download(url: string, name: string) {
   const r = await fetch(url, { credentials: 'same-origin' })
   if (!r.ok) { let m = tt('Fayl hazırlanmadı'); try { m = (await r.json()).detail || m } catch { /* noop */ } throw new Error(m) }
   const a = document.createElement('a')

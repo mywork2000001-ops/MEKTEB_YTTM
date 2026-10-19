@@ -81,8 +81,8 @@ def _rows(rep: dict, i: int, parent: bool) -> dict:
             'summ': (['name', 'date', 'score', 'pct', 'grade'], summ)}
 
 
-def report_html(rep: dict, lang: str = 'az', parent: bool = False) -> str:
-    """Tam HTML sənəd (A4, @page) – api/printing.render_pdf ilə PDF-ə çevrilir."""
+def _sheet(rep: dict, lang: str, parent: bool) -> str:
+    """Bir şagirdin səhifəsi (gövdə)."""
     i = _lang(lang, parent)
     t = lambda k: T[k][i]
     sm = rep['summary']
@@ -91,13 +91,7 @@ def report_html(rep: dict, lang: str = 'az', parent: bool = False) -> str:
     kpi = [(t('avg'), _n(sm['avg_pct'])), (t('last'), _n(sm['last_pct'])),
            (t('trend'), t(tr['dir']) + (f" ({_n(tr['delta'])})" if tr['delta'] is not None else '') if tr['dir'] else '—'),
            (t('part'), _n(sm['participation'], 0)), (t('place'), sm['place_class'] or '—')]
-    out = [f'<!doctype html><html lang="{("az", "ru", "en")[i]}"><head><meta charset="utf-8"><title>{_e(t("title"))}</title><style>'
-           '@page{size:A4;margin:12mm 12mm 15mm}body{font:12px/1.4 "Times New Roman","Liberation Serif",serif;color:#000}'
-           'h1{font-size:16px;text-align:center;margin:0 0 4px}h2{font-size:13.5px;margin:12px 0 5px;page-break-after:avoid}'
-           'table{border-collapse:collapse;width:100%}th,td{border:1px solid #000;padding:2px 4px;text-align:left}'
-           'th{background:#D9D9D9}.kpi{display:flex;margin:8px 0}.kpi span{flex:1;border:1px solid #000;padding:3px 6px;margin-left:-1px}'
-           '.kpi b{display:block;font-size:14px}.sign{margin-top:28px}tr{page-break-inside:avoid}</style></head><body>',
-           f'<h1>{_e(t("parent_title") if parent else t("title"))}</h1>',
+    out = [f'<h1>{_e(t("parent_title") if parent else t("title"))}</h1>',
            f'<p><b>{t("student")}:</b> {_e(rep["student"]["full_name"])} · <b>{t("class")}:</b> {_e(rep["student"]["class_name"] or "—")}'
            f' · <b>{t("period")}:</b> {_e(period)}</p>',
            '<div class="kpi">' + ''.join(f'<span>{_e(k)}<b>{_e(str(v))}</b></span>' for k, v in kpi) + '</div>']
@@ -115,8 +109,26 @@ def report_html(rep: dict, lang: str = 'az', parent: bool = False) -> str:
     out.append(f'<h2>{t("recs")}</h2><ul>' + ''.join(f'<li>{_e(x)}</li>' for x in recommendations(rep, i)) + '</ul>')
     if not parent:
         out.append(f'<p class="sign">{t("sign_teacher")}: ______________________</p>')
-    out.append('</body></html>')
     return ''.join(out)
+
+
+def report_html(rep: dict, lang: str = 'az', parent: bool = False) -> str:
+    """Tam HTML sənəd (A4, @page) – api/printing.render_pdf ilə PDF-ə çevrilir."""
+    return report_html_many([rep], lang, parent)
+
+
+def report_html_many(reps: list[dict], lang: str = 'az', parent: bool = False) -> str:
+    """Bir neçə şagird – hər biri ayrıca səhifədən başlayır (sinif üzrə toplu çap, valideyn iclası üçün)."""
+    i = _lang(lang, parent)
+    brk = ' style="page-break-before:always"'
+    pages = ''.join(f'<section{brk if n else ""}>{_sheet(r, lang, parent)}</section>' for n, r in enumerate(reps))
+    return (f'<!doctype html><html lang="{("az", "ru", "en")[i]}"><head><meta charset="utf-8"><title>{_e(T["title"][i])}</title><style>'
+            '@page{size:A4;margin:12mm 12mm 15mm}body{font:12px/1.4 "Times New Roman","Liberation Serif",serif;color:#000}'
+            'h1{font-size:16px;text-align:center;margin:0 0 4px}h2{font-size:13.5px;margin:12px 0 5px;page-break-after:avoid}'
+            'table{border-collapse:collapse;width:100%}th,td{border:1px solid #000;padding:2px 4px;text-align:left}'
+            'th{background:#D9D9D9}.kpi{display:flex;margin:8px 0}.kpi span{flex:1;border:1px solid #000;padding:3px 6px;margin-left:-1px}'
+            '.kpi b{display:block;font-size:14px}.sign{margin-top:28px}tr{page-break-inside:avoid}</style></head><body>'
+            f'{pages}</body></html>')
 
 
 def report_docx(rep: dict, lang: str = 'az', parent: bool = False) -> bytes:
