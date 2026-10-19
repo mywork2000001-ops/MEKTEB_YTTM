@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from ..appeals import freeze_refs
 from ..db import get_db
 from ..deps import staff
+from ..domain import own_numbers
 from ..domain.ksq_variants import RULES_V, Shortage, bank_candidates, card_answer, generate_auto, same_variant
 from ..domain.scoring import difficulty_of, question_points
 from ..exam_logic import exam_label
@@ -100,8 +101,6 @@ def list_paper(ta_id: int, user: User = Depends(staff), db: Session = Depends(ge
 def create_paper(ta_id: int, body: PaperIn, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Yazılı iş yaradır: mövcud test/sınaq (task_id) və ya sərbəst iş (file_ids). Variantlar dərhal hazır olur."""
     ta = own_assignment(db, user, ta_id)
-    if body.variant_mode == 'same_numbers':
-        raise HTTPException(400, '«Hamıya eyni, rəqəmlər fərqli» rejimi hələ hazır deyil (parametrli suallar – ayrıca mərhələ)')
     students = exam_roster_ids(db, ta)
     task = None
     if body.task_id is not None:
@@ -126,7 +125,7 @@ def create_paper(ta_id: int, body: PaperIn, user: User = Depends(staff), db: Ses
     d = body.date or today()
     e = Exam(assignment_id=ta.id, kind=kind, no=_next_no(db, ta.id, kind), semester=_semester(db, ta, d), date=d, max_points=100,
              title=(body.title or (task.title if task else 'Yazılı iş'))[:200], online_task_id=task.id if task else None,
-             batch_id=task.batch_id if task else None, to_journal=body.to_journal, variant_mode=body.variant_mode,
+             batch_id=task.batch_id if task else None, to_journal=body.to_journal, variant_mode='numbers' if body.variant_mode == 'same_numbers' else body.variant_mode,
              extra_students=sorted(students) if body.student_ids is not None or (task and task.student_ids) else None)
     db.add(e)
     db.flush()
@@ -140,7 +139,7 @@ def create_paper(ta_id: int, body: PaperIn, user: User = Depends(staff), db: Ses
             if len(fs) != len(files):
                 raise HTTPException(400, 'Test faylı tapılmadı')
             cands = bank_candidates(db, [(e.title or 'Yazılı iş', None)], fs[0].source_key, {0: files})
-            if body.variant_mode == 'same':
+            if body.variant_mode in ('same', 'same_numbers'):
                 one = same_variant(cands, body.n, seed=e.id * 7919, mcq_only=body.mcq_only)
                 res = {sid: copy.deepcopy(one) for sid in students}
             else:
@@ -150,6 +149,9 @@ def create_paper(ta_id: int, body: PaperIn, user: User = Depends(staff), db: Ses
         db.rollback()
         raise HTTPException(409, {'message': 'Seçilən fayllarda sual çatmır – sual sayını azaldın və ya fayl əlavə edin: ' + sh.message(),
                                   'shortage': sh.items})
+    report = None
+    if body.variant_mode == 'same_numbers':                  # eyni suallar, hər şagirdə öz ədədləri (nəticə variantda donur)
+        res, report = own_numbers.apply(next(iter(res.values())), students, f'{kind}{e.no}-{e.id}')
     for i, sid in enumerate(students):
         db.add(ExamVariant(exam_id=e.id, student_id=sid, code=f'{kind}{e.no}-{i + 1:02d}', questions=freeze_refs(db, res[sid])))
     plan_ = next(iter(res.values()))
@@ -157,7 +159,7 @@ def create_paper(ta_id: int, body: PaperIn, user: User = Depends(staff), db: Ses
     e.max_points = round(sum(q['points'] for q in plan_), 2)
     audit(db, user, 'create', 'exam', e.id, kind=kind, paper=True, students=len(students), task=body.task_id)
     db.commit()
-    return {'exam': exam_out(e), 'variants': len(students)}
+    return {'exam': exam_out(e), 'variants': len(students), 'own_numbers': report}
 
 
 def exam_roster_ids(db: Session, ta) -> list[int]:

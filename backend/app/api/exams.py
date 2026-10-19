@@ -2,6 +2,7 @@
 tapşırıq və standart təhlili, yarımil qiyməti = (KSQ qiymətləri cəmi / sayı) × 0,4 + BSQ × 0,6."""
 from __future__ import annotations
 
+import copy
 import datetime as dt
 from typing import Literal
 
@@ -504,6 +505,7 @@ def _base_info(db: Session, ta, e: Exam) -> dict | None:
 
 def _variants_out(db: Session, ta, e: Exam) -> dict:
     from collections import Counter
+    from ..domain import own_numbers
     from ..domain.ksq_variants import RULES_V, fairness
     names = {s.id: s.full_name for s in exam_roster(db, ta, e)}
     vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == e.id)))
@@ -513,6 +515,7 @@ def _variants_out(db: Session, ta, e: Exam) -> dict:
             'report': fairness({v.student_id: v.questions for v in vs}) if vs else None,
             # köhnə qaydalarla yaradılıb (mövzudan kənar sual ola bilər) – müəllimə «Yenidən yarat» təklif olunur
             'stale': any(q.get('v', 0) < RULES_V or q.get('template') for v in vs for q in v.questions if not q.get('edited')),
+            'own_numbers': own_numbers.report_of(vs[0].questions) if vs else None,
             'share': max(Counter(q.get('key') for v in vs for q in v.questions).values(), default=0),
             'base': _base_info(db, ta, e),
             'printed_at': max((v.printed_at for v in vs if v.printed_at), default=None),
@@ -651,7 +654,21 @@ def retake(ta_id: int, exam_id: int, student_id: int, body: RetakeIn | None = No
     used = taken | {norm_text(q.get('text')) for x in all_vs for q in x.questions} | hist.get(student_id, set())
     rnd = random.Random()
     qs, missing = [], []
+    from ..domain import own_numbers
+    own_mode = own_numbers.is_own_mode(v.questions)                  # «öz rəqəmləri» variantı: eyni suallar, yalnız ədədlər yenilənir
     for old in sorted(v.questions, key=lambda q: q['slot']):
+        if own_mode:
+            if old.get('own_numbers'):
+                avoid = {own_numbers.sig_of(q) for x in all_vs for q in x.questions if q.get('slot') == old['slot']}
+                got = own_numbers.renew(old, f'{e.kind}{e.no}-{e.id}', student_id, avoid, start=own_numbers.next_salt(v.code),
+                                        pool=len(all_vs))
+                if got is None:
+                    missing.append(old['slot'])
+                    continue
+                qs.append(got)
+            else:
+                qs.append(copy.deepcopy(old))
+            continue
         got = pick_one(old, topics, cands, used, rnd.randrange(10 ** 9))
         if got is None:
             missing.append(old['slot'])
@@ -964,6 +981,13 @@ class VariantsIn(BaseModel):
     sources: list[str] | None = Field(None, max_length=20)     # test layihələri (bank mənbələri); boş – sinfin əsas layihəsi
     mcq_only: bool = False                                     # yalnız qapalı (test) suallar – məs. DİM sinif testi
     same_for_all: bool = False                                 # hamıya eyni variant, mövzu-mövzu (DİM sinif testi kimi)
+    own_numbers: bool = False                                  # hamıya eyni suallar, hər şagirdə öz rəqəmləri (same_for_all-ı da işə salır)
+
+    @model_validator(mode='after')
+    def _own_implies_same(self):
+        if self.own_numbers:
+            self.same_for_all = True
+        return self
 
 
 def _prepare(db: Session, ta, e: Exam, body: 'VariantsIn') -> tuple:
@@ -1070,6 +1094,9 @@ def _make(db: Session, user: User, ta, e: Exam, body: 'VariantsIn') -> None:
             from ..domain.ksq_variants import same_variant
             one = same_variant(cands, body.n, seed=e.id * 7919, mcq_only=body.mcq_only)
             res, share = {sid: copy.deepcopy(one) for sid in students}, len(students)
+            if body.own_numbers:                                          # eyni suallar, fərqli ədədlər (variantda donur)
+                from ..domain import own_numbers
+                res, _rep = own_numbers.apply(one, students, f'{e.kind}{e.no}-{e.id}')
         else:
             res, share = generate_auto(students, topics, cands, hist, seed=e.id * 7919, n=body.n, others=others, mcq_only=body.mcq_only)
         _guard(db, ta, e, res, body)
@@ -1084,6 +1111,7 @@ def _make(db: Session, user: User, ta, e: Exam, body: 'VariantsIn') -> None:
     plan_ = next(iter(res.values())) if body.same_for_all else slots(body.n, body.mcq_only)
     e.items = [{'n': s['slot'], 'points': s['points'], 'standard': None, 'kind': s['kind'], 'level': s['level']} for s in plan_]
     e.max_points = 100
+    e.variant_mode = 'numbers' if body.own_numbers else None
     from ..domain import ksq_base
     ksq_base.remember(db, ta, e, topics, files, user.id if user else None)
     audit(db, user, 'create', 'exam_variants', e.id, students=len(students), topics=len(topics), share=share)

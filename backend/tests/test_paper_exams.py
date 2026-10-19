@@ -114,8 +114,8 @@ def test_free_written_work_without_plan_different_and_same(world):
     assert r2['kind'] == 'YI' and r2['no'] == e['no'] + 1
     pr2 = admin.get(f'/api/exams/{ta}/{r2["id"]}/variants/print').json()
     assert len({tuple(q['text'] for q in s['questions']) for s in pr2['sheets']}) == 1             # hamıya eyni
-    # rəqəmləri fərqli rejim hələ yoxdur (docs/reqem-variantlari-promtu.md) – aydın xəta
-    assert admin.post(f'/api/paper-exams/{ta}', json={'file_ids': [fid], 'n': 10, 'date': '2026-10-06', 'variant_mode': 'same_numbers'}).status_code == 400
+    # «eyni suallar, öz rəqəmləri» rejimi artıq var (tests/test_own_numbers_api.py); sadə mətnli suallar dəyişmir
+    assert admin.post(f'/api/paper-exams/{ta}', json={'file_ids': [fid], 'n': 10, 'date': '2026-10-06', 'variant_mode': 'same_numbers'}).status_code == 200
     # çatışmazlıq – 409, bank faylı yoxdursa 400
     assert admin.post(f'/api/paper-exams/{ta}', json={'file_ids': [fid], 'n': 30, 'date': '2026-10-06', 'variant_mode': 'different'}).status_code in (200, 409)
     assert admin.post(f'/api/paper-exams/{ta}', json={'n': 10, 'date': '2026-10-06'}).status_code == 400

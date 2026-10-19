@@ -5,6 +5,7 @@ import { del, get, patch, post } from '../../api'
 import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, Pill, PickFirst, toast, useLoad } from '../../ui'
 import { useT } from '../../i18n'
 import { printBooklet, printKey, printSheets, type KsqPrint } from '../../ksqPrint'
+import OwnNumbersReport, { type OwnReport } from '../../OwnNumbersReport'
 
 type Paper = { id: number; kind: 'TEST' | 'SINAQ' | 'YI'; no: number; title: string | null; date: string; to_journal: boolean
   online_task_id: number | null; variants: number; printed: boolean; scanned: number; graded: number; variant_mode: string | null }
@@ -96,7 +97,8 @@ function Create({ ta, onClose, onDone }: { ta: number; onClose: () => void; onDo
   const [files, setFiles] = useState<BFile[]>([])
   const [pick, setPick] = useState<number[]>([])
   const [n, setN] = useState(20)
-  const [vm, setVm] = useState<'same' | 'different'>('same')
+  const [vm, setVm] = useState<'same' | 'different' | 'same_numbers'>('same')
+  const [rep, setRep] = useState<OwnReport | null>(null)
   const [title, setTitle] = useState('')
   const [journal, setJournal] = useState(false)
   const [fail, setFail] = useState<string | null>(null)
@@ -105,17 +107,22 @@ function Create({ ta, onClose, onDone }: { ta: number; onClose: () => void; onDo
   const go = async () => {
     setFail(null)
     try {
-      const body = mode === 'task' ? { task_id: taskId, title: title || null, to_journal: journal }
+      const body = mode === 'task' ? { task_id: taskId, title: title || null, to_journal: journal, variant_mode: vm === 'different' ? 'same' : vm }
         : { file_ids: pick, n, variant_mode: vm, title: title || null, to_journal: journal }
-      await post(`/api/paper-exams/${ta}`, body)
+      const res = await post<{ own_numbers: OwnReport | null }>(`/api/paper-exams/${ta}`, body)
       toast(t('Yazılı iş hazırdır – vərəqləri çap edin'))
-      onDone()
+      if (res?.own_numbers) setRep(res.own_numbers)       // hesabatı göstər, müəllim «Bağla» ilə bağlayır
+      else onDone()
     } catch (x) {
       const m = (x as any)?.detail?.message || (x as Error).message
       setFail(String(m))
     }
   }
   const ok = mode === 'task' ? taskId !== '' : pick.length > 0
+  if (rep) return (
+    <Drawer title="Yazılı iş yarat" onClose={onDone} footer={<button className="btn primary" onClick={onDone}>{t('Bağla')}</button>}>
+      <OwnNumbersReport r={rep} />
+    </Drawer>)
   return (
     <Drawer title="Yazılı iş yarat" onClose={onClose} footer={<AsyncBtn className="btn primary" disabled={!ok} onClick={go}>{t('Yarat')}</AsyncBtn>}>
       <div style={{ display: 'grid', gap: 12 }}>
@@ -124,11 +131,18 @@ function Create({ ta, onClose, onDone }: { ta: number; onClose: () => void; onDo
           <button aria-pressed={mode === 'free'} className="btn sm" onClick={() => setMode('free')}>{t('Sərbəst yazılı iş')}</button>
         </div>
         {mode === 'task' ? (
+          <>
           <Field label={t('Test və ya sınaq')}>
             <select value={taskId} onChange={e => setTaskId(e.target.value ? +e.target.value : '')}>
               <option value="">—</option>
               {tasks.map(x => <option key={x.id} value={x.id}>{x.title}{x.kind === 'sinaq' ? ' · ' + t('Sınaq') : ''}</option>)}
             </select></Field>
+            <Field label={t('Variantlar')}>
+              <select value={vm === 'different' ? 'same' : vm} onChange={e => setVm(e.target.value as 'same' | 'same_numbers')}>
+                <option value="same">{t('Hamıya eyni suallar')}</option>
+                <option value="same_numbers">{t('Hamıya eyni suallar, hər şagirdə öz rəqəmləri')}</option>
+              </select></Field>
+          </>
         ) : (
           <>
             <Field label={t('Test layihəsi')}>
@@ -146,9 +160,10 @@ function Create({ ta, onClose, onDone }: { ta: number; onClose: () => void; onDo
             <Field label={t('Sual sayı (5–30)')}>
               <input type="number" min={5} max={30} value={n} onChange={e => setN(Math.max(5, Math.min(30, +e.target.value || 5)))} /></Field>
             <Field label={t('Variantlar')}>
-              <select value={vm} onChange={e => setVm(e.target.value as 'same' | 'different')}>
+              <select value={vm} onChange={e => setVm(e.target.value as 'same' | 'different' | 'same_numbers')}>
                 <option value="same">{t('Hamıya eyni suallar')}</option>
                 <option value="different">{t('Hər şagirdə fərqli suallar')}</option>
+                <option value="same_numbers">{t('Hamıya eyni suallar, hər şagirdə öz rəqəmləri')}</option>
               </select></Field>
           </>)}
         <Field label={t('Ad (istəyə görə)')}><input value={title} onChange={e => setTitle(e.target.value)} maxLength={200} /></Field>

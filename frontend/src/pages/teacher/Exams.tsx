@@ -8,6 +8,7 @@ import { useT, ml, tt } from '../../i18n'
 import { printKey, printSheets, type KsqPrint } from '../../ksqPrint'
 import ScanCamera, { aiErrorText } from '../../scanCamera'
 import { printCards } from '../../examCardPrint'
+import OwnNumbersReport, { type OwnReport } from '../../OwnNumbersReport'
 
 type Exam = { id: number; kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; max_points: number; items: { n: number; points: number; standard?: string }[] | null; extra_of?: number | null; extra_seq?: number; extra_students?: number[] | null }
 type Planned = { kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; topic: string; created: boolean }
@@ -354,7 +355,7 @@ function printSuspects(ta: MyLesson, e: Exam, list: Suspect[]) {
         deletedText(h.deleted, azTr), k ? '' : execText(x, azTr)]))) })
 }
 type VarRes = { exam: Exam; variants: { student_id: number; full_name: string | null; code: string }[]; suspects?: Suspect[]
-  report: { open_pct: number; [k: string]: unknown } | null; stale?: boolean }
+  report: { open_pct: number; [k: string]: unknown } | null; stale?: boolean; own_numbers?: OwnReport | null }
 type Ready = { students: number; n: number; need: number; ok: boolean; max_n: number | null; share: number | null
   topics: { topic: string; files: number; mcq: number; open: number; templates: number }[]; selected: { mcq: number; open: number }
   shortage: { slot?: number; kind?: string; level?: string; missing: number }[] }
@@ -377,6 +378,7 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   const [src, setSrc] = useState<Sources | null>(null)
   const [mode, setMode] = useState<'plan' | 'add' | 'only'>('plan')
   const [same, setSame] = useState(false)               // hamıya eyni variant, mövzu-mövzu (DİM sinif testi kimi)
+  const [own, setOwn] = useState(false)                // eyni suallar, hər şagirdə öz rəqəmləri
   const [mcqOnly, setMcqOnly] = useState(false)          // yalnız qapalı (test) suallar – məs. DİM sinif testi
   const [pickd, setPickd] = useState<number[]>([])
   const [projs, setProjs] = useState<string[]>([])           // seçilmiş test layihələri (boş – sinfin əsas layihəsi)
@@ -387,14 +389,14 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   const [also, setAlso] = useState<number[]>([])
   useEffect(() => { get<typeof sibs>(`/api/exams/${ta.id}/${e.id}/siblings`).then(setSibs, () => setSibs([])) }, [e.id])   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { get<Sources>(`/api/exams/${ta.id}/${e.id}/sources`, projs.length ? { sources: projs.join(',') } : undefined).then(setSrc, () => setSrc(null)) }, [e.id, projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
-  const body = () => ({ n, file_ids: mode === 'plan' ? null : pickd, only_mine: mode === 'only', sources: projs.length ? projs : null, mcq_only: mcqOnly, same_for_all: same })
+  const body = () => ({ n, file_ids: mode === 'plan' ? null : pickd, only_mine: mode === 'only', sources: projs.length ? projs : null, mcq_only: mcqOnly, same_for_all: same || own, own_numbers: own })
   // hazırlıq: seçim dəyişəndə hovuz yenidən yoxlanır (kiçik gecikmə ilə)
   useEffect(() => {
     if (mode !== 'plan' && !pickd.length) { setReady(null); return }
     setChecking(true)
     const t = setTimeout(() => { post<Ready>(`/api/exams/${ta.id}/${e.id}/readiness`, body()).then(setReady, () => setReady(null)).finally(() => setChecking(false)) }, 350)
     return () => clearTimeout(t)
-  }, [n, mode, mcqOnly, same, pickd.join(','), projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [n, mode, mcqOnly, same, own, pickd.join(','), projs.join(',')])   // eslint-disable-line react-hooks/exhaustive-deps
   const make = async () => {
     setFail(null)
     try {
@@ -413,6 +415,7 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
   return (
     <Drawer title={`${e.kind}-${e.no} · ${tt('Kağız variantlar')}`} onClose={onClose}>
       <ErrorBox error={err} />
+      <OwnNumbersReport r={d?.own_numbers} />
       {d?.stale && <div className="kverdict warn" style={{ marginTop: 0 }}>⚠ {tt('Bu variantlar köhnə qaydalarla yaradılıb – mövzuya uyğun olmayan sual ola bilər. 1-ci addımda «Yenidən yarat» basın (nəticə yazılıbsa – sualları 2-ci addımda tək-tək əvəz edin).')}
         <div style={{ marginTop: 6 }}><AsyncBtn className="btn sm primary" onClick={async () => { const r = await post<{ fixed: number; failed: number; students: number }>(`/api/exams/${ta.id}/${e.id}/fix-offtopic`); toast(tt('Əvəz olundu: {n} sual ({s} şagird)', { n: r.fixed, s: r.students }) + (r.failed ? ' · ⚠ ' + r.failed : '') + ' · ' + tt('çap olunubsa – vərəqi yenidən çap edin')); reload() }}>🧹 {tt('Uyğunsuz sualları avtomatik düzəlt')}</AsyncBtn></div></div>}
       <div className="ksteps">
@@ -427,7 +430,8 @@ function Variants({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => vo
                 <option value="add">{tt('Plan + özüm əlavə edirəm')}</option>
                 <option value="only">{tt('Yalnız özüm seçdiklərim')}</option></select></label>
             <label className="check small" style={{ alignSelf: 'end' }}><input type="checkbox" checked={mcqOnly} onChange={x => setMcqOnly(x.target.checked)} />{tt('Yalnız qapalı (test) suallar')}</label>
-            <label className="check small" style={{ alignSelf: 'end' }} title={tt('DİM sinif testi kimi: hamıya eyni suallar, hər mövzudan bərabər, mövzu-mövzu düzülür')}><input type="checkbox" checked={same} onChange={x => setSame(x.target.checked)} />{tt('Hamıya eyni suallar (mövzu-mövzu)')}</label>
+            <label className="check small" style={{ alignSelf: 'end' }} title={tt('DİM sinif testi kimi: hamıya eyni suallar, hər mövzudan bərabər, mövzu-mövzu düzülür')}><input type="checkbox" checked={same || own} disabled={own} onChange={x => setSame(x.target.checked)} />{tt('Hamıya eyni suallar (mövzu-mövzu)')}</label>
+            <label className="check small" style={{ alignSelf: 'end' }}><input type="checkbox" checked={own} onChange={x => setOwn(x.target.checked)} />{tt('Hamıya eyni suallar, hər şagirdə öz rəqəmləri')}</label>
           </div>
           {src?.projects && src.projects.length > 1 && <div style={{ marginTop: 8 }}>
             <span className="small" style={{ fontWeight: 600 }}>{tt('Test layihələri')}:</span>{' '}
