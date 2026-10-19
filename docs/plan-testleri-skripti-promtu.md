@@ -9,7 +9,11 @@ docs/mekteb-plan-movzu-testleri-promtu.md (mövzu nömrəsi, uyğunluq həddi �
 
 ## 0. Sabit qaydalar
 - Müəllimin əl ilə yaratdığı test və əl ilə seçdiyi fayl (`LessonBankLink`) toxunulmaz; testi olan dərsə ikinci test yaradılmır.
-- KSQ/BSQ/diaqnostik dərsə mövzu testi yoxdur. Keçmiş dərslərə test yaradılmır (yalnız bu gündən sonra).
+- KSQ/BSQ/diaqnostik dərsə mövzu testi yoxdur.
+- **Tarixə görə çatışmayan testlər** (istifadəçi tələbi): keçilmiş dərslər (dövrün əvvəlindən bu günə qədər) testsizdirsə – `--missing`
+  rejimi onları da doldurur: açılma – indi, bağlanma – açılmadan 3 gün sonra 22:00 (`missing_close_days`, defolt 3); hesabatda «çatışmayan» statusu.
+- **İcra vaxtı – 45 dəqiqə** (istifadəçi tələbi): mühərriklə yaradılan bütün mövzu testlərinin `duration_min` defoltu 45 (əvvəl 20);
+  açıq qalma aralığı 45 dəqiqədən qısa ola bilməz.
 - Fərdi məkan ↔ məktəb qarışmır: `--all` yalnız işlədənin görə bildiyi siniflər (müəllim – öz dərsləri; admin – məktəbin dərsləri,
   fərdi məkanlar heç vaxt).
 - **Defolt quru rejim** (heç nə yazmır, hesabat verir); yazı yalnız `--apply` / UI-da «Təsdiq et» ilə. Canlı DB-də ilk `--apply` –
@@ -30,11 +34,11 @@ docs/mekteb-plan-movzu-testleri-promtu.md (mövzu nömrəsi, uyğunluq həddi �
 ```
 plan_items(db, ta, date_from, date_to) -> list[Item]   # işçi plana görə dərs yuvaları + mövzu (dərsin sonuncu yuvası)
 resolve(db, ta, item) -> Choice                       # fayl/suallar: əl seçimi → toplu (P007 S/E/M) → GradeMatcher (sinif + nömrə + ad)
-                                                       #   status: ok | weak | none | manual | has_test | summative | past
-build_task(db, ta, item, choice, opts) -> OnlineTask   # açılma: dərsin sonu; bağlanma: ertəsi gün 22:00; 20 dəq.; qarışıq; cavablar bağlanandan sonra; jurnala
+                                                       #   status: ok | weak | none | manual | has_test | summative | past | missing
+build_task(db, ta, item, choice, opts) -> OnlineTask   # açılma: dərsin sonu; bağlanma: ertəsi gün 22:00; 45 dəq.; qarışıq; cavablar bağlanandan sonra; jurnala
 assign(db, user, tas, date_from, date_to, opts, apply=False) -> Report
 ```
-- `opts`: `n_questions` (15), `duration`, `close_rule` (ertəsi gün 22:00 | +N gün), `include_weak` (False – şübhəli uyğunluqda test
+- `opts`: `n_questions` (15), `duration` (45), `missing` (False), `missing_close_days` (3), `close_rule` (ertəsi gün 22:00 | +N gün), `include_weak` (False – şübhəli uyğunluqda test
   yaradılmır, hesabatda «yoxlayın»), `levels` (gələcək: səviyyə variantları), `same_for_parallel` (gələcək).
 - **Qeydiyyat (registry)**: sual mənbəyi seçiciləri sıralı siyahıdadır `RESOLVERS = [manual, toplu_p007, grade_matcher, ...]`;
   yeni mənbə/qayda = yeni funksiya + siyahıya bir sətir. Yaradılan tapşırığa son emal addımları `POST_STEPS = [own_numbers?, ...]`.
@@ -47,6 +51,7 @@ assign(db, user, tas, date_from, date_to, opts, apply=False) -> Report
 ```
 python -m scripts.plan_tests --all                       # bütün siniflər, bu gündən 7 gün, QURU rejim – hesabat
 python -m scripts.plan_tests --class "X a" --from 2026-10-20 --to 2026-11-30
+python -m scripts.plan_tests --all --missing --from 2026-09-15   # tarixə görə çatışmayan testlər (keçilmiş dərslər)
 python -m scripts.plan_tests --ta 42 --apply             # yazır (təsdiq sualı: «N test yaradılacaq. Davam? [y/N]»)
 python -m scripts.plan_tests --all --apply --yes --include-weak --n 20 --out hesabat.csv
 python -m scripts.plan_tests --teacher email@... --all   # admin: konkret müəllimin dərsləri
@@ -58,13 +63,14 @@ python -m scripts.plan_tests --teacher email@... --all   # admin: konkret müəl
 - `POST /api/plan-tests/preview` {ta_ids | all, from, to, opts} → hesabat (yazmır).
 - `POST /api/plan-tests/assign` eyni body → yaradır, hesabat qaytarır (audit jurnalına bir yazı + hər tapşırıq).
 - UI: Plan səhifəsində «🧪 Testləri təyin et» → pəncərə: siniflər (bu sinif / seçilənlər / bütün siniflərim), dövr (bu həftə / bu ay /
-  tarixlər), sual sayı, «şübhəlilər də» seçimi → «Önbaxış» cədvəli (status rəngli) → «Təsdiq et». Admin üçün Tənzimləmə → «Bütün siniflər».
+  tarixlər), «Çatışmayanları da (keçilmiş dərslər)», müddət (defolt 45 dəq.), sual sayı, «şübhəlilər də» seçimi → «Önbaxış» cədvəli (status rəngli) → «Təsdiq et». Admin üçün Tənzimləmə → «Bütün siniflər».
 
 ### 2.4 Gələcək əlavələr qaydası
 Layihə CLAUDE.md-də qayda: **mövzu testinin seçimi/təyini ilə bağlı hər yeni imkan yalnız `app/plan_tests.py`-ə (RESOLVERS / POST_STEPS /
 opts) əlavə olunur**; skript, API, gündəlik avtomatik rejim onu oradan alır; `tests/test_plan_tests.py`-ə test əlavə olunur.
 
 ## 3. Testlər (`tests/test_plan_tests.py`)
+0. Defolt müddət 45 dəq.; `--missing` keçilmiş testsiz dərslərə «indi → +3 gün 22:00» testi yaradır, keçilmiş dərsdə testi olan – toxunulmur.
 1. Quru rejim DB-yə yazmır; hesabat statusları düzgün (ok/weak/none/has_test/summative/past).
 2. `--apply` iki dəfə – ikinci dəfə 0 yeni test.
 3. V sinif (P001) və fərdi «Sinif testləri» kursu – öz sinfinin faylından test (T2 düzəlişi).
