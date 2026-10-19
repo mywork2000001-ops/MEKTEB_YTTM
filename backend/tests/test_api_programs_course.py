@@ -112,17 +112,17 @@ def test_private_real_times(world):
     assert r.status_code == 200, r.text
     m = r.json()['mine']
     assert m['weekly_hours'] == 3 and m['slots'] == {'1': [0, 1], '5': [0]}      # 90 dəq. görüş = 2 saat
-    assert [(x['weekday'], x['start'], x['end'], x['units']) for x in m['times']] == [(1, '17:00', '18:30', 2), (5, '10:00', '11:00', 1)]
+    assert [(x['weekday'], x['start'], x['end'], x['units']) for x in m['times']] == [(1, '17:00', '18:35', 2), (5, '10:00', '10:45', 1)]      # 5 dəq. fasilə
     # başqa fərdi qrupla toqquşma
     r2 = t.post(f'/api/classes/{b}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'times': [{'weekday': 1, 'start': '18:00', 'end': '19:00'}]})
     assert r2.status_code == 409 and 'IX hazırlıq' in r2.json()['detail']['message']
     # jurnal və həftəlik cədvəl real vaxtı göstərir
     ta = m['ta_id']
     day = t.get(f'/api/journal/{ta}/day', params={'date': '2026-10-06'}).json()
-    assert [l['time'] for l in day['lessons']] == ['17:00–17:45', '17:45–18:30']
+    assert [l['time'] for l in day['lessons']] == ['17:00–17:45', '17:50–18:35']
     tt = t.get('/api/timetable', params={'date': '2026-10-06'}).json()
     sat = next(d for d in tt['days'] if d['weekday'] == 'Ş.')
-    assert [c['time'] for cs in sat['periods'].values() for c in cs] == ['10:00–11:00']
+    assert [c['time'] for cs in sat['periods'].values() for c in cs] == ['10:00–10:45']
     # vaxt əlavə olunanda köhnə dərs öz sırasını saxlayır
     more = [{'weekday': 1, 'start': '15:00', 'end': '16:00'}] + times
     m2 = t.post(f'/api/classes/{a}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 3, 'times': more}).json()['mine']

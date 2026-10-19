@@ -145,6 +145,33 @@ class EntryIn(BaseModel):
     unlock_reason: str | None = Field(None, max_length=300)   # yalnız admin: bağlanmış yarımildə düzəliş səbəbi
 
 
+def _sync_meeting_attendance(db: Session, ta, ctx, body, old_first: dict, left_ids: set) -> None:
+    """Fərdi qrupda görüş (2+ saat) bir dəfə: görüşün 1-ci hissəsinə yazılan davamiyyət eyni görüşün digər hissələrinə də
+    yazılır. Digər hissəyə əvvəl ayrıca (fərqli) davamiyyət yazılıbsa ona toxunulmur."""
+    from .classes import times_groups
+    g = next((x for x in times_groups(ta) if x['weekday'] == body.date.weekday() and body.period in x['periods']), None)
+    if not g or len(g['periods']) < 2 or body.period != g['periods'][0]:
+        return
+    for p2 in g['periods'][1:]:
+        s2 = slot_at(ctx.slots, body.date, p2)
+        if not s2:
+            continue
+        e2 = db.scalar(select(JournalEntry).where(JournalEntry.assignment_id == ta.id, JournalEntry.date == body.date,
+                                                  JournalEntry.period == p2))
+        old2 = {a.student_id: a.status for a in db.scalars(select(Attendance).where(Attendance.entry_id == e2.id))} if e2 else {}
+        if old2 and old2 != old_first:
+            continue
+        if e2 is None:
+            pl2 = taught_lesson(ctx, s2, None)
+            e2 = JournalEntry(assignment_id=ta.id, date=body.date, period=p2, plan_lesson_id=pl2.id if pl2 else None)
+            db.add(e2)
+            db.flush()
+        e2.auto = False
+        db.query(Attendance).filter(Attendance.entry_id == e2.id, Attendance.student_id.not_in(list(left_ids) or [0])).delete(
+            synchronize_session=False)
+        db.add_all(Attendance(entry_id=e2.id, student_id=k, status=v) for k, v in body.attendance.items())
+
+
 @router.put('/{ta_id}/entry')
 def save_entry(ta_id: int, body: EntryIn, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Gündəlik yazı – Tənzimləmələr kilidi tələb olunmur. Göndərilən siyahılar həmin dərs üçün tam əvəzlənir."""
@@ -207,6 +234,8 @@ def save_entry(ta_id: int, body: EntryIn, user: User = Depends(staff), db: Sessi
     db.add_all(Attendance(entry_id=e.id, student_id=k, status=v) for k, v in body.attendance.items())
     db.add_all(Mark(entry_id=e.id, task_id=_from_task(m), **m.model_dump()) for m in body.marks)
     db.add_all(HomeworkCheck(entry_id=e.id, student_id=k, status=v) for k, v in body.homework_checks.items())
+    if ta.times and body.attendance:
+        _sync_meeting_attendance(db, ta, ctx, body, old_att, left_ids)
     audit(db, user, 'update', 'journal', e.id, date=str(body.date), period=body.period, marks_diff=diff,
           attendance_changed=att_changed, **({'unlock_reason': unlock} if unlock else {}))
     db.commit()

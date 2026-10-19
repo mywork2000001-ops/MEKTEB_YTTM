@@ -293,7 +293,7 @@ def estimate(pid: int, body: EstimateIn, user: User = Depends(staff), db: Sessio
     hours = sum(len(v) for v in slots.values())
     return {'lessons': rep['lessons'], 'slots': rep['sem1_slots'] + rep['sem2_slots'], 'warnings': rep['warnings'], 'lint': lint,
             'hours_mismatch': bool(p.weekly_hours and hours and p.weekly_hours != hours), 'program_hours': p.weekly_hours,
-            'class_hours': hours}
+            'class_hours': hours, 'budget': rep['budget']}
 
 
 # ---------------------------------------------------------------- Word planı birbaşa kitabxanaya
