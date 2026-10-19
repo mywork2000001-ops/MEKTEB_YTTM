@@ -115,7 +115,7 @@ def tex_one(r, decimal=False):
     return ('-' if r < 0 else '') + f'\\frac{{{abs(r.p)}}}{{{r.q}}}'
 
 
-def subst(tpl, vals):
+def subst(tpl, vals, decimal=False):
     """{a} yerinə ədəd qoy; mənfi ədəd operatordan sonra mötərizədə, '+ -3' → '- 3'."""
     out = ''
     pos = 0
@@ -135,12 +135,12 @@ def subst(tpl, vals):
             before = st[:-1]
             if sign == '+' and (not before.strip() or before.rstrip()[-1] in '$({=,['):
                 sign = ''
-            out = before + sign + (' ' if sign else '') + tex_one(abs(v))
+            out = before + sign + (" " if sign else "") + tex_one(abs(v), decimal)
         else:
             # operatorun / hərfin birbaşa yanında (boşluqsuz) və ya qüvvət əsası ola bilərsə – mötərizə
             glued = bool(last) and (last in ')*^/' or st.endswith(('\\cdot', '\\times'))
                                     or (not spaced and last.isalnum()))
-            t = tex_one(v)
+            t = tex_one(v, decimal)
             if (neg or frac) and (glued or nxt == '^'):
                 t = f'({t})'
             out += t
@@ -263,7 +263,7 @@ def _param_item(q, no, code, sid, used, nstud):
     sig, vals, ans, dis, rng = _gen_one(q, no, code, sid, used, nstud)
     used.add(sig)
     dec = bool(q.get('decimal'))
-    text = {lg: subst(pick(q['text'], lg), vals) for lg in LANGS}
+    text = {lg: subst(pick(q["text"], lg), vals, dec) for lg in LANGS}
     if q['kind'] == 'mcq':
         allv = [ans] + dis
         order = list(range(len(allv)))
