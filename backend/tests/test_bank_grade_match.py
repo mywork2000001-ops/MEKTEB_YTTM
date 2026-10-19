@@ -139,6 +139,28 @@ def test_course_resources_use_real_variants(world):
         assert [l['resources'].rsplit('variant ', 1)[1] for l in ls] == ['A', 'C', 'A', 'A (öz rəqəmləri)', 'B (öz rəqəmləri)']
 
 
+def test_coverage_report(world):
+    """§3: bank boşluqları — mövzu üçün sinif + fayl; tapılmayanlar sinif üzrə; yalnız müəllim/admin."""
+    as_, S = world
+    t = as_('ilqar')
+    pid = next(p['id'] for p in t.get('/api/programs').json() if p['key'] == 'hazirliq-buraxilis-9')
+    r = t.get('/api/bank/coverage', params={'program_id': pid}).json()
+    assert r['total'] > 50 and r['found'] == 0 and r['missing'] == r['total']               # bank boşdur
+    assert set(r['by_grade']) == {'5', '6', '7', '8', '9'}
+    with S() as db:
+        db.add_all([BankSource(key='p001', label='P001'), BankSource(key='p013', label='P013')]); db.flush()
+        first = r['items'][0]['topic'].split(': ', 1)[1]
+        db.add(BankFile(source_key='p001', lesson='x', label=first, url='http://x/v', kind='movzu', question_count=20, grades=[5]))
+        db.commit()
+    r2 = t.get('/api/bank/coverage', params={'program_id': pid}).json()
+    assert r2['found'] >= 1 and r2['items'][0]['found'] and r2['items'][0]['source'] == 'p001' and r2['by_grade']['5']['found'] >= 1
+    assert t.get('/api/bank/coverage', params={'program_id': 99999}).status_code == 404
+    from app.bank.coverage import coverage
+    from app.models import PlanProgram
+    with S() as db:
+        assert coverage(db, db.get(PlanProgram, pid))['found'] == r2['found']
+
+
 def test_course_grade_warning(world):
     """6. VII qrup + «Buraxılış – IX» kursu: sinif uyğunsuzluğu xəbərdarlığı və təklif olunan bölmələr (yalnız V–VII)."""
     import json
