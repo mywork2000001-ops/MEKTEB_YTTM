@@ -133,3 +133,22 @@ def test_merge_named_nihad_huseyn(world, clock):
     with S() as db:
         log = merge_named(db, [({'Nihad'}, {11: True, 9: False})])
         assert not any('merged' in x for x in log) and 'ambiguous' in log[0]
+
+
+def test_name_tokens_spelling_variants():
+    from app.api.students import name_tokens
+    assert name_tokens('Huseyn Ahmadov') == name_tokens('Əhmədov Hüseyn')
+    assert name_tokens('İlkin') == name_tokens('Ilkin') == frozenset({'ilkin'})
+    assert name_tokens('Əliyev Murad Resid oglu') == name_tokens('Aliyev Murad Rəşid oğlu') == frozenset({'aliyev', 'murad'})
+    assert name_tokens('Əliyeva Aysel Samir qızı') == name_tokens('Aliyeva Aysel Samir qizi') == frozenset({'aliyeva', 'aysel'})
+    assert name_tokens('Murad Qızı') == frozenset({'murad', 'qizi'})                # 2 söz – ata adı kimi atılmır
+
+
+def test_duplicates_spelling_variants(world, clock):
+    as_, S = world
+    admin, ta, cid, st, ids = setup(world)
+    xc, _ = _second_class(admin, S)
+    a = _raw_student(S, 'Əhmədov Hüseyn', cid, 'XE-190')
+    b = _raw_student(S, 'Ahmadov Huseyn', xc, 'XC-190')
+    pairs = {frozenset((x['a']['id'], x['b']['id'])): x['level'] for x in admin.get('/api/students/duplicates').json()}
+    assert pairs[frozenset((a, b))] == 'ad və soyad eyni'

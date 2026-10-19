@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import unicodedata
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -375,12 +376,20 @@ def login_sheet(cid: int, user: User = Depends(settings_unlocked), db: Session =
 
 
 # ---------------------------------------------------------------- təkrar şagirdlər (docs/sagird-coxlu-sinif-ve-birlesme-promtu.md §2)
-_PATRO = {'oğlu', 'qızı', 'oglu', 'qizi'}
+_PATRO = {'oglu', 'qizi'}                                  # «oğlu/qızı» normallaşmadan sonra
+_AZ_MAP = str.maketrans({'ə': 'a','ı': 'i', 'ü': 'u', 'ö': 'o', 'ş': 's', 'ç': 'c', 'ğ': 'g'})
+
+
+def _norm_token(w: str) -> str:
+    """casefold + NFKD (birləşdirici işarələr atılır) + az hərflər → latın: «Əhmədov»=«Ahmadov», «İlkin»=«Ilkin»."""
+    w = unicodedata.normalize('NFKD', w.casefold())
+    return ''.join(ch for ch in w if not unicodedata.combining(ch)).translate(_AZ_MAP)
 
 
 def name_tokens(name: str) -> frozenset[str]:
-    """Ad sözləri (ata adı və «oğlu/qızı» nəzərə alınmır, sıra fərq etmir): «Əliyev Murad Rəşid oğlu» → {əliyev, murad}."""
-    t = ' '.join(name.split()).casefold().split(' ')
+    """Ad sözləri (ata adı və «oğlu/qızı» nəzərə alınmır, sıra və yazılış fərqi – ə/a, ş/s… – əhəmiyyətsizdir):
+    «Əliyev Murad Rəşid oğlu» → {aliyev, murad}."""
+    t = [_norm_token(w) for w in name.split()]
     if len(t) >= 3 and t[-1] in _PATRO:
         t = t[:-2]
     return frozenset(t)
@@ -532,7 +541,7 @@ def merge_named(db: Session, rules: list[tuple[set[str], dict[int, bool]]]) -> l
     for words, want in rules:
         per: dict[int, list] = defaultdict(list)
         for st, c in rows:
-            if {w.casefold() for w in words} <= name_tokens(st.full_name):
+            if {_norm_token(w) for w in words} <= name_tokens(st.full_name):
                 per[st.school_id].append((st, class_grade(db, c)))
         if not per:
             log.append(f'grades {sorted(want)}: not found')
