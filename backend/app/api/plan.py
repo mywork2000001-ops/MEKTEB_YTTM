@@ -68,32 +68,42 @@ def attach_p0010(db: Session, cls, lessons: list[dict], ta=None) -> None:
     """X–XI sinif: hər plan dərsinə P0010 test faylı (docs/x-xi-p0010-testleri-promtu.md) – müəllimin seçimi
     (LessonBankLink) varsa o, yoxdursa mövzuya ən uyğun fayl. p0010_manual – müəllim özü seçib/götürüb."""
     from ..services import class_grade
-    from ..bank.match import GRADE_SOURCE, Matcher, source_for, ta_source
+    from ..bank.match import GradeMatcher, file_grades
+    from ..models import BankFile, LessonBankLink, PlanProgram
+    from ..programs import lesson_grade
     if ta is None and lessons and lessons[0].get('id'):
         from ..models import PlanLesson, TeachingAssignment
         pl = db.get(PlanLesson, lessons[0]['id'])
         ta = db.get(TeachingAssignment, pl.assignment_id) if pl else None
-    src = ta_source(db, ta) if ta is not None else source_for(class_grade(db, cls))
-    if not src or not lessons:
+    explicit = ta.bank_source if ta is not None else None          # əl ilə seçim üstündür ('none' – link yoxdur)
+    if explicit == 'none' or not lessons:
         return
-    from ..models import BankFile, LessonBankLink
+    group_grade = class_grade(db, cls)
+    prog = db.get(PlanProgram, ta.program_id) if ta is not None and ta.program_id else None
+    gm = GradeMatcher(db, explicit)
     ids = [l['id'] for l in lessons if l.get('id')]
     manual = {k.plan_lesson_id: k for k in db.scalars(select(LessonBankLink).where(LessonBankLink.plan_lesson_id.in_(ids or [0])))}
-    m = None
+
+    def info(f):
+        return {'file_id': f.id, 'label': f.label, 'url': f.url, 'grades': file_grades(f), 'source': f.source_key}
     for l in lessons:
+        g = lesson_grade(l, prog, group_grade)                 # dərsin öz sinfi: «V sinif: …» → V sinfin testi
+        srcs = gm.sources(g)
+        if not srcs:
+            continue
+        l['lesson_grade'] = g
         k = manual.get(l.get('id'))
         if k is not None:
             f = db.get(BankFile, k.file_id) if k.file_id else None
-            l['p0010'] = f and {'file_id': f.id, 'label': f.label, 'url': f.url}
+            l['p0010'] = f and info(f)
             l['p0010_manual'] = True
-            l['p0010_src'] = src
+            l['p0010_src'] = f.source_key if f else srcs[0]
             continue
         if l.get('assessment_type') in ('KSQ', 'BSQ'):          # summativ dərsə mövzu testi verilmir
             continue
-        m = m or Matcher(db, src, any_kind=src not in GRADE_SOURCE.values())
-        best = m.matches(l['topic'], l.get('section'), 1)
+        best, src = gm.find(g, l['topic'], l.get('section'), 1)
         l['p0010_src'] = src
-        l['p0010'] = {'file_id': best[0][0].id, 'label': best[0][0].label, 'url': best[0][0].url} if best else None
+        l['p0010'] = info(best[0][0]) if best else None
 
 
 class P0010In(BaseModel):
@@ -104,13 +114,14 @@ class P0010In(BaseModel):
 @router.put('/plan/{ta_id}/topics/{pl_id}/p0010')
 def set_p0010(ta_id: int, pl_id: int, body: P0010In, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Müəllim dərsin P0010 faylını dəyişir: auto – avtomatik uyğunluğa qayıt, none – bağlantı yoxdur, file – bu fayl."""
-    from ..bank.match import ta_source
     from ..models import BankFile, LessonBankLink, PlanLesson
     ta = own_assignment(db, user, ta_id)
-    SOURCE = ta_source(db, ta)
     pl = db.get(PlanLesson, pl_id)
     if not pl or pl.assignment_id != ta.id:
         raise HTTPException(404, 'Mövzu bu dərsin planında yoxdur')
+    from ..bank.match import SOURCE_ORDER
+    # sinfin ayarı (bank_source) sabitdirsə – yalnız o mənbə; avtomatik rejimdə «Bütün siniflər» süzgəci üçün sinif mənbələrinin hamısı
+    SOURCES = {ta.bank_source} if ta.bank_source else {s for ss in SOURCE_ORDER.values() for s in ss}
     k = db.scalar(select(LessonBankLink).where(LessonBankLink.plan_lesson_id == pl.id))
     if body.mode == 'auto':
         if k:
@@ -119,7 +130,7 @@ def set_p0010(ta_id: int, pl_id: int, body: P0010In, user: User = Depends(staff)
         fid = None
         if body.mode == 'file':
             f = db.get(BankFile, body.file_id) if body.file_id else None
-            if not f or f.source_key != SOURCE or not f.active:
+            if not f or f.source_key not in SOURCES or not f.active:
                 raise HTTPException(400, 'P0010 faylı tapılmadı')
             fid = f.id
         if k is None:

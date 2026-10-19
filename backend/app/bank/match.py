@@ -13,11 +13,26 @@ from sqlalchemy.orm import Session
 from ..models import BankFile, BankSource
 
 SOURCE = 'p003'
-GRADE_SOURCE = {9: 'p007', 10: 'p003', 11: 'p003'}     # IX – DİM 9 test toplusu (P007), X–XI – P0010
+# sinif -> sıralı mənbə siyahısı (docs/sinfe-gore-testler-promtu.md §2.2): p001 – V, p011 – VI, p007 – DİM 9 toplusu, p003 – P0010 (V–XI),
+# p013 – DİM «Sinif testləri» (V–XI). Bankda olmayan mənbə sadəcə boş keçilir. Konfiq yalnız burada.
+SOURCE_ORDER = {5: ['p013', 'p001', 'p003'], 6: ['p013', 'p011', 'p003'], 7: ['p013', 'p003'], 8: ['p013', 'p003'],
+                9: ['p007', 'p013', 'p003'], 10: ['p003', 'p013'], 11: ['p003', 'p013']}
+GRADE_SOURCE = {9: 'p007', 10: 'p003', 11: 'p003'}     # kağız sınaqlar (KSQ/BSQ) üçün əsas mənbə: IX – DİM 9 test toplusu (P007), X–XI – P0010
+MIN_COVER = 0.5                                         # mövzu köklərinin bu hissəsindən azı faylda yoxdursa – növbəti mənbəyə keçilir
 
 
 def source_for(grade: int | None) -> str | None:
     return GRADE_SOURCE.get(grade)
+
+
+def sources_for(grade: int | None) -> list[str]:
+    return list(SOURCE_ORDER.get(grade, []))
+
+
+def file_grades(f: BankFile) -> list[int]:
+    """Faylın sinifləri: bankdakı etiket (`grades`), yoxdursa mənbənin siniflər."""
+    from .classify import SOURCE_GRADES
+    return list(f.grades or SOURCE_GRADES.get(f.source_key, []))
 
 
 def ta_source(db, ta) -> str | None:
@@ -84,8 +99,10 @@ def p0010_files(db: Session, source: str = SOURCE, any_kind: bool = False) -> li
 class Matcher:
     """Bankdakı P0010 faylları bir dəfə oxunur (plan görünüşündə hər dərs üçün təkrar sorğu olmasın)."""
 
-    def __init__(self, db: Session, source: str = SOURCE, any_kind: bool = False):
+    def __init__(self, db: Session, source: str = SOURCE, any_kind: bool = False, grade: int | None = None):
         self.files = p0010_files(db, source, any_kind)
+        if grade is not None:                    # yalnız bu sinfin faylları (`grades`, boşdursa mənbənin sinifləri)
+            self.files = [f for f in self.files if grade in file_grades(f)]
         self.fst = {f.id: stems(f.label) for f in self.files}
         self.own = {f.id: stems(f.label.split(' — ', 1)[-1]) for f in self.files}     # alt mövzu adı bölmədən ağırdır
         self.grp = {f.id: _raw(f.label.split(' — ', 1)[0]) for f in self.files}      # P0010 bölməsi
@@ -95,6 +112,12 @@ class Matcher:
                 df[w] = df.get(w, 0) + 1
         n = len(self.files)
         self.idf = {w: math.log((n + 1) / (c + 1)) + 0.1 for w, c in df.items()}
+
+    def cover(self, f: BankFile, topic: str) -> float:
+        """Mövzu köklərinin hansı hissəsi faylın adında var (0–1) – mənbələr arası müqayisə üçün (bal bankın ölçüsündən asılıdır)."""
+        q = lesson_query(topic, None)
+        t = stems(q[0]) if q else set()
+        return len(t & self.fst.get(f.id, set())) / len(t) if t else 0.0
 
     def matches(self, topic: str, section: str | None = None, limit: int = 6, rel: float = 0.0) -> list[tuple[BankFile, float]]:
         q = lesson_query(topic, section)
@@ -123,6 +146,37 @@ class Matcher:
             best = max(v for _, v in scored)
             scored = [(f, v) for f, v in scored if v >= best * rel]
         return scored[:limit]
+
+
+class GradeMatcher:
+    """Plan dərsi üçün sinfə görə test faylı: sinfin sıralı mənbələri (SOURCE_ORDER) – əvvəl 1-ci, uyğunluq MIN_SCORE-dan aşağıdırsa növbəti.
+    Hər (mənbə, sinif) üçün bir Matcher (keş). `explicit` – müəllimin ayarı (ta.bank_source): yalnız o mənbə, sinif süzgəci yoxdur."""
+
+    def __init__(self, db: Session, explicit: str | None = None):
+        self.db, self.explicit, self._cache = db, explicit, {}
+
+    def sources(self, grade: int | None) -> list[str]:
+        return [self.explicit] if self.explicit else sources_for(grade)
+
+    def matcher(self, src: str, grade: int | None) -> Matcher:
+        g = None if self.explicit else grade
+        k = (src, g)
+        if k not in self._cache:
+            self._cache[k] = Matcher(self.db, src, any_kind=src not in GRADE_SOURCE.values(), grade=g)
+        return self._cache[k]
+
+    def find(self, grade: int | None, topic: str, section: str | None = None, limit: int = 1) -> tuple[list[tuple[BankFile, float]], str | None]:
+        """(uyğun fayllar, mənbə). Heç bir mənbə həddi keçmirsə – 1-ci mənbənin ən yaxını (köhnə davranış); mənbə yoxdursa ([], None)."""
+        srcs = self.sources(grade)
+        weak: list[tuple[BankFile, float]] = []
+        for i, s in enumerate(srcs):
+            m = self.matcher(s, grade)
+            found = m.matches(topic, section, limit)
+            if found and m.cover(found[0][0], topic) >= MIN_COVER:
+                return found, s
+            if found and not weak:
+                weak, wsrc = found, s
+        return (weak, wsrc) if weak else ([], srcs[0] if srcs else None)
 
 
 def p0010_matches(db: Session, topic: str, section: str | None = None, limit: int = 6, source: str = SOURCE) -> list[tuple[BankFile, float]]:
