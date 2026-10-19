@@ -1,0 +1,102 @@
+{
+  "code": "XI-numune",
+  "title": {"az": "XI sinif · Çoxhədlilər (nümunə)", "ru": "XI класс · Многочлены (пример)", "en": "Grade XI · Polynomials (sample)"},
+  "questions": [
+    {
+      "kind": "open", "points": 2,
+      "text": {
+        "az": "$x^2 + {b}x + {c} = 0$ tənliyinin köklərini artan sırada \";\" ilə yazın.",
+        "ru": "Запишите корни уравнения $x^2 + {b}x + {c} = 0$ по возрастанию через \";\".",
+        "en": "Write the roots of $x^2 + {b}x + {c} = 0$ in increasing order, separated by \";\"."
+      },
+      "params": {"x1": {"min": -6, "max": 6, "not": [0]}, "x2": {"min": -6, "max": 6, "not": [0]}},
+      "derived": {"b": "-(x1 + x2)", "c": "x1 * x2"},
+      "where": ["x1 < x2", "Abs(b) > 1"],
+      "answer": ["x1", "x2"],
+      "original": {"x1": 1, "x2": 4}, "original_answer": [1, 4],
+      "explanation": {
+        "az": "Viyet teoremi: köklər $x_1 = {x1}$ və $x_2 = {x2}$.",
+        "ru": "По теореме Виета корни $x_1 = {x1}$ и $x_2 = {x2}$.",
+        "en": "By Vieta's theorem the roots are $x_1 = {x1}$ and $x_2 = {x2}$."
+      }
+    },
+    {
+      "kind": "open", "points": 2,
+      "text": {
+        "az": "$P(x) = x^3 + {b}x^2 + {c}x + {d}$ çoxhədlisinin $x - {k}$ binomuna bölünməsindən alınan qalığı tapın.",
+        "ru": "Найдите остаток от деления многочлена $P(x) = x^3 + {b}x^2 + {c}x + {d}$ на двучлен $x - {k}$.",
+        "en": "Find the remainder when $P(x) = x^3 + {b}x^2 + {c}x + {d}$ is divided by $x - {k}$."
+      },
+      "params": {"b": {"min": -5, "max": 5, "not": [0, 1, -1]}, "c": {"min": -5, "max": 5, "not": [0, 1, -1]},
+                 "d": {"min": -5, "max": 5, "not": [0]}, "k": {"min": -3, "max": 3, "not": [0]}},
+      "answer": "k^3 + b*k^2 + c*k + d",
+      "original": {"b": 2, "c": -3, "d": 1, "k": 2}, "original_answer": 11,
+      "explanation": {
+        "az": "Bezu teoremi: qalıq $P({k})$-ya bərabərdir.",
+        "ru": "По теореме Безу остаток равен $P({k})$.",
+        "en": "By the remainder theorem the remainder equals $P({k})$."
+      }
+    },
+    {
+      "kind": "mcq", "points": 1,
+      "text": {
+        "az": "$ {a}x^2 + {b}x + {c} = 0$ tənliyinin köklərinin cəmini tapın.",
+        "ru": "Найдите сумму корней уравнения $ {a}x^2 + {b}x + {c} = 0$.",
+        "en": "Find the sum of the roots of $ {a}x^2 + {b}x + {c} = 0$."
+      },
+      "params": {"a": {"choice": [2, 3, 4, 5]}, "b": {"min": -9, "max": 9, "not": [0]}, "c": {"min": -9, "max": 9, "not": [0]}},
+      "where": ["b*b - 4*a*c > 0"],
+      "answer": "-b/a",
+      "distractors": ["b/a", "c/a", "-c/a"],
+      "original": {"a": 2, "b": -6, "c": 1}, "original_answer": 3,
+      "explanation": {
+        "az": "Viyet: $x_1 + x_2 = -\\frac{b}{a}$.",
+        "ru": "Виет: $x_1 + x_2 = -\\frac{b}{a}$.",
+        "en": "Vieta: $x_1 + x_2 = -\\frac{b}{a}$."
+      }
+    },
+    {
+      "kind": "open", "points": 2,
+      "text": {
+        "az": "$x^3 + {b}x^2 + mx + {d}$ çoxhədlisi $x - {k}$ binomuna qalıqsız bölünürsə, $m$-i tapın.",
+        "ru": "Найдите $m$, если многочлен $x^3 + {b}x^2 + mx + {d}$ делится без остатка на $x - {k}$.",
+        "en": "Find $m$ if $x^3 + {b}x^2 + mx + {d}$ is divisible by $x - {k}$ with no remainder."
+      },
+      "params": {"b": {"min": -4, "max": 4, "not": [0, 1, -1]}, "d": {"min": -9, "max": 9, "not": [0]},
+                 "k": {"choice": [1, 2, 3, -1, -2, -3]}},
+      "derived": {"m": "-(k^3 + b*k^2 + d)/k"},
+      "where": ["is_int(m)", "m != 0"],
+      "answer": "m",
+      "original": {"b": 2, "d": -6, "k": 2}, "original_answer": -5,
+      "explanation": {
+        "az": "$P({k}) = 0$ şərtindən $m = {m}$.",
+        "ru": "Из условия $P({k}) = 0$ получаем $m = {m}$.",
+        "en": "From $P({k}) = 0$ we get $m = {m}$."
+      }
+    },
+    {
+      "kind": "mcq", "points": 1,
+      "text": {
+        "az": "$P(x) = ({a}x - {b})^3$ çoxhədlisində $x^2$-nin əmsalını tapın.",
+        "ru": "Найдите коэффициент при $x^2$ в многочлене $P(x) = ({a}x - {b})^3$.",
+        "en": "Find the coefficient of $x^2$ in $P(x) = ({a}x - {b})^3$."
+      },
+      "params": {"a": {"min": 2, "max": 6}, "b": {"min": -5, "max": 5, "not": [0]}},
+      "answer": "-3*a^2*b",
+      "distractors": ["3*a^2*b", "-3*a*b^2", "3*a*b"],
+      "original": {"a": 2, "b": 1}, "original_answer": -12,
+      "explanation": {
+        "az": "Binom düsturu: $3 \\cdot ({a}x)^2 \\cdot (-{b})$.",
+        "ru": "По формуле бинома: $3 \\cdot ({a}x)^2 \\cdot (-{b})$.",
+        "en": "By the binomial formula: $3 \\cdot ({a}x)^2 \\cdot (-{b})$."
+      }
+    },
+    {
+      "kind": "mcq", "points": 1, "fixed": true,
+      "text": {"az": "$x^3 - 2x$ çoxhədlisinin dərəcəsi neçədir?", "ru": "Какова степень многочлена $x^3 - 2x$?", "en": "What is the degree of the polynomial $x^3 - 2x$?"},
+      "options": [{"az": "$1$", "ru": "$1$", "en": "$1$"}, {"az": "$2$", "ru": "$2$", "en": "$2$"},
+                  {"az": "$3$", "ru": "$3$", "en": "$3$"}, {"az": "$4$", "ru": "$4$", "en": "$4$"}],
+      "correct": 2
+    }
+  ]
+}

@@ -26,3 +26,6 @@ frontend/dist/
 
 # Claude Code yerli ayarları
 .claude/
+
+# Rəqəm variantları skriptinin çıxışı (şagird adları)
+backend/out/
