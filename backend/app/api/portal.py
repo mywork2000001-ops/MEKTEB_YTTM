@@ -683,7 +683,7 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
     at = now()
     subjects = []
     for ta, c in my_assignments(db, s):
-        exams = [x for x in db.scalars(select(Exam).where(Exam.assignment_id == ta.id).order_by(Exam.semester, Exam.date))
+        exams = [x for x in db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.to_journal.is_(True)).order_by(Exam.semester, Exam.date))
                  if x.extra_students is None or s.id in x.extra_students]      # əlavə imtahan – yalnız seçilən şagirdə
         ex_rows, gmap, hidden_sems = [], {}, set()
         from ..models import ExamScan

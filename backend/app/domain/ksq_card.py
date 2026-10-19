@@ -33,6 +33,14 @@ def parse_qr(s: str) -> dict | None:
     return {'exam_id': e, 'student_id': st, 'code': code}
 
 
+BLANK_CODE = 'BLANK'
+
+
+def blank_qr(exam_id: int) -> str:
+    """Boş forma (şagirdsiz): QR-də yalnız imtahan; skanda şagird siyahıdan seçilir. student_id = 0, kod = BLANK."""
+    return qr_payload(exam_id, 0, BLANK_CODE)
+
+
 def pick_lang(x, lang: str) -> str:
     if isinstance(x, dict):
         return x.get(lang) or x.get('az') or next((v for v in x.values() if v), '')

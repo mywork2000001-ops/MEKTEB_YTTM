@@ -55,7 +55,8 @@ def exam_out(e: Exam) -> dict:
     return {'id': e.id, 'kind': e.kind, 'no': e.no, 'semester': e.semester, 'date': e.date,
             'max_points': e.max_points, 'items': e.items, 'title': e.title,
             'extra_of': e.extra_of, 'extra_seq': e.extra_seq or 0, 'extra_students': e.extra_students, 'label': exam_label(e),
-            'results_published_at': e.results_published_at, 'appeal_until': e.appeal_until}
+            'results_published_at': e.results_published_at, 'appeal_until': e.appeal_until,
+            'online_task_id': e.online_task_id, 'batch_id': e.batch_id, 'to_journal': e.to_journal, 'variant_mode': e.variant_mode}
 
 
 def _exam(db: Session, ta_id: int, exam_id: int) -> Exam:
@@ -68,7 +69,7 @@ def _exam(db: Session, ta_id: int, exam_id: int) -> Exam:
 @router.get('/{ta_id}')
 def list_exams(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)
-    created = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id)
+    created = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.kind.in_(("KSQ", "BSQ")))
                               .order_by(Exam.semester, Exam.date, Exam.kind, Exam.extra_seq)))
     have = {(e.kind, e.semester, e.no) for e in created if not e.extra_seq}
     planned = [{'kind': pl.assessment_type, 'no': pl.exam_no, 'semester': pl.semester, 'date': pl.date,
@@ -390,7 +391,7 @@ def semester(ta_id: int, sem: int, user: User = Depends(staff), db: Session = De
     ta = own_assignment(db, user, ta_id)
     if sem not in (1, 2):
         raise HTTPException(400, 'yarımil: 1 və ya 2')
-    exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.semester == sem)
+    exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.semester == sem, Exam.kind.in_(("KSQ", "BSQ")))
                             .order_by(Exam.kind.desc(), Exam.no)))
     scores = {(sc.exam_id, sc.student_id): sc for sc in db.scalars(
         select(ExamScore).where(ExamScore.exam_id.in_([e.id for e in exams])))}
@@ -799,7 +800,7 @@ def fix_stale_all(db: Session) -> int:
     from ..domain.ksq_variants import RULES_V
     from ..models import TeachingAssignment
     n = 0
-    for e in db.scalars(select(Exam).where(Exam.id.in_(select(ExamVariant.exam_id).distinct()))):
+    for e in db.scalars(select(Exam).where(Exam.kind.in_(("KSQ", "BSQ")), Exam.id.in_(select(ExamVariant.exam_id).distinct()))):
         if db.scalar(select(ExamScore.exam_id).where(ExamScore.exam_id == e.id, ExamScore.points.is_not(None)).limit(1)):
             continue
         if db.scalar(select(ExamVariant.exam_id).where(ExamVariant.exam_id == e.id, ExamVariant.printed_at.is_not(None)).limit(1)):
@@ -899,7 +900,8 @@ def annul_slot(ta_id: int, exam_id: int, slot: int, body: AnnulIn, user: User = 
 
 
 @router.get('/{ta_id}/{exam_id}/variants/print')
-def print_variants(ta_id: int, exam_id: int, students: str | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+def print_variants(ta_id: int, exam_id: int, students: str | None = None, blank: bool = False, user: User = Depends(staff),
+                   db: Session = Depends(get_db)):
     """Çap üçün: hər şagirdə bir A4 (iki üz) – suallar şagirdin dilində (yoxdursa AZ), cavab kartı üçün imzalı QR; müəllim açarı.
     Düzgün cavablar yalnız açarda (vərəqdə yox). students="5,7" – yalnız bu şagirdlərin vərəqi (məs. köçürmə şübhəsindən sonra)."""
     from ..domain.ksq_card import key_value, pick_lang, qr_payload, variant_rev
@@ -917,6 +919,19 @@ def print_variants(ta_id: int, exam_id: int, students: str | None = None, user: 
         if not vs:
             raise HTTPException(404, 'Bu şagirdin variantı yoxdur')
     vs.sort(key=lambda v: v.code)
+    if blank:                                      # boş forma: bütün variantlar eyni olanda (hamıya eyni suallar) – şagirdsiz bir vərəq
+        sig = {variant_rev(v.questions) for v in vs}
+        if len(sig) != 1:
+            raise HTTPException(409, 'Boş forma yalnız «hamıya eyni suallar» olan işdə mümkündür')
+        from ..domain.ksq_card import BLANK_CODE, blank_qr
+        ex = {**exam_out(e), 'class_name': (db.get(SchoolClass, ta.class_id).name if db.get(SchoolClass, ta.class_id) else ''),
+              'subject': ta.subject, 'school': header_school(user), 'teacher': user.full_name, 'label': exam_label(e)}
+        qs = sorted(vs[0].questions, key=lambda q: q['slot'])
+        return {'exam': ex, 'key': [], 'sheets': [{
+            'student_id': 0, 'full_name': '', 'code': BLANK_CODE, 'lang': 'az', 'qr': blank_qr(e.id),
+            'questions': [{'slot': q['slot'], 'kind': q['kind'], 'points': q['points'], 'text': pick_lang(q.get('text'), 'az'),
+                           'options': [pick_lang(o, 'az') for o in q.get('options') or []] if q['kind'] == 'mcq' else None,
+                           'image': q.get('image')} for q in qs]}]}
     studs = {s.id: s for s in db.scalars(select(Student).where(Student.id.in_([v.student_id for v in vs])))}
     langs = {u.id: u.language for u in db.scalars(select(User).where(User.id.in_([s.user_id for s in studs.values() if s.user_id] or [0])))}
     cls = db.get(SchoolClass, ta.class_id)
@@ -937,7 +952,7 @@ def print_variants(ta_id: int, exam_id: int, students: str | None = None, user: 
         v.printed_at = v.printed_at or _now()                 # çap olunub – fon işi bu variantlara toxunmur
     db.commit()
     return {'exam': {**exam_out(e), 'class_name': cls.name if cls else '', 'subject': ta.subject, 'school': header_school(user),
-                     'teacher': user.full_name},
+                     'teacher': user.full_name, 'label': exam_label(e)},
             'sheets': sheets, 'key': key}
 
 

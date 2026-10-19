@@ -71,7 +71,7 @@ def lesson_counts(db: Session, ctx: PlanCtx, today: dt.date, sem: int | None = N
 
 def semester_grades(db: Session, ta_id: int, sem: int, sids: list[int]) -> dict[int, dict]:
     """{sid: {'ksq': [...], 'bsq': g, 'semester_grade': g}} – exams.semester ilə eyni qayda."""
-    exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta_id, Exam.semester == sem)
+    exams = list(db.scalars(select(Exam).where(Exam.assignment_id == ta_id, Exam.semester == sem, Exam.kind.in_(("KSQ", "BSQ")))
                             .order_by(Exam.kind.desc(), Exam.no)))
     scores = {(sc.exam_id, sc.student_id): sc for sc in db.scalars(
         select(ExamScore).where(ExamScore.exam_id.in_([e.id for e in exams])))}

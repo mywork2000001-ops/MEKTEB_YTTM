@@ -10,7 +10,7 @@ import datetime as dt
 import enum
 
 from sqlalchemy import (JSON, Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, LargeBinary, String, Text,
-                        UniqueConstraint, event, false, func, text)
+                        UniqueConstraint, event, false, func, text, true)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -435,7 +435,7 @@ class Exam(Base):
     __tablename__ = 'exams'
     id: Mapped[int] = mapped_column(primary_key=True)
     assignment_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'))
-    kind: Mapped[str] = mapped_column(String(3))                       # KSQ | BSQ
+    kind: Mapped[str] = mapped_column(String(5))                       # KSQ | BSQ | TEST (mövzu testi) | SINAQ | YI (sərbəst yazılı iş)
     no: Mapped[int] = mapped_column(Integer)
     semester: Mapped[int] = mapped_column(Integer)
     date: Mapped[dt.date] = mapped_column(Date)
@@ -449,6 +449,12 @@ class Exam(Base):
     # müəllim «nəticəni şagirdlərə göstər» dedikdən sonra şagird öz cavab kartını görür (variant sualları əvvəl heç vaxt)
     results_published_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     appeal_until: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))      # apelyasiya müddəti (göndərişdən 3 gün)
+    # yazılı (kağız) test / sınaq / sərbəst iş (docs/yazili-sinaq-ve-skan-duymesi-promtu.md §A): bağlı onlayn tapşırıq / sınaq paketi;
+    # to_journal – nəticə jurnala yalnız müəllim seçərsə düşür (KSQ/BSQ həmişə True); variant_mode – same | different
+    online_task_id: Mapped[int | None] = mapped_column(ForeignKey('online_tasks.id', ondelete='SET NULL'))
+    batch_id: Mapped[int | None] = mapped_column(ForeignKey('test_batches.id', ondelete='SET NULL'))
+    to_journal: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    variant_mode: Mapped[str | None] = mapped_column(String(10))
     __table_args__ = (UniqueConstraint('assignment_id', 'kind', 'semester', 'no', 'extra_seq'),)
 
 

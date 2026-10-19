@@ -8,11 +8,12 @@ import { Top } from '../../ui'
 import { useMyLessons, usePick } from './common'
 import OnlineExams from './OnlineExams'
 import ResultsCenter, { TABS, type Tab } from './ResultsCenter'
+import PaperExams from './PaperExams'
 import Tasks from './Tasks'
 
-type Section = 'movzu' | 'sinaq' | 'netice'
+type Section = 'movzu' | 'sinaq' | 'yazili' | 'netice'
 const SECTIONS: [Section, string][] = [['movzu', '📝 Mövzu testləri (onlayn tapşırıqlar)'], ['sinaq', '🏆 Sınaq imtahanları'],
-  ['netice', '📊 Nəticələr və reytinq']]
+  ['yazili', '✍️ Yazılı (kağız) iş'], ['netice', '📊 Nəticələr və reytinq']]
 const EXAM_VIEWS: ['list' | 'series', string][] = [['list', 'Sınaqlar'], ['series', 'Avtomatik seriyalar']]
 
 export default function TestsHub() {
@@ -41,13 +42,14 @@ export default function TestsHub() {
             <option value="">{t('Bütün siniflərim')}</option>
             {(lessons || []).map(l => <option key={l.id} value={l.id}>{l.class_name}{l.subject !== 'Riyaziyyat' ? ` · ${l.subject}` : ''}</option>)}
           </select></label>
-        {s !== 'movzu' && <label className="hub-pick"><span>{t('Görünüş')}</span>
+        {(s === 'sinaq' || s === 'netice') && <label className="hub-pick"><span>{t('Görünüş')}</span>
           <select value={s === 'sinaq' ? examView : rcTab} onChange={e => update(n => n.set('v', e.target.value))}>
             {(s === 'sinaq' ? EXAM_VIEWS : TABS).map(([k, l]) => <option key={k} value={k}>{t(l)}</option>)}
           </select></label>}
       </div>
       {s === 'movzu' && <Tasks embedded ta={ta} />}
       {s === 'sinaq' && <OnlineExams embedded ta={ta} view={examView} />}
+      {s === 'yazili' && <PaperExams ta={ta} />}
       {s === 'netice' && <ResultsCenter embedded ta={ta} tab={rcTab} onTab={x => update(n => n.set('v', x))} />}
     </>
   )

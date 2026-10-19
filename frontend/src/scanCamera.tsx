@@ -14,10 +14,10 @@ import { tt } from './i18n'
 import { newVersion } from './version'
 
 type Quality = { ok: boolean; why?: string }
-type Found = { student_id: number; scan_id: number; full_name: string | null }
-type Res = { scan_id: number; name: string; points: number | null; right?: number; total?: number; check?: number; lost?: number; wait: boolean; queue?: number; late?: boolean; err?: string | null }
+type Found = { student_id: number; scan_id: number; full_name: string | null; list?: string; exam?: string }
+type Res = { scan_id: number; name: string; exam?: string; points: number | null; right?: number; total?: number; check?: number; lost?: number; wait: boolean; queue?: number; late?: boolean; err?: string | null }
 type Up = { found: Found[]; problems: { error: string; kind?: string; full_name?: string | null }[];
-  already: { student_id: number; scan_id: number; points: number | null; full_name: string | null }[] }
+  already: { student_id: number; scan_id: number; points: number | null; full_name: string | null }[]; unmatched?: number }
 type List = { scans: { id: number; status: string; points: number | null; marks: number[] | null; flagged: number[]; error: string | null; lost?: number[] }[]
   claude: boolean; ai_error?: string | null; counts: { pending: number; variants: number; scanned: number } }
 // cari şagird: yüklənir → oxunur → nəticə (növbəti şagird yalnız bundan sonra)
@@ -58,7 +58,10 @@ export function quality(c: HTMLCanvasElement): Quality {
   return { ok: true }
 }
 
-export default function ScanCamera({ url, onClose, onSent, replaceAll = false }: { url: string; onClose: () => void; onSent: () => void; replaceAll?: boolean }) {
+/** `any` – ümumi «📷 Skan» (POST /api/scans/any): imtahanı QR özü göstərir, hər kartın nəticə siyahısı cavabdakı `list` ünvanındadır;
+ *  QR oxunmayanda `onNoQr(şəkil)` – əl ilə şagird/imtahan seçimi. */
+export default function ScanCamera({ url, onClose, onSent, replaceAll = false, any = false, onNoQr }:
+  { url: string; onClose: () => void; onSent: () => void; replaceAll?: boolean; any?: boolean; onNoQr?: (b: Blob) => void }) {
   const video = useRef<HTMLVideoElement>(null)
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null)
   const got = useRef(new Set<number>())               // bu sessiyada qəbul edilmiş şagirdlər (sayğac – fərqli şagird)
@@ -80,8 +83,9 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
   const [aiErr, setAiErr] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now())
   const listUrl = url.replace(/\/upload$/, '')
+  const lists = useRef(new Map<number, string>())      // ümumi rejim: skan → imtahanın siyahı ünvanı
   useEffect(() => { if (cur?.phase !== 'read') return; const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id) }, [cur])
-  useEffect(() => { api<List>(listUrl).then(d => setLeft(Math.max(0, d.counts.variants - d.counts.scanned)), () => {}); newVersion().then(setOld) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!any) api<List>(listUrl).then(d => setLeft(Math.max(0, d.counts.variants - d.counts.scanned)), () => {}); newVersion().then(setOld) }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // oxunmuş kartların balı: hər 2 saniyədən bir (10 dəqiqəyədək) siyahı yoxlanılır; hamısı hazır olanda – nəticə ekranı
   const watch = (ids: number[]) => {
@@ -90,8 +94,11 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
       n++
       clearTimeout(timer)
       try {
-        const d = await api<List>(listUrl)
-        setLeft(Math.max(0, d.counts.variants - d.counts.scanned))
+        const urls = [...new Set(ids.map(i => lists.current.get(i) || listUrl))]
+        const ds = await Promise.all(urls.map(u => api<List>(u)))
+        const d: List = { scans: ds.flatMap(x => x.scans), claude: ds.some(x => x.claude), ai_error: ds.find(x => x.ai_error)?.ai_error,
+          counts: { ...ds[0].counts, pending: ds.reduce((a, x) => a + x.counts.pending, 0) } }
+        if (!any) setLeft(Math.max(0, d.counts.variants - d.counts.scanned))
         setAiErr(d.ai_error || null)
         setPending(d.counts.pending)
         const final = n >= 300
@@ -158,6 +165,8 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
       const q = explicit ? '?replace=true&force=true' : replaceAll ? '?replace=true' : ''
       try {
         const r = await api<Up>(url + q, { method: 'POST', form })
+        r.found.forEach(f => { if (f.list) lists.current.set(f.scan_id, f.list) })
+        if (any && onNoQr && !r.found.length && !r.already?.length && r.unmatched) { setCur(null); onNoQr(b); return }   // QR yoxdur – əl ilə seçim
         const already = r.already || []
         if (r.found.length) {
           seen.forEach(x => accepted.current.add(x))
@@ -165,7 +174,7 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
           r.found.forEach(f => { if (got.current.has(f.student_id)) setReplaced(n => n + 1); else got.current.add(f.student_id) })
           setSent(got.current.size); buzz(60)
           const ids = r.found.map(f => f.scan_id)
-          setResults(rs => [...r.found.map(f => ({ scan_id: f.scan_id, name: f.full_name || '—', points: null, wait: true })),
+          setResults(rs => [...r.found.map(f => ({ scan_id: f.scan_id, name: f.full_name || '—', exam: f.exam, points: null, wait: true })),
             ...rs.filter(x => !ids.includes(x.scan_id))].slice(0, 6))
           setCur({ phase: 'read', ids, since: Date.now() })
           watch(ids); onSent()
@@ -191,14 +200,14 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
   const next = () => { setCur(null); setMsg(null); last.current = Date.now() }   // növbəti şagird – avtomatik çəkiliş 3 s sonra
   const big = (r: Res) => r.points != null
     ? <div key={r.scan_id} style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 18, fontWeight: 600 }}>{r.name}</div>
+        <div style={{ fontSize: 18, fontWeight: 600 }}>{r.name}{r.exam ? ' · ' + r.exam : ''}</div>
         <div style={{ fontSize: 44, fontWeight: 800, color: '#86efac', lineHeight: 1.1 }}>{tt('{n} bal', { n: r.points })}</div>
         <div style={{ fontSize: 14 }}>{tt('Düz: {r}/{t}', { r: r.right ?? 0, t: r.total ?? 0 })}</div>
         {!!r.lost && <div style={{ fontSize: 14, color: '#cbd5e1' }}>⊘ {tt('{n} sual vərəqə düşməyib – sayılmır, bal qalanlar üzrə 100-ə', { n: r.lost })}</div>}
         {!!r.check && <div style={{ fontSize: 14, color: '#fde68a' }}>⚠ {tt('Sarı xana: {n} – siyahıda şəkilə baxıb yoxlayın', { n: r.check })}</div>}
       </div>
     : <div key={r.scan_id} style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 18, fontWeight: 600 }}>{r.name}</div>
+        <div style={{ fontSize: 18, fontWeight: 600 }}>{r.name}{r.exam ? ' · ' + r.exam : ''}</div>
         <div style={{ fontSize: 15, color: r.err ? '#fca5a5' : '#fde68a' }}>{r.err || (r.late ? tt('bal hələ hazır deyil – oxunuş növbədədir, nəticə siyahıda görünəcək') : tt('Kart qəbul edildi, amma oxunmadı – nəticə siyahıda görünəcək'))}</div>
       </div>
 
@@ -244,7 +253,7 @@ export default function ScanCamera({ url, onClose, onSent, replaceAll = false }:
         </div>}
         {results.length > 0 && <div style={{ fontSize: 13, display: 'grid', gap: 2 }}>
           {results.map(r => <div key={r.scan_id}>
-            <b>{r.name}</b> — {r.points != null ? <>{tt('{n} bal', { n: r.points })} ({r.right}/{r.total}){r.check ? ` · ${tt('yoxlayın: {n}', { n: r.check })}` : ''}</>
+            <b>{r.name}</b>{r.exam ? ' · ' + r.exam : ''} — {r.points != null ? <>{tt('{n} bal', { n: r.points })} ({r.right}/{r.total}){r.check ? ` · ${tt('yoxlayın: {n}', { n: r.check })}` : ''}</>
               : r.err ? <span style={{ color: '#fca5a5' }}>{r.err}</span>
               : r.late ? tt('bal hələ hazır deyil – oxunuş növbədədir, nəticə siyahıda görünəcək')
               : r.wait ? tt('bal hesablanır…') + (r.queue && r.queue > 1 ? ' ' + tt('(növbədə {n} kart)', { n: r.queue }) : '')
