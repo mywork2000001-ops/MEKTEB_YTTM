@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 from pathlib import Path
 
 from sqlalchemy import delete, select
@@ -54,6 +55,34 @@ def purposes(p: PlanProgram) -> list[str]:
     return ['sinif'] if (p.key or '').startswith('dim-sinif-testleri') else []
 
 
+_GRADE_PREFIX = re.compile(r'(?:^|[:\s])([IVX]{1,4})\s+sinif\s*:')            # «V sinif: …», «Məşq: VII sinif: …»
+_GRADE_SECTION = re.compile(r'^\s*([IVX]{1,4})\s+sinif\s*[–-]')                 # «VII sinif – Natural ədədlər»
+
+
+def _roman_grade(m) -> int | None:
+    from .domain.classes import ROMAN as R
+    return R.get(m.group(1).upper()) if m else None
+
+
+def lesson_grade(lesson, program: PlanProgram | None, group_grade: int | None) -> int | None:
+    """Plan dərsinin öz sinfi (docs/sinfe-gore-testler-promtu.md §2.1): mövzu/bölmə önəki «V sinif: …», «VII sinif – …» →
+    proqram şablonunda bölmənin `grade` sahəsi → proqramın sinfi → qrupun sinfi. lesson – dict və ya PlanLesson."""
+    get = (lambda k: lesson.get(k)) if isinstance(lesson, dict) else (lambda k: getattr(lesson, k, None))
+    g = _roman_grade(_GRADE_PREFIX.search(get('topic') or '')) or _roman_grade(_GRADE_SECTION.match(get('section') or ''))
+    if g:
+        return g
+    if program is not None:
+        tpl = (program.data or {}).get('template') or {}
+        if tpl.get('format') in ('course', 'toplu'):
+            sec = get('section')
+            g = next((s.get('grade') for s in tpl.get('sections', []) if s.get('section') == sec and s.get('grade')), None)
+            if g:
+                return int(g)
+        if program.grade:
+            return program.grade
+    return group_grade
+
+
 def _prep_template(src: dict, upto: int) -> dict:
     sections = []
     for g in range(5, upto + 1):
@@ -63,7 +92,8 @@ def _prep_template(src: dict, upto: int) -> dict:
                 if sec['section'].startswith('Təkrar'):
                     continue
                 name = sec['section'].split(' ', 1)[-1] if sec['section'][:1].isdigit() else sec['section']
-                sections.append({'section': f'{rom} sinif – {name}', 'part': sec.get('part'),
+                sections.append({'section': f'{rom} sinif – {name}', 'part': sec.get('part'), 'grade': g,
+                                 'variants': src['grades'][str(g)].get('variants'),
                                  'topics': [f'{rom} sinif: {t}' for t in sec['topics']]})
     return {'format': 'course', 'sections': sections, 'mock_after_section': False, 'final_mock': True,
             'mock_every': 8, 'resource': 'DİM «Riyaziyyat. Sinif testləri»'}
