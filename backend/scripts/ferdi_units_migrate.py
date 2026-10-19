@@ -12,33 +12,12 @@ import sys
 
 
 def plan_ta(times: dict, slots: dict | None) -> tuple[dict, dict, int]:
-    """(yeni times, yeni slots, əlavə olunan yuva sayı). Artıq çevrilmiş vaxtlar toxunulmaz qalır."""
-    from app.api.classes import meeting_parts
-    new_times: dict[str, str] = {}
-    by_day: dict[int, list[tuple[int, str, str]]] = {}
-    for k, v in times.items():
-        wd, p = map(int, k.split(':'))
-        s, e = v.split('–')
-        by_day.setdefault(wd, []).append((p, s, e))
-    added = 0
-    for wd, rows in by_day.items():
-        used = {p for p, _, _ in rows}
-        free = iter(p for p in range(10) if p not in used)
-        for p, s, e in sorted(rows):
-            parts = meeting_parts(s, e)
-            new_times[f'{wd}:{p}'] = f'{parts[0][0]}–{parts[0][1]}'
-            for s2, e2 in parts[1:]:
-                try:
-                    q = next(free)
-                except StopIteration:
-                    raise SystemExit(f'gün {wd}: 10 yuvadan çox lazım olur')
-                new_times[f'{wd}:{q}'] = f'{s2}–{e2}'
-                added += 1
-    new_slots: dict[str, list[int]] = {}
-    for k in new_times:
-        wd, p = map(int, k.split(':'))
-        new_slots.setdefault(str(wd), []).append(p)
-    return new_times, {k: sorted(v) for k, v in new_slots.items()}, added
+    """Ortaq məntiq – app/ferdi_units.py (tətbiqdəki /api/workspaces/ferdi-units də onu işlədir)."""
+    from app.ferdi_units import plan_ta as _plan
+    try:
+        return _plan(times, slots)
+    except ValueError as e:
+        raise SystemExit(str(e))
 
 
 def main(argv=None) -> int:

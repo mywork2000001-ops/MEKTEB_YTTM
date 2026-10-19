@@ -3016,6 +3016,18 @@ const D: Record<string, [string, string]> = {
   "Proqramda {top} sinif mövzuları var, qrup – {grp}. Qrupun keçdiyi bölmələri seçmək məsləhətdir": [
     "The program has grade {top} topics, the group is in grade {grp}. Selecting only the sections the group has covered is recommended",
     "В программе есть темы {top} класса, группа – {grp} класс. Рекомендуется выбрать только пройденные группой разделы"],
+  // --- köhnə fərdi vaxtları görüşə çevirmək (Tənzimləmə → fərdi məkan)
+  "Köhnə dərs vaxtlarını görüşə çevir (2×45)": ["Convert old lesson times to meetings (2×45)", "Преобразовать старые времена уроков во встречи (2×45)"],
+  "Köhnə bir yuvalı vaxtlar (məs. 17:00–18:30) görüş formatına keçirilir: hər 45 dəqiqəlik hissə ayrıca dərs saatıdır, aralarında 5 dəqiqə fasilə. Jurnal yazıları birinci hissədə qalır, proqramı olan qruplarda plan yenidən qurulur (keçilmiş dərslər dəyişmir).": [
+    "Old single-slot times (e.g. 17:00–18:30) are converted to the meeting format: each 45-minute part is a separate lesson hour with a 5-minute break between. Journal entries stay on the first part; for groups with a program the plan is rebuilt (past lessons do not change).",
+    "Старые времена в один слот (напр. 17:00–18:30) переводятся в формат встреч: каждая часть по 45 минут – отдельный урок, между ними перерыв 5 минут. Записи журнала остаются на первой части, у групп с программой план перестраивается (пройденные уроки не меняются)."],
+  "Köhnə vaxtlar": ["Old times", "Старые времена"],
+  "Yeni görüşlər": ["New meetings", "Новые встречи"],
+  "Yuva": ["Slots", "Слоты"],
+  "Hamısı artıq görüş formatındadır": ["Everything is already in the meeting format", "Всё уже в формате встреч"],
+  "Təsdiq et və çevir": ["Confirm and convert", "Подтвердить и преобразовать"],
+  "Çevrildi: {n} qrup": ["Converted: {n} groups", "Преобразовано групп: {n}"],
+  "plan yenilənəcək": ["plan will be rebuilt", "план будет перестроен"],
 }
 
 export const I18nCtx = createContext<Lang>('az')
