@@ -278,10 +278,14 @@ def expand(tpl: dict, grade: int, cap1: int, cap2: int, summative: bool) -> tupl
     return out, warnings
 
 
-def expand_course(tpl: dict, dates: list[dt.date], sem1_end: dt.date) -> tuple[list[dict], list[str]]:
+def expand_course(tpl: dict, dates: list[dt.date], sem1_end: dt.date, sizes: list[int] | None = None) -> tuple[list[dict], list[str]]:
     """Kurs (repetitor) şablonunu kursun yuvalarına açır: KSQ/BSQ/diaqnostik/yarımil yoxdur.
     Mövzular; hər `mock_every` mövzu dərsindən sonra aralıq sınaq; bölmə sonunda sınaq; sonda yekun sınaq (hamısı istəyə görə).
-    Yuva azdırsa əvvəl aralıq sınaqlar, sonra bölmə sınaqları, sonra yekun sınaq çıxır, sonra mövzular 1 dərsə enir."""
+    Yuva azdırsa əvvəl aralıq sınaqlar, sonra bölmə sınaqları, sonra yekun sınaq çıxır, sonra mövzular 1 dərsə enir.
+    sizes – görüşlərin saat sayı (xronoloji, cəmi len(dates)); 2+ saatlıq görüş varsa plan görüşlərə görə açılır
+    (`meeting_sizes`); yoxdursa – hər yuva ayrıca dərsdir."""
+    if sizes and sum(sizes) == len(dates) and max(sizes) > 1:
+        return _expand_course_meetings(tpl, dates, sem1_end, sizes)
     sections = [s for s in tpl['sections'] if s['topics']]
     n_topics = sum(len(s['topics']) for s in sections)
     cap = len(dates)
@@ -350,6 +354,119 @@ def expand_course(tpl: dict, dates: list[dt.date], sem1_end: dt.date) -> tuple[l
     if final:
         les('Yekun', 'Yekun sınaq imtahanı', 'Sınaq imtahanı (bütün kurs üzrə)')
     for i, l in enumerate(out):                   # yarımil – dərsin düşdüyü tarixə görə
+        l['semester'] = 1 if i < len(dates) and dates[i] <= sem1_end else 2
+    return out, warnings
+
+
+def meeting_sizes(ta: TeachingAssignment, slots: list[tuple[dt.date, int]]) -> list[int] | None:
+    """Fərdi qrupun yuvalarını görüşlərə qruplaşdırır: hər görüşün saat sayı (xronoloji). Fərdi vaxt (ta.times) yoxdursa
+    və ya hamısı 1 saatlıqdırsa – None (köhnə davranış)."""
+    if not ta.times or not slots:
+        return None
+    from .api.classes import times_groups
+    first = {(g['weekday'], g['periods'][0]): g['units'] for g in times_groups(ta)}
+    sizes = [first[(d.weekday(), p)] for d, p in slots if (d.weekday(), p) in first]
+    if sum(sizes) != len(slots) or max(sizes, default=1) < 2:
+        return None
+    return sizes
+
+
+def _expand_course_meetings(tpl: dict, dates: list[dt.date], sem1_end: dt.date, sizes: list[int]) -> tuple[list[dict], list[str]]:
+    """Görüşlərə görə kurs planı: mövzuya düşən saat görüş ölçüsünün qatıdır, görüş bölünmür. Hər mövzunun 1-ci saatı
+    «Nəzəri xülasə və nümunə məsələlər», sonuncu saatı «Sinif testi və təhlil». `mock_every` şablonda saatla verilir –
+    görüşə çevrilir (8 saat ≈ 4 görüş); sınaq bütöv görüşdür. Çıxış – saatlıq dərs siyahısı (len == sum(sizes))."""
+    sections = [s for s in tpl['sections'] if s['topics']]
+    n_topics = sum(len(s['topics']) for s in sections)
+    cap = len(sizes)
+    avg = sum(sizes) / cap
+    every = int(tpl.get('mock_every') or 0)
+    every = max(1, round(every / avg)) if every else 0
+    sec_mock = bool(tpl.get('mock_after_section')) and len(sections) > 1
+    final = bool(tpl.get('final_mock'))
+    warnings: list[str] = []
+
+    def topic_room() -> int:
+        room = cap - (len(sections) if sec_mock else 0) - int(final)
+        if every:
+            t = room
+            while t > 0 and t + (t - 1) // every > room:
+                t -= 1
+            return t
+        return room
+    dropped = False
+    while topic_room() < n_topics and (every or sec_mock or final):
+        dropped = True
+        if every:
+            every = 0
+        elif sec_mock:
+            sec_mock = False
+        else:
+            final = False
+    free = topic_room()
+    if free < n_topics:
+        warnings.append(f'Kursda {cap} görüş {n_topics} mövzu üçün azdır – {n_topics - max(cap, 0)} mövzu sığmır; '
+                        'lazım olan bölmələri seçin, həftəyə görüş əlavə edin və ya kurs müddətini artırın')
+        free = n_topics
+    elif dropped:
+        warnings.append('Görüş az olduğu üçün bəzi sınaq görüşləri plana salınmadı')
+    per = _share(free, n_topics)                  # hər mövzuya düşən görüş sayı
+    res = tpl.get('resource')
+    out: list[dict] = []
+    m = [0]                                       # növbəti görüşün nömrəsi (0-dan)
+
+    def size_now() -> int:
+        return sizes[m[0]] if m[0] < len(sizes) else 1
+
+    def hours(section, titles, assessment, resources=None):
+        """Növbəti görüşü açır: titles[h] – görüşün h-ci saatının mövzusu."""
+        m[0] += 1
+        for h, tt in enumerate(titles):
+            out.append({'semester': 0, 'section': section, 'topic': tt, 'standards': [], 'integration': None,
+                        'resources': resources[h] if isinstance(resources, list) else resources,
+                        'assessment': assessment[h] if isinstance(assessment, list) else assessment,
+                        'assessment_type': 'formativ', 'exam_no': None, 'tt_pages': None, 'tasks': []})
+    k = done = 0
+    for s in sections:
+        for t in s['topics']:
+            n = per[k]
+            k += 1
+            short = t.split(': ', 1)[-1]
+            for j in range(n):
+                sz = size_now()
+                last = j == n - 1
+                titles, res_l, ass = [], [], []
+                for h in range(sz):
+                    if last and h == sz - 1:
+                        titles.append(f'{t}. Sinif testi və təhlil' if sz > 1 or n > 1 else f'{t}. Test')
+                        ass.append('Formativ: sinif testi')
+                        res_l.append(f'{res}: «{short}» – Sinif testi' if res else None)
+                    elif j == 0 and h == 0:
+                        titles.append(f'{t}. Nəzəri xülasə və nümunə məsələlər')
+                        ass.append('Formativ: şifahi sorğu, tapşırıq')
+                        res_l.append(res)
+                    else:
+                        titles.append(f'{t} ({j + 1}/{n}). {STEPS[(j + h - 1) % len(STEPS)]}')
+                        ass.append('Formativ: şifahi sorğu, tapşırıq')
+                        res_l.append(res)
+                hours(s['section'], titles, ass, res_l)
+                done += 1
+                if every and done % every == 0 and done < free:
+                    sz = size_now()
+                    hours(s['section'], [f'Aralıq sınaq ({done // every})' + (f', {i + 1}-ci hissə' if sz > 1 else '') for i in range(sz)],
+                          'Sınaq imtahanı (keçilən material üzrə)')
+        if sec_mock:
+            sz = size_now()
+            hours(s['section'], [f'Sınaq: {s["section"]}' + (f', {i + 1}-ci hissə' if sz > 1 else '') for i in range(sz)],
+                  'Sınaq imtahanı (bölmə üzrə)')
+    for i in range(cap - m[0] - int(final)):             # qalan görüşlər – ümumi təkrar
+        sz = size_now()
+        hours('Yekun', [f'Ümumi təkrar ({i + 1})' + (f', {h + 1}-ci hissə' if sz > 1 else '') for h in range(sz)],
+              'Formativ: yekun tapşırıqlar')
+    if final:
+        sz = size_now()
+        hours('Yekun', ['Yekun sınaq imtahanı' + (f', {h + 1}-ci hissə' if sz > 1 else '') for h in range(sz)],
+              'Sınaq imtahanı (bütün kurs üzrə)')
+    for i, l in enumerate(out):
         l['semester'] = 1 if i < len(dates) and dates[i] <= sem1_end else 2
     return out, warnings
 
@@ -506,6 +623,18 @@ def check_sections(program: PlanProgram, sections: list[str] | None) -> list[str
     return None if set(sections) == set(names) else [n for n in names if n in sections]
 
 
+def budget_summary(slots: list, sizes: list[int] | None, need: int | None) -> dict:
+    """Büdcə xülasəsi: görüş sayı, saat, plan tələbi, ehtiyat (+) / çatışmazlıq (−) və vəziyyət (ok / tight / short)."""
+    hours = len(slots)
+    spare = None if need is None else hours - need
+    status = None
+    if spare is not None:
+        status = 'short' if spare < 0 else ('tight' if spare < 0.05 * hours else 'ok')
+    return {'meetings': len(sizes) if sizes else hours,
+            'hours': hours, 'need': need, 'spare': spare, 'status': status,
+            'from': slots[0][0].isoformat() if slots else None, 'to': slots[-1][0].isoformat() if slots else None}
+
+
 def lessons_for(db: Session, program: PlanProgram, ta: TeachingAssignment,
                 sections: list[str] | None = None) -> tuple[list[dict], dict]:
     """Proqramın bu sinif/qrup üçün dərs siyahısı və hesabatı (önbaxış və tətbiq üçün).
@@ -517,11 +646,15 @@ def lessons_for(db: Session, program: PlanProgram, ta: TeachingAssignment,
     grade = class_grade(db, cls) or program.grade
     keep = set(sections) if sections else None
     relabel = False
+    sizes = meeting_sizes(ta, cap['slots'])
+    need = None                                   # planın minimum tələb etdiyi saat (kurs: hər mövzuya ən az 1 görüş)
     if is_course(program):
         tpl = dict(program.data['template'])
         if keep:
             tpl['sections'] = [s for s in tpl['sections'] if s['section'] in keep]
-        lessons, warnings = expand_course(tpl, [d for d, _ in cap['slots']], sem1_end)
+        lessons, warnings = expand_course(tpl, [d for d, _ in cap['slots']], sem1_end, sizes)
+        n_top = sum(len(s['topics']) for s in tpl['sections'])
+        need = n_top * (min(sizes) if sizes else 1)
     elif is_toplu(program):
         tpl = dict(program.data['template'])
         if keep:
@@ -562,7 +695,8 @@ def lessons_for(db: Session, program: PlanProgram, ta: TeachingAssignment,
            'sem1_lessons': sum(1 for l in lessons if l['semester'] == 1),
            'sem2_lessons': sum(1 for l in lessons if l['semester'] == 2),
            'ksq': sum(l['assessment_type'] == 'KSQ' for l in lessons), 'bsq': sum(l['assessment_type'] == 'BSQ' for l in lessons),
-           'written_lessons': n_written, 'warnings': warnings, 'sections': sections}
+           'written_lessons': n_written, 'warnings': warnings, 'sections': sections,
+           'budget': budget_summary(cap['slots'], sizes, need)}
     return lessons, rep
 
 

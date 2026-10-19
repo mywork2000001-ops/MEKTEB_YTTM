@@ -243,8 +243,37 @@ def _mins(t: str) -> int:
     return int(h) * 60 + int(m)
 
 
+def _hhmm(m: int) -> str:
+    return f'{m // 60:02d}:{m % 60:02d}'
+
+
+LESSON_MIN = 45                                   # akademik saat (dəq.)
+
+
+BREAK_MIN = 5                                     # saatlar arasında fasilə (sabit; sxem dəyişmir)
+
+
+def meeting_units(start: str, end: str) -> int:
+    """Görüşün akademik saat sayı: max(1, round((müddət + fasilə) / (45 + fasilə))) – 90 də, 95 də → 2; 60 → 1; 135 → 3."""
+    return max(1, round((_mins(end) - _mins(start) + BREAK_MIN) / (LESSON_MIN + BREAK_MIN)))
+
+
+def meeting_end(start: str, end: str) -> str:
+    """Görüşün hesablanmış bitməsi = start + units·45 + (units−1)·fasilə."""
+    n = meeting_units(start, end)
+    return _hhmm(_mins(start) + n * LESSON_MIN + (n - 1) * BREAK_MIN)
+
+
+def meeting_parts(start: str, end: str) -> list[tuple[str, str]]:
+    """Görüşü `units` alt vaxta bölür: 17:00–18:30 → [17:00–17:45, 17:50–18:35]."""
+    a = _mins(start)
+    return [(_hhmm(a + k * (LESSON_MIN + BREAK_MIN)), _hhmm(a + k * (LESSON_MIN + BREAK_MIN) + LESSON_MIN))
+            for k in range(meeting_units(start, end))]
+
+
 def private_times(db: Session, user: User, c: SchoolClass, ta: TeachingAssignment | None, times: list[TimeIn]) -> tuple[dict, dict]:
-    """Fərdi qrupun vaxtlarını yoxlayır və {gün: [sıra]} + {"gün:sıra": "HH:MM–HH:MM"} qaytarır. Mövcud vaxtlar öz
+    """Fərdi qrupun görüşlərini yoxlayır və {gün: [sıra]} + {"gün:sıra": "HH:MM–HH:MM"} qaytarır. Hər görüş `units`
+    ardıcıl sıraya (45 dəq.-lik alt vaxtlar) açılır; toqquşma yoxlaması görüş səviyyəsindədir. Mövcud vaxtlar öz
     sırasını saxlayır (jurnal yazıları (tarix, sıra) ilə bağlıdır), yeni vaxta ən kiçik boş sıra verilir."""
     from ..domain.calendar import WEEKDAYS
     rows = sorted(times, key=lambda x: (x.weekday, x.start))
@@ -254,6 +283,7 @@ def private_times(db: Session, user: User, c: SchoolClass, ta: TeachingAssignmen
             raise bad(400, '{day} {start}–{end}: bitmə başlamadan sonra olmalıdır', day=WEEKDAYS[x.weekday], start=x.start, end=x.end)
         if not 20 <= dur <= 240:
             raise bad(400, '{day} {start}–{end}: dərsin müddəti 20 dəqiqə – 4 saat olmalıdır', day=WEEKDAYS[x.weekday], start=x.start, end=x.end)
+    rows = [x.model_copy(update={'end': meeting_end(x.start, x.end)}) for x in rows]     # toqquşma – hesablanmış bitmə ilə
     for a, b in zip(rows, rows[1:]):
         if a.weekday == b.weekday and _mins(b.start) < _mins(a.end):
             raise bad(400, '{day}: {a1}–{a2} və {b1}–{b2} üst-üstə düşür', day=WEEKDAYS[a.weekday], a1=a.start, a2=a.end, b1=b.start, b2=b.end)
@@ -276,34 +306,59 @@ def private_times(db: Session, user: User, c: SchoolClass, ta: TeachingAssignmen
     tmap: dict[str, str] = {}
     for wd in sorted({x.weekday for x in rows}):
         day = [x for x in rows if x.weekday == wd]
-        if len(day) > 10:
-            raise bad(400, '{day}: gündə ən çox 10 dərs', day=WEEKDAYS[wd])
         prev = old_by_day.get(wd, {})
         used: set[int] = set()
-        assigned: list[tuple[TimeIn, int]] = []
-        for x in day:                                       # vaxtı dəyişməyən dərs köhnə sırasını saxlayır
-            t = f'{x.start}–{x.end}'
-            if t in prev and prev[t] not in used:
-                used.add(prev[t]); assigned.append((x, prev[t]))
-        free = (p for p in range(10) if p not in used)
+        subs: list[tuple[str, str, int | None]] = []        # (başlama, bitmə, saxlanan sıra)
         for x in day:
-            if not any(x is a for a, _ in assigned):
-                p = next(free); used.add(p); assigned.append((x, p))
-        slots[str(wd)] = sorted(p for _, p in assigned)
-        for x, p in assigned:
-            tmap[f'{wd}:{p}'] = f'{x.start}–{x.end}'
+            parts = meeting_parts(x.start, x.end)
+            for i, (s_, e_) in enumerate(parts):
+                p = prev.get(f'{s_}–{e_}')
+                if p is None and i == 0 and len(parts) > 1:  # köhnə (bütöv) görüş: 1-ci hissə köhnə sırasını saxlayır
+                    p = next((q for k_, q in prev.items() if k_.startswith(f'{x.start}–')), None)
+                if p is not None and p not in used:
+                    used.add(p)
+                else:
+                    p = None
+                subs.append((s_, e_, p))
+        if len(subs) > 10:
+            raise bad(400, '{day}: gündə ən çox 10 dərs', day=WEEKDAYS[wd])
+        free = (p for p in range(10) if p not in used)
+        got: list[int] = []
+        for s_, e_, p in subs:
+            if p is None:
+                p = next(free)
+                used.add(p)
+            got.append(p)
+            tmap[f'{wd}:{p}'] = f'{s_}–{e_}'
+        slots[str(wd)] = sorted(got)
     return slots, tmap
 
 
-def times_out(ta: TeachingAssignment) -> list[dict] | None:
-    if not ta.times:
-        return None
-    out = []
-    for k, v in ta.times.items():
+def times_groups(ta: TeachingAssignment) -> list[dict]:
+    """ta.times (gün:sıra → alt vaxt) → görüşlər: eyni gündə ardıcıl sıralı və bitişik alt vaxtlar bir görüşdür."""
+    rows = []
+    for k, v in (ta.times or {}).items():
         wd, p = map(int, k.split(':'))
         s, e = v.split('–')
-        out.append({'weekday': wd, 'period': p, 'start': s, 'end': e})
+        rows.append((wd, p, s, e))
+    rows.sort()
+    out: list[dict] = []
+    for wd, p, s, e in rows:
+        g = out[-1] if out else None
+        if g and g['weekday'] == wd and g['periods'][-1] == p - 1 and _mins(s) - _mins(g['end']) in (0, BREAK_MIN):
+            g['end'] = e
+            g['periods'].append(p)
+        else:
+            out.append({'weekday': wd, 'start': s, 'end': e, 'periods': [p]})
+    for g in out:
+        g['units'] = len(g['periods'])
+        g['period'] = g['periods'][0]
     return sorted(out, key=lambda x: (x['weekday'], x['start']))
+
+
+def times_out(ta: TeachingAssignment) -> list[dict] | None:
+    """Görüşlər: [{weekday, start, end, units, periods, period}] – bir görüş bir sətir."""
+    return times_groups(ta) if ta.times else None
 
 
 class JoinIn(BaseModel):
@@ -335,6 +390,8 @@ def join_class(cid: int, body: JoinIn, user: User = Depends(settings_unlocked), 
     private = db.get(School, c.school_id).kind == 'private'
     ta_prev = db.scalar(select(TeachingAssignment).where(TeachingAssignment.teacher_id == user.id, TeachingAssignment.class_id == cid,
                                                          TeachingAssignment.subject == body.subject))
+    before = (dict(ta_prev.times or {}), dict(ta_prev.slots or {}), ta_prev.starts_on, ta_prev.ends_on) \
+        if ta_prev and not ta_prev.archived_at else None
     tmap = None
     if body.times is not None:
         if not private:
@@ -389,8 +446,25 @@ def join_class(cid: int, body: JoinIn, user: User = Depends(settings_unlocked), 
             raise HTTPException(404, 'Proqram tapılmadı')
         rep = apply(db, p, ta, user)                     # əvvəlki plan (varsa) kitabxanada saxlanılır
         audit(db, user, 'update', 'plan_program', ta.id, program_id=p.id, lessons=rep['lessons'])
+    elif before and ta.program_id and ta.slots and before != (dict(ta.times or {}), dict(ta.slots or {}), ta.starts_on, ta.ends_on):
+        from ..models import PlanProgram
+        from ..programs import apply
+        p = db.get(PlanProgram, ta.program_id)           # vaxtlar / kurs müddəti dəyişdi – plan avtomatik yenidən açılır
+        if p and not p.archived_at:                      # (jurnalda yazılmış dərslərin mövzusu apply-da dondurulur)
+            rep = apply(db, p, ta, user, ta.program_sections)
+            audit(db, user, 'update', 'plan_program', ta.id, program_id=p.id, lessons=rep['lessons'], auto=True)
+    budget = None
+    if ta.program_id and ta.slots:
+        from ..models import PlanProgram
+        from ..programs import lessons_for
+        p = db.get(PlanProgram, ta.program_id)
+        if p:
+            budget = lessons_for(db, p, ta, ta.program_sections)[1]['budget']
     db.commit()
-    return class_out(db, c, user, my_class_ids(db, user))
+    out = class_out(db, c, user, my_class_ids(db, user))
+    if isinstance(out, dict):
+        out['budget'] = budget
+    return out
 
 
 @router.post('/{cid}/leave')
