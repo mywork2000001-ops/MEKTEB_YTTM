@@ -287,10 +287,14 @@ def my_tasks(archived: bool = False, kind: str = 'movzu', user: User = Depends(s
             stats.setdefault(a.task_id, []).append(apct(a))
     pls = {p.id: p for p in db.scalars(select(PlanLesson).where(
         PlanLesson.id.in_({t.plan_lesson_id for t in tasks if t.plan_lesson_id} or {-1})))}
+    from ..task_groups import group_tasks
+    gmap = {i: g for g in group_tasks(tasks) for i in g['task_ids']}       # eyni testin yenidən göndərişləri – bir qrup (görünüş üçün)
     out = []
     for t in tasks:
         ta, v, pl = tas[t.assignment_id], stats.get(t.id, []), pls.get(t.plan_lesson_id)
-        out.append({**task_out(t), 'ta_id': ta.id, 'class_name': names.get(ta.class_id), 'subject': ta.subject,
+        g = gmap[t.id]
+        out.append({**task_out(t), 'group_key': g['group_key'], 'group_sends': g['sends'], 'group_main_id': g['main_task_id'],
+                    'ta_id': ta.id, 'class_name': names.get(ta.class_id), 'subject': ta.subject,
                     'submitted': len(v), 'avg_pct': round(sum(v) / len(v), 1) if v else None,
                     'topic': pl and {'seq': pl.seq, 'topic': pl.topic}})
     return out

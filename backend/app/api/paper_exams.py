@@ -1,6 +1,6 @@
 """Yazılı (kağız) rejim: mövzu testi, sınaq və sərbəst yazılı iş (docs/yazili-sinaq-ve-skan-duymesi-promtu.md §A).
 
-Kart/skan/apelyasiya mexanizmi imtahana (exam_id) bağlıdır → yazılı iş üçün Exam yazısı yaradılır (kind: TEST | SINAQ | YI;
+Kart/skan/apelyasiya mexanizmi imtahana (exam_id) bağlıdır → yazılı iş üçün Exam yazısı yaradılır (kind: TEST | SINAQ | YI | VIK;
 online_task_id / batch_id – bağlı onlayn tapşırıq / sınaq paketi) və ExamVariant-lar (sual surətləri). Sonrası – dəyişməz:
 variants/print (çap), /api/scans/any (skan), exam_scans (oxunuş, qiymətləndirmə). Perspektiv plan və has_summative tələb olunmur;
 məktəb və fərdi məkanda eyni işləyir. Nəticə testin öz nəticəsidir; jurnala yalnız Exam.to_journal=True olarsa düşür."""
@@ -22,23 +22,27 @@ from ..domain import own_numbers
 from ..domain.ksq_variants import RULES_V, Shortage, bank_candidates, card_answer, generate_auto, same_variant
 from ..domain.scoring import difficulty_of, question_points
 from ..exam_logic import exam_label
-from ..models import BankFile, Exam, ExamScan, ExamVariant, OnlineTask, TaskAttempt, User
+from ..models import BankFile, Exam, ExamScan, ExamVariant, OnlineTask, PlanLesson, TaskAttempt, User
+from ..task_groups import group_tasks
 from ..services import own_assignment, plan_ctx, today
 from .common import audit, get_or_404
 from .exams import _history, exam_out, exam_result
+from .tasks import aware
 
 router = APIRouter(prefix='/api/paper-exams', tags=['paper-exams'])
+PAPER_KINDS = ('TEST', 'SINAQ', 'YI', 'VIK')
 
 
 class PaperIn(BaseModel):
     task_id: int | None = None                      # mövcud mövzu testi / sınaq (onlayn tapşırıq) → kağız variantı
-    file_ids: list[int] | None = Field(None, max_length=60)   # sərbəst yazılı iş: müəllimin seçdiyi test faylları
+    file_ids: list[int] | None = Field(None, max_length=300)   # sərbəst yazılı iş: müəllimin seçdiyi test faylları
     n: int = Field(20, ge=5, le=30)                 # sərbəst iş: sual sayı
     mcq_only: bool = False
     title: str | None = Field(None, max_length=200)
     date: dt.date | None = None
     variant_mode: Literal['same', 'different', 'same_numbers'] = 'same'
     to_journal: bool = False                        # nəticə jurnala düşsün? (standart – yox, testin öz nəticəsidir)
+    viktorina: bool = False                         # file_ids bütün viktorina bazasından (bir neçə mənbə) → növ VIK
     student_ids: list[int] | None = None            # yalnız bu şagirdlər (standart: bütün sinif / tapşırığın şagirdləri)
 
 
@@ -87,11 +91,64 @@ def _stats(db: Session, e: Exam) -> dict:
             'graded': sum(s.status == 'graded' for s in scans)}
 
 
+@router.get('/{ta_id}/grade')
+def paper_grade(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Dərsin sinif rəqəmi (viktorina mövzularını sinfə görə süzmək üçün standart)."""
+    from ..models import SchoolClass
+    from ..services import class_grade
+    ta = own_assignment(db, user, ta_id)
+    return {'grade': class_grade(db, db.get(SchoolClass, ta.class_id))}
+
+
+def _group_ctx(db: Session, ta) -> tuple[list[dict], list[OnlineTask]]:
+    """Dərsin yazılı işə yararlı onlayn tapşırıqları (arxivsiz, KSQ-siz) və onların qrupları (task_groups)."""
+    tasks = list(db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, OnlineTask.archived_at.is_(None),
+                                                     OnlineTask.exam_id.is_(None),
+                                                     (OnlineTask.kind.is_(None)) | (OnlineTask.kind != 'ksq'))))
+    ids = [t.id for t in tasks] or [-1]
+    sub: dict[int, int] = {}
+    for tid, n in db.execute(select(TaskAttempt.task_id, func.count()).where(TaskAttempt.task_id.in_(ids), TaskAttempt.submitted_at.is_not(None),
+                                                                            TaskAttempt.total > 0).group_by(TaskAttempt.task_id)):
+        sub[tid] = n
+    papers = set(db.scalars(select(Exam.online_task_id).where(Exam.assignment_id == ta.id, Exam.online_task_id.is_not(None))))
+    seqs = {p.id: p.seq for p in db.scalars(select(PlanLesson).where(PlanLesson.id.in_({t.plan_lesson_id for t in tasks if t.plan_lesson_id} or {-1})))}
+    n = len(exam_roster_ids(db, ta))
+    return group_tasks(tasks, submitted=sub, seqs=seqs, paper_task_ids=papers, roster_n={ta.id: n}), tasks
+
+
+def _find_group(db: Session, ta, task_id: int) -> dict | None:
+    return next((g for g in _group_ctx(db, ta)[0] if task_id in g['task_ids']), None)
+
+
+@router.get('/{ta_id}/sources')
+def paper_sources(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«Hazır test / sınaq» mənbələri – növlərə ayrılmış test qrupları: movzu (plan № artan), sinaq (tarix azalan), extra (məşğələ, tarix azalan).
+    Təkrar göndərişlər bir qrupdur; grade_mismatch – başlıqdakı sinif rəqəmi bu sinfin rəqəmindən fərqlidir."""
+    from ..models import SchoolClass
+    from ..services import class_grade
+    ta = own_assignment(db, user, ta_id)
+    cg = class_grade(db, db.get(SchoolClass, ta.class_id))
+    groups, _ = _group_ctx(db, ta)
+    res: dict[str, list] = {'movzu': [], 'sinaq': [], 'extra': []}
+    for g in groups:
+        bucket = 'movzu' if g['kind'] == 'movzu' else 'sinaq' if g['kind'] == 'sinaq' else 'extra'
+        res[bucket].append({
+            'key': g['group_key'], 'main_task_id': g['main_task_id'], 'task_ids': g['task_ids'], 'sends': g['sends'],
+            'students': g['students'], 'students_n': g['students_n'], 'submitted': g['submitted'],
+            'first_opens_at': aware(g['first_opens_at']), 'last_opens_at': aware(g['last_opens_at']),
+            'title': g['title'], 'kind': g['kind'], 'seq': g['seq'], 'grade_hint': g['grade_hint'], 'has_paper': g['has_paper'],
+            'grade_mismatch': bool(g['grade_hint'] and cg and g['grade_hint'] != cg)})
+    res['movzu'].sort(key=lambda x: (x['seq'] is None, x['seq'] or 0, x['first_opens_at']))
+    res['sinaq'].sort(key=lambda x: x['last_opens_at'], reverse=True)
+    res['extra'].sort(key=lambda x: x['last_opens_at'], reverse=True)
+    return res
+
+
 @router.get('/{ta_id}')
 def list_paper(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)
     out = []
-    for e in db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.kind.in_(('TEST', 'SINAQ', 'YI')))
+    for e in db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.kind.in_(PAPER_KINDS))
                         .order_by(Exam.date.desc(), Exam.id.desc())):
         out.append({**exam_out(e), **_stats(db, e)})
     return out
@@ -102,20 +159,27 @@ def create_paper(ta_id: int, body: PaperIn, user: User = Depends(staff), db: Ses
     """Yazılı iş yaradır: mövcud test/sınaq (task_id) və ya sərbəst iş (file_ids). Variantlar dərhal hazır olur."""
     ta = own_assignment(db, user, ta_id)
     students = exam_roster_ids(db, ta)
-    task = None
+    task, gstud = None, None
     if body.task_id is not None:
         task = get_or_404(db, OnlineTask, body.task_id, 'Test')
         if task.assignment_id != ta.id or task.exam_id is not None or task.kind == 'ksq':
             raise HTTPException(404, 'Test tapılmadı')
-        if db.scalar(select(Exam.id).where(Exam.assignment_id == ta.id, Exam.online_task_id == task.id)):
+        grp = _find_group(db, ta, task.id)           # eyni testin yenidən göndərişləri bir qrupdur
+        gids = grp['task_ids'] if grp else [task.id]
+        if db.scalar(select(Exam.id).where(Exam.assignment_id == ta.id, Exam.online_task_id.in_(gids))):
             raise HTTPException(409, 'Bu test üçün yazılı variant artıq var')
         if body.variant_mode == 'different':
             raise HTTPException(400, 'Hazır testin sualları dəyişmir – «hamıya eyni» seçin (hər şagirdə fərqli sual yalnız sərbəst işdə)')
-        if task.student_ids:
-            students = [s for s in students if s in set(task.student_ids)]
+        if grp:
+            task = db.get(OnlineTask, grp['main_task_id']) or task      # əsas göndəriş; şagirdlər – qrupun birləşməsi
+            gstud = grp['student_ids']                                    # None = hər hansı göndəriş «hamı»dır
+        else:
+            gstud = task.student_ids
+        if gstud:
+            students = [s for s in students if s in set(gstud)]
         kind = 'SINAQ' if task.kind == 'sinaq' else 'TEST'
     elif body.file_ids:
-        kind = 'YI'
+        kind = 'VIK' if body.viktorina else 'YI'
     else:
         raise HTTPException(400, 'Hazır test seçin və ya sərbəst iş üçün test faylları göstərin')
     if body.student_ids is not None:
@@ -124,9 +188,9 @@ def create_paper(ta_id: int, body: PaperIn, user: User = Depends(staff), db: Ses
         raise HTTPException(400, 'Şagird yoxdur')
     d = body.date or today()
     e = Exam(assignment_id=ta.id, kind=kind, no=_next_no(db, ta.id, kind), semester=_semester(db, ta, d), date=d, max_points=100,
-             title=(body.title or (task.title if task else 'Yazılı iş'))[:200], online_task_id=task.id if task else None,
+             title=(body.title or (task.title if task else 'Viktorina' if body.viktorina else 'Yazılı iş'))[:200], online_task_id=task.id if task else None,
              batch_id=task.batch_id if task else None, to_journal=body.to_journal, variant_mode='numbers' if body.variant_mode == 'same_numbers' else body.variant_mode,
-             extra_students=sorted(students) if body.student_ids is not None or (task and task.student_ids) else None)
+             extra_students=sorted(students) if body.student_ids is not None or (task and gstud) else None)
     db.add(e)
     db.flush()
     try:
@@ -138,7 +202,16 @@ def create_paper(ta_id: int, body: PaperIn, user: User = Depends(staff), db: Ses
             fs = list(db.scalars(select(BankFile).where(BankFile.id.in_(files), BankFile.active.is_(True))))
             if len(fs) != len(files):
                 raise HTTPException(400, 'Test faylı tapılmadı')
-            cands = bank_candidates(db, [(e.title or 'Yazılı iş', None)], fs[0].source_key, {0: files})
+            topics = [(e.title or 'Yazılı iş', None)]
+            by_src: dict[str, list[int]] = {}
+            for f in fs:                                     # fayllar bir neçə mənbədən ola bilər (viktorina) – mənbə üzrə qruplaşdır
+                by_src.setdefault(f.source_key, []).append(f.id)
+            cands, seen = [], set()
+            for src_key, ids in by_src.items():
+                for c in bank_candidates(db, topics, src_key, {0: ids}):
+                    if c.key not in seen:                    # eyni sualın (content_hash) dublikatı atılır
+                        seen.add(c.key)
+                        cands.append(c)
             if body.variant_mode in ('same', 'same_numbers'):
                 one = same_variant(cands, body.n, seed=e.id * 7919, mcq_only=body.mcq_only)
                 res = {sid: copy.deepcopy(one) for sid in students}
@@ -184,7 +257,7 @@ def patch_paper(ta_id: int, exam_id: int, body: PaperPatch, user: User = Depends
 
 def _paper(db: Session, ta_id: int, exam_id: int) -> Exam:
     e = get_or_404(db, Exam, exam_id, 'Yazılı iş')
-    if e.assignment_id != ta_id or e.kind not in ('TEST', 'SINAQ', 'YI'):
+    if e.assignment_id != ta_id or e.kind not in PAPER_KINDS:
         raise HTTPException(404, 'Yazılı iş tapılmadı')
     return e
 
@@ -208,9 +281,13 @@ def paper_results(ta_id: int, exam_id: int, user: User = Depends(staff), db: Ses
     e = _paper(db, ta_id, exam_id)
     res = exam_result(ta_id, exam_id, user, db)
     online = {}
-    if e.online_task_id:
-        online = {a.student_id: a.points for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == e.online_task_id,
-                                                                                         TaskAttempt.submitted_at.is_not(None)))}
+    if e.online_task_id:                                  # qrupun bütün göndərişləri: şagirdin ən son təhvil verdiyi cəhd
+        ta = own_assignment(db, user, ta_id)
+        grp = _find_group(db, ta, e.online_task_id)
+        gids = grp['task_ids'] if grp else [e.online_task_id]
+        for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id.in_(gids), TaskAttempt.submitted_at.is_not(None))
+                            .order_by(TaskAttempt.submitted_at)):
+            online[a.student_id] = a.points
     paper = {s.student_id: s.points for s in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.source == 'paper',
                                                                                 ExamScan.status == 'graded'))}
     for r in res['rows']:
