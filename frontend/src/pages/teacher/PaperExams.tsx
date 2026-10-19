@@ -2,20 +2,27 @@
 // Plan tələb olunmur; məktəb və fərdi məkanda eyni. Çap – variants/print (ümumi vərəqə), skan – daimi «📷 Skan» düyməsi.
 import { useEffect, useState } from 'react'
 import { del, get, patch, post } from '../../api'
-import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, Pill, PickFirst, toast, useLoad } from '../../ui'
+import { AsyncBtn, azDT, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, Pill, PickFirst, toast, useLoad } from '../../ui'
 import { useT } from '../../i18n'
 import { printBooklet, printKey, printSheets, type KsqPrint } from '../../ksqPrint'
 import OwnNumbersReport, { type OwnReport } from '../../OwnNumbersReport'
 
-type Paper = { id: number; kind: 'TEST' | 'SINAQ' | 'YI'; no: number; title: string | null; date: string; to_journal: boolean
+type Paper = { id: number; kind: 'TEST' | 'SINAQ' | 'YI' | 'VIK'; no: number; title: string | null; date: string; to_journal: boolean
   online_task_id: number | null; variants: number; printed: boolean; scanned: number; graded: number; variant_mode: string | null }
-type TaskRow = { id: number; title: string; kind: string | null; archived?: boolean }
+type SG = { key: string; main_task_id: number; task_ids: number[]; sends: number; students: 'all' | number; students_n: number | null; submitted: number
+  first_opens_at: string; last_opens_at: string; title: string; kind: string | null; seq: number | null; grade_hint: number | null
+  has_paper: boolean; grade_mismatch: boolean }
+type SK = 'movzu' | 'sinaq' | 'extra'
+const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI']
+const cut = (s: string, n = 80) => (s.length > n ? s.slice(0, n - 1) + '…' : s)
+const dm = (s: string) => azDT(new Date(s), { day: '2-digit', month: '2-digit' })
 type Res = { rows: { student_id: number; full_name: string; points: number | null; grade: number | null; paper_points: number | null
   online_points: number | null; differs: boolean }[] }
 type Src = { key: string; label: string; enabled: boolean }
 type BFile = { id: number; label: string; questions: number }
+type VGroup = { source_key: string; source_label: string; no_grade: boolean; files: BFile[] }
 
-const KIND_LABEL: Record<string, string> = { TEST: 'Mövzu testi', SINAQ: 'Sınaq', YI: 'Sərbəst yazılı iş' }
+const KIND_LABEL: Record<string, string> = { TEST: 'Mövzu testi', SINAQ: 'Sınaq', YI: 'Sərbəst yazılı iş', VIK: 'Viktorina' }
 
 export default function PaperExams({ ta }: { ta: number | null }) {
   const t = useT()
@@ -89,8 +96,14 @@ function Results({ ta, id }: { ta: number; id: number }) {
 
 function Create({ ta, onClose, onDone }: { ta: number; onClose: () => void; onDone: () => void }) {
   const t = useT()
-  const [mode, setMode] = useState<'task' | 'free'>('task')
-  const [tasks, setTasks] = useState<TaskRow[]>([])
+  const [mode, setMode] = useState<'task' | 'free' | 'vik'>('task')
+  const [grade, setGrade] = useState<number | ''>('')
+  const [groups, setGroups] = useState<VGroup[] | null>(null)
+  const [vq, setVq] = useState('')
+  const [shut, setShut] = useState<Record<string, boolean>>({})
+  const [srcs, setSrcs] = useState<Record<SK, SG[]> | null>(null)
+  const [sk, setSk] = useState<SK>('movzu')
+  const [tq, setTq] = useState('')
   const [taskId, setTaskId] = useState<number | ''>('')
   const [sources, setSources] = useState<Src[]>([])
   const [src, setSrc] = useState('')
@@ -102,13 +115,19 @@ function Create({ ta, onClose, onDone }: { ta: number; onClose: () => void; onDo
   const [title, setTitle] = useState('')
   const [journal, setJournal] = useState(false)
   const [fail, setFail] = useState<string | null>(null)
-  useEffect(() => { get<TaskRow[]>(`/api/tasks/${ta}`).then(setTasks, () => {}); get<Src[]>('/api/bank/sources').then(s => setSources(s.filter(x => x.enabled)), () => {}) }, [ta])
+  useEffect(() => { get<Record<SK, SG[]>>(`/api/paper-exams/${ta}/sources`).then(r => { setSrcs(r); setSk((['movzu', 'sinaq', 'extra'] as SK[]).find(k => r[k].length) || 'movzu') }, () => setSrcs({ movzu: [], sinaq: [], extra: [] })); get<Src[]>('/api/bank/sources').then(s => setSources(s.filter(x => x.enabled)), () => {}) }, [ta])
   useEffect(() => { if (src) get<BFile[]>('/api/bank/lessons', { source: src }).then(setFiles, () => setFiles([])); setPick([]) }, [src])
+  useEffect(() => { get<{ grade: number | null }>(`/api/paper-exams/${ta}/grade`).then(r => setGrade(r.grade && r.grade >= 1 && r.grade <= 11 ? r.grade : ''), () => {}) }, [ta])
+  useEffect(() => {
+    if (mode !== 'vik') return
+    setGroups(null); setPick([])
+    get<VGroup[]>('/api/bank/viktorina-topics', grade === '' ? {} : { grade }).then(setGroups, () => setGroups([]))
+  }, [mode, grade])
   const go = async () => {
     setFail(null)
     try {
       const body = mode === 'task' ? { task_id: taskId, title: title || null, to_journal: journal, variant_mode: vm === 'different' ? 'same' : vm }
-        : { file_ids: pick, n, variant_mode: vm, title: title || null, to_journal: journal }
+        : { file_ids: pick, n, variant_mode: vm, title: title || null, to_journal: journal, ...(mode === 'vik' ? { viktorina: true } : {}) }
       const res = await post<{ own_numbers: OwnReport | null }>(`/api/paper-exams/${ta}`, body)
       toast(t('Yazılı iş hazırdır – vərəqləri çap edin'))
       if (res?.own_numbers) setRep(res.own_numbers)       // hesabatı göstər, müəllim «Bağla» ilə bağlayır
@@ -129,17 +148,92 @@ function Create({ ta, onClose, onDone }: { ta: number; onClose: () => void; onDo
         <div className="seg" role="group">
           <button aria-pressed={mode === 'task'} className="btn sm" onClick={() => setMode('task')}>{t('Hazır test / sınaq')}</button>
           <button aria-pressed={mode === 'free'} className="btn sm" onClick={() => setMode('free')}>{t('Sərbəst yazılı iş')}</button>
+          <button aria-pressed={mode === 'vik'} className="btn sm" onClick={() => setMode('vik')}>{t('Viktorina')}</button>
         </div>
         {mode === 'task' ? (
           <>
-          <Field label={t('Test və ya sınaq')}>
-            <select value={taskId} onChange={e => setTaskId(e.target.value ? +e.target.value : '')}>
-              <option value="">—</option>
-              {tasks.map(x => <option key={x.id} value={x.id}>{x.title}{x.kind === 'sinaq' ? ' · ' + t('Sınaq') : ''}</option>)}
-            </select></Field>
+          <Field label={t('Növ')}>
+            <div className="seg" role="group">
+              {([['movzu', '📝 ' + t('Mövzu testləri')], ['sinaq', '🏆 ' + t('Sınaqlar')], ['extra', t('Məşğələ testləri')]] as [SK, string][])
+                .filter(([k]) => !srcs || srcs[k].length > 0).map(([k, l]) => (
+                  <button key={k} aria-pressed={sk === k} className="btn sm" onClick={() => { setSk(k); setTaskId(''); setTq('') }}>{l} ({srcs ? srcs[k].length : 0})</button>))}
+            </div></Field>
+          {!srcs ? <Loading /> : (() => {
+            const all = srcs[sk]
+            const q = tq.trim().toLowerCase()
+            const list = q ? all.filter(x => x.title.toLowerCase().includes(q)) : all
+            const sel = all.find(x => x.main_task_id === taskId)
+            return (
+              <>
+                {all.length >= 10 && <input value={tq} onChange={e => setTq(e.target.value)} placeholder={t('Ada görə axtar')} />}
+                <Field label={t('Test və ya sınaq')}>
+                  <select value={taskId} onChange={e => setTaskId(e.target.value ? +e.target.value : '')}>
+                    <option value="">—</option>
+                    {list.map(x => (
+                      <option key={x.key} value={x.main_task_id} disabled={x.has_paper} title={x.title}>
+                        {(sk === 'movzu' && x.seq != null ? '№' + x.seq + ' ' : '') + cut(x.title)}
+                        {sk === 'sinaq' ? ' · ' + dm(x.last_opens_at) : ''}
+                        {x.sends > 1 ? ' · ' + t('{n} göndəriş', { n: x.sends }) : ''}
+                        {x.has_paper ? ' · ' + t('yazılı var') : ''}
+                        {x.grade_mismatch && x.grade_hint ? ' · ' + t('{g} sinif üçün', { g: ROMAN[x.grade_hint] }) : ''}
+                      </option>))}
+                  </select></Field>
+                {all.length === 0 && <div className="empty">{t('Bu növdə test yoxdur')}</div>}
+                {sel && (
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    {sel.students === 'all' ? t('Şagirdlər: hamı / {n}', { n: sel.students_n ?? '' }) : t('Şagirdlər: {n}', { n: sel.students })}
+                    {' · '}{t('Təhvil: {n}', { n: sel.submitted })}{' · '}
+                    {dm(sel.first_opens_at) === dm(sel.last_opens_at) ? t('Tarix: {a}', { a: dm(sel.first_opens_at) })
+                      : t('Tarix: {a} – {b}', { a: dm(sel.first_opens_at), b: dm(sel.last_opens_at) })}
+                  </div>)}
+              </>)
+          })()}
             <Field label={t('Variantlar')}>
               <select value={vm === 'different' ? 'same' : vm} onChange={e => setVm(e.target.value as 'same' | 'same_numbers')}>
                 <option value="same">{t('Hamıya eyni suallar')}</option>
+                <option value="same_numbers">{t('Hamıya eyni suallar, hər şagirdə öz rəqəmləri')}</option>
+              </select></Field>
+          </>
+        ) : mode === 'vik' ? (
+          <>
+            <p className="muted" style={{ margin: 0 }}>{t('Seçdiyiniz mövzulardan təsadüfi suallar – bütün viktorina bazasından, bir neçə layihədən ola bilər.')}</p>
+            <Field label={t('Sinif')}>
+              <select value={grade} onChange={e => setGrade(e.target.value ? +e.target.value : '')}>
+                <option value="">—</option>
+                {Array.from({ length: 11 }, (_, i) => i + 1).map(g => <option key={g} value={g}>{g}</option>)}
+              </select></Field>
+            <input value={vq} onChange={e => setVq(e.target.value)} placeholder={t('Mövzu axtar')} />
+            {groups === null ? <Loading /> : groups.length === 0 ? <div className="empty">{t('Bu sinif üçün mövzu tapılmadı')}</div> : (
+              <div style={{ maxHeight: 300, overflow: 'auto', border: '1px solid var(--line)', borderRadius: 8, padding: 8, display: 'grid', gap: 6 }}>
+                {groups.map(g => {
+                  const gk = g.source_key + (g.no_grade ? ':ng' : '')
+                  const fl = g.files.filter(f => f.label.toLowerCase().includes(vq.trim().toLowerCase()))
+                  if (!fl.length) return null
+                  const closed = !!shut[gk] && !vq.trim()
+                  return (
+                    <div key={gk}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button className="btn sm" onClick={() => setShut(s => ({ ...s, [gk]: !s[gk] }))}>{closed ? '▸' : '▾'}</button>
+                        <b style={{ fontSize: 13 }}>{g.source_label}{g.no_grade ? ` (${t('sinfi göstərilməyib')})` : ''}</b>
+                        <span className="muted">({fl.length})</span>
+                        <span className="grow" />
+                        <button className="btn sm" onClick={() => setPick(p => [...new Set([...p, ...fl.map(f => f.id)])])}>{t('Hamısını seç')}</button>
+                        <button className="btn sm" onClick={() => setPick(p => p.filter(id => !fl.some(f => f.id === id)))}>{t('Heç birini')}</button>
+                      </div>
+                      {!closed && fl.map(f => (
+                        <label key={f.id} style={{ display: 'flex', gap: 8, fontSize: 13, marginLeft: 12 }}>
+                          <input type="checkbox" checked={pick.includes(f.id)} onChange={e => setPick(p => e.target.checked ? [...p, f.id] : p.filter(x => x !== f.id))} />
+                          {f.label} <span className="muted">({f.questions})</span></label>))}
+                    </div>)
+                })}
+              </div>)}
+            <div className="muted">{t('Seçilib: {n}', { n: pick.length })}</div>
+            <Field label={t('Sual sayı (5–30)')}>
+              <input type="number" min={5} max={30} value={n} onChange={e => setN(Math.max(5, Math.min(30, +e.target.value || 5)))} /></Field>
+            <Field label={t('Variantlar')}>
+              <select value={vm} onChange={e => setVm(e.target.value as 'same' | 'different' | 'same_numbers')}>
+                <option value="same">{t('Hamıya eyni suallar')}</option>
+                <option value="different">{t('Hər şagirdə fərqli suallar')}</option>
                 <option value="same_numbers">{t('Hamıya eyni suallar, hər şagirdə öz rəqəmləri')}</option>
               </select></Field>
           </>
