@@ -61,6 +61,10 @@ def _err(provider: str, r: httpx.Response) -> HTTPException:
         msg = r.text[:200]
     msg = str(msg or '')[:300]
     label = PROVIDERS.get(provider, {}).get('label', provider)
+    if r.status_code in (401, 403) and provider == 'gemini' and 'denied access' in msg.lower():
+        # açar düzgündür, amma Google bu layihəni bağlayıb (19.10.2026) – yeni layihədə yeni açar lazımdır
+        return HTTPException(400, 'Google Gemini: Google bu açarın layihəsinə girişi bağlayıb. Google AI Studio-da «Create API key» '
+                                  '→ «Create API key in new project» ilə yeni açar yaradın və Tənzimləmələr → Süni intellekt bölməsinə yazın.')
     if r.status_code in (401, 403):
         return HTTPException(400, f'{label}: API açarı yanlışdır və ya icazəsi yoxdur (açar başqa xidmətindirsə – «Xidmət» sahəsini yoxlayın: sk-or-… → OpenRouter, sk-ant-… → Anthropic). {msg}'.strip())
     if r.status_code == 429:

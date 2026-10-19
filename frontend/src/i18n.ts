@@ -2982,6 +2982,7 @@ const D: Record<string, [string, string]> = {
   "Şagird bu sinfə əlavə sinif kimi əlavə olundu": ["The student was added to this class as an extra class", "Ученик добавлен в этот класс как дополнительный"],
   "Səviyyə (IX riyaziyyat üzrə)": ["Level (by IX math score)", "Уровень (по математике IX)"],
   "Məşğələ testləri": ["Practice tests", "Тренировочные тесты"],
+  "Google Gemini: Google bu açarın layihəsinə girişi bağlayıb. Google AI Studio-da «Create API key» → «Create API key in new project» ilə yeni açar yaradın və Tənzimləmələr → Süni intellekt bölməsinə yazın.": ["Google Gemini: Google has blocked access for this key's project. In Google AI Studio choose «Create API key» → «Create API key in new project» and paste the new key in Settings → Artificial intelligence.", "Google Gemini: Google закрыл доступ проекту этого ключа. В Google AI Studio выберите «Create API key» → «Create API key in new project» и вставьте новый ключ в Настройки → Искусственный интеллект."],
   "{n} göndəriş": ["{n} sends", "отправок: {n}"],
   "yazılı var": ["written work exists", "письменная работа уже есть"],
   "{g} sinif üçün": ["for grade {g}", "для {g} класса"],
