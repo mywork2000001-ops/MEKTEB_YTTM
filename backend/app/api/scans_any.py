@@ -21,7 +21,7 @@ router = APIRouter(prefix='/api/scans', tags=['scans-any'])
 
 
 def _label(e: Exam) -> str:
-    return (e.title or '').strip() if e.kind in ('TEST', 'SINAQ', 'YI') and (e.title or '').strip() else exam_label(e)
+    return (e.title or '').strip() if e.kind in ('TEST', 'SINAQ', 'YI', 'VIK') and (e.title or '').strip() else exam_label(e)
 
 
 def _mine(db: Session, user: User, e: Exam | None) -> bool:

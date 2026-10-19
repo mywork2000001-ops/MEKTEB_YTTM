@@ -103,6 +103,27 @@ def lessons(source: str, db: Session = Depends(get_db), _: User = Depends(staff)
              'held_on': f.held_on, 'held_prec': f.held_prec} for f in rows]
 
 
+@router.get('/viktorina-topics')
+def viktorina_topics(grade: int | None = Query(None, ge=1, le=11), kind: str = 'movzu',
+                     db: Session = Depends(get_db), _: User = Depends(staff)):
+    """Yazılı «Viktorina» işi üçün: bütün aktiv mənbələrin mövzu faylları, mənbə üzrə qruplaşdırılmış. grade verilərsə – həmin
+    sinif (grades-də olan) əvvəl, sinfi göstərilməyənlər («no_grade») ayrıca qrupda sonda. kind='all' – bütün növlər."""
+    q = (select(BankFile, BankSource).join(BankSource, BankSource.key == BankFile.source_key)
+         .where(BankFile.active.is_(True), BankSource.enabled.is_(True), BankSource.active.is_(True), BankFile.question_count > 0)
+         .order_by(BankSource.key, BankFile.id))
+    if kind != 'all':
+        q = q.where(BankFile.kind == kind)
+    groups: dict[tuple[str, bool], dict] = {}
+    for f, s in db.execute(q):
+        gr = f.grades or []
+        if grade is not None and gr and grade not in gr:
+            continue
+        no_grade = grade is not None and not gr
+        g = groups.setdefault((s.key, no_grade), {'source_key': s.key, 'source_label': s.label, 'no_grade': no_grade, 'files': []})
+        g['files'].append({'id': f.id, 'label': f.label, 'questions': f.question_count, 'kind': f.kind or 'movzu'})
+    return sorted(groups.values(), key=lambda g: (g['no_grade'], g['source_key']))
+
+
 class FilePatch(BaseModel):
     kind: Literal['movzu', 'sinaq', 'yekun', 'diaqnostik'] | None = None
     grades: list[int] | None = None
