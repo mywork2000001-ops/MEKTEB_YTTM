@@ -6,7 +6,7 @@ import datetime as dt
 import json
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -122,6 +122,10 @@ def _student_data(db: Session, user: User, sid: int, date_from=None, date_to=Non
                                                                   'chronic', 'low_participation')},
                            'class_size': sum(1 for r in rt['rows'] if r['class_name'] == (me or {}).get('class_name')),
                            'items': items, 'weak_topics': tl[:5], 'strong_topics': tl[::-1][:5]}
+    # kağız / skan nəticələr, adı ilə sınaqlar və nömrəli mövzu testləri (docs/sagird-ferdi-hesabat-promtu.md; geriyə uyğun əlavə)
+    from ..student_report import student_results
+    rep = student_results(db, user, sid, date_from, date_to)
+    out.update(topic_tests=rep['topic_tests'], mocks=rep['mocks'], summatives=rep['summatives'])
     return out
 
 
@@ -131,6 +135,38 @@ def student_profile(sid: int, date_from: dt.date | None = None, date_to: dt.date
     out = _student_data(db, user, sid, date_from, date_to)
     db.commit()
     return out
+
+
+@router.get('/student/{sid}/report')
+def student_report(sid: int, date_from: dt.date | None = Query(None, alias='from'), date_to: dt.date | None = Query(None, alias='to'),
+                   format: Literal['json', 'pdf', 'docx'] = 'json', lang: Literal['az', 'ru', 'en'] = 'az', parent: bool = False,
+                   user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Şagirdin fərdi hesabatı (onlayn + kağız + sınaqlar + KSQ/BSQ). pdf/docx: rəsmi çap AZ; parent=true – valideyn nüsxəsi (AZ|RU)."""
+    from fastapi.responses import Response
+    from ..student_report import student_results
+    from ..student_report_print import report_docx, report_html
+    rep = student_results(db, user, sid, date_from, date_to)
+    db.commit()                                       # expire_due avtomatik təhvilləri saxlasın
+    if format == 'json':
+        return rep
+    if not parent:
+        lang = 'az'                                    # rəsmi sənəd yalnız Azərbaycan dilində
+    name = f"hesabat-{sid}"
+    audit(db, user, 'export', 'student_report', str(sid), format=format, parent=parent)
+    db.commit()
+    if format == 'docx':
+        return Response(report_docx(rep, lang, parent), headers={'Content-Disposition': f'attachment; filename="{name}.docx"'},
+                        media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    from .printing import _lock, render_pdf
+    if not _lock.acquire(timeout=60):
+        raise HTTPException(503, 'Server məşğuldur – bir az sonra yenidən yoxlayın')
+    try:
+        data = render_pdf(report_html(rep, lang, parent))
+    except Exception as e:                                   # noqa: BLE001
+        raise HTTPException(500, f'PDF hazırlanmadı: {str(e)[:120]}')
+    finally:
+        _lock.release()
+    return Response(data, media_type='application/pdf', headers={'Content-Disposition': f'attachment; filename="{name}.pdf"'})
 
 
 @router.get('/students')

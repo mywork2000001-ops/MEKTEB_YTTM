@@ -178,3 +178,44 @@ def test_class_avg_hidden_below_five(world, patched):
         db.commit()
         r = student_results(db, _staff(S), sid)
     assert r['summatives'][0]['class_avg'] == round((80 + 4 * 50) / 5, 1)
+
+
+# ---------------------------------------------------------------- API (§2.2)
+def test_report_api(world, patched):
+    as_, S = world
+    admin, ta, st, bid = _mk(world, patched)
+    sid = st[0]['id']
+    _paper(S, ta, sid, 'BSQ', 1, 27, 30, published=False, scan=True)
+    r = admin.get(f'/api/results-center/student/{sid}/report')
+    assert r.status_code == 200, r.text
+    rep = r.json()
+    assert rep['topic_tests'][0]['no'] == '2.3' and rep['mocks'][0]['name'] == 'ÜSİ-1'
+    assert [(x['kind'], x['published']) for x in rep['summatives']] == [('BSQ', False)]
+    assert admin.get(f'/api/results-center/student/{sid}/report', params={'from': '2026-12-01'}).json()['topic_tests'] == []
+    # geriyə uyğun: köhnə profil yeni bölmələri də qaytarır
+    prof = admin.get(f'/api/results-center/student/{sid}').json()
+    assert prof['mocks'][0]['name'] == 'ÜSİ-1' and prof['topic_tests'][0]['no'] == '2.3' and 'parts' in prof
+    # Word + valideyn nüsxəsi (RU) / rəsmi (AZ)
+    d = admin.get(f'/api/results-center/student/{sid}/report', params={'format': 'docx', 'lang': 'ru', 'parent': True})
+    assert d.status_code == 200 and d.content[:2] == b'PK'
+    from app.student_report_print import report_html
+    assert 'Şagirdin fərdi hesabatı' in report_html(rep, 'az') and 'Краткий отчёт' in report_html(rep, 'ru', parent=True)
+    assert 'не опубликовано' in report_html(rep, 'ru', parent=True) and 'ÜSİ-1' in report_html(rep, 'ru', parent=True)
+    # şagird portalı: nəşr olunmamış BSQ görünmür, qalanı görünür
+    s = student_client(st[0]['portal_code'], st[0]['initial_pin'])
+    mine = s.get('/api/portal/my/report').json()
+    assert mine['summatives'] == [] and mine['mocks'][0]['name'] == 'ÜSİ-1' and mine['viewer'] == 'student'
+    assert s.get(f'/api/results-center/student/{sid}/report').status_code in (401, 403)
+
+
+def test_report_api_private_workspace(world):
+    as_, S = world
+    admin, ilqar = as_('admin'), as_('ilqar')
+    cid = ilqar.post('/api/classes', json={'name': 'IX hazırlıq', 'kind': 'adi', 'private': True}).json()['id']
+    ilqar.post(f'/api/classes/{cid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 2, 'has_summative': False,
+                                                 'slots': {'0': [7], '2': [7]}})
+    st = ilqar.post('/api/students', json={'full_name': 'Fərdi Şagird oğlu', 'class_id': cid}).json()
+    assert admin.get(f"/api/results-center/student/{st['id']}/report").status_code == 404
+    assert as_('yad').get(f"/api/results-center/student/{st['id']}/report").status_code == 404
+    r = ilqar.get(f"/api/results-center/student/{st['id']}/report")
+    assert r.status_code == 200 and r.json()['student']['full_name'] == 'Fərdi Şagird oğlu'
