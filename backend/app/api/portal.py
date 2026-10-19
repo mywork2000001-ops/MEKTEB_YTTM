@@ -41,10 +41,15 @@ MOTIVATION = [
 ]
 
 
+def _L(user: User | None, az: str, ru: str, en: str) -> str:
+    """Şagirdə görünən server mesajı istifadəçinin dilində (rus dili promtu)."""
+    return {'ru': ru, 'en': en}.get(getattr(user, 'language', None), az)
+
+
 def me_student(db: Session, user: User) -> Student:
     s = db.scalar(select(Student).where(Student.user_id == user.id, Student.archived_at.is_(None)))
     if not s:
-        raise HTTPException(404, 'Şagird qeydi tapılmadı')
+        raise HTTPException(404, _L(user, 'Şagird qeydi tapılmadı', 'Запись ученика не найдена', 'Student record not found'))
     return s
 
 
@@ -71,9 +76,11 @@ def me(user: User = Depends(student_only), db: Session = Depends(get_db)):
                      .order_by(TaskAttempt.submitted_at.desc()))
     if last and last.total:
         pct = round(apct(last))
-        personal = f'Son tapşırıqda nəticən {pct}% oldu – ' + ('əla, belə davam et!' if pct >= 81 else
-                                                               'yaxşıdır, bir az da səy!' if pct >= 61 else
-                                                               'səhvlərinə bax, növbəti dəfə daha yaxşı olacaq.')
+        tier = 2 if pct >= 81 else 1 if pct >= 61 else 0
+        personal = _L(user, f'Son tapşırıqda nəticən {pct}% oldu – ', f'Результат в последнем задании — {pct}% — ', f'Your result in the last task was {pct}% – ') + (
+            _L(user, 'səhvlərinə bax, növbəti dəfə daha yaxşı olacaq.', 'посмотри на свои ошибки — в следующий раз получится лучше.', 'look at your mistakes – next time will be better.'),
+            _L(user, 'yaxşıdır, bir az da səy!', 'хорошо, ещё немного усилий!', 'good, a little more effort!'),
+            _L(user, 'əla, belə davam et!', 'отлично, так держать!', 'excellent, keep it up!'))[tier]
     exam = c.exam_date
     return {'full_name': s.full_name, 'portal_code': s.portal_code, 'class_name': c.name,
             'teachers': sorted({(_teacher(db, ta), ta.subject) for ta, _ in tas}),
@@ -170,7 +177,7 @@ def plan(view: str = 'week', date: dt.date | None = None, user: User = Depends(s
                               weekend=any(k in ('5', '6') for k in (ta.slots or {})))
             rng = (a, b)
         except ValueError:
-            raise HTTPException(400, 'görünüş: day, week, month, semester')
+            raise HTTPException(400, _L(user, 'görünüş: day, week, month, semester', 'вид: day, week, month, semester', 'view: day, week, month, semester'))
         entries = journal_entries(db, ta.id, a, b)
         for d_, period, sl in _slots_with_entries(ctx, a, b, entries):
             e = entries.get((d_, period))
@@ -307,10 +314,10 @@ def tasks(user: User = Depends(student_only), db: Session = Depends(get_db)):
     return out
 
 
-def _task_for(db: Session, s: Student, task_id: int) -> OnlineTask:
+def _task_for(db: Session, s: Student, task_id: int, user: User | None = None) -> OnlineTask:
     t = next((x for x in _my_tasks(db, s) if x.id == task_id), None)
     if not t:
-        raise HTTPException(404, 'Tapşırıq tapılmadı')
+        raise HTTPException(404, _L(user, 'Tapşırıq tapılmadı', 'Задание не найдено', 'Task not found'))
     return t
 
 
@@ -323,14 +330,14 @@ def _public_q(q: dict, i: int) -> dict:
 @router.post('/tasks/{task_id}/start')
 def start(task_id: int, user: User = Depends(student_only), db: Session = Depends(get_db)):
     s = me_student(db, user)
-    t = _task_for(db, s, task_id)
+    t = _task_for(db, s, task_id, user)
     at = now()
     a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
     if a is None:
         if at < aware(t.opens_at):
-            raise HTTPException(409, 'Tapşırıq hələ açılmayıb')
+            raise HTTPException(409, _L(user, 'Tapşırıq hələ açılmayıb', 'Задание ещё не открыто', 'The task is not open yet'))
         if at >= aware(t.closes_at):
-            raise HTTPException(409, 'Tapşırığın vaxtı bitib')
+            raise HTTPException(409, _L(user, 'Tapşırığın vaxtı bitib', 'Время на выполнение задания истекло', 'The time for the task has ended'))
         order = list(range(len(t.questions)))
         if t.shuffle:
             random.Random(f'{t.id}:{s.id}').shuffle(order)
@@ -346,7 +353,7 @@ def start(task_id: int, user: User = Depends(student_only), db: Session = Depend
         finalize(db, t, a, at, auto=True)
         db.commit()
     if a.submitted_at:
-        raise HTTPException(409, 'Tapşırıq artıq təhvil verilib')
+        raise HTTPException(409, _L(user, 'Tapşırıq artıq təhvil verilib', 'Задание уже сдано', 'The task has already been submitted'))
     return {'task_id': t.id, 'title': t.title, 'deadline': aware(a.deadline), 'server_time': at,
             'answers': a.answers, 'questions': [_public_q(t.questions[i], i) for i in a.order]}
 
@@ -357,12 +364,12 @@ class AnswersIn(BaseModel):
                   int | Annotated[str, StringConstraints(max_length=500)] | None] = Field(max_length=100)
 
 
-def _open_attempt(db: Session, s: Student, t: OnlineTask) -> TaskAttempt:
+def _open_attempt(db: Session, s: Student, t: OnlineTask, user: User | None = None) -> TaskAttempt:
     a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
     if not a:
-        raise HTTPException(409, 'Tapşırığa başlanmayıb')
+        raise HTTPException(409, _L(user, 'Tapşırığa başlanmayıb', 'Вы ещё не начали это задание', 'The task has not been started'))
     if a.submitted_at:
-        raise HTTPException(409, 'Tapşırıq artıq təhvil verilib')
+        raise HTTPException(409, _L(user, 'Tapşırıq artıq təhvil verilib', 'Задание уже сдано', 'The task has already been submitted'))
     return a
 
 
@@ -370,13 +377,13 @@ def _open_attempt(db: Session, s: Student, t: OnlineTask) -> TaskAttempt:
 def save_answers(task_id: int, body: AnswersIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
     """Avtomatik yadda saxlama. Müddət bitibsə – serverdə avtomatik təhvil (sonrakı cavablar qəbul edilmir)."""
     s = me_student(db, user)
-    t = _task_for(db, s, task_id)
-    a = _open_attempt(db, s, t)
+    t = _task_for(db, s, task_id, user)
+    a = _open_attempt(db, s, t, user)
     at = now()
     if at >= aware(a.deadline):
         finalize(db, t, a, at, auto=True)
         db.commit()
-        raise HTTPException(409, 'Vaxt bitdi – cavablar avtomatik təhvil verildi')
+        raise HTTPException(409, _L(user, 'Vaxt bitdi – cavablar avtomatik təhvil verildi', 'Время вышло – ответы сданы автоматически', 'Time is up – your answers were submitted automatically'))
     n = len(t.questions)
     clean = {k: v for k, v in body.answers.items() if k.isdigit() and int(k) < n}
     a.answers = {**(a.answers or {}), **clean}
@@ -388,8 +395,8 @@ def save_answers(task_id: int, body: AnswersIn, user: User = Depends(student_onl
 def submit(task_id: int, body: AnswersIn | None = None, user: User = Depends(student_only),
            db: Session = Depends(get_db)):
     s = me_student(db, user)
-    t = _task_for(db, s, task_id)
-    a = _open_attempt(db, s, t)
+    t = _task_for(db, s, task_id, user)
+    a = _open_attempt(db, s, t, user)
     at = now()
     late = at >= aware(a.deadline)
     if body and at < aware(a.deadline) + SUBMIT_GRACE:
@@ -410,10 +417,10 @@ def submit(task_id: int, body: AnswersIn | None = None, user: User = Depends(stu
 @router.get('/tasks/{task_id}/review')
 def review(task_id: int, user: User = Depends(student_only), db: Session = Depends(get_db)):
     s = me_student(db, user)
-    t = _task_for(db, s, task_id)
+    t = _task_for(db, s, task_id, user)
     a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
     if not _can_review(db, t, a, now()):
-        raise HTTPException(403, 'Cavablar hələ açılmayıb' if a and a.submitted_at else 'Tapşırıq təhvil verilməyib')
+        raise HTTPException(403, _L(user, 'Cavablar hələ açılmayıb', 'Ответы ещё не открыты', 'Answers are not open yet') if a and a.submitted_at else _L(user, 'Tapşırıq təhvil verilməyib', 'Задание не сдано', 'The task has not been submitted'))
     out = []
     for i in a.order:
         q = t.questions[i]
@@ -507,7 +514,7 @@ def card_image(scan_id: int, user: User = Depends(student_only), db: Session = D
     s = me_student(db, user)
     sc = db.get(ExamScan, scan_id)
     if sc is None or sc.student_id != s.id or sc.status != 'graded' or not sc.crop_key:
-        raise HTTPException(404, 'Şəkil yoxdur')
+        raise HTTPException(404, _L(user, 'Şəkil yoxdur', 'Изображения нет', 'No image'))
     return StreamingResponse(storage_for_key(sc.crop_key).stream(sc.crop_key, db), media_type='image/jpeg',
                              headers={'Cache-Control': 'private, max-age=300'})
 
@@ -574,11 +581,6 @@ def join_extra(sid: int, user: User = Depends(student_only), db: Session = Depen
     """Onlayn məşğələyə qoşul: qoşulma vaxtı qeyd olunur (müəllim davamiyyəti təsdiqləyir), keçid qaytarılır."""
     from .extra import join
     return join(db, me_student(db, user), sid)
-
-
-def _L(user: User, az: str, ru: str, en: str) -> str:
-    """Şagirdə görünən server mesajı istifadəçinin dilində (rus dili promtu)."""
-    return {'ru': ru, 'en': en}.get(user.language, az)
 
 
 def my_exam(db: Session, user: User, exam_id: int) -> tuple[Student, Exam]:
@@ -683,10 +685,17 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
     for ta, c in my_assignments(db, s):
         exams = [x for x in db.scalars(select(Exam).where(Exam.assignment_id == ta.id).order_by(Exam.semester, Exam.date))
                  if x.extra_students is None or s.id in x.extra_students]      # əlavə imtahan – yalnız seçilən şagirdə
-        ex_rows, gmap = [], {}
+        ex_rows, gmap, hidden_sems = [], {}, set()
+        from ..models import ExamScan
         for e in exams:
             sc = db.get(ExamScore, (e.id, s.id))
             g = grade_from_points(sc.points, e.max_points) if sc and sc.points is not None and not sc.absent else None
+            # skanı olan, lakin müəllim hələ açmayıb imtahan: nəticə şagirdə göstərilmir
+            hidden = e.results_published_at is None and db.scalar(
+                select(ExamScan.id).where(ExamScan.exam_id == e.id, ExamScan.student_id == s.id).limit(1)) is not None
+            if hidden:
+                hidden_sems.add(e.semester)
+                g = None
             # özünüqiymətləndirmə: tapşırıq üzrə ✓/✗ və standart (sinif yoldaşlarının nəticəsi yoxdur)
             items = [{'n': it['n'], 'points': it['points'], 'standard': it.get('standard'), 'ok': bool(m)}
                      for it, m in zip(e.items or [], (sc.item_marks or []) if g else [])]
@@ -694,13 +703,13 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
             gmap[e.id] = g
             ex_rows.append({'exam_id': e.id, 'published': e.results_published_at is not None,
                             'kind': e.kind, 'no': e.no, 'semester': e.semester, 'date': e.date, 'extra_seq': e.extra_seq or 0,
-                            'points': sc.points if sc else None, 'max_points': e.max_points,
+                            'points': sc.points if sc and not hidden else None, 'max_points': e.max_points, 'hidden': hidden,
                             'pct': round(sc.points * 100 / e.max_points, 1) if g else None, 'grade': g,
                             'absent': bool(sc and sc.absent), 'taken_on': sc.taken_on if sc and g else None,
                             'items': items, 'weak_standards': weak, 'card': _card(db, e, s.id)})
         subjects.append({'subject': ta.subject, 'class_name': c.name, 'teacher': _teacher(db, ta),
                          'exams': ex_rows, **_stats(db, _entries(db, ta.id), s.id),
-                         'semester_grades': {k: semester_grade(*_sem_args(exams, gmap, k)) for k in (1, 2)}})
+                         'semester_grades': {k: None if k in hidden_sems else semester_grade(*_sem_args(exams, gmap, k)) for k in (1, 2)}})
     task_rows, mistakes = [], []
     done = []
     for t in _my_tasks(db, s):
@@ -741,7 +750,8 @@ def analytics(date_from: dt.date | None = None, date_to: dt.date | None = None, 
             v = [o[k] for o in others if o[k] is not None]
             return round(sum(v) / len(v), 2) if v else None
         out.append({'subject': ta.subject, 'class_name': c.name, 'me': mine,
-                    'class_avg': {k: avg(k) for k in ('avg_grade', 'attendance_pct', 'homework_pct')},
+                    'class_avg': {k: (avg(k) if len(others) >= 5 else None) for k in ('avg_grade', 'attendance_pct', 'homework_pct')},
+                    'class_avg_hidden': len(others) < 5,          # 5-dən az şagird – sinif ortası şəxsi nəticəni açar
                     'class_size': len(others)})
     return {'from': date_from, 'to': date_to, 'subjects': out}
 
@@ -750,14 +760,14 @@ def analytics(date_from: dt.date | None = None, date_to: dt.date | None = None, 
 SOLUTION_MAX = 25 * 1024 ** 2
 
 
-def solution_response(db: Session, a: TaskAttempt, name: str):
+def solution_response(db: Session, a: TaskAttempt, name: str, user: User | None = None):
     from urllib.parse import quote
 
     from fastapi.responses import StreamingResponse
 
     from ..storage import storage_for_key
     if not a or not a.solution_key:
-        raise HTTPException(404, 'Həll faylı yoxdur')
+        raise HTTPException(404, _L(user, 'Həll faylı yoxdur', 'Файла с решением нет', 'No solution file'))
     st = storage_for_key(a.solution_key)
     return StreamingResponse(st.stream(a.solution_key, db), media_type='application/pdf', headers={
         'Content-Disposition': f"inline; filename*=UTF-8''{quote(name)}"})
@@ -769,16 +779,16 @@ def upload_solution(task_id: int, file: UploadFile = File(...), user: User = Dep
     """Şagird həllin şəkillərini (brauzerdə bir PDF-ə yığılır) müəllimə göndərir – test bağlanana qədər; təkrar göndərmə əvəz edir."""
     from ..storage import get_storage
     s = me_student(db, user)
-    t = _task_for(db, s, task_id)
+    t = _task_for(db, s, task_id, user)
     a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
     if not a:
-        raise HTTPException(400, 'Əvvəlcə testə başlayın')
+        raise HTTPException(400, _L(user, 'Əvvəlcə testə başlayın', 'Сначала начните тест', 'Start the test first'))
     if now() >= aware(t.closes_at):
-        raise HTTPException(400, 'Test bağlanıb – həll göndərilmir')
+        raise HTTPException(400, _L(user, 'Test bağlanıb – həll göndərilmir', 'Тест закрыт – решение не принимается', 'The test is closed – solutions are no longer accepted'))
     head = file.file.read(5)
     file.file.seek(0)
     if head != b'%PDF-':
-        raise HTTPException(400, 'Fayl PDF deyil')
+        raise HTTPException(400, _L(user, 'Fayl PDF deyil', 'Файл не в формате PDF', 'The file is not a PDF'))
     key, size = get_storage().save(file.file, f'hell-{t.id}-{s.id}.pdf', 'application/pdf', SOLUTION_MAX, db)
     a.solution_key, a.solution_size, a.solution_at = key, size, now()
     db.commit()
@@ -788,6 +798,6 @@ def upload_solution(task_id: int, file: UploadFile = File(...), user: User = Dep
 @router.get('/tasks/{task_id}/solution')
 def my_solution(task_id: int, user: User = Depends(student_only), db: Session = Depends(get_db)):
     s = me_student(db, user)
-    t = _task_for(db, s, task_id)
+    t = _task_for(db, s, task_id, user)
     a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
-    return solution_response(db, a, f'hell-{t.id}.pdf')
+    return solution_response(db, a, f'hell-{t.id}.pdf', user)

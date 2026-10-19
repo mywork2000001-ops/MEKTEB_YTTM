@@ -99,7 +99,7 @@ def join(token: str, body: JoinIn, request: Request, response: Response, db: Ses
     ip = request.client.host if request.client else '?'
     t = now().timestamp()
     hits = [x for x in _attempts.get(ip, []) if t - x < 600]
-    if len(hits) >= 10:
+    if len(hits) >= 60:                          # sinif bir Wi-Fi (bir IP) arxasından qeydiyyatdan keçir
         raise HTTPException(429, 'Çox cəhd – 10 dəqiqədən sonra yenidən yoxlayın')
     _attempts[ip] = hits + [t]
     l = db.scalar(select(InviteLink).where(InviteLink.token == token).with_for_update())

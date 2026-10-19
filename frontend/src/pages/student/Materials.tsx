@@ -18,7 +18,7 @@ export default function Materials() {
     <>
       <Top title={tt('Materiallar')} sub={tt('Müəllimin göndərdiyi tapşırıqlar, video dərslər və linklər')} />
       <ErrorBox error={err} />
-      {loading && !list ? <Loading /> : list?.length === 0 ? <div className="empty">Material yoxdur.</div> : list?.map(m => <Card key={m.id} m={m} onDone={reload} />)}
+      {loading && !list ? <Loading /> : list?.length === 0 ? <div className="empty">{tt('Material yoxdur.')}</div> : list?.map(m => <Card key={m.id} m={m} onDone={reload} />)}
     </>
   )
 }
@@ -31,7 +31,7 @@ function Card({ m, onDone }: { m: any; onDone: () => void }) {
   return (
     <section className="panel" style={{ marginBottom: 12 }}>
       <h2 style={{ flexWrap: 'wrap' }}>{m.title} <Pill>{tt(KIND[m.kind] || '')}</Pill><small>{m.subject} · {m.teacher}</small></h2>
-      {m.due_at && <p className="small" style={{ margin: '0 0 6px' }}>Son vaxt: <b>{dtf(m.due_at)}</b></p>}
+      {m.due_at && <p className="small" style={{ margin: '0 0 6px' }}>{tt('Son vaxt')}: <b>{dtf(m.due_at)}</b></p>}
       {m.body && <p style={{ whiteSpace: 'pre-wrap', margin: '0 0 8px' }}>{m.body}</p>}
       {yt ? <div style={{ position: 'relative', paddingTop: '56.25%', borderRadius: 10, overflow: 'hidden' }}><iframe src={yt} title={m.title} allowFullScreen style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }} /></div>
         : m.url && <a className="btn sm" href={m.url} target="_blank" rel="noreferrer noopener">{tt('Aç')} ↗</a>}
@@ -41,7 +41,7 @@ function Card({ m, onDone }: { m: any; onDone: () => void }) {
           {m.submission ? (
             <div className="row">
               <Pill tone="ok">{tt('təhvil verilib')} · {dtf(m.submission.submitted_at)}</Pill>
-              {m.submission.late && <Pill tone="warn">gecikib</Pill>}
+              {m.submission.late && <Pill tone="warn">{tt('gecikib')}</Pill>}
               {m.submission.grade != null && <Pill tone={gradeTone(m.submission.grade)}>{tt('qiymət')}: {m.submission.grade}</Pill>}
               {m.submission.comment && <span className="small">{tt('Müəllim')}: {m.submission.comment}</span>}
             </div>) : null}

@@ -79,8 +79,9 @@ export default function App() {
   const [guestLang, setGuestLang] = useState<Lang>(() => (localStorage.getItem('mk-lang') as Lang) || 'az')
   const lang: Lang = me?.language || guestLang
   setCurrentLang(lang)                                  // sual mətnləri (ml) istifadəçinin dilində
+  const changeGuestLang = (l: Lang) => { setGuestLang(l); try { localStorage.setItem('mk-lang', l) } catch { /* noop */ } }
   const join = location.pathname.match(/^\/join\/([\w-]+)$/)
-  if (join) return <I18nCtx.Provider value={lang}><Join token={join[1]} /><ToastHost /></I18nCtx.Provider>
+  if (join) return <I18nCtx.Provider value={lang}><Join token={join[1]} lang={lang} setLang={changeGuestLang} /><ToastHost /></I18nCtx.Provider>
   const qr = location.pathname.match(/^\/q\/([\w.-]+)$/)          // giriş vərəqəsindəki QR – avtomatik giriş
   if (qr) return <I18nCtx.Provider value={lang}><QrLogin token={qr[1]} /></I18nCtx.Provider>
   const sv = location.pathname.match(/^\/s\/([\w-]+)$/)          // anonim şagird sorğusu (WhatsApp / QR linki) – girişsiz
@@ -91,7 +92,7 @@ export default function App() {
   return (
     <I18nCtx.Provider value={lang}>
       {!me ? (
-        <Login lang={lang} setLang={l => { setGuestLang(l); try { localStorage.setItem('mk-lang', l) } catch { /* noop */ } }} />
+        <Login lang={lang} setLang={changeGuestLang} />
       ) : (
         <Layout>
           <Boundary><Suspense fallback={<Loading />}>

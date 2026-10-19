@@ -129,7 +129,7 @@ def test_student_sees_only_own_data(world, clock):
     assert day[0]['marks'] == [{'kind': 'şifahi', 'grade': 5, 'test_correct': None, 'test_total': None, 'comment': None}]
     assert day[0]['teacher'] == 'Həsənov Fərid'
     an = s1.get('/api/portal/analytics').json()['subjects'][0]
-    assert an['me']['avg_grade'] == 5 and an['class_avg']['attendance_pct'] == 50.0
+    assert an['me']['avg_grade'] == 5 and an['class_avg_hidden'] and an['class_avg']['attendance_pct'] is None   # <5 şagird – sinif ortası gizli
     assert 'students' not in an                                                # yoldaşların adları yoxdur
     me = s1.get('/api/portal/me').json()
     assert me['class_name'] == 'X e' and me['motivation']

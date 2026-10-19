@@ -58,7 +58,7 @@ export default function Results() {
                   {e.card && <ExamCard c={e.card} />}
                   {e.published && e.exam_id && <AnswerCard examId={e.exam_id} />}</td>
                   <td>{fmtDate(e.date)}{e.taken_on && <div className="small muted">{tt('sonradan')}: {fmtDate(e.taken_on)}</div>}</td>
-                  <td className="r num">{e.absent ? tt('yox idi') : e.points != null ? `${fmt(e.points, 1)} / ${e.max_points}` : '—'}</td><td className="r num">{fmt(e.pct)}</td>
+                  <td className="r num">{e.absent ? tt('yox idi') : e.hidden ? <span className="small muted">{tt('müəllim açanda görünəcək')}</span> : e.points != null ? `${fmt(e.points, 1)} / ${e.max_points}` : '—'}</td><td className="r num">{fmt(e.pct)}</td>
                   <td className="r">{e.grade ? <Pill tone={gradeTone(e.grade)}>{e.grade}</Pill> : '—'}</td></tr>))}</tbody></table></div>)}
         </section>))}
       {(tr || []).length > 0 && (

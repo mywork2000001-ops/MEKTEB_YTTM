@@ -57,3 +57,12 @@ def world(monkeypatch):
     for c in clients.values():
         c.__exit__(None, None, None)
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """IP üzrə sürət limitləri (giriş, qeydiyyat) testlər arasında sıfırlanır."""
+    from app.api import auth, invites
+    auth._bad_logins.clear()
+    invites._attempts.clear()
+    yield

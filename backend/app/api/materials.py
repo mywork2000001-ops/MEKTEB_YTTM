@@ -32,13 +32,18 @@ def aware(t: dt.datetime | None) -> dt.datetime | None:
     return t if t is None or t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
 
 
-def _save_file(db: Session, f: UploadFile) -> tuple[str, str, str, int]:
+def _L(user: User | None, az: str, ru: str, en: str) -> str:
+    """Şagirdə görünən server mesajı istifadəçinin dilində."""
+    return {'ru': ru, 'en': en}.get(getattr(user, 'language', None), az)
+
+
+def _save_file(db: Session, f: UploadFile, user: User | None = None) -> tuple[str, str, str, int]:
     ctype = (f.content_type or '').split(';')[0]
     if ctype not in FILE_TYPES:
-        raise HTTPException(400, 'Fayl növü qəbul edilmir (PDF, Word, PowerPoint, şəkil, səs, video)')
+        raise HTTPException(400, _L(user, 'Fayl növü qəbul edilmir (PDF, Word, PowerPoint, şəkil, səs, video)', 'Тип файла не поддерживается (PDF, Word, PowerPoint, изображение, аудио, видео)', 'This file type is not accepted (PDF, Word, PowerPoint, image, audio, video)'))
     key, size = get_storage().save(f.file, (f.filename or 'fayl')[:200], ctype, upload_limit(), db)
     if not size:
-        raise HTTPException(400, 'Fayl boşdur')
+        raise HTTPException(400, _L(user, 'Fayl boşdur', 'Файл пустой', 'The file is empty'))
     return key, (f.filename or 'fayl')[:200], ctype, size
 
 
@@ -160,7 +165,7 @@ def archive_material(ta_id: int, mid: int, user: User = Depends(staff), db: Sess
 def _student(db: Session, u: User) -> Student:
     s = db.scalar(select(Student).where(Student.user_id == u.id, Student.archived_at.is_(None)))
     if not s:
-        raise HTTPException(404, 'Şagird qeydi tapılmadı')
+        raise HTTPException(404, _L(u, 'Şagird qeydi tapılmadı', 'Запись ученика не найдена', 'Student record not found'))
     return s
 
 
@@ -182,7 +187,7 @@ def my_materials(user: User = Depends(student_only), db: Session = Depends(get_d
         ta = db.get(TeachingAssignment, m.assignment_id)
         sub = db.scalar(select(MaterialSubmission).where(MaterialSubmission.material_id == m.id,
                                                          MaterialSubmission.student_id == s.id))
-        out.append({**material_out(m), 'subject': ta.subject, 'teacher': db.get(User, ta.teacher_id).full_name,
+        out.append({**{k: v for k, v in material_out(m).items() if k != 'student_ids'}, 'subject': ta.subject, 'teacher': db.get(User, ta.teacher_id).full_name,
                     'submission': sub and {'text': sub.text, 'submitted_at': aware(sub.submitted_at), 'late': sub.late,
                                            'grade': sub.grade, 'comment': sub.comment,
                                            'file': _file_out('submission', sub.id, sub)}})
@@ -195,17 +200,19 @@ def submit(mid: int, text: str | None = Form(None), file: UploadFile | None = Fi
     s = _student(db, user)
     m = next((x for x in _my_materials(db, s) if x.id == mid), None)
     if not m or not m.needs_submission:
-        raise HTTPException(404, 'Tapşırıq tapılmadı')
+        raise HTTPException(404, _L(user, 'Tapşırıq tapılmadı', 'Задание не найдено', 'Task not found'))
     if not (file and file.filename) and not (text or '').strip():
-        raise HTTPException(400, 'Cavab üçün fayl və ya mətn əlavə edin')
+        raise HTTPException(400, _L(user, 'Cavab üçün fayl və ya mətn əlavə edin', 'Добавьте файл или текст для ответа', 'Add a file or text for your answer'))
+    if len((text or '').strip()) > 5000:
+        raise HTTPException(400, _L(user, 'Mətn çox uzundur (maksimum 5000 simvol)', 'Текст слишком длинный (максимум 5000 символов)', 'The text is too long (maximum 5000 characters)'))
     sub = db.scalar(select(MaterialSubmission).where(MaterialSubmission.material_id == m.id,
                                                      MaterialSubmission.student_id == s.id))
     if sub and sub.grade is not None:
-        raise HTTPException(409, 'Cavab artıq qiymətləndirilib – dəyişmək olmaz')
+        raise HTTPException(409, _L(user, 'Cavab artıq qiymətləndirilib – dəyişmək olmaz', 'Ответ уже оценён – изменить нельзя', 'The answer has already been graded – it cannot be changed'))
     sub = sub or MaterialSubmission(material_id=m.id, student_id=s.id)
     sub.text = (text or '').strip() or None
     if file and file.filename:
-        sub.file_key, sub.file_name, sub.file_type, sub.file_size = _save_file(db, file)
+        sub.file_key, sub.file_name, sub.file_type, sub.file_size = _save_file(db, file, user)
     sub.submitted_at = now()
     sub.late = bool(m.due_at and sub.submitted_at > aware(m.due_at))
     db.add(sub)
@@ -230,5 +237,5 @@ def get_file(kind: Literal['material', 'submission'], obj_id: int, user: User = 
         ok = ta.teacher_id == user.id if user.role != Role.student else _student(db, user).id == sub.student_id
         obj = sub
     if not ok or not obj.file_key:
-        raise HTTPException(404, 'Fayl tapılmadı')
+        raise HTTPException(404, _L(user, 'Fayl tapılmadı', 'Файл не найден', 'File not found'))
     return _stream(obj, db)

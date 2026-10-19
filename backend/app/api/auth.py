@@ -1,7 +1,8 @@
 """Giriş / çıxış. Müəllim: login + parol; şagird: portal kodu (XE-001) + 4 rəqəmli PIN."""
 import datetime as dt
+import time
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -14,6 +15,9 @@ from ..security import (LOCK_MINUTES, MAX_FAILED, SESSION_COOKIE, SESSION_MAX_AG
                         make_session, verify_password)
 
 router = APIRouter(prefix='/api/auth', tags=['auth'])
+
+_bad_logins: dict[str, list[float]] = {}          # IP üzrə səhv giriş cəhdləri (PIN təxminindən qorunma)
+BAD_LOGIN_WINDOW, BAD_LOGIN_MAX = 600, 30         # 10 dəq. pəncərədə 30 səhv (sinif bir Wi-Fi-dan girə bilsin)
 
 
 class LoginIn(BaseModel):
@@ -58,11 +62,18 @@ def _set_cookie(response: Response, u: User):
 
 
 @router.post('/login', response_model=MeOut)
-def login(body: LoginIn, response: Response, db: Session = Depends(get_db)):
+def login(body: LoginIn, request: Request, response: Response, db: Session = Depends(get_db)):
+    ip = request.client.host if request.client else '?'
+    t_now = time.time()
+    hits = [x for x in _bad_logins.get(ip, []) if t_now - x < BAD_LOGIN_WINDOW]
+    _bad_logins[ip] = hits
+    if len(hits) >= BAD_LOGIN_MAX:
+        raise HTTPException(429, 'Çox səhv cəhd. 10 dəqiqədən sonra yenidən yoxlayın')
     u = db.scalar(select(User).where(func.lower(User.login) == body.login.strip().lower(), User.archived_at.is_(None)))
     if u and is_locked(u.locked_until):
         raise HTTPException(429, f'Çox səhv cəhd. {LOCK_MINUTES} dəqiqədən sonra yenidən yoxlayın')
     if not u or not verify_password(u.password_hash, body.password):
+        _bad_logins[ip] = hits + [t_now]
         if u:
             u.failed_logins += 1
             if u.failed_logins >= MAX_FAILED:
