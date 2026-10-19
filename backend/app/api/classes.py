@@ -243,8 +243,29 @@ def _mins(t: str) -> int:
     return int(h) * 60 + int(m)
 
 
+def _hhmm(m: int) -> str:
+    return f'{m // 60:02d}:{m % 60:02d}'
+
+
+LESSON_MIN = 45                                   # akademik saat (dəq.)
+
+
+def meeting_units(start: str, end: str) -> int:
+    """Görüşün akademik saat sayı: round(müddət / 45), ən azı 1 (60 dəq. → 1, 90 → 2, 135 → 3, 20–44 → 1)."""
+    return max(1, round((_mins(end) - _mins(start)) / LESSON_MIN))
+
+
+def meeting_parts(start: str, end: str) -> list[tuple[str, str]]:
+    """Görüşü `units` bərabər ardıcıl alt vaxta bölür (fasilə 0): 17:00–18:30 → [17:00–17:45, 17:45–18:30]."""
+    a, b = _mins(start), _mins(end)
+    n = meeting_units(start, end)
+    cuts = [a + round((b - a) * i / n) for i in range(n + 1)]
+    return [(_hhmm(cuts[i]), _hhmm(cuts[i + 1])) for i in range(n)]
+
+
 def private_times(db: Session, user: User, c: SchoolClass, ta: TeachingAssignment | None, times: list[TimeIn]) -> tuple[dict, dict]:
-    """Fərdi qrupun vaxtlarını yoxlayır və {gün: [sıra]} + {"gün:sıra": "HH:MM–HH:MM"} qaytarır. Mövcud vaxtlar öz
+    """Fərdi qrupun görüşlərini yoxlayır və {gün: [sıra]} + {"gün:sıra": "HH:MM–HH:MM"} qaytarır. Hər görüş `units`
+    ardıcıl sıraya (45 dəq.-lik alt vaxtlar) açılır; toqquşma yoxlaması görüş səviyyəsindədir. Mövcud vaxtlar öz
     sırasını saxlayır (jurnal yazıları (tarix, sıra) ilə bağlıdır), yeni vaxta ən kiçik boş sıra verilir."""
     from ..domain.calendar import WEEKDAYS
     rows = sorted(times, key=lambda x: (x.weekday, x.start))
@@ -276,34 +297,59 @@ def private_times(db: Session, user: User, c: SchoolClass, ta: TeachingAssignmen
     tmap: dict[str, str] = {}
     for wd in sorted({x.weekday for x in rows}):
         day = [x for x in rows if x.weekday == wd]
-        if len(day) > 10:
-            raise bad(400, '{day}: gündə ən çox 10 dərs', day=WEEKDAYS[wd])
         prev = old_by_day.get(wd, {})
         used: set[int] = set()
-        assigned: list[tuple[TimeIn, int]] = []
-        for x in day:                                       # vaxtı dəyişməyən dərs köhnə sırasını saxlayır
-            t = f'{x.start}–{x.end}'
-            if t in prev and prev[t] not in used:
-                used.add(prev[t]); assigned.append((x, prev[t]))
-        free = (p for p in range(10) if p not in used)
+        subs: list[tuple[str, str, int | None]] = []        # (başlama, bitmə, saxlanan sıra)
         for x in day:
-            if not any(x is a for a, _ in assigned):
-                p = next(free); used.add(p); assigned.append((x, p))
-        slots[str(wd)] = sorted(p for _, p in assigned)
-        for x, p in assigned:
-            tmap[f'{wd}:{p}'] = f'{x.start}–{x.end}'
+            parts = meeting_parts(x.start, x.end)
+            for i, (s_, e_) in enumerate(parts):
+                p = prev.get(f'{s_}–{e_}')
+                if p is None and i == 0 and len(parts) > 1:  # köhnə (bütöv) görüş: 1-ci hissə köhnə sırasını saxlayır
+                    p = prev.get(f'{x.start}–{x.end}')
+                if p is not None and p not in used:
+                    used.add(p)
+                else:
+                    p = None
+                subs.append((s_, e_, p))
+        if len(subs) > 10:
+            raise bad(400, '{day}: gündə ən çox 10 dərs', day=WEEKDAYS[wd])
+        free = (p for p in range(10) if p not in used)
+        got: list[int] = []
+        for s_, e_, p in subs:
+            if p is None:
+                p = next(free)
+                used.add(p)
+            got.append(p)
+            tmap[f'{wd}:{p}'] = f'{s_}–{e_}'
+        slots[str(wd)] = sorted(got)
     return slots, tmap
 
 
-def times_out(ta: TeachingAssignment) -> list[dict] | None:
-    if not ta.times:
-        return None
-    out = []
-    for k, v in ta.times.items():
+def times_groups(ta: TeachingAssignment) -> list[dict]:
+    """ta.times (gün:sıra → alt vaxt) → görüşlər: eyni gündə ardıcıl sıralı və bitişik alt vaxtlar bir görüşdür."""
+    rows = []
+    for k, v in (ta.times or {}).items():
         wd, p = map(int, k.split(':'))
         s, e = v.split('–')
-        out.append({'weekday': wd, 'period': p, 'start': s, 'end': e})
+        rows.append((wd, p, s, e))
+    rows.sort()
+    out: list[dict] = []
+    for wd, p, s, e in rows:
+        g = out[-1] if out else None
+        if g and g['weekday'] == wd and g['periods'][-1] == p - 1 and g['end'] == s:
+            g['end'] = e
+            g['periods'].append(p)
+        else:
+            out.append({'weekday': wd, 'start': s, 'end': e, 'periods': [p]})
+    for g in out:
+        g['units'] = len(g['periods'])
+        g['period'] = g['periods'][0]
     return sorted(out, key=lambda x: (x['weekday'], x['start']))
+
+
+def times_out(ta: TeachingAssignment) -> list[dict] | None:
+    """Görüşlər: [{weekday, start, end, units, periods, period}] – bir görüş bir sətir."""
+    return times_groups(ta) if ta.times else None
 
 
 class JoinIn(BaseModel):

@@ -111,22 +111,22 @@ def test_private_real_times(world):
     r = t.post(f'/api/classes/{a}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'times': times})
     assert r.status_code == 200, r.text
     m = r.json()['mine']
-    assert m['weekly_hours'] == 2 and m['slots'] == {'1': [0], '5': [0]}
-    assert [(x['weekday'], x['start'], x['end']) for x in m['times']] == [(1, '17:00', '18:30'), (5, '10:00', '11:00')]
+    assert m['weekly_hours'] == 3 and m['slots'] == {'1': [0, 1], '5': [0]}      # 90 dəq. görüş = 2 saat
+    assert [(x['weekday'], x['start'], x['end'], x['units']) for x in m['times']] == [(1, '17:00', '18:30', 2), (5, '10:00', '11:00', 1)]
     # başqa fərdi qrupla toqquşma
     r2 = t.post(f'/api/classes/{b}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1, 'times': [{'weekday': 1, 'start': '18:00', 'end': '19:00'}]})
     assert r2.status_code == 409 and 'IX hazırlıq' in r2.json()['detail']['message']
     # jurnal və həftəlik cədvəl real vaxtı göstərir
     ta = m['ta_id']
     day = t.get(f'/api/journal/{ta}/day', params={'date': '2026-10-06'}).json()
-    assert [l['time'] for l in day['lessons']] == ['17:00–18:30']
+    assert [l['time'] for l in day['lessons']] == ['17:00–17:45', '17:45–18:30']
     tt = t.get('/api/timetable', params={'date': '2026-10-06'}).json()
     sat = next(d for d in tt['days'] if d['weekday'] == 'Ş.')
     assert [c['time'] for cs in sat['periods'].values() for c in cs] == ['10:00–11:00']
     # vaxt əlavə olunanda köhnə dərs öz sırasını saxlayır
     more = [{'weekday': 1, 'start': '15:00', 'end': '16:00'}] + times
     m2 = t.post(f'/api/classes/{a}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 3, 'times': more}).json()['mine']
-    assert {(x['weekday'], x['start']): x['period'] for x in m2['times']}[(1, '17:00')] == 0 and m2['weekly_hours'] == 3
+    assert {(x['weekday'], x['start']): x['period'] for x in m2['times']}[(1, '17:00')] == 0 and m2['weekly_hours'] == 4
 
 
 def test_private_group_purpose_and_program_choice(world):
@@ -221,4 +221,4 @@ def test_week_view_includes_weekend_for_private(world):
     ta = t.post(f'/api/classes/{g}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 1,
                                                 'times': [{'weekday': 5, 'start': '10:00', 'end': '11:30'}]}).json()['mine']['ta_id']
     w = t.get(f'/api/plan/{ta}', params={'view': 'week', 'date': '2026-10-07'}).json()
-    assert w['to'] == '2026-10-11' and [i['date'] for i in w['items']] == ['2026-10-10']
+    assert w['to'] == '2026-10-11' and [i['date'] for i in w['items']] == ['2026-10-10'] * 2      # 90 dəq. görüş = 2 saat
