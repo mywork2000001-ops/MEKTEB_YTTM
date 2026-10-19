@@ -398,3 +398,10 @@ body.exam-guard main{max-width:860px;margin:0 auto}
 .disc.weekly{border-left:4px solid var(--warn)}
 .disc-pad .disc.flat:last-child{border-bottom:0}
 @media (max-height:800px) and (min-width:701px){.side-foot .quote,.side-foot br{display:none}}
+
+/* ---- menyu auditi (19.10.2026): sabit Tənzimləmələr sətri, nişan qrupları ---- */
+.side .nav.nav-fixed{flex:none;overflow:visible;padding-top:6px;margin-top:4px;border-top:1px solid var(--side-hover)}
+.tabs.tabs-grouped{gap:18px;align-items:flex-end}
+.tab-grp{display:flex;flex-direction:column;flex:none}
+.tab-grp-lbl{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:0 14px 2px;opacity:.8}
+.tab-grp-row{display:flex;gap:4px}

@@ -33,14 +33,20 @@ export default function Settings() {
   if (!lock) return <Loading />
   if (lock.has_password && !unlocked) return <Unlock onDone={() => setUnlocked(true)} />
 
-  const tabs: [string, string][] = [['look', 'Görünüş'], ['account', 'Hesab'], ['school', me?.workspace === 'private' ? t('Fərdi məkan') : 'Məktəb'], ['classes', 'Siniflər'], ['programs', 'Proqramlar'],
-    ['students', 'Şagirdlər'], ['archive', 'Arxiv'], ['ai', 'Süni intellekt'], ['lock', 'Kilid'],
-    ...(admin ? [['teachers', 'Müəllimlər'], ['bank', 'Test bazası'], ['audit', 'Audit jurnalı']] as [string, string][] : [])]
+  const tabGroups: { name: string; tabs: [string, string][] }[] = [
+    { name: 'Şəxsi', tabs: [['look', 'Görünüş'], ['account', 'Hesab'], ['lock', 'Kilid'], ['ai', 'Süni intellekt']] },
+    { name: 'Məktəb məlumatları', tabs: [['school', me?.workspace === 'private' ? t('Fərdi məkan') : 'Məktəb'], ['classes', 'Siniflər'], ['students', 'Şagirdlər'], ['programs', 'Proqramlar'], ['archive', 'Arxiv']] },
+    ...(admin ? [{ name: 'Admin', tabs: [['teachers', 'Müəllimlər'], ['bank', 'Test bazası'], ['audit', 'Audit jurnalı']] as [string, string][] }] : []),
+  ]
   return (
     <>
       <Top title={t('Tənzimləmələr')} sub={admin ? t('Admin: bütün ümumi tənzimləmələr') : t('Yalnız sizə aid tənzimləmələr')}
         actions={lock.has_password ? <button className="btn sm" onClick={() => { setSettingsToken(null); setUnlocked(false) }}>{t('Kilidlə')}</button> : undefined} />
-      <div className="tabs">{tabs.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{t(l)}</button>)}</div>
+      <div className="tabs tabs-grouped">{tabGroups.map(g => (
+        <div key={g.name} className="tab-grp" role="group" aria-label={t(g.name)}>
+          <span className="tab-grp-lbl">{t(g.name)}</span>
+          <div className="tab-grp-row">{g.tabs.map(([k, l]) => <button key={k} aria-selected={tab === k} onClick={() => setTab(k)}>{t(l)}</button>)}</div>
+        </div>))}</div>
       <Suspense fallback={<Loading />}>
         {tab === 'look' && <LookPanel />}
         {tab === 'account' && <PasswordPanel student={false} />}

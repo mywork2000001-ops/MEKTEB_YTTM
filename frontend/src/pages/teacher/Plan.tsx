@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { get, put } from '../../api'
 import { Disclosure, ErrorBox, SumChip, toast, fmtDate, isoDate, lessonWhen, Loading, PickFirst, Pill, Top, useLoad } from '../../ui'
 import { docCtx } from '../../doccontext'
@@ -78,6 +79,7 @@ function P0010Edit({ ta, l, onDone }: { ta: number; l: { id: number; p0010?: { f
 
 export default function Plan() {
   const t = useT()
+  const nav = useNavigate()
   const [lessons, err0, , reloadLessons] = useMyLessons()
   const [ta, setTa] = usePick('plan')
   // görünüş – açılan siyahı: gün, həftə, ay, I / II yarımil, bütün il (əvvəl «Yarımil» yalnız cari yarımili göstərirdi)
@@ -90,7 +92,8 @@ export default function Plan() {
   let lastDate = ''
   return (
     <>
-      <Top title={t('Perspektiv plan')} sub={cur ? `${cur.class_name} · ${cur.program ? t('proqram') + ': ' + cur.program : t('işçi plan')}${cur.extra_programs ? ` · ${t('əlavə proqram')}: ${cur.extra_programs}` : ''}` : t('Əvvəlcə sinif seçin')} />
+      <Top title={t('Perspektiv plan')} sub={cur ? `${cur.class_name} · ${cur.program ? t('proqram') + ': ' + cur.program : t('işçi plan')}${cur.extra_programs ? ` · ${t('əlavə proqram')}: ${cur.extra_programs}` : ''}` : t('Əvvəlcə sinif seçin')}
+        actions={<button className="btn sm" onClick={() => nav('/settings?tab=programs')}>{t('Proqramlar')}</button>} />
       <ErrorBox error={err0 || err} />
       <div className="toolbar">
         <LessonSelect lessons={lessons} value={ta} onChange={setTa} />

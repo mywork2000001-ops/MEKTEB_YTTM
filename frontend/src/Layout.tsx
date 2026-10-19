@@ -15,33 +15,33 @@ export type NavItem = { to: string; icon: string; label: string; short?: string;
 export const TEACHER_NAV: NavItem[] = [
   { to: '/', icon: 'home', label: 'Əsas səhifə', short: 'Əsas', group: 'Dərs' },
   { to: '/journal', icon: 'journal', label: 'Jurnal', group: 'Dərs' },
-  { to: '/daily', icon: 'edit', label: 'Gündəlik plan', short: 'Gündəlik', group: 'Dərs' },
-  { to: '/plan', icon: 'plan', label: 'Perspektiv plan', short: 'Plan', group: 'Dərs' },
   { to: '/timetable', icon: 'topics', label: 'Həftəlik cədvəl', short: 'Cədvəl', group: 'Dərs' },
+  { to: '/plan', icon: 'plan', label: 'Perspektiv plan', short: 'Plan', group: 'Planlaşdırma' },
+  { to: '/daily', icon: 'edit', label: 'Gündəlik plan', short: 'Gündəlik', group: 'Planlaşdırma' },
+  { to: '/materials', icon: 'clip', label: 'Materiallar', group: 'Planlaşdırma' },
   { to: '/tests', icon: 'online', label: 'Testlər və sınaqlar', short: 'Testlər', group: 'Qiymətləndirmə' },   // mövzu testləri + sınaqlar + nəticələr
   { to: '/reports', icon: 'reports', label: 'Analitika və hesabat', short: 'Hesabat', group: 'Qiymətləndirmə' },
-  { to: '/surveys', icon: 'star', label: 'Şagird sorğusu', short: 'Sorğu', group: 'Qiymətləndirmə' },
   { to: '/classes', icon: 'classes', label: 'Siniflər və qruplar', short: 'Siniflər', group: 'Siniflər' },
-  { to: '/homeroom', icon: 'classes', label: 'Sinif rəhbəri', short: 'Rəhbər', group: 'Siniflər' },
-  { to: '/materials', icon: 'clip', label: 'Materiallar', group: 'Siniflər' },
+  { to: '/homeroom', icon: 'students', label: 'Sinif rəhbəri', short: 'Rəhbər', group: 'Siniflər' },
   { to: '/chat', icon: 'feedback', label: 'Çat', group: 'Ünsiyyət' },
-  { to: '/settings', icon: 'settings', label: 'Tənzimləmələr', short: 'Tənzimləmə', group: 'Ünsiyyət' },
+  { to: '/surveys', icon: 'star', label: 'Şagird sorğusu', short: 'Sorğu', group: 'Ünsiyyət' },
 ]
-const TEACHER_TABS = ['/', '/journal', '/chat', '/reports']
+const TEACHER_TABS = ['/', '/journal', '/tests', '/chat']
+/** Tənzimləmələr – qrupsuz, akkordeondan kənarda sabit sətir */
+const SETTINGS_ITEM: NavItem = { to: '/settings', icon: 'settings', label: 'Tənzimləmələr', short: 'Tənzimləmə' }
 
 export const STUDENT_NAV: NavItem[] = [
-  { to: '/', icon: 'today', label: 'Bu gün' },
-  { to: '/lesson', icon: 'journal', label: 'Dərs' },
-  { to: '/tasks', icon: 'online', label: 'Tapşırıqlar' },
-  { to: '/materials', icon: 'clip', label: 'Materiallar' },
-  { to: '/extra', icon: 'groups', label: 'Əlavə məşğələlər', short: 'Məşğələ' },
-  { to: '/plan', icon: 'plan', label: 'Plan' },
-  { to: '/results', icon: 'rating', label: 'Nəticələrim', short: 'Nəticə' },
-  { to: '/achievements', icon: 'star', label: 'Uğurlarım', short: 'Uğurlar' },
-  { to: '/analytics', icon: 'reports', label: 'Analitika' },
-  { to: '/surveys', icon: 'star', label: 'Sorğular' },
-  { to: '/chat', icon: 'feedback', label: 'Çat' },
-  { to: '/settings', icon: 'settings', label: 'Tənzimləmələr', short: 'Tənzimləmə' },
+  { to: '/', icon: 'today', label: 'Bu gün', group: 'Bu gün' },
+  { to: '/lesson', icon: 'journal', label: 'Dərs', group: 'Bu gün' },
+  { to: '/tasks', icon: 'online', label: 'Tapşırıqlar', group: 'Bu gün' },
+  { to: '/materials', icon: 'clip', label: 'Materiallar', group: 'Öyrənmə' },
+  { to: '/extra', icon: 'groups', label: 'Əlavə məşğələlər', short: 'Məşğələ', group: 'Öyrənmə' },
+  { to: '/plan', icon: 'plan', label: 'Plan', group: 'Öyrənmə' },
+  { to: '/results', icon: 'rating', label: 'Nəticələrim', short: 'Nəticə', group: 'İnkişafım' },
+  { to: '/achievements', icon: 'star', label: 'Uğurlarım', short: 'Uğurlar', group: 'İnkişafım' },
+  { to: '/analytics', icon: 'reports', label: 'Analitika', group: 'İnkişafım' },
+  { to: '/chat', icon: 'feedback', label: 'Çat', group: 'Ünsiyyət' },
+  { to: '/surveys', icon: 'overview', label: 'Sorğular', group: 'Ünsiyyət' },
 ]
 const STUDENT_TABS = ['/', '/lesson', '/tasks', '/results']
 
@@ -138,9 +138,14 @@ export function Layout({ children }: { children: ReactNode }) {
                   {({ isActive }) => <button tabIndex={-1} aria-current={isActive ? 'page' : undefined}><Icon name={i.icon} /><span className="nav-lbl">{t(i.label)}</span></button>}
                 </NavLink>)
               return items.some(i => i.group)
-                ? <NavGroups items={items} storageKey="mk-nav-open" defaultOpen={g => g === 'Dərs'} isActive={active} idPrefix="ng-d" renderItem={row} />
+                ? <NavGroups items={items} storageKey="mk-nav-open" defaultOpen={g => g === (student ? 'Bu gün' : 'Dərs')} isActive={active} idPrefix="ng-d" renderItem={row} />
                 : items.map(row)
             })()}
+          </nav>
+          <nav className="nav nav-fixed" aria-label={t('Tənzimləmələr')}>
+            <NavLink to={SETTINGS_ITEM.to} className="navlink" title={t(SETTINGS_ITEM.label)}>
+              {({ isActive }) => <button tabIndex={-1} aria-current={isActive ? 'page' : undefined}><Icon name={SETTINGS_ITEM.icon} /><span className="nav-lbl">{t(SETTINGS_ITEM.label)}</span></button>}
+            </NavLink>
           </nav>
           <div className="side-foot">
             <p className="quote">«{t('Hər şagirdin öz addımı var. Əsas odur ki, irəliləsin.')}»</p><br />
@@ -183,6 +188,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 ? <NavGroups items={moreItems} storageKey="mk-nav-open-m" defaultOpen={() => true} isActive={active} idPrefix="ng-m" renderItem={row} />
                 : moreItems.map(row)
             })()}
+            <button className="btn" style={{ justifyContent: 'flex-start' }} aria-current={active('/settings') ? 'page' : undefined} onClick={() => { setMore(false); nav('/settings') }}><Icon name={SETTINGS_ITEM.icon} />{t(SETTINGS_ITEM.label)}</button>
             <button className="btn danger" onClick={logout}>{t('Çıxış')}</button>
           </div>
         </Drawer>
