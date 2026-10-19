@@ -21,6 +21,7 @@ from ..models import (Attendance, Exam, ExamAppeal, ExamScore, GroupMember, Home
                       Role, SchoolClass, Student, TaskAttempt, TeachingAssignment, User, now)
 from ..services import SCHOOL_TZ, journal_entries, plan_ctx, roster, taught_lesson, today
 from .plan import WEEKDAYS, bell
+from ..exam_cards import published_for
 from .tasks import apct, attempt_pct, aware, expire_due, finalize, is_ok, review_opens_at
 
 router = APIRouter(prefix='/api/portal', tags=['portal'])
@@ -485,24 +486,10 @@ def topic_rating(user: User = Depends(student_only), db: Session = Depends(get_d
 
 
 def _card(db: Session, e: Exam, sid: int) -> dict | None:
-    """Şagirdin öz cavab kartı (docs/kart-skanlarini-silme-promtu.md): kartın şəkli, sistemin oxuduğu cavab və sistemdəki düz
-    cavab – şagird oxunuşun dəqiqliyini özü yoxlayır, səhv görsə müəllimə deyir. Yalnız qiymətləndirilmiş kart."""
-    from ..domain.ksq_card import key_value
-    from ..models import ExamScan, ExamVariant
-    scs = list(db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == sid, ExamScan.status == 'graded')))
-    score = db.get(ExamScore, (e.id, sid))                 # onlayn və kağız yanaşıdır – jurnala gedən balı verən (yoxdursa kağız) göstərilir
-    sc = next(iter(sorted(scs, key=lambda x: (score is None or x.points != score.points, x.source != 'paper'))), None)
-    v = db.get(ExamVariant, (e.id, sid))
-    if sc is None or v is None or sc.status != 'graded':
-        return None
-    read = {int(r['slot']): r.get('value') for r in sc.reading or [] if r.get('slot') is not None}
-    void = {it['n'] for it in (e.items or []) if it.get('annulled')} | set(sc.lost or [])
-    qs = sorted(v.questions, key=lambda q: q['slot'])
-    pub = e.results_published_at is not None             # nəşrdən əvvəl: yalnız şəkil və oxunuş (düz cavab, ✓/✗ və bal gizlidir)
-    rows = [{'slot': q['slot'], 'kind': q['kind'], 'read': read.get(q['slot']) or '', 'key': key_value(q) if pub else '',
-             'ok': bool(m) if pub else None, 'void': q['slot'] in void, 'points': q.get('points')} for q, m in zip(qs, sc.marks or [0] * len(qs))]
-    return {'scan_id': sc.id, 'image': bool(sc.crop_key), 'online': sc.read_by == 'online', 'points': sc.points if pub else None,
-            'at': sc.updated_at, 'rows': rows, 'published': pub}
+    """Şagirdin öz cavab kartı (docs/kart-skanlarini-silme-promtu.md): kartın şəkli, oxunuş, nəşrdən sonra düz cavab / ✓✗ / bal.
+    Məntiq app/exam_cards.py-dadır (paket də eyni funksiyanı işlədir)."""
+    from ..exam_cards import published_for, scan_info
+    return scan_info(db, e, sid, published_for(db, e, sid))
 
 
 @router.get('/exam-card/{scan_id}/image')
@@ -549,8 +536,20 @@ def notifications(user: User = Depends(student_only), db: Session = Depends(get_
                         'text': f'{x["pct"]}% · ' + L('sinifdə', 'в классе', 'in class') + f' {x["place_class"]}/{x["class_count"]}', 'link': '/results',
                         'at': x['closes_at']})
     from ..models import ExamScan
+    from ..models import ExamDelivery
+    sent = {d.exam_id: d for d in db.scalars(select(ExamDelivery).where(ExamDelivery.student_id == s.id))}
+    for d in sent.values():                                   # nəticə paketi (cavab kartı + öz testi): göndəriş bir dəfə, bildiriş də bir dəfə
+        e = db.get(Exam, d.exam_id)
+        if e and published_for(db, e, s.id) and at - aware(d.sent_at) <= dt.timedelta(days=7):
+            out.append({'key': f'pkg-{e.id}', 'kind': 'nəticə',
+                        'title': f'{e.kind}-{e.no} – ' + L('nəticən hazırdır', 'твой результат готов', 'your result is ready'),
+                        'text': L('cavab kartın və öz testin (altmövzu və № ilə)', 'твой бланк и твой тест (с подтемой и №)',
+                                  'your answer card and your test (with subtopic and number)'),
+                        'link': f'/results?pkg={e.id}', 'at': aware(d.sent_at)})
     for sc in db.scalars(select(ExamScan).where(ExamScan.student_id == s.id, ExamScan.status == 'graded')):   # kartın şəkli və nəticəsi
         e = db.get(Exam, sc.exam_id)
+        if e and e.id in sent:
+            continue                                          # paket bildirişi artıq var
         if e and e.results_published_at and sc.updated_at and at - aware(sc.updated_at) <= dt.timedelta(days=7):   # nəşrdən əvvəl bal bildirilmir
             out.append({'key': f'card-{sc.id}-{int(aware(sc.updated_at).timestamp())}', 'kind': 'nəticə',
                         'title': f'{e.kind}-{e.no} – ' + L('kartının şəkli və nəticəsi', 'фото твоего бланка и результат', 'your answer card and result'),
@@ -599,7 +598,7 @@ def exam_card_view(exam_id: int, user: User = Depends(student_only), db: Session
     """Şagirdin öz cavab kartı: yalnız müəllim «nəticəni şagirdlərə göstər» etdikdən sonra; variant sualları əvvəl heç vaxt göstərilmir."""
     from ..exam_cards import exam_card
     s, e = my_exam(db, user, exam_id)
-    if e.results_published_at is None:
+    if not published_for(db, e, s.id):
         raise HTTPException(403, _L(user, 'Nəticələr hələ şagirdlərə göstərilməyib', 'Результаты ещё не опубликованы', 'Results have not been published yet'))
     c = exam_card(db, e, s.id)
     if c is not None:
@@ -615,6 +614,32 @@ def exam_card_view(exam_id: int, user: User = Depends(student_only), db: Session
     return c
 
 
+@router.get('/exams/{exam_id}/package')
+def exam_package(exam_id: int, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Nəticə paketi (bir ekran): kartın şəkli + oxunuş; nəşrdən/göndərişdən sonra öz testi (sual, öz cavab, düz cavab, bal) və sualın
+    altında «altmövzu · №n». Başqa şagirdin paketi (başqa sinif/əlavə imtahan) – 404; kartı olmayan (yazmayan) şagird – 404."""
+    from ..exam_cards import student_package
+    try:
+        s, e = my_exam(db, user, exam_id)
+    except HTTPException:                                 # başqasının imtahanı mövcudluğunu belə bildirmir
+        raise HTTPException(404, _L(user, 'Nəticə paketi yoxdur', 'Пакета результата нет', 'No result package'))
+    pub = published_for(db, e, s.id)
+    p = student_package(db, e, s.id, user.language, pub)
+    if p is None:                                         # yazmayan şagirdə sual və düz cavablar göstərilmir
+        raise HTTPException(404, _L(user, 'Nəticə paketi yoxdur', 'Пакета результата нет', 'No result package'))
+    if pub:
+        p['appeal_until'] = e.appeal_until
+        p['appeals'] = [{'id': a.id, 'slot': a.slot, 'source': a.source, 'status': a.status, 'reason': a.reason,
+                         'teacher_reply': a.teacher_reply} for a in db.scalars(
+                             select(ExamAppeal).where(ExamAppeal.exam_id == e.id, ExamAppeal.student_id == s.id))]
+        from ..models import ExamDelivery
+        d = db.get(ExamDelivery, (e.id, s.id))
+        if d is not None and d.seen_at is None:           # müəllim ekranında «baxıb»
+            d.seen_at = now()
+            db.commit()
+    return p
+
+
 class AppealIn(BaseModel):
     slot: int = Field(ge=1)
     source: Literal['paper', 'online'] = 'paper'
@@ -628,7 +653,7 @@ def create_appeal(exam_id: int, body: AppealIn, user: User = Depends(student_onl
     from ..domain.ksq_card import key_value
     from ..models import ExamScan, ExamVariant
     s, e = my_exam(db, user, exam_id)
-    if e.results_published_at is None:
+    if not published_for(db, e, s.id):
         raise HTTPException(403, _L(user, 'Nəticələr hələ şagirdlərə göstərilməyib', 'Результаты ещё не опубликованы', 'Results have not been published yet'))
     if e.appeal_until is not None and now() > aware(e.appeal_until):
         raise HTTPException(400, _L(user, 'Apelyasiya müddəti bitib', 'Срок подачи апелляции истёк', 'The appeal period has ended'))
@@ -699,7 +724,9 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
             sc = db.get(ExamScore, (e.id, s.id))
             g = grade_from_points(sc.points, e.max_points) if sc and sc.points is not None and not sc.absent else None
             # skanı olan, lakin müəllim hələ açmayıb imtahan: nəticə şagirdə göstərilmir
-            hidden = e.results_published_at is None and db.scalar(
+            pub_for = published_for(db, e, s.id)              # global nəşr və ya «skan olunan kimi göndər» (şagird üzrə)
+            card = _card(db, e, s.id)
+            hidden = not pub_for and db.scalar(
                 select(ExamScan.id).where(ExamScan.exam_id == e.id, ExamScan.student_id == s.id).limit(1)) is not None
             if hidden:
                 hidden_sems.add(e.semester)
@@ -709,12 +736,12 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
                      for it, m in zip(e.items or [], (sc.item_marks or []) if g else [])]
             weak = sorted({i['standard'] for i in items if i['standard'] and not i['ok']})
             gmap[e.id] = g
-            ex_rows.append({'exam_id': e.id, 'published': e.results_published_at is not None,
+            ex_rows.append({'exam_id': e.id, 'published': pub_for, 'has_package': bool(pub_for and card),
                             'kind': e.kind, 'no': e.no, 'semester': e.semester, 'date': e.date, 'extra_seq': e.extra_seq or 0,
                             'points': sc.points if sc and not hidden else None, 'max_points': e.max_points, 'hidden': hidden,
                             'pct': round(sc.points * 100 / e.max_points, 1) if g else None, 'grade': g,
                             'absent': bool(sc and sc.absent), 'taken_on': sc.taken_on if sc and g else None,
-                            'items': items, 'weak_standards': weak, 'card': _card(db, e, s.id)})
+                            'items': items, 'weak_standards': weak, 'card': card})
         sem_g = {k: None if k in hidden_sems else semester_grade(*_sem_args(exams, gmap, k)) for k in (1, 2)}
         subjects.append({'subject': ta.subject, 'class_name': c.name, 'teacher': _teacher(db, ta),
                          'exams': ex_rows, **_stats(db, _entries(db, ta.id), s.id),
