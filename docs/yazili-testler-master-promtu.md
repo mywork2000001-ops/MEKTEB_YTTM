@@ -28,8 +28,9 @@ mexanizmini (`ksq_card`, `ksq_scan`, `ksq_reader`, `exam_scans`, `ExamVariant`) 
 | 2 | «📷 Skan» düyməsi hər səhifədə + `POST /api/scans/any` (QR → imtahan + şagird, 403, əl ilə seçim) | kodcu | icrada |
 | 3 | Yazılı rejim: «Onlayn / Yazılı / İkisi də» – hər mövzu testi və sınaqda, məktəb + fərdi; `Exam.kind` TEST/SINAQ/YI + miqrasiya | kodcu | icrada |
 | 4 | Ümumi A4 cavab vərəqəsi (başlıq, QR, A–E, 8 xana, «Müəllim balı» 0·¼·½·¾·1, oriyentirlər, adlı/boş) + ayrıca sual kitabçası; KSQ kartı da bu şablonla; `ksq_reader` – `score` slotu | kodcu | icrada |
-| 5 | Rəqəmlər tətbiqdə: `BankQuestion.template` (miqrasiya), seçim «Hər şagirdə öz rəqəmləri» – KSQ, test, sınaqda; retake yeni ədədlər | kodcu | gözləyir 1 |
-| 6 | Şablonlar: XI-P KSQ mövzuları + P013 XI (Çoxhədlilər A/B), sonra digər siniflər – `cavab-yoxlayici`, skript `--check` | cavab-yoxlayici | gözləyir 5 |
+| 1b | `backend/scripts/avto_reqem.py` – **istənilən test** üçün avtomatik şablon, süni intellektsiz (sympy + düstur axtarışı) | kodcu | icrada |
+| 5 | Rəqəmlər tətbiqdə (istifadəçi: «tətbiq et, işdə istifadə edim»): hər test/sınaq/KSQ-da seçim «Hər şagirdə öz rəqəmləri» → server `avto_reqem` ilə avtomatik (AI yox); hazır şablon varsa – o; `BankQuestion.template` keşi (miqrasiya); müəllimə hesabat «N sualda rəqəmlər dəyişdi, M dəyişmir»; onlayn və kağızda eyni ədədlər; retake yeni ədədlər | kodcu | gözləyir 1b, 2–4 |
+| 6 | Əl ilə şablonlar lazım deyil: sual mətnləri yalnız canlı bankdadır (lokal PDF – yalnız açarlar) → 5-ci addımdan sonra canlıda `avto_reqem` hesabatı XI-P KSQ və P013 XI üzrə yoxlanır; «dəyişmir» qalan vacib suallar üçün – əl ilə şablon | Claude | gözləyir 5 |
 | 7 | Review (Claude), main-ə birləşmə, Neon backup, miqrasiya, push, Render statusu, Chrome-da yoxlama (1396×663, telefon) | Claude | sonda |
 
 ## Qəbul meyarları (ümumi)

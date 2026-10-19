@@ -34,6 +34,25 @@ eyni bal – amma hər şagirdin öz ədədləri və öz düzgün cavabı**. Qon
 7. **Testlər:** `tests/test_reqem_variantlari.py` – açar yoxlaması, determinizm, 30 şagirddə təkrar dəst yoxdur,
    kart formatı, mcq distraktorları fərqli, səhv şablon rədd olunur.
 
+### Mərhələ 1b – istənilən test üçün, süni intellektsiz (avtomatik şablon) – `backend/scripts/avto_reqem.py`
+İstifadəçi tələbi (19.10.2026): şablonu insan / agent yazmadan, **istənilən testdən** avtomatik «öz rəqəmləri». Yalnız
+Python + sympy, deterministik. Giriş: bank sualları (`BankQuestion` formatı: `kind, text{az,ru,en}, options, correct, answer`)
+JSON-u və ya `variants.json`. Hər sual üçün ardıcıl 3 üsul, **birinci uğurlu** götürülür:
+1. **Düstur sualı (sympy):** KaTeX hissəsi (`$…$`) sympy-yə çevrilir (`latex2sympy` olmadan – öz kiçik çevirici: `\frac`, `^`,
+   `\sqrt`, `\cdot`, gizli vurma). Açar sözlə əməliyyat: həll edin/решите/solve → `solve`; hesablayın/вычислите/calculate →
+   qiymət; sadələşdirin/упростите → `simplify`; qalıq/остаток/remainder → `rem`; köklərin cəmi/hasili, ən böyük/kiçik kök,
+   `P(a)`, törəmə, inteqral, limit, ƏBOB/ƏKOB, faiz. Formuldakı ədədlər parametr olur.
+2. **Mətn məsələsi (düstur axtarışı):** mətndəki ədədlər `n1…nk`; `+ − × ÷`, mötərizə, kvadrat, faiz ilə ≤ 3 əməllik bütün
+   ifadələr yoxlanır; mənbə cavabını verən ifadə **tək** (və ya hamısı eyni sinifdə eyni nəticə verir) olarsa – o düsturdur.
+3. **Dəyişmir:** üsul tapılmadı / çox düstur uyğun gəldi / şəkil var → `fixed`, yalnız variant yerləri qarışır.
+Məcburi yoxlamalar: (a) mənbə ədədləri ilə üsul **mənbə cavabını** verməlidir, yoxsa sual `fixed`; (b) yeni ədədlər –
+eyni işarə, eyni rəqəm sayı, tam ədəd tam qalır, sıfır/bir yaranmır, ədəd mətn daxilində də (iki dəfə yazılıbsa) eyni dəyişir;
+(c) cavab «gözəl» və kart formatında; (d) mcq distraktorları: mənbə distraktoru ilə cavab arasındakı əlaqə (fərq, işarə,
+əks kəsr, ×10) tapılıb yeni cavaba tətbiq olunur, alınmırsa – cavab ± kiçik addım, hamısı fərqli.
+Çıxış: avtomatik şablon JSON (Mərhələ 1 formatı – müəllim baxa və düzəldə bilər) + hesabat: hər sual «🔢 sympy» /
+«🔢 düstur a*b/c» / «⛔ dəyişmir (səbəb)»; sonra Mərhələ 1 generatoru ilə vərəqlər, açar, `variants.json`.
+Testlər: kvadrat tənlik, Bezu qalığı, kəsr hesabı, faiz məsələsi, hərəkət məsələsi, şəkilli sual (fixed), səhv açar (fixed).
+
 ### Mərhələ 2 – tətbiqə qoşmaq (istifadəçinin razılığı ilə: miqrasiya + deploy)
 - `BankQuestion.template` (JSON, boş ola bilər) – miqrasiya; KSQ yaradanda yeni seçim:
   «Hər şagirdə öz rəqəmləri» (AZ) / «Own numbers for each student» (EN) / «Каждому ученику свои числа» (RU).
