@@ -26,7 +26,8 @@ kitabının ardıcıllığı ilə (V → VI → … → IX/XI) düzülməlidir. 
   `units = round(müddət / 45)` (60 dəq. → 1, 90 → 2, 135 → 3; 20–44 dəq. → 1). Akademik saat uzunluğu – fərdi məkan
   tənzimləməsi `lesson_minutes` (defolt 45).
 - Daxildə görüş `units` qədər ardıcıl sıraya (period) açılır: 17:00–18:30 → `0: 17:00–17:45`, `1: 17:45–18:30`
-  (fasilə tənzimlənə bilər: `break_minutes`, defolt 0). Beləliklə `slots`, `weekly_hours`, `capacity`, jurnal, portal, cədvəl
+  (fasilə: `break_minutes`, defolt **5** – istifadəçi qərarı 19.10.2026; 17:00 + 2 saat → 17:00–17:45, 17:50–18:35;
+  `units = round((müddət + fasilə) / (45 + fasilə))`). Beləliklə `slots`, `weekly_hours`, `capacity`, jurnal, portal, cədvəl
   mövcud mexanizmlə işləyir – yeni məntiq yalnız `private_times` və `times_out`-da.
 - `times_out` görüşü bir sətir kimi qaytarır: `{weekday, start, end, units, periods:[0,1]}`; UI görüş göstərir, saat yox.
 - **Miqrasiya**: mövcud fərdi qrupların 90 dəq.-lik vaxtları 2 sıraya açılır; köhnə sıra (birinci hissə) jurnal yazılarını saxlayır,
