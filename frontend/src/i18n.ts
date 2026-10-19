@@ -2994,6 +2994,25 @@ const D: Record<string, [string, string]> = {
   "Tarix: {a} – {b}": ["Date: {a} – {b}", "Дата: {a} – {b}"],
   "Tarix: {a}": ["Date: {a}", "Дата: {a}"],
   "↳ yenidən göndəriş: {who}, {date}": ["↳ resent: {who}, {date}", "↳ повторная отправка: {who}, {date}"],
+  // ---- şagirdin fərdi hesabatı (docs/sagird-ferdi-hesabat-promtu.md)
+  "Bal, %": ["Score, %", "Балл, %"],
+  "Bu dövrdə nəticə yoxdur.": ["No results in this period.", "В этом периоде результатов нет."],
+  "Əsas çatışmazlıq yoxdur – eyni tempdə davam edin.": ["No major gaps – keep going at the same pace.", "Существенных пробелов нет – продолжайте в том же темпе."],
+  "Fayl hazırlanmadı": ["The file could not be prepared", "Файл не удалось подготовить"],
+  "İştirak aşağıdır ({pct}%) – buraxılmış testləri yazması təmin edilməlidir.": ["Participation is low ({pct}%) – the missed tests should be taken.", "Низкое участие ({pct}%) – нужно написать пропущенные тесты."],
+  "iştirak, %": ["participation, %", "участие, %"],
+  "jurnal": ["journal", "журнал"],
+  "nəşr olunmayıb": ["not published", "не опубликовано"],
+  "orta, %": ["average, %", "средний, %"],
+  "son nəticə, %": ["latest result, %", "последний результат, %"],
+  "Son nəticələr enir ({delta} bal) – səbəbi aydınlaşdırın.": ["Recent results are falling ({delta} points) – find out why.", "Последние результаты снижаются ({delta}) – выясните причину."],
+  "Təkrar edin: {topic} ({pct}%) – təkrar testi təyin edin.": ["Revise: {topic} ({pct}%) – assign a repeat test.", "Повторите: {topic} ({pct}%) – назначьте повторный тест."],
+  "Təkrar testi təyin et": ["Assign a repeat test", "Назначить повторный тест"],
+  "Tövsiyə": ["Recommendation", "Рекомендация"],
+  "trend (son 3)": ["trend (last 3)", "тренд (последние 3)"],
+  "Valideyn nüsxəsi (AZ)": ["Parent copy (AZ)", "Копия для родителей (AZ)"],
+  "Valideyn nüsxəsi (RU)": ["Parent copy (RU)", "Копия для родителей (RU)"],
+  "Zəif mövzular (≤ 50%)": ["Weak topics (≤ 50%)", "Слабые темы (≤ 50%)"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

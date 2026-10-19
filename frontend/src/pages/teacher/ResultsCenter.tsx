@@ -10,6 +10,7 @@ import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, Loading, PickFirst, Pi
 import { esc, fmtD, fmtN, head, kpis, printDoc, SIGN, table } from '../../print'
 import { periodRange, type Period } from '../../periods'
 import { useMyLessons, type MyLesson } from './common'
+import StudentReport from './StudentReport'
 
 type Kind = 'movzu' | 'sinaq'
 type KF = 'all' | Kind
@@ -409,6 +410,7 @@ function StudentPanel({ f, id, setId, kinds, kf }: { f: PP; id: number | null; s
       <ErrorBox error={err} />
       {!id ? <PickFirst text="Şagird seçin – mövzu testləri və sınaqlar üzrə fəaliyyəti açılacaq" /> : loading && !d ? <Loading /> : d && (
         <div className="grid g2">
+          <StudentReport id={id} params={f.params} label={f.label} />
           <section className="panel" style={{ gridColumn: '1 / -1' }}>
             <h2>{d.student.full_name} <small>{d.student.class_name}</small></h2>
             <div className="grid g2">{kinds.map(k => { const s = d.parts[k].summary
