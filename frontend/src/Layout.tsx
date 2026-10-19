@@ -6,6 +6,7 @@ import { useAuth } from './auth'
 import { useT } from './i18n'
 import { Drawer, Icon } from './ui'
 import { SurveyNudge } from './pages/student/Surveys'
+import GlobalScan from './GlobalScan'
 // yeni sertifikat pəncərəsi (QR kitabxanası ilə) – yalnız şagirdə, ayrıca yüklənir
 const CertNudge = lazy(() => import('./pages/student/Achievements').then(m => ({ default: m.CertNudge })))
 
@@ -164,6 +165,7 @@ export function Layout({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+      <GlobalScan />
       {student && <SurveyNudge />}
       {student && <Suspense fallback={null}><CertNudge /></Suspense>}
       <nav className="tabbar" aria-label={t('Əsas bölmələr')}>

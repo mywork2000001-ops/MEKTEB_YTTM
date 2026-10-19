@@ -157,3 +157,14 @@ def grade(questions: list[dict], reading: list[dict], annulled: set[int] | None 
         if r is None or (r.get('confidence') is not None and float(r['confidence']) < LOW):
             flagged.append(q['slot'])
     return {'marks': marks, 'points': round(pts * full / total, 2), 'flagged': flagged}
+
+
+def crop_any_qr(img) -> bytes | None:
+    """İmzası oxunmayan / tanınmayan QR da olsa – onun künclərinə görə cavab zonasını kəsir (əl ilə şagird seçimi üçün).
+    QR heç tapılmırsa və ya kart kadra tam düşməyibsə – None."""
+    import zxingcpp
+    for b in zxingcpp.read_barcodes(img, formats=zxingcpp.BarcodeFormat.QRCode):
+        tl, tr, bl = _pt(b.position.top_left), _pt(b.position.top_right), _pt(b.position.bottom_left)
+        if zone_inside(img.size, tl, tr, bl):
+            return crop_zone(img, tl, tr, bl)
+    return None

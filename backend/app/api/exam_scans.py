@@ -246,6 +246,48 @@ def thorough_all(ta_id: int, exam_id: int, bg: BackgroundTasks, only_flagged: bo
     return {'started': len(ids)}
 
 
+def ingest_card(db: Session, e: Exam, variants: dict, c: dict, fname: str | None, found: list, problems: list, dupes: list,
+                replace: bool = False, force: bool = False) -> None:
+    """Bir kartı (find_cards nəticəsi) imtahana qəbul edir: yoxlamalar → ExamScan (pending) + kəsik şəkil. Həm imtahanın öz
+    yükləməsi (upload), həm də ümumi «📷 Skan» (api/scans_any.py) istifadə edir."""
+    from ..domain.ksq_card import split_code, variant_rev
+    from ..storage import get_storage, storage_for_key
+    v = variants.get(c['student_id'])
+    if c.get('partial'):                                    # köhnə oxunuşa toxunulmur
+        problems.append({'file': fname, 'kind': 'partial', 'student_id': c['student_id'],
+                         'error': 'Kart kadra tam düşməyib – bütün kartı çərçivəyə salıb yenidən çəkin'})
+        return
+    base, rev = split_code(c['code'])
+    if v is not None and base == v.code and rev and rev != variant_rev(v.questions):
+        problems.append({'file': fname, 'error': f'{base}: kart köhnə çapdır – variant çapdan sonra dəyişib, vərəqi yenidən çap edin'})
+        return
+    c['code'] = base
+    if c['exam_id'] != e.id or v is None or v.code != c['code']:
+        problems.append({'file': fname, 'error': f'Kart başqa imtahanın və ya köhnə variantındır ({c["code"]})'})
+        return
+    sc = scan_of(db, e.id, c['student_id'], 'paper')       # kağız nəticə onlayn nəticədən ayrıdır
+    # bir blank – bir dəfə: artıq qəbul edilib (xətasız) – təkrar göndərilmir; yenidən skan – yalnız replace=true ilə
+    # təkrar oxunuşdan qorunma (kvota): «yenidən skan» açıq olsa belə, son 90 s-də qəbul edilmiş kart təkrar sayılır
+    recent = sc is not None and sc.updated_at is not None and now() - _aware(sc.updated_at) < dt.timedelta(seconds=RECENT_S)
+    if sc is not None and sc.crop_key and sc.status != 'error' and (not replace or (recent and not force)):
+        if c['student_id'] not in {d['student_id'] for d in dupes}:
+            dupes.append({'student_id': c['student_id'], 'scan_id': sc.id, 'status': sc.status, 'points': sc.points})
+        return
+    if sc is None:
+        sc = ExamScan(exam_id=e.id, student_id=c['student_id'], code=c['code'], history=[], source='paper')
+        db.add(sc)
+    elif sc.reading or sc.crop_key:
+        sc.history = [*(sc.history or []), {'at': now().isoformat(), 'reading': sc.reading, 'points': sc.points,
+                                            'read_by': sc.read_by}][-5:]
+        if sc.crop_key and sc.crop_key.startswith('db:'):
+            storage_for_key(sc.crop_key).remove(db, sc.crop_key)
+    key, _ = get_storage().save(io.BytesIO(c['crop']), f'ksq-{e.id}-{c["student_id"]}.jpg', 'image/jpeg', UPLOAD_MAX, db)
+    sc.crop_key, sc.code, sc.reading, sc.read_by, sc.status, sc.marks, sc.flagged, sc.error = \
+        key, c['code'], None, None, 'pending', None, None, None
+    db.flush()
+    found.append({'student_id': c['student_id'], 'code': c['code'], 'scan_id': sc.id})
+
+
 # ---------------------------------------------------------------- yükləmə, siyahı, yenilə
 @router.post('/{ta_id}/{exam_id}/upload')
 async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[UploadFile] = File(...), replace: bool = False,
@@ -276,40 +318,7 @@ async def upload(ta_id: int, exam_id: int, bg: BackgroundTasks, files: list[Uplo
         if not cards:
             problems.append({'file': f.filename, 'error': 'QR kod tapılmadı – kartı düz, işıqlı yerdə, tam çəkin'})
         for c in cards:
-            v = variants.get(c['student_id'])
-            if c.get('partial'):                                    # köhnə oxunuşa toxunulmur
-                problems.append({'file': f.filename, 'kind': 'partial', 'student_id': c['student_id'],
-                                 'error': 'Kart kadra tam düşməyib – bütün kartı çərçivəyə salıb yenidən çəkin'})
-                continue
-            base, rev = split_code(c['code'])
-            if v is not None and base == v.code and rev and rev != variant_rev(v.questions):
-                problems.append({'file': f.filename, 'error': f'{base}: kart köhnə çapdır – variant çapdan sonra dəyişib, vərəqi yenidən çap edin'})
-                continue
-            c['code'] = base
-            if c['exam_id'] != e.id or v is None or v.code != c['code']:
-                problems.append({'file': f.filename, 'error': f'Kart başqa imtahanın və ya köhnə variantındır ({c["code"]})'})
-                continue
-            sc = scan_of(db, e.id, c['student_id'], 'paper')       # kağız nəticə onlayn nəticədən ayrıdır
-            # bir blank – bir dəfə: artıq qəbul edilib (xətasız) – təkrar göndərilmir; yenidən skan – yalnız replace=true ilə
-            # təkrar oxunuşdan qorunma (kvota): «yenidən skan» açıq olsa belə, son 90 s-də qəbul edilmiş kart təkrar sayılır
-            recent = sc is not None and sc.updated_at is not None and now() - _aware(sc.updated_at) < dt.timedelta(seconds=RECENT_S)
-            if sc is not None and sc.crop_key and sc.status != 'error' and (not replace or (recent and not force)):
-                if c['student_id'] not in {d['student_id'] for d in dupes}:
-                    dupes.append({'student_id': c['student_id'], 'scan_id': sc.id, 'status': sc.status, 'points': sc.points})
-                continue
-            if sc is None:
-                sc = ExamScan(exam_id=e.id, student_id=c['student_id'], code=c['code'], history=[], source='paper')
-                db.add(sc)
-            elif sc.reading or sc.crop_key:
-                sc.history = [*(sc.history or []), {'at': now().isoformat(), 'reading': sc.reading, 'points': sc.points,
-                                                    'read_by': sc.read_by}][-5:]
-                if sc.crop_key and sc.crop_key.startswith('db:'):
-                    storage_for_key(sc.crop_key).remove(db, sc.crop_key)
-            key, _ = get_storage().save(io.BytesIO(c['crop']), f'ksq-{e.id}-{c["student_id"]}.jpg', 'image/jpeg', UPLOAD_MAX, db)
-            sc.crop_key, sc.code, sc.reading, sc.read_by, sc.status, sc.marks, sc.flagged, sc.error = \
-                key, c['code'], None, None, 'pending', None, None, None
-            db.flush()
-            found.append({'student_id': c['student_id'], 'code': c['code'], 'scan_id': sc.id})
+            ingest_card(db, e, variants, c, f.filename, found, problems, dupes, replace, force)
     audit(db, user, 'create', 'exam_scans', e.id, cards=len(found), problems=len(problems), already=len(dupes))
     db.commit()
     if found:

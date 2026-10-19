@@ -970,3 +970,10 @@ a.btn{text-decoration:none}
 /* bir test – bir neçə sinif: kartın içində sinif sətirləri */
 .subrows{display:flex;flex-direction:column;gap:6px;border-left:3px solid var(--line);padding-left:10px}
 .subrow{display:flex;flex-direction:column;gap:6px;padding:8px 10px;background:var(--surface-2);border-radius:var(--r-sm)}
+
+/* daimi «📷 Skan» düyməsi (GlobalScan.tsx): kompüterdə sağ-aşağı, telefonda alt panelin üstündə */
+.scan-fab{position:fixed;right:20px;bottom:20px;z-index:22;display:flex;align-items:center;gap:6px;min-height:44px;padding:0 16px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:14px;cursor:pointer;box-shadow:0 8px 20px rgba(40,70,180,.3)}
+.scan-badge{position:absolute;top:-6px;right:-4px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:var(--bad,#c0392b);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
+@media (max-width:700px){.scan-fab{right:12px;bottom:calc(72px + env(safe-area-inset-bottom,0px))}}
+@media print{.scan-fab{display:none}}
+.smode .scan-fab{display:none!important}

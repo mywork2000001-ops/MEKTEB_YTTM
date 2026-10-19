@@ -2790,6 +2790,15 @@ const D: Record<string, [string, string]> = {
   "{t} – cavablar": ["{t} – answers", "{t} – ответы"],
   "Hesabatım – {n}": ["My report – {n}", "Мой отчёт – {n}"],
   "Tarix:": ["Date:", "Дата:"],
+  "Skan": ["Scan", "Скан"],
+  "Çap olunub, nəticəsi olmayan imtahan: {n}": ["Printed, no results yet: {n} exam(s)", "Распечатано, результатов нет: {n}"],
+  "Kartın QR-ı imtahanı və şagirdi özü tapır – sinif və imtahan seçmək lazım deyil.": ["The card's QR finds the exam and student by itself – no need to pick a class or exam.", "QR-код карточки сам находит экзамен и ученика – выбирать класс и экзамен не нужно."],
+  "Şəkil çək": ["Take photo", "Сделать снимок"],
+  "Fayl yüklə": ["Upload file", "Загрузить файл"],
+  "QR oxunmadı: {n} fayl – şagirdi və imtahanı özünüz seçin": ["QR not read in {n} file(s) – pick the student and exam yourself", "QR не прочитан в файлах: {n} – выберите ученика и экзамен вручную"],
+  "Şagird və imtahanı seçin": ["Pick student and exam", "Выберите ученика и экзамен"],
+  "Qəbul et": ["Accept", "Принять"],
+  "Son 7 gün": ["Last 7 days", "Последние 7 дней"],
 }
 
 export const I18nCtx = createContext<Lang>('az')
