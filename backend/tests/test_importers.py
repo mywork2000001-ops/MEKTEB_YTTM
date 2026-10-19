@@ -33,7 +33,9 @@ needs_sources = pytest.mark.skipif(not os.path.isdir(PLANS), reason='mənbə pla
 @needs_sources
 @pytest.mark.parametrize('c', CLASSES, ids=lambda c: c.code)
 def test_official_plans_parse(c):
-    f = [x for x in glob.glob(os.path.join(PLANS, '*.docx')) if os.path.basename(x).startswith(c.plan_prefix)]
+    # əsas plan əvvəl: «… (zəif qrup tempi).docx» kimi variantlar (13.10.2026) az KSQ-lidir və yoxlanmır
+    f = sorted((x for x in glob.glob(os.path.join(PLANS, '*.docx')) if os.path.basename(x).startswith(c.plan_prefix)),
+               key=lambda x: '(' in os.path.basename(x))
     assert f, c.plan_prefix
     p = parse_plan(f[0])
     assert p.lessons and not p.warnings
