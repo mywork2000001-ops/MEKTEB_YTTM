@@ -209,6 +209,33 @@ def class_reports(ta_id: int, date_from: dt.date | None = Query(None, alias='fro
     return Response(_render_pdf(html), media_type='application/pdf', headers={'Content-Disposition': f'attachment; filename="hesabatlar-{ta_id}.pdf"'})
 
 
+@router.get('/class/{ta_id}/matrix')
+def class_matrix_api(ta_id: int, kind: Literal['movzu', 'sinaq', 'all'] = 'all', date_from: dt.date | None = Query(None, alias='from'),
+                     date_to: dt.date | None = Query(None, alias='to'), format: Literal['json', 'xlsx', 'pdf'] = 'json',
+                     user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«Kim nəyi işləyib»: şagird × test cədvəli (mövzu testləri, sınaqlar, kağız KSQ/BSQ). Yalnız öz dərsim.
+    xlsx/pdf – rəsmi çap (AZ, A4 albom)."""
+    from fastapi.responses import Response
+    from ..class_matrix_print import matrix_html, matrix_xlsx
+    from ..models import School
+    from ..student_report import class_matrix
+    m = class_matrix(db, user, ta_id, kind, date_from, date_to)
+    db.commit()                                       # expire_due avtomatik təhvilləri saxlasın
+    if format == 'json':
+        return m
+    from .lessonplans import SCHOOL_DEFAULT
+    sc = db.get(School, user.school_id) if user.school_id else None
+    school = sc.name if sc and sc.name else SCHOOL_DEFAULT
+    audit(db, user, 'export', 'class_matrix', str(ta_id), format=format)
+    db.commit()
+    if format == 'xlsx':
+        deputy = ((sc.doc_settings or {}) if sc else {}).get('deputy') or ''
+        return Response(matrix_xlsx(m, school, user.full_name, deputy), headers={'Content-Disposition': f'attachment; filename="matris-{ta_id}.xlsx"'},
+                        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    return Response(_render_pdf(matrix_html(m, school, user.full_name)), media_type='application/pdf',
+                    headers={'Content-Disposition': f'attachment; filename="matris-{ta_id}.pdf"'})
+
+
 @router.get('/students')
 def my_students(user: User = Depends(staff), db: Session = Depends(get_db)):
     """Şagird seçimi üçün: öz dərslərimin şagirdləri (sinif adı ilə)."""

@@ -3038,6 +3038,16 @@ const D: Record<string, [string, string]> = {
   "Bütün şagirdlərin hesabatı (PDF)": ["All students' reports (PDF)", "Отчёты всех учеников (PDF)"],
   "Valideyn iclası (RU)": ["Parents' meeting (RU)", "Родительское собрание (RU)"],
   "PDF hazırdır": ["PDF is ready", "PDF готов"],
+  // sinif matrisi «Kim nəyi işləyib» (docs/tasks/sinif-test-matrisi.md)
+  "Kim nəyi işləyib": ["Who wrote what", "Кто что писал"],
+  "Fayl hazırdır": ["File is ready", "Файл готов"],
+  "hələ açıqdır": ["still open", "ещё открыт"],
+  "təyin olunmayıb": ["not assigned", "не назначено"],
+  "Bu dövrdə test və sınaq yoxdur.": ["No tests or exams in this period.", "В этом периоде нет тестов и экзаменов."],
+  "✗ – yazmayıb · ⏳ – hələ açıqdır · — – təyin olunmayıb · (xx) – nəticə şagirdə hələ nəşr olunmayıb": ["✗ – not written · ⏳ – still open · — – not assigned · (xx) – result not yet published to the student", "✗ – не писал · ⏳ – ещё открыт · — – не назначено · (xx) – результат ещё не опубликован для ученика"],
+  "Yazıb/təyin": ["Wrote/assigned", "Писал/назначено"],
+  "Yazan / təyin olunan": ["Wrote / assigned", "Писали / назначено"],
+  "Orta, %": ["Average, %", "Средний, %"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

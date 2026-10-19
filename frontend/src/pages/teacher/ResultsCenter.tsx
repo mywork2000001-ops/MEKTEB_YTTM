@@ -11,6 +11,7 @@ import { esc, fmtD, fmtN, head, kpis, printDoc, SIGN, table } from '../../print'
 import { periodRange, type Period } from '../../periods'
 import { useMyLessons, type MyLesson } from './common'
 import StudentReport, { download } from './StudentReport'
+import ClassMatrix from './ClassMatrix'
 
 type Kind = 'movzu' | 'sinaq'
 type KF = 'all' | Kind
@@ -472,6 +473,13 @@ function ClassPanel({ f, lessons, onStudent, kinds, kf, fixedTa }: { f: PP; less
   const [level, setLevel] = useState<'all' | (typeof LV)[number]>('all')
   const [d, err, loading] = useLoad<CData>(() => get(ta ? `/api/results-center/class/${ta}` : '/api/results-center/class', { ...(level !== 'all' ? { level } : {}), ...f.params }), [ta, level, f.label])
   const [review, setReview] = useState<Review | null>(null)
+  const [view, setView] = useState<'sum' | 'matrix'>('sum')
+  const [rs, setRs] = useState<MStud[] | null>(null)
+  const viewSeg = ta ? <Seg label={t('Görünüş')} value={view} onChange={setView} options={[['sum', 'Xülasə'], ['matrix', 'Kim nəyi işləyib']]} /> : null
+  const openResend = async () => {
+    const m = await get<MData>('/api/results-center/missing', { kind: 'all', ta_id: ta!, ...f.params })
+    if (!m.students.length) toast(t('Bu dövrdə bağlanmış testləri yazmayan şagird yoxdur.')); else setRs(m.students)
+  }
   const title = d ? `${d.class_name} · ${d.subject}${d.level ? (' · ' + t('{level} qrup', { level: d.level })) : ''}` : ''
   // hər şagird ayrıca səhifə (valideyn iclası): rəsmi forma AZ, valideyn nüsxəsi AZ|RU
   const bulk = (lang: 'az' | 'ru', parent: boolean) => download(
@@ -489,10 +497,20 @@ function ClassPanel({ f, lessons, onStudent, kinds, kf, fixedTa }: { f: PP; less
           weakHtml(p.weak_topics) }).join('') +
       aiHtml(review),
   })
+  if (ta && view === 'matrix') return (
+    <>
+      <div className="toolbar no-print">
+        {fixedTa === undefined && <ClassSelect lessons={lessons} value={ta} onChange={setTa} />}
+        {viewSeg}
+      </div>
+      <ClassMatrix ta={ta} params={f.params} label={f.label} onStudent={onStudent} onResend={openResend} />
+      {rs && <ResendDrawer students={rs} onClose={() => setRs(null)} onDone={() => setRs(null)} />}
+    </>)
   return (
     <>
       <div className="toolbar no-print">
         {fixedTa === undefined && <ClassSelect lessons={lessons} value={ta} onChange={setTa} />}
+        {viewSeg}
         <Seg label={t('Səviyyə')} value={level} onChange={setLevel} options={[['all', 'Hamısı'], ['Zəif', 'Zəif'], ['Orta', 'Orta'], ['Güclü', 'Güclü']]} />
         {ta && <AsyncBtn className="btn sm right" ok={t('PDF hazırdır')} onClick={() => bulk('az', false)}>{t('Bütün şagirdlərin hesabatı (PDF)')}</AsyncBtn>}
         {ta && <AsyncBtn className="btn sm" ok={t('PDF hazırdır')} onClick={() => bulk('ru', true)}>{t('Valideyn iclası (RU)')}</AsyncBtn>}

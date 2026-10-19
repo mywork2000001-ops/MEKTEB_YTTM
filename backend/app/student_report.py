@@ -349,3 +349,115 @@ def student_results(db: Session, user: User, sid: int, date_from: dt.date | None
 def my_results(db: Session, s: Student, date_from: dt.date | None = None, date_to: dt.date | None = None) -> dict:
     """Şagirdin özü üçün: yalnız nəşr olunmuş nəticələr."""
     return _build(db, s, student_assignments(db, s), None, 'student', date_from, date_to)
+
+
+# ---------------------------------------------------------------- sinif matrisi: kim nəyi işləyib (docs/tasks/sinif-test-matrisi.md)
+MATRIX_KINDS = ('movzu', 'sinaq', 'all')
+_COL_ORDER = {'movzu': 0, 'sinaq': 1, 'ksq': 2, 'bsq': 3}
+_DONE = ('yazıb', 'nəşr olunmayıb')
+
+
+def _cell(status: str, pct: float | None = None, published: bool = True) -> dict:
+    return {'status': status, 'pct': pct, 'grade': summative_grade(pct) if pct is not None else None, 'published': published}
+
+
+def class_matrix(db: Session, user: User, ta_id: int, kind: str = 'all', date_from: dt.date | None = None,
+                 date_to: dt.date | None = None) -> dict:
+    """Bir dərsin (sinif/qrup) «şagird × test» cədvəli: sütun – mövzu testləri (№), sınaqlar (adla), kağız KSQ/BSQ; xana – nəticə.
+    Mənbə qaydaları `_build` ilə eyni: onlayn + kağız, eyni test bir dəfə (nəşr olunmuş kağız balı onlayn xananı əvəz edir).
+    Yalnız öz dərsim (başqa müəllim – 404). Nəşr olunmamış skan balı `nəşr olunmayıb` (bal göstərilir, `published=False`)."""
+    from .services import own_assignment, today
+    if kind not in MATRIX_KINDS:
+        raise HTTPException(400, 'kind: movzu, sinaq və ya all')
+    ta = own_assignment(db, user, ta_id)
+    cls = db.get(SchoolClass, ta.class_id)
+    studs = roster(db, ta)
+    nums = lesson_numbers(list(db.scalars(select(PlanLesson).where(PlanLesson.assignment_id == ta.id))))
+    cols: dict[str, dict] = {}
+    cells: dict[str, dict[int, dict]] = {}
+
+    # ---- onlayn
+    for k in KINDS:
+        if kind != 'all' and kind != k:
+            continue
+        data = collect(db, user, k, {ta.id}, date_from, date_to)
+        by_unit = {t['unit']: t for t in data['tests']}
+        for r in data['rows']:
+            if r['ta_id'] != ta.id or not r['visible']:
+                continue
+            u = r['unit']
+            if u not in cols:
+                t = by_unit[u]
+                no = None
+                if k == 'movzu':
+                    ot = db.get(OnlineTask, r['task_id'])
+                    no = nums.get(ot.plan_lesson_id) if ot and ot.plan_lesson_id else None
+                cols[u] = {'key': u, 'kind': k, 'no': no, 'title': (t['topic'] or t['title']) if k == 'movzu' else sinaq_name(t['title']),
+                           'date': _iso(t['date'])}
+                cells[u] = {}
+            st = r['status']
+            cells[u][r['student_id']] = _cell('yazıb', r['pct']) if st == 'yazıb' else \
+                _cell('yazmayıb') if st == 'yazmayıb' else _cell('gözlənilir')
+
+    # ---- kağız / skan
+    wanted = {'movzu': ('TEST',), 'sinaq': ('SINAQ',), 'all': ('KSQ', 'BSQ', 'TEST', 'SINAQ')}[kind]
+    exams = [e for e in db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.kind.in_(wanted)).order_by(Exam.date, Exam.id))
+             if _in_range(e.date, date_from, date_to)]
+    smap = _series_map(db, {e.batch_id for e in exams if e.batch_id})
+    for e in exams:
+        link = f'b{e.batch_id}' if e.batch_id else f't{e.online_task_id}' if e.online_task_id else None
+        key = link if link in cols else f'e{e.id}'
+        if key not in cols:
+            if e.kind == 'SINAQ':
+                title = _mock_name(e.title or f'Sınaq №{e.no}', e.batch_id, smap)[0]
+            elif e.kind == 'TEST':
+                title = e.title or f'Test №{e.no}'
+            else:
+                title = f"{e.kind}-{e.no}" + (f' (+{e.extra_seq})' if e.extra_seq else '')
+            no = None
+            if e.kind == 'TEST' and e.online_task_id:
+                ot = db.get(OnlineTask, e.online_task_id)
+                no = nums.get(ot.plan_lesson_id) if ot and ot.plan_lesson_id else None
+            cols[key] = {'key': key, 'kind': 'movzu' if e.kind == 'TEST' else e.kind.lower(), 'no': no, 'title': title,
+                         'date': _iso(e.date)}
+            cells[key] = {}
+        scores = {x.student_id: x for x in db.scalars(select(ExamScore).where(ExamScore.exam_id == e.id))}
+        for s in studs:
+            if e.extra_students is not None and s.id not in e.extra_students:
+                continue
+            sc = scores.get(s.id)
+            if sc is None or sc.absent or sc.points is None or not e.max_points:
+                if s.id not in cells[key]:                        # onlayn xana kağız boşluğu ilə əzilmir
+                    cells[key][s.id] = _cell('gözlənilir' if e.date > today() else 'yazmayıb')
+                continue
+            pub = exam_published(db, e, s.id)
+            if not pub and cells[key].get(s.id, {}).get('status') == 'yazıb':
+                continue
+            pct = round(sc.points * 100 / e.max_points, 1)
+            cells[key][s.id] = _cell('yazıb' if pub else 'nəşr olunmayıb', pct, pub)
+
+    # ---- sütunlar və sətirlər
+    clist = sorted(cols.values(), key=lambda c: (_COL_ORDER[c['kind']], no_key(c['no']) if c['kind'] == 'movzu' else (0, ()),
+                                                  c['date'] or '', c['title']))
+    rows = []
+    for s in studs:
+        cs, pcts, wrote, given = {}, [], 0, 0
+        for c in clist:
+            x = cells[c['key']].get(s.id) or _cell('təyin olunmayıb')
+            cs[c['key']] = x
+            if x['status'] in _DONE:
+                wrote += 1
+            if x['status'] in _DONE or x['status'] == 'yazmayıb':
+                given += 1
+            if x['status'] == 'yazıb':
+                pcts.append(x['pct'])
+        rows.append({'student_id': s.id, 'full_name': s.full_name, 'cells': cs, 'wrote': wrote, 'given': given,
+                     'avg_pct': avg(pcts)})
+    for c in clist:
+        xs = [cells[c['key']].get(s.id) for s in studs]
+        xs = [x for x in xs if x and x['status'] != 'təyin olunmayıb']
+        c['assigned_count'] = len(xs)
+        c['wrote_count'] = sum(1 for x in xs if x['status'] in _DONE)
+        c['avg_pct'] = avg([x['pct'] for x in xs if x['status'] == 'yazıb'])
+    return {'ta_id': ta.id, 'class_name': cls.name, 'subject': ta.subject, 'kind': kind,
+            'period': {'from': _iso(date_from), 'to': _iso(date_to)}, 'columns': clist, 'rows': rows}
