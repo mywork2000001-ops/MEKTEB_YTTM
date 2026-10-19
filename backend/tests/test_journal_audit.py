@@ -144,7 +144,7 @@ def test_plan_tests_split_and_standards(world, monkeypatch):
     assert [x['pct'] for x in std['2.1.1']['students']] == [40.0, 80.0]
     assert s['topics'][0]['topic'] == 'Kvadrat tənliklər'
     for i in range(2):                                  # 5 şagird – sinif ortası görünür
-        c.post('/api/students', json={'full_name': f'Əlavə Şagird{i} oğlu', 'class_id': cid})
+        c.post('/api/students', json={'full_name': f'Əlavə Şagird{i} oğlu', 'class_id': cid, 'force': True})
     s = c.get(f'/api/journal/{ta}/standards', params={'semester': 1}).json()
     assert s['class_avg_hidden'] is False and next(x for x in s['standards'] if x['standard'] == '2.1.1')['class_pct'] == 60.0
 
@@ -179,7 +179,7 @@ def test_closed_semester_teacher_blocked(world, monkeypatch):
     t = world[0]('ilqar')
     cid = t.post('/api/classes', json={'name': 'X l'}).json()['id']
     t.post(f'/api/classes/{cid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 2, 'slots': {'1': [1, 5]}})
-    sid = t.post('/api/students', json={'full_name': 'Test Şagird oğlu', 'class_id': cid}).json()['id']
+    sid = t.post('/api/students', json={'full_name': 'Test Şagird oğlu', 'class_id': cid, 'force': True}).json()['id']
     from app.models import TeachingAssignment
     with world[1]() as db:
         ta = db.query(TeachingAssignment).filter_by(class_id=cid).one().id
