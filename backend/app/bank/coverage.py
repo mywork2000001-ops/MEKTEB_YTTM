@@ -29,13 +29,16 @@ def program_topics(program: PlanProgram) -> list[tuple[str, str | None, int | No
     return out
 
 
-def coverage(db: Session, program: PlanProgram, ta: TeachingAssignment | None = None, group_grade: int | None = None) -> dict:
+def coverage(db: Session, program: PlanProgram, ta: TeachingAssignment | None = None, group_grade: int | None = None,
+             sections: list[str] | None = None) -> dict:
     explicit = ta.bank_source if ta is not None and ta.bank_source else None
     if explicit == 'none':
         return {'total': 0, 'found': 0, 'missing': 0, 'by_grade': {}, 'items': [], 'missing_list': [], 'off': True}
     gm = GradeMatcher(db, explicit)
     items, by_grade = [], {}
     for topic, section, grade in program_topics(program):
+        if sections and section not in sections:
+            continue
         g = grade or group_grade
         best, src = gm.find(g, topic, section, 1)
         f, cover = (best[0][0], gm.matcher(src, g).cover(best[0][0], topic)) if best and src else (None, 0.0)

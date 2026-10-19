@@ -92,6 +92,7 @@ def attach_p0010(db: Session, cls, lessons: list[dict], ta=None) -> None:
         if not srcs:
             continue
         l['lesson_grade'] = g
+        l['p0010_sources'] = srcs
         k = manual.get(l.get('id'))
         if k is not None:
             f = db.get(BankFile, k.file_id) if k.file_id else None

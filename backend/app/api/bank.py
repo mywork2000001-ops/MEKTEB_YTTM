@@ -104,16 +104,17 @@ def lessons(source: str, db: Session = Depends(get_db), _: User = Depends(staff)
 
 
 @router.get('/coverage')
-def coverage_report(program_id: int, ta_id: int | None = None, db: Session = Depends(get_db), user: User = Depends(staff)):
+def coverage_report(program_id: int, ta_id: int | None = None, sections: str | None = None, db: Session = Depends(get_db),
+                    user: User = Depends(staff)):
     """Bank boşluqları: proqramın hər mövzusu üçün sinif, tapılan fayl və uyğunluq; «yoxdur» siyahısı sinif üzrə
     (docs/sinfe-gore-testler-promtu.md §3). ta_id verilsə – sinfin test mənbəyi ayarı və qrupun sinfi nəzərə alınır."""
     from ..bank.coverage import coverage
     from ..services import class_grade, own_assignment
     from ..models import SchoolClass
-    from .programs import _visible
+    from .programs import _q_sections, _visible
     p = _visible(db, user, program_id)
     ta = own_assignment(db, user, ta_id) if ta_id else None
-    return coverage(db, p, ta, class_grade(db, db.get(SchoolClass, ta.class_id)) if ta else None)
+    return coverage(db, p, ta, class_grade(db, db.get(SchoolClass, ta.class_id)) if ta else None, _q_sections(sections))
 
 
 @router.get('/viktorina-topics')
