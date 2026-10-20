@@ -64,6 +64,7 @@ const S = {
   Settings: lazy(() => import('./pages/student/Settings')),
 }
 const Chat = lazy(() => import('./pages/Chat'))
+const Guide = lazy(() => import('./pages/Guide'))
 
 /** Köhnə ünvan → «Testlər və sınaqlar» (sorğu parametrləri saxlanır: ?tab= → görünüş, ?student= → şagird profili). */
 function ToTests({ s }: { s: string }) {
@@ -110,6 +111,7 @@ export default function App() {
                 <Route path="/analytics" element={<S.Analytics />} />
                 <Route path="/achievements" element={<S.Achievements />} />
                 <Route path="/chat" element={<Chat />} />
+                <Route path="/guide" element={<Guide />} />
                 <Route path="/settings" element={<S.Settings />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
@@ -133,6 +135,7 @@ export default function App() {
                 <Route path="/reports" element={<T.Reports />} />
                 <Route path="/homeroom" element={<T.Homeroom />} />
                 <Route path="/chat" element={<Chat />} />
+                <Route path="/guide" element={<Guide />} />
                 <Route path="/settings" element={<T.Settings />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

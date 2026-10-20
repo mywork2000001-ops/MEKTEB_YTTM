@@ -25,6 +25,7 @@ export const TEACHER_NAV: NavItem[] = [
   { to: '/homeroom', icon: 'students', label: 'Sinif rəhbəri', short: 'Rəhbər', group: 'Siniflər' },
   { to: '/chat', icon: 'feedback', label: 'Çat', group: 'Ünsiyyət' },
   { to: '/surveys', icon: 'star', label: 'Şagird sorğusu', short: 'Sorğu', group: 'Ünsiyyət' },
+  { to: '/guide', icon: 'info', label: 'Bələdçi', group: 'Ünsiyyət' },
 ]
 const TEACHER_TABS = ['/', '/journal', '/tests', '/chat']
 /** Tənzimləmələr – qrupsuz, akkordeondan kənarda sabit sətir */
@@ -42,6 +43,7 @@ export const STUDENT_NAV: NavItem[] = [
   { to: '/analytics', icon: 'reports', label: 'Analitika', group: 'İnkişafım' },
   { to: '/chat', icon: 'feedback', label: 'Çat', group: 'Ünsiyyət' },
   { to: '/surveys', icon: 'overview', label: 'Sorğular', group: 'Ünsiyyət' },
+  { to: '/guide', icon: 'info', label: 'Bələdçi', group: 'Ünsiyyət' },
 ]
 const STUDENT_TABS = ['/', '/lesson', '/tasks', '/results']
 

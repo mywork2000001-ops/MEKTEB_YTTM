@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { tt } from '../../i18n'
 import { get } from '../../api'
 import { useT } from '../../i18n'
+import GuideCard from '../../GuideCard'
 import { NextExtra } from './Extra'
 import Notifications from './Notifications'
 import { examLabel } from './Plan'
@@ -29,6 +30,7 @@ export default function Today() {
         {me.days_to_exam != null && (
           <div className="clock"><div className="clk-date">{t('İmtahana qalıb')}</div><div className="clk-time">{me.days_to_exam}<span> {t('gün')}</span></div><div className="clk-date">{fmtDate(me.exam_date)}</div></div>)}
       </section>
+      <GuideCard />
       <Notifications />
       <div className="grid g2">
         <section className="panel">
