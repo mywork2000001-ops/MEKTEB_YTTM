@@ -29,7 +29,7 @@ export function GuidePlayer({ role, id, onEnded, maxHeight }: { role: 'student' 
   }
   if (noVideo) return <p className="muted">{t('Video açılmadı.')}</p>
   return (
-    <div className="gp">
+    <div className="guide-player">
       <div className="gp-stage">
         <video key={lang} ref={ref} controls={playing} preload="metadata" playsInline poster={guidePoster(role, id, lang)}
           src={guideVideoSrc(role, id, lang)} style={{ maxHeight: maxHeight ?? '62vh' }}
