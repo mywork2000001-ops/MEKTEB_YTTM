@@ -240,7 +240,7 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
   const [lib] = useLoad<any[]>(() => (cls.mine ? Promise.resolve([]) : get('/api/programs', { class_id: String(cls.id), ...(grade ? { grade_hint: grade } : {}) })), [cls.id, grade])
   const [auto, setAuto] = useState(true)
   // seçilən proqram bu cədvəl və kurs müddəti ilə neçə dərsə açılır, nə sığmır – qoşulmazdan əvvəl
-  const [est, setEst] = useState<{ lessons: number; slots: number; warnings: string[]; lint?: { key: string; params: Record<string, any>; message: string }[]; hours_mismatch?: boolean; program_hours?: number | null; class_hours?: number; budget?: any } | null>(null)
+  const [est, setEst] = useState<{ lessons: number; slots: number; warnings: string[]; warnings_i18n?: { key: string; params: Record<string, any> }[]; lint?: { key: string; params: Record<string, any>; message: string }[]; hours_mismatch?: boolean; program_hours?: number | null; class_hours?: number; budget?: any } | null>(null)
   const estKey = JSON.stringify([prog, priv ? times : slots, course, summ])
   useEffect(() => {
     setEst(null)
@@ -285,7 +285,7 @@ function JoinForm({ cls, onClose, onDone }: { cls: Cls; onClose: () => void; onD
         {est && <div className="small" style={{ margin: 0 }}>
           <BudgetPill b={est.budget} />
           <span className="muted">{t('Proqram:')} {est.lessons} {t('dərs · kursda')} {est.slots} {t('dərs yuvası')}</span>
-          {est.warnings.map(w => <p key={w} style={{ color: 'var(--warn)', margin: '4px 0 0' }}>⚠ {w}</p>)}
+          {(est.warnings_i18n || est.warnings.map(w => ({ key: w, params: {} }))).map(w => <p key={w.key + JSON.stringify(w.params)} style={{ color: 'var(--warn)', margin: '4px 0 0' }}>⚠ {t(w.key, w.params)}</p>)}
           {est.hours_mismatch && <p style={{ color: 'var(--warn)', margin: '4px 0 0' }}>⚠ {t('Proqram həftədə {p} saatlıqdır, cədvəldə isə {c} saat var', { p: est.program_hours, c: est.class_hours })}</p>}
           {(est.lint || []).map(w => <p key={w.message} style={{ color: 'var(--warn)', margin: '4px 0 0' }}>⚠ {t(w.key, w.params)}</p>)}
           {est.warnings.length > 0 && <p className="muted" style={{ margin: '4px 0 0' }}>{t('Qoşulandan sonra «Cədvəl» → «Bölmələri seç» ilə lazım olan bölmələri seçə bilərsiniz.')}</p>}

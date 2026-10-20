@@ -16,7 +16,7 @@ type Sess = { id: number; date: string; weekday: string; start: string; end: str
   material_ids: number[]; materials: { id: number; title: string; kind: string }[] }
 export type Course = { id: number; title: string; subject: string; format: string; classes: string[]; audience: { ta_ids: number[]; levels: string[] | null; student_ids: number[] | null }
   schedule: { weekday: number; start: string; end: string; room?: string | null; link?: string | null }[]; starts_on: string; ends_on: string; goal: string | null
-  students: number; sessions: number; held: number; cancelled: number; next: Sess | null; session_list?: Sess[]; members?: { student_id: number; full_name: string; class_name: string }[]; warnings?: string[]
+  students: number; sessions: number; held: number; cancelled: number; next: Sess | null; session_list?: Sess[]; members?: { student_id: number; full_name: string; class_name: string }[]; warnings?: string[]; warnings_i18n?: { key: string; params: Record<string, any> }[]
   kind: Kind; kind_set: boolean; program: { id: number; key: string | null; title: string } | null; program_applied: boolean }
 export type Kind = 'inkisaf' | 'tereqqi' | 'diger'
 export type Warn = { key: string; params?: Record<string, string | number> }
@@ -238,7 +238,7 @@ function CourseView({ id, archived, onClose }: { id: number; archived: boolean; 
         <div className="stack">
           <p className="small muted" style={{ margin: 0 }}>{c.subject} · {c.classes.join(', ')}{c.audience.levels ? (' · ' + t('{x1} qrup', { x1: c.audience.levels.join(', ') })) : ''} · {c.students} {t('şagird ·')} {c.format}{c.goal ? ` · ${c.goal}` : ''}</p>
           {(c.warnings || []).length > 0 && <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>
-            {t('Məktəb cədvəli ilə toqquşma:')} {c.warnings!.join('; ')}</div>}
+            {t('Məktəb cədvəli ilə toqquşma:')} {(c.warnings_i18n || c.warnings!.map(w => ({ key: w, params: {} as Record<string, any> }))).map(w => t(w.key, { ...w.params, day: w.params.day ? t(w.params.day) : undefined })).join('; ')}</div>}
           <Seg value={tab} onChange={setTab} options={[['plan', t('Plan')], ['att', t('Şagirdlər')], ['stats', t('Statistika')]]} />
           {tab === 'plan' && <>
             <ProgramPanel c={c} archived={archived} onChange={reload} />

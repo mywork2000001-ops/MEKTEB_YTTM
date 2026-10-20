@@ -440,6 +440,7 @@ class CopyIn(BaseModel):
     duration_min: TestMinutes | None = None                  # boş – əvvəlki müddət; 0 – taymer yoxdur
     title: str | None = Field(None, min_length=2, max_length=200)
     student_ids: list[int] | None = None           # boş – bütün sinif/qrup
+    unlimited: bool = False                                  # müddətsiz: taymer və son tarix yoxdur (KSQ/BSQ istisna)
 
 
 @router.post('/{ta_id}/{task_id}/copy')
@@ -453,6 +454,12 @@ def copy_task(ta_id: int, task_id: int, body: CopyIn, user: User = Depends(staff
     target = own_assignment(db, user, body.target_ta_id)
     o, c = aware(body.opens_at), closes_or_none(body.closes_at)
     dur = body.duration_min if body.duration_min is not None else (max(src.duration_min, MIN_TEST_MIN) if src.duration_min else 0)
+    if src.kind == 'ksq':                          # KSQ/BSQ müddətsiz olmur: həmişə 45 dəq və son tarix
+        if body.closes_at is None:
+            raise HTTPException(400, 'KSQ/BSQ üçün bağlanma vaxtı seçin')
+        dur = MIN_TEST_MIN
+    elif body.unlimited or (is_unlimited(src) and body.closes_at is None and body.duration_min is None):
+        c, dur = NO_DEADLINE, 0                    # müddətsiz mənbənin surəti də müddətsizdir (timing.py)
     if c <= o:
         raise HTTPException(400, 'Bağlanma vaxtı açılmadan sonra olmalıdır')
     if c <= now():

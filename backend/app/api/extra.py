@@ -28,6 +28,7 @@ from ..models import (ExtraAttendance, ExtraCourse, ExtraSession, Holiday, Level
                       TopicProgress, User, now)
 from ..services import SCHOOL_TZ, own_assignment, roster
 from .common import audit, current_year, need_school
+from ..programs import Msg, i18n_list
 from .plan import bell
 from .tasks import CustomQ, _snapshot, apct, aware, custom_snapshot
 
@@ -134,9 +135,11 @@ def conflicts(db: Session, user: User, ta_ids: list[int], schedule: list[dict]) 
             cls = db.get(SchoolClass, t.class_id)
             for p in (t.slots or {}).get(str(sl['weekday']), []):
                 if _overlap(sl['start'], sl['end'], bell(db, cls, p, t, wd=sl['weekday'])):
-                    who = 'sizin dərsiniz' if t.teacher_id == user.id else f'{cls.name} sinfinin dərsi'
-                    out.append(f'{DAYS[sl["weekday"]]} {sl["start"]}–{sl["end"]}: {who} ({cls.name}, {t.subject}, {p}-ci saat)')
-    return list(dict.fromkeys(out))
+                    key = ('{day} {start}–{end}: sizin dərsiniz ({cls}, {subj}, {p}-ci saat)' if t.teacher_id == user.id else
+                           '{day} {start}–{end}: {cls} sinfinin dərsi ({cls}, {subj}, {p}-ci saat)')
+                    out.append(Msg(key, day=DAYS[sl['weekday']], start=sl['start'], end=sl['end'], cls=cls.name,
+                                   subj=t.subject, p=p))
+    return list(dict.fromkeys(out))                       # Msg – AZ mətn + açar/parametrlər (`warnings_i18n`)
 
 
 def generate(db: Session, c: ExtraCourse, frm: dt.date | None = None) -> int:
@@ -177,7 +180,7 @@ def _topics_text(db: Session, s: ExtraSession) -> list[dict]:
 
 def session_out(db: Session, s: ExtraSession, n_students: int | None = None) -> dict:
     att = list(db.scalars(select(ExtraAttendance).where(ExtraAttendance.session_id == s.id)))
-    return {'id': s.id, 'date': s.date, 'weekday': DAYS[s.date.weekday()], 'start': s.start, 'end': s.end,
+    return {'id': s.id, 'date': s.date, 'weekday': DAYS[s.date.weekday()], 'weekday_i': s.date.weekday(), 'start': s.start, 'end': s.end,
             'format': s.format, 'room': s.room, 'link': s.link, 'topics': _topics_text(db, s), 'goals': s.goals,
             'resources': s.resources, 'homework': s.homework, 'status': s.status, 'note': s.note,
             'material_ids': s.material_ids or [],
@@ -253,13 +256,14 @@ def create_course(body: CourseIn, user: User = Depends(staff), db: Session = Dep
     warn = conflicts(db, user, c.audience['ta_ids'], sched)
     audit(db, user, 'create', 'extra_course', c.id, title=c.title, sessions=n)
     db.commit()
-    return {**course_out(db, c), 'warnings': warn}
+    return {**course_out(db, c), 'warnings': warn, 'warnings_i18n': i18n_list(warn)}
 
 
 @router.get('/{cid}')
 def get_course(cid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     c = _course(db, user, cid)
-    return {**course_out(db, c, full=True), 'warnings': conflicts(db, user, c.audience['ta_ids'], c.schedule)}
+    w = conflicts(db, user, c.audience['ta_ids'], c.schedule)
+    return {**course_out(db, c, full=True), 'warnings': w, 'warnings_i18n': i18n_list(w)}
 
 
 class CoursePatch(BaseModel):
@@ -887,7 +891,7 @@ def student_courses(db: Session, s: Student) -> list[dict]:
                 at = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id.in_(tids), TaskAttempt.student_id == s.id,
                                                          TaskAttempt.submitted_at.is_not(None)))
                 test = {'title': task.title if task else '', 'pct': round(apct(at), 1) if at and at.total else None}
-            rows.append({'id': x.id, 'date': x.date, 'weekday': DAYS[x.date.weekday()], 'start': x.start, 'end': x.end,
+            rows.append({'id': x.id, 'date': x.date, 'weekday': DAYS[x.date.weekday()], 'weekday_i': x.date.weekday(), 'start': x.start, 'end': x.end,
                          'format': x.format, 'room': x.room, 'status': x.status, 'note': x.note,
                          'topics': [y['text'] for y in _topics_text(db, x)], 'goals': x.goals, 'resources': x.resources,
                          'homework': x.homework,

@@ -214,6 +214,28 @@ def capacity(db: Session, ta: TeachingAssignment) -> dict:
     return {'slots': s1 + s2, 'sem1': len(s1), 'sem2': len(s2)}
 
 
+class Msg(str):
+    """AZ mətn (geriyə uyğun str) + tərcümə üçün açar/parametrlər: frontend `t(key, params)` ilə EN/RU göstərir."""
+    key: str
+    params: dict
+
+    def __new__(cls, key: str, /, **params):
+        o = super().__new__(cls, key.format(**params))
+        o.key, o.params = key, params
+        return o
+
+    def __reduce__(self):                                   # copy / pickle
+        return (_msg, (self.key, self.params))
+
+
+def _msg(key: str, params: dict) -> 'Msg':                  # (cls, key positional-only: params may contain «cls»)
+    return Msg(key, **params)
+
+
+def i18n_list(msgs: list) -> list[dict]:
+    return [{'key': m.key, 'params': m.params} if isinstance(m, Msg) else {'key': str(m), 'params': {}} for m in msgs]
+
+
 # ---------------------------------------------------------------- uyğunlaşan proqramın açılması
 def _share(total: int, n: int) -> list[int]:
     """total dərsi n mövzuya bərabər böl (ən böyük qalıq), hər birinə ən azı 1."""
@@ -260,11 +282,11 @@ def expand(tpl: dict, grade: int, cap1: int, cap2: int, summative: bool, sinaq: 
                 ksq = False
         free = cap - fixed()
         if free < len(topics):
-            warnings.append(f'{sem}-ci yarımil: {cap} dərs yuvası {len(topics) + final} dərs üçün azdır – '
-                            f'{len(topics) + final - max(cap, 0)} dərs sığmır')
+            warnings.append(Msg('{sem}-ci yarımil: {cap} dərs yuvası {need} dərs üçün azdır – {miss} dərs sığmır',
+                                sem=sem, cap=cap, need=len(topics) + final, miss=len(topics) + final - max(cap, 0)))
             free = len(topics)
         if not ksq and (summative or sinaq) and sections:
-            warnings.append(f'{sem}-ci yarımil: yuva az olduğu üçün KSQ dərsləri plana salınmadı')
+            warnings.append(Msg('{sem}-ci yarımil: yuva az olduğu üçün KSQ dərsləri plana salınmadı', sem=sem))
         per = _share(free, len(topics))
         if diag:
             prev = ROMAN.get(grade - 1)
@@ -348,11 +370,11 @@ def expand_course(tpl: dict, dates: list[dt.date], sem1_end: dt.date, sizes: lis
             final = False
     free = topic_room()
     if free < n_topics:
-        warnings.append(f'Kursda {cap} dərs yuvası {n_topics} mövzu üçün azdır – {n_topics - max(cap, 0)} mövzu sığmır; '
-                        'lazım olan bölmələri seçin və ya dərs sayını artırın')
+        warnings.append(Msg('Kursda {cap} dərs yuvası {n} mövzu üçün azdır – {miss} mövzu sığmır; '
+                            'lazım olan bölmələri seçin və ya dərs sayını artırın', cap=cap, n=n_topics, miss=n_topics - max(cap, 0)))
         free = n_topics
     elif dropped:
-        warnings.append('Yuva az olduğu üçün bəzi sınaq dərsləri plana salınmadı')
+        warnings.append(Msg('Yuva az olduğu üçün bəzi sınaq dərsləri plana salınmadı'))
     per = _share(free, n_topics)
     res = tpl.get('resource')
     out: list[dict] = []
@@ -438,11 +460,12 @@ def _expand_course_meetings(tpl: dict, dates: list[dt.date], sem1_end: dt.date, 
             final = False
     free = topic_room()
     if free < n_topics:
-        warnings.append(f'Kursda {cap} görüş {n_topics} mövzu üçün azdır – {n_topics - max(cap, 0)} mövzu sığmır; '
-                        'lazım olan bölmələri seçin, həftəyə görüş əlavə edin və ya kurs müddətini artırın')
+        warnings.append(Msg('Kursda {cap} görüş {n} mövzu üçün azdır – {miss} mövzu sığmır; '
+                            'lazım olan bölmələri seçin, həftəyə görüş əlavə edin və ya kurs müddətini artırın',
+                            cap=cap, n=n_topics, miss=n_topics - max(cap, 0)))
         free = n_topics
     elif dropped:
-        warnings.append('Görüş az olduğu üçün bəzi sınaq görüşləri plana salınmadı')
+        warnings.append(Msg('Görüş az olduğu üçün bəzi sınaq görüşləri plana salınmadı'))
     per = _share(free, n_topics)                  # hər mövzuya düşən görüş sayı
     res = tpl.get('resource')
     out: list[dict] = []
@@ -561,14 +584,15 @@ def expand_toplu(tpl: dict, dates: list[dt.date], sem1_end: dt.date, grade: int 
             r['exam'], dropped = 0, True
     free = cap - fixed()
     if free < n:
-        warnings.append(f'{cap} dərs yuvası {n} fəsil üçün azdır – {n - max(cap, 0)} fəsil sığmır; '
-                        'lazım olan fəsilləri (məs. yalnız Cəbr və ya Həndəsə) seçin və ya dərs sayını artırın')
+        warnings.append(Msg('{cap} dərs yuvası {n} fəsil üçün azdır – {miss} fəsil sığmır; '
+                            'lazım olan fəsilləri (məs. yalnız Cəbr və ya Həndəsə) seçin və ya dərs sayını artırın',
+                            cap=cap, n=n, miss=n - max(cap, 0)))
         free = n
     else:
         if dropped:
-            warnings.append('Yuva az olduğu üçün bəzi ehtiyat dərslər (sınaq, diaqnostika, imtahan təhlili) plana salınmadı')
+            warnings.append(Msg('Yuva az olduğu üçün bəzi ehtiyat dərslər (sınaq, diaqnostika, imtahan təhlili) plana salınmadı'))
         if minimum == 1:
-            warnings.append('Yuva az olduğu üçün bəzi fəsillərə 1 dərs düşür (fəsil testi ilə birlikdə)')
+            warnings.append(Msg('Yuva az olduğu üçün bəzi fəsillərə 1 dərs düşür (fəsil testi ilə birlikdə)'))
     per = _prop(free, [c['tasks'] for c in chs], minimum) if n else []
     out: list[dict] = []
 
@@ -781,8 +805,8 @@ def lessons_for(db: Session, program: PlanProgram, ta: TeachingAssignment,
             tpl['semesters'] = [[s for s in sem if s['section'] in keep] for sem in tpl['semesters']]
             for i, other in ((0, 1), (1, 0)):
                 if not tpl['semesters'][i] and tpl['semesters'][other]:
-                    warnings.append(f'{"I" if i == 0 else "II"} yarımildən bölmə seçilməyib – onun dərs yuvaları '
-                                    f'{"II" if i == 0 else "I"} yarımilin bölmələrinə verildi')
+                    warnings.append(Msg('{a} yarımildən bölmə seçilməyib – onun dərs yuvaları {b} yarımilin bölmələrinə verildi',
+                                        a='I' if i == 0 else 'II', b='II' if i == 0 else 'I'))
                     cap1, cap2 = (0, cap1 + cap2) if i == 0 else (cap1 + cap2, 0)
                     relabel = True
         from .models import School
@@ -793,16 +817,18 @@ def lessons_for(db: Session, program: PlanProgram, ta: TeachingAssignment,
         lessons, warnings = [dict(l) for l in program.data.get('lessons', []) if not keep or (l.get('section') or 'Bölməsiz') in keep], []
         total = cap['sem1'] + cap['sem2']
         if len(lessons) > total:
-            warnings.append(f'Proqramda {len(lessons)} dərs var, sinfin cədvəlində ildə {total} dərs yuvası – '
-                            f'{len(lessons) - total} dərs sığmır')
+            warnings.append(Msg('Proqramda {n} dərs var, sinfin cədvəlində ildə {total} dərs yuvası – {miss} dərs sığmır',
+                                n=len(lessons), total=total, miss=len(lessons) - total))
         n1 = sum(1 for l in lessons if l.get('semester') == 1)
         if n1 > cap['sem1']:
-            warnings.append(f'I yarımil dərsləri ({n1}) I yarımil yuvalarından ({cap["sem1"]}) çoxdur – bir hissəsi II yarımilə düşəcək')
+            warnings.append(Msg('I yarımil dərsləri ({n1}) I yarımil yuvalarından ({s1}) çoxdur – bir hissəsi II yarımilə düşəcək',
+                                n1=n1, s1=cap['sem1']))
     if relabel:                                   # bir yarımil boş qalıb – yarımil dərsin düşdüyü tarixə görə
         for i, l in enumerate(lessons):
             l['semester'] = 1 if i < len(cap['slots']) and cap['slots'][i][0] <= sem1_end else 2
     if program.grade and grade and program.grade != grade and not is_course(program):
-        warnings.append(f'Proqram {ROMAN.get(program.grade, program.grade)} sinif üçündür, bu sinif – {ROMAN.get(grade, grade)}')
+        warnings.append(Msg('Proqram {pg} sinif üçündür, bu sinif – {g}', pg=ROMAN.get(program.grade, program.grade),
+                            g=ROMAN.get(grade, grade)))
     grade_warning, suggest = course_grade_check(program, class_grade(db, cls), keep)
     from .models import School
     annotate_variants(lessons, program, class_grade(db, cls), db.get(School, cls.school_id).kind == 'private')
@@ -813,7 +839,7 @@ def lessons_for(db: Session, program: PlanProgram, ta: TeachingAssignment,
            'sem1_lessons': sum(1 for l in lessons if l['semester'] == 1),
            'sem2_lessons': sum(1 for l in lessons if l['semester'] == 2),
            'ksq': sum(l['assessment_type'] == 'KSQ' for l in lessons), 'bsq': sum(l['assessment_type'] == 'BSQ' for l in lessons),
-           'written_lessons': n_written, 'warnings': warnings, 'sections': sections,
+           'written_lessons': n_written, 'warnings': warnings, 'warnings_i18n': i18n_list(warnings), 'sections': sections,
            'budget': budget_summary(cap['slots'], sizes, need),
            'grade_warning': grade_warning, 'suggest_sections': suggest}
     return lessons, rep

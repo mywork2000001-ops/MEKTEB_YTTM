@@ -236,7 +236,7 @@ function ApplyProgram({ p, ta, init, onClose, onDone }: { p: Prog; ta: number; i
           <div className="kpi"><b>{pv.ksq} · {pv.bsq}</b><span>KSQ · BSQ</span></div>
           <div className="kpi"><b>{pv.written_lessons}</b><span>{t('jurnalda yazılıb')}</span></div>
         </div>}
-        {pv.warnings.map((w: string) => <p key={w} className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {w}</p>)}
+        {(pv.warnings_i18n || pv.warnings.map((w: string) => ({ key: w, params: {} }))).map((w: any) => <p key={w.key + JSON.stringify(w.params)} className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {t(w.key, w.params)}</p>)}
         {pv.grade_warning && <p className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {t(pv.grade_warning.key, pv.grade_warning.params)}{' '}
           {pv.suggest_sections?.length > 0 && <button className="btn sm" onClick={() => sx.setSel(pv.suggest_sections)}>{t('Yalnız qrupun sinfinə qədər bölmələri seç')}</button>}</p>}
         <CoverageLine pid={p.id} ta={ta} sections={key} />
@@ -286,7 +286,7 @@ function ExtraLessons({ aid, onClose }: { aid: number; onClose: () => void }) {
       <ErrorBox error={err} />
       {!d ? <Loading /> : <>
         <p className="small muted">{d.level ? `${t('{l} səviyyə qrupu', { l: t(d.level) })} · ` : ''}{t('{n} dərs · tarixlər bu sinfin cədvəlinə görə (jurnala yazılmır).', { n: d.lessons })}</p>
-        {d.warnings.map((w: string) => <p key={w} className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {w}</p>)}
+        {(d.warnings_i18n || d.warnings.map((w: string) => ({ key: w, params: {} }))).map((w: any) => <p key={w.key + JSON.stringify(w.params)} className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {t(w.key, w.params)}</p>)}
         <div className="jlist">{d.lessons_list.map((l: any) => (
           <div key={l.seq} className="jrow cols" style={{ ['--cols' as any]: '92px minmax(0,1fr)', ['--mcols' as any]: '78px minmax(0,1fr)' }}>
             <span className="small">{l.date ? fmtDate(l.date) : '—'}<br /><span className="muted">{l.period ? hourN(l.period) : ''}</span></span>

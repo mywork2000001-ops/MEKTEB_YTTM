@@ -294,7 +294,7 @@ def estimate(pid: int, body: EstimateIn, user: User = Depends(staff), db: Sessio
     dl = [{**l, 'date': d} for l, (d, _) in zip(lessons, cap['slots'])] + lessons[len(cap['slots']):]
     lint = [] if is_course(p) or is_toplu(p) else lint_plan(dl, db.get(AcademicYear, c.year_id), body.has_summative)
     hours = sum(len(v) for v in slots.values())
-    return {'lessons': rep['lessons'], 'slots': rep['sem1_slots'] + rep['sem2_slots'], 'warnings': rep['warnings'], 'lint': lint,
+    return {'lessons': rep['lessons'], 'slots': rep['sem1_slots'] + rep['sem2_slots'], 'warnings': rep['warnings'], 'warnings_i18n': rep['warnings_i18n'], 'lint': lint,
             'grade_warning': rep['grade_warning'], 'suggest_sections': rep['suggest_sections'],
             'hours_mismatch': bool(p.weekly_hours and hours and p.weekly_hours != hours), 'program_hours': p.weekly_hours,
             'class_hours': hours, 'budget': rep['budget']}
