@@ -112,6 +112,7 @@ export function SolutionUpload({ id, at, compact, onDone }: { id: number; at?: s
 
 function Solver({ id, onDone }: { id: number; onDone: () => void }) {
   const t = useT()
+  useEffect(() => { document.body.dataset.solving = '1'; return () => { delete document.body.dataset.solving } }, [])   // giriş videosu pəncərəsi test zamanı çıxmasın
   const [d, setD] = useState<any>(null)
   const [err, setErr] = useState<unknown>()
   const [ans, setAns] = useState<Record<string, any>>({})

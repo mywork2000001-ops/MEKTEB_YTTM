@@ -8,7 +8,7 @@ export type Me = {
   id: number; role: 'admin' | 'teacher' | 'student'; login: string; full_name: string
   school_id: number | null; language: Lang; theme: string | null; weak_password?: boolean
   school_name?: string | null; school_doc?: { deputy?: string | null; director?: string | null } | null
-  workspace?: 'school' | 'private'; has_private?: boolean
+  workspace?: 'school' | 'private'; has_private?: boolean; guide_due?: boolean
 }
 
 type Ctx = {

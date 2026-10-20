@@ -41,3 +41,6 @@ class Settings(BaseSettings):
 @lru_cache
 def settings() -> Settings:
     return Settings()
+
+
+GUIDE_VERSION = 1      # şagirdin giriş videosu; video yenilənəndə artırılır – şagirdlər yenisini bir dəfə görür

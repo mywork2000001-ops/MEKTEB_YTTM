@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './auth'
 import { I18nCtx, setCurrentLang, type Lang } from './i18n'
 import { Layout } from './Layout'
+import { GuideGate } from './GuideModal'
 import Login from './pages/Login'
 import Join from './pages/Join'
 import QrLogin from './pages/QrLogin'
@@ -96,6 +97,7 @@ export default function App() {
         <Login lang={lang} setLang={changeGuestLang} />
       ) : (
         <Layout>
+          {me.role === 'student' && <GuideGate />}
           <Boundary><Suspense fallback={<Loading />}>
             {me.role === 'student' ? (
               <Routes>

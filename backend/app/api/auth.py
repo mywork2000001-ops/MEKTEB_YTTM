@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..config import settings
+from ..config import GUIDE_VERSION, settings
 from ..db import get_db
 from ..deps import current_user
 from ..models import AuditLog, Role, User
@@ -38,6 +38,7 @@ class MeOut(BaseModel):
     workspace: str = 'school'            # aktiv məkan: school | private (fərdi hazırlıq)
     has_private: bool = False
     school_doc: dict | None = None        # imza verənlər: deputy, director
+    guide_due: bool = False               # şagird: giriş videosu hələ göstərilməlidir (GUIDE_VERSION)
 
 
 def _has_private(db, u: User) -> bool:
@@ -53,7 +54,8 @@ def _me(u: User) -> MeOut:
     return MeOut(id=u.id, role=u.role, login=u.login, full_name=u.full_name, school_id=u.school_id,
                  language=u.language, theme=u.theme, school_name=sc.name if sc else None,
                  school_doc=(sc.doc_settings or {}) if sc else None, workspace=(sc.kind if sc else 'school') or 'school',
-                 has_private=bool(db is not None and u.role != Role.student and _has_private(db, u)))
+                 has_private=bool(db is not None and u.role != Role.student and _has_private(db, u)),
+                 guide_due=u.role == Role.student and (u.guide_seen_version or 0) < GUIDE_VERSION)
 
 
 def _set_cookie(response: Response, u: User):
