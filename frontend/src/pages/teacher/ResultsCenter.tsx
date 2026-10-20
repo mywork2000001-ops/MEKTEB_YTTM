@@ -473,7 +473,7 @@ function ClassPanel({ f, lessons, onStudent, kinds, kf, fixedTa }: { f: PP; less
   const [level, setLevel] = useState<'all' | (typeof LV)[number]>('all')
   const [d, err, loading] = useLoad<CData>(() => get(ta ? `/api/results-center/class/${ta}` : '/api/results-center/class', { ...(level !== 'all' ? { level } : {}), ...f.params }), [ta, level, f.label])
   const [review, setReview] = useState<Review | null>(null)
-  const [view, setView] = useState<'sum' | 'matrix'>('sum')
+  const [view, setView] = useState<'sum' | 'matrix'>(() => { try { return sessionStorage.getItem('mk-matrix-missing') === '1' ? 'matrix' : 'sum' } catch { return 'sum' } })
   const [rs, setRs] = useState<MStud[] | null>(null)
   const viewSeg = ta ? <Seg label={t('Görünüş')} value={view} onChange={setView} options={[['sum', 'Xülasə'], ['matrix', 'Kim nəyi işləyib']]} /> : null
   const openResend = async () => {

@@ -156,13 +156,21 @@ function Weekly() {
   const key = w ? `mk-weekly-${w.week}` : ''
   const [closed, setClosed] = useState('')
   const seen = (() => { try { return !!key && localStorage.getItem(key) === '1' } catch { return false } })()
-  if (!w || !w.items.length || seen || closed === key) return null
+  const [ms] = useLoad<{ items: { ta_id: number; class_name: string; subject: string; students: number; total: number }[] }>(() => get('/api/results-center/missing-summary'), [])
+  const miss = ms?.items || []
+  const openMissing = (ta: number) => {                 // Testlər və sınaqlar → Nəticələr → Sinif → «Kim nəyi işləyib» → «Yalnız işlənməyənlər»
+    try { sessionStorage.setItem('mk-pick-tasks', String(ta)); sessionStorage.setItem('mk-matrix-missing', '1') } catch { /* yaddaş yoxdur */ }
+    nav('/tests?s=netice&v=class')
+  }
+  const extra = miss.filter(m => !(w?.items || []).some((x: any) => x.ta_id === m.ta_id))
+  if (!w || (!w.items.length && !miss.length) || seen || closed === key) return null
   const hide = () => { try { localStorage.setItem(key, '1') } catch { /* noop */ } setClosed(key) }
   return (
     <Disclosure id="home.weekly" icon="risk" defaultOpen className="weekly" style={{ marginBottom: 16 }} title={t('Bu həftə diqqət')}
-      summary={<SumChip tone="warn">{t('{n} sinif', { n: w.items.length })}</SumChip>}
+      summary={<SumChip tone="warn">{t('{n} sinif', { n: w.items.length + extra.length })}</SumChip>}
       actions={<button type="button" className="btn sm ghost" onClick={hide}>{t('Oxudum')}</button>}>
-      {w.items.map((x: any) => <WkRow key={x.ta_id} x={x} />)}
+      {w.items.map((x: any) => <WkRow key={x.ta_id} x={x} m={miss.find(z => z.ta_id === x.ta_id)} onMiss={openMissing} />)}
+      {extra.map(m => <WkRow key={m.ta_id} x={{ ta_id: m.ta_id, class_name: m.class_name, subject: m.subject, red: [], absence: [], missing_week: [], no_marks: [] }} m={m} onMiss={openMissing} />)}
       <div className="row" style={{ marginTop: 10 }}>
         <button className="btn sm" onClick={() => nav('/journal')}>{t('Jurnala keç')}</button>
         <button className="btn sm" onClick={() => nav('/reports')}>{t('Analitika → Risk')}</button>
@@ -172,7 +180,7 @@ function Weekly() {
 }
 
 /** Sinif sətri: başlıq (sinif + çiplər); şagird siyahısı standart olaraq bağlıdır. */
-function WkRow({ x }: { x: any }) {
+function WkRow({ x, m, onMiss }: { x: any; m?: { students: number; total: number }; onMiss: (ta: number) => void }) {
   const t = useT()
   const nomarks: string[] = x.no_marks || []
   const names: string[] = [...new Set<string>([...x.red, ...x.absence, ...nomarks])]
@@ -185,11 +193,12 @@ function WkRow({ x }: { x: any }) {
     </>
   )
   const title = <>{x.class_name} <span className="small muted">{x.subject}</span></>
-  if (!names.length) return (
-    <div className="wk-row"><div className="wk-head static"><b className="wk-name">{title}</b><span className="row wk-chips">{chips}</span></div></div>)
-  return (
+  const missBtn = m && m.total > 0 ? <button type="button" className="btn sm ghost" style={{ margin: "0 0 6px 12px" }} onClick={() => onMiss(x.ta_id)}>{t("{n} şagird · {m} işlənməmiş test", { n: m.students, m: m.total })} ›</button> : null
+  if (!names.length) return (<>
+    <div className="wk-row"><div className="wk-head static"><b className="wk-name">{title}</b><span className="row wk-chips">{chips}</span></div></div>{missBtn}</>)
+  return (<>
     <Disclosure variant="flat" title={title} summary={chips}>
       <p className="small muted wk-names">{names.join(", ")}</p>
-    </Disclosure>
+    </Disclosure>{missBtn}</>
   )
 }

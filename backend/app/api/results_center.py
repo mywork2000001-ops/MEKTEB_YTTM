@@ -236,6 +236,78 @@ def class_matrix_api(ta_id: int, kind: Literal['movzu', 'sinaq', 'all'] = 'all',
                     headers={'Content-Disposition': f'attachment; filename="matris-{ta_id}.pdf"'})
 
 
+@router.get('/class/{ta_id}/missing-list')
+def class_missing_api(ta_id: int, kind: Literal['movzu', 'sinaq', 'all'] = 'all', date_from: dt.date | None = Query(None, alias='from'),
+                      date_to: dt.date | None = Query(None, alias='to'), format: Literal['json', 'xlsx', 'pdf'] = 'json',
+                      per_student: int = Query(0, ge=0, le=1), sid: int | None = None,
+                      user: User = Depends(staff), db: Session = Depends(get_db)):
+    """İşlənməyənlər siyahısı (matrisdən): json; pdf/xlsx – sinif üzrə bir sənəd (rəsmi, AZ); per_student=1 – hər şagirdə ayrıca vərəqə
+    (PDF; şagirdin dili ru isə AZ|RU), sid – tək şagird. Yalnız öz dərsim."""
+    from fastapi.responses import Response
+    from ..missing_list_print import class_html, class_xlsx, students_html
+    from ..models import School
+    from ..student_report import class_missing
+    m = class_missing(db, user, ta_id, kind, date_from, date_to, sid)
+    db.commit()                                       # expire_due avtomatik təhvilləri saxlasın
+    if format == 'json':
+        return m
+    if per_student and format == 'xlsx':
+        raise HTTPException(400, 'Hər şagirdə ayrıca vərəqə yalnız PDF-dir')
+    if per_student and not m['rows']:
+        raise HTTPException(404, 'İşlənməyən test yoxdur')
+    from .lessonplans import SCHOOL_DEFAULT
+    sc = db.get(School, user.school_id) if user.school_id else None
+    school = sc.name if sc and sc.name else SCHOOL_DEFAULT
+    audit(db, user, 'export', 'missing_list', str(ta_id), format=format, per_student=per_student, sid=sid)
+    db.commit()
+    if format == 'xlsx':
+        deputy = ((sc.doc_settings or {}) if sc else {}).get('deputy') or ''
+        return Response(class_xlsx(m, school, user.full_name, deputy), headers={'Content-Disposition': f'attachment; filename="islenmeyenler-{ta_id}.xlsx"'},
+                        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    html = students_html(m, school, user.full_name) if per_student else class_html(m, school, user.full_name)
+    return Response(_render_pdf(html), media_type='application/pdf',
+                    headers={'Content-Disposition': f'attachment; filename="islenmeyenler-{ta_id}{"-sagird" if per_student else ""}.pdf"'})
+
+
+@router.get('/student/{sid}/missing-list')
+def student_missing_api(sid: int, kind: Literal['movzu', 'sinaq', 'all'] = 'all', date_from: dt.date | None = Query(None, alias='from'),
+                        date_to: dt.date | None = Query(None, alias='to'), user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Şagird hesabatından: «İşləməli olduğu testlər» vərəqəsi (PDF) – şagirdin mənim bütün dərslərim üzrə (hər dərs ayrıca vərəq)."""
+    from fastapi.responses import Response
+    from ..missing_list_print import students_html
+    from ..models import School
+    from ..student_report import class_missing
+    rows, last = [], None
+    for ta in _my_tas(db, user):
+        try:
+            m = class_missing(db, user, ta.id, kind, date_from, date_to, sid)
+        except HTTPException:
+            continue
+        last = m
+        for r in m['rows']:
+            if r['items']:
+                rows.append({**r, 'class_name': m['class_name'], 'subject': m['subject']})
+    db.commit()
+    if not rows or last is None:
+        raise HTTPException(404, 'İşlənməyən test yoxdur')
+    from .lessonplans import SCHOOL_DEFAULT
+    sc = db.get(School, user.school_id) if user.school_id else None
+    school = sc.name if sc and sc.name else SCHOOL_DEFAULT
+    audit(db, user, 'export', 'missing_list_student', str(sid))
+    db.commit()
+    return Response(_render_pdf(students_html({**last, 'rows': rows}, school, user.full_name)), media_type='application/pdf',
+                    headers={'Content-Disposition': f'attachment; filename="islenmeyenler-sagird-{sid}.pdf"'})
+
+
+@router.get('/missing-summary')
+def missing_summary_api(user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Əsas səhifə («Bu həftə diqqət»): öz dərslərim üzrə işlənməmiş test sayı – siyahı ilə eyni statuslar (class_missing)."""
+    from ..student_report import missing_summary
+    items = missing_summary(db, user, _my_tas(db, user))
+    db.commit()
+    return {'items': items}
+
+
 @router.get('/students')
 def my_students(user: User = Depends(staff), db: Session = Depends(get_db)):
     """Şagird seçimi üçün: öz dərslərimin şagirdləri (sinif adı ilə)."""

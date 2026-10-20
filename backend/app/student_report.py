@@ -355,6 +355,8 @@ def my_results(db: Session, s: Student, date_from: dt.date | None = None, date_t
 MATRIX_KINDS = ('movzu', 'sinaq', 'all')
 _COL_ORDER = {'movzu': 0, 'sinaq': 1, 'ksq': 2, 'bsq': 3}
 _DONE = ('yazıb', 'nəşr olunmayıb')
+# «İşləməli» statuslar (işlənməyənlər siyahısı, Əsas səhifə sayı). Müddətsiz testlər üçün `işlənməyib` statusu əlavə olunanda YALNIZ bura yazılır.
+MISSING_STATUSES = ('yazmayıb', 'gözlənilir')
 
 
 def _cell(status: str, pct: float | None = None, published: bool = True) -> dict:
@@ -461,3 +463,43 @@ def class_matrix(db: Session, user: User, ta_id: int, kind: str = 'all', date_fr
         c['avg_pct'] = avg([x['pct'] for x in xs if x['status'] == 'yazıb'])
     return {'ta_id': ta.id, 'class_name': cls.name, 'subject': ta.subject, 'kind': kind,
             'period': {'from': _iso(date_from), 'to': _iso(date_to)}, 'columns': clist, 'rows': rows}
+
+
+def class_missing(db: Session, user: User, ta_id: int, kind: str = 'all', date_from: dt.date | None = None,
+                  date_to: dt.date | None = None, sid: int | None = None) -> dict:
+    """İşlənməyənlər siyahısı (docs/tasks/islenmeyenler-siyahisi.md): `class_matrix`-dən qurulur (təkrar məntiq yoxdur) –
+    xananın statusu MISSING_STATUSES-dədir. Boş siyahılı şagirdlər çıxmır (sid verilibsə – həmin şagird boş olsa da qalır).
+    Sıralama – ad. `lang` – şagirdin portal hesabının dili (hesab yoxdursa az)."""
+    m = class_matrix(db, user, ta_id, kind, date_from, date_to)
+    cols = {c['key']: c for c in m['columns']}
+    ids = [r['student_id'] for r in m['rows']]
+    uid = {s.id: s.user_id for s in db.scalars(select(Student).where(Student.id.in_(ids)))} if ids else {}
+    ulang = {u.id: u.language for u in db.scalars(select(User).where(User.id.in_([x for x in uid.values() if x])))} if uid else {}
+    rows = []
+    for r in m['rows']:
+        if sid is not None and r['student_id'] != sid:
+            continue
+        items = [{'key': k, 'kind': cols[k]['kind'], 'no': cols[k]['no'], 'title': cols[k]['title'], 'date': cols[k]['date'],
+                  'status': x['status']} for k, x in r['cells'].items() if x['status'] in MISSING_STATUSES]
+        if not items and sid is None:
+            continue
+        rows.append({'student_id': r['student_id'], 'full_name': r['full_name'],
+                     'lang': 'ru' if ulang.get(uid.get(r['student_id'])) == 'ru' else 'az', 'items': items})
+    if sid is not None and not rows:
+        raise HTTPException(404, 'Şagird bu sinifdə/qrupda deyil')
+    rows.sort(key=lambda r: r['full_name'])
+    return {'ta_id': m['ta_id'], 'class_name': m['class_name'], 'subject': m['subject'], 'kind': m['kind'], 'period': m['period'],
+            'students': len(rows), 'total': sum(len(r['items']) for r in rows), 'rows': rows}
+
+
+def missing_summary(db: Session, user: User, tas: list) -> list[dict]:
+    """Əsas səhifə: hər öz dərsim üçün {ta_id, class_name, subject, students, total} (yalnız total>0). Eyni `class_missing` – saylar siyahı ilə üst-üstə düşür."""
+    out = []
+    for ta in tas:
+        try:
+            x = class_missing(db, user, ta.id, 'all')
+        except HTTPException:
+            continue
+        if x['total']:
+            out.append({'ta_id': ta.id, 'class_name': x['class_name'], 'subject': x['subject'], 'students': x['students'], 'total': x['total']})
+    return sorted(out, key=lambda z: z['class_name'])
