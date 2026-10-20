@@ -15,7 +15,46 @@ export const GUIDE: GuideItem[] = [
       "«Nəticələrim»də bütün nəticələrin görünür.",
       "«Nəticə paketi»: cavabların, düzgün cavablar və izahlar.",
       "Çətin olanda «Bələdçi»yə qayıt – bütün videolar orada."
-    ]
+    ],
+    "chapters": [
+      {
+        "t": {
+          "az": 3.6,
+          "en": 3.6,
+          "ru": 3.6
+        },
+        "title": "Ana səhifə və menyu"
+      },
+      {
+        "t": {
+          "az": 12.7,
+          "en": 12.7,
+          "ru": 12.7
+        },
+        "title": "Tapşırıq və test"
+      },
+      {
+        "t": {
+          "az": 33.0,
+          "en": 33.0,
+          "ru": 34.5
+        },
+        "title": "Nəticələrim"
+      },
+      {
+        "t": {
+          "az": 42.3,
+          "en": 42.3,
+          "ru": 44.5
+        },
+        "title": "Bələdçi və kömək"
+      }
+    ],
+    "duration": {
+      "az": 51.1,
+      "ru": 53.3,
+      "en": 51.1
+    }
   },
   {
     "role": "student",
@@ -30,9 +69,9 @@ export const GUIDE: GuideItem[] = [
       "«Daxil ol» düyməsinə bas – hazırsan!"
     ],
     "duration": {
-      "az": 34.1,
-      "ru": 37.2,
-      "en": 34.1
+      "az": 33.3,
+      "ru": 36.4,
+      "en": 33.3
     }
   },
   {
@@ -47,9 +86,9 @@ export const GUIDE: GuideItem[] = [
       "«Bələdçi» – bu videolara istənilən vaxt qayıda bilərsən."
     ],
     "duration": {
-      "az": 38.9,
-      "ru": 45.5,
-      "en": 38.9
+      "az": 28.9,
+      "ru": 29.9,
+      "en": 28.9
     }
   },
   {
@@ -64,9 +103,9 @@ export const GUIDE: GuideItem[] = [
       "Suallar arasında irəli-geri keçə bilərsən. Sonda «Təhvil ver» düyməsini bas."
     ],
     "duration": {
-      "az": 54.3,
-      "ru": 42.6,
-      "en": 54.3
+      "az": 42.4,
+      "ru": 43.8,
+      "en": 42.4
     }
   },
   {
@@ -79,9 +118,9 @@ export const GUIDE: GuideItem[] = [
       "«Sınaqlar» bölməsində sınaq imtahanları ayrıca göstərilir."
     ],
     "duration": {
-      "az": 24.8,
-      "ru": 32.0,
-      "en": 24.8
+      "az": 19.5,
+      "ru": 20.8,
+      "en": 19.5
     }
   },
   {
@@ -94,9 +133,9 @@ export const GUIDE: GuideItem[] = [
       "Səhv suallara baxıb izahı oxu və təkrar et. Razı deyilsənsə – apelyasiya yaza bilərsən."
     ],
     "duration": {
-      "az": 41.5,
-      "ru": 38.4,
-      "en": 41.5
+      "az": 24.8,
+      "ru": 26.5,
+      "en": 24.8
     }
   },
   {
@@ -108,9 +147,9 @@ export const GUIDE: GuideItem[] = [
       "Hər testin müddəti və bağlanma vaxtı yanında yazılıb. İşlədiklərinin balı görünür."
     ],
     "duration": {
-      "az": 26.8,
-      "ru": 22.4,
-      "en": 26.8
+      "az": 17.2,
+      "ru": 17.6,
+      "en": 17.2
     }
   },
   {
@@ -122,9 +161,9 @@ export const GUIDE: GuideItem[] = [
       "«Əlavə məşğələlər» – qrupun cədvəli və proqramı."
     ],
     "duration": {
-      "az": 18.9,
-      "ru": 19.3,
-      "en": 18.9
+      "az": 14.8,
+      "ru": 15.0,
+      "en": 14.8
     }
   },
   {
@@ -137,9 +176,9 @@ export const GUIDE: GuideItem[] = [
       "Əlavə bölmələr «Daha çox» düyməsindədir."
     ],
     "duration": {
-      "az": 20.3,
-      "ru": 19.1,
-      "en": 20.3
+      "az": 16.9,
+      "ru": 16.9,
+      "en": 16.9
     }
   },
   {
@@ -158,7 +197,54 @@ export const GUIDE: GuideItem[] = [
       "Vərəqəni çap edin, skan edin – bal avtomatik hesablanır.",
       "«Jurnal səhifəsi» – davamiyyət və qiymətlər tarix üzrə.",
       "«Analitika və hesabat» – sinif və şagird üzrə statistika."
-    ]
+    ],
+    "chapters": [
+      {
+        "t": {
+          "az": 3.6,
+          "en": 3.6,
+          "ru": 3.6
+        },
+        "title": "Menyu"
+      },
+      {
+        "t": {
+          "az": 15.4,
+          "en": 15.4,
+          "ru": 16.6
+        },
+        "title": "Plan və mövzu testləri"
+      },
+      {
+        "t": {
+          "az": 34.8,
+          "en": 34.8,
+          "ru": 36.3
+        },
+        "title": "Sinif matrisi"
+      },
+      {
+        "t": {
+          "az": 43.2,
+          "en": 43.2,
+          "ru": 44.2
+        },
+        "title": "Kağız test və skan"
+      },
+      {
+        "t": {
+          "az": 65.6,
+          "en": 65.6,
+          "ru": 66.6
+        },
+        "title": "Jurnal və hesabat"
+      }
+    ],
+    "duration": {
+      "az": 78.6,
+      "ru": 80.1,
+      "en": 78.6
+    }
   },
   {
     "role": "teacher",
@@ -170,9 +256,9 @@ export const GUIDE: GuideItem[] = [
       "«Bələdçi» bölməsində bütün videolar var."
     ],
     "duration": {
-      "az": 28.2,
-      "ru": 26.7,
-      "en": 28.2
+      "az": 21.5,
+      "ru": 22.9,
+      "en": 21.5
     }
   },
   {
@@ -186,9 +272,9 @@ export const GUIDE: GuideItem[] = [
       "Əvvəl «Önbaxış» – heç nə yazmır, hansı dərsə hansı test düşəcəyini göstərir. Sonra «Təsdiq et»."
     ],
     "duration": {
-      "az": 34.3,
-      "ru": 34.1,
-      "en": 34.3
+      "az": 28.1,
+      "ru": 28.8,
+      "en": 28.1
     }
   },
   {
@@ -203,9 +289,9 @@ export const GUIDE: GuideItem[] = [
       "«🖨 Sinif üzrə çap» – siyahı PDF kimi hazırlanır; «Hər şagirdə ayrıca» hər şagird üçün ayrı vərəq çıxarır."
     ],
     "duration": {
-      "az": 41.2,
-      "ru": 34.2,
-      "en": 41.2
+      "az": 35.2,
+      "ru": 33.7,
+      "en": 35.2
     }
   },
   {
@@ -218,9 +304,9 @@ export const GUIDE: GuideItem[] = [
       "Cavab vərəqəsini çap et, şagirdlər doldursun, skan et – bal avtomatik hesablanır. «Nəticələri göndər» şagirdə nəticə paketini açır."
     ],
     "duration": {
-      "az": 26.6,
-      "ru": 38.2,
-      "en": 26.6
+      "az": 26.0,
+      "ru": 28.4,
+      "en": 26.0
     }
   },
   {
@@ -234,9 +320,9 @@ export const GUIDE: GuideItem[] = [
       "Qrupu aç: «Proqram» bölməsində proqram seçilir, «Önbaxış» və «Yenidən hesabla» var; məşğələlərdə mövzular görünür."
     ],
     "duration": {
-      "az": 41.7,
-      "ru": 41.4,
-      "en": 41.7
+      "az": 33.7,
+      "ru": 35.2,
+      "en": 33.7
     }
   },
   {
@@ -249,9 +335,9 @@ export const GUIDE: GuideItem[] = [
       "«Analitika və hesabat» – sinif və şagird üzrə statistika."
     ],
     "duration": {
-      "az": 27.2,
-      "ru": 27.6,
-      "en": 27.2
+      "az": 19.8,
+      "ru": 19.8,
+      "en": 19.8
     }
   }
 ]

@@ -16,6 +16,8 @@
   python scripts/guide_videos.py --voice-az babek --voice-ru dmitry   # kişi səsləri; --no-voice – səssiz
   python scripts/guide_videos.py --probe [DIR]      # fayl cədvəli (ölçü, müddət, MB, səs); DIR verilsə orta kadr PNG
   python scripts/guide_videos.py --export-ts        # frontend/src/guideData.ts (səhifə üçün ssenari siyahısı)
+Qeyd: testi başladan ssenarilər (student/00-tanitim, 03-movzu-testi) hər dil üçün ayrıca proseslə yazılır (--only ... --langs az, sonra ru):
+  başlanmış test eyni demo bazasında «Başla»nı aparır; demo bir prosesdə təkrar qurulmur (seed eyni DB-yə düşür).
 Üslub (20.10.2026b): hər videoda giriş titri, fəsil lövhəsi (act 'chapter'), hədəf işıqlandırma (spot), son titr; poster NN-ad[.ru].jpg (960 px, ≤120 KB);
   fəsilli videolar (00-tanitim) üçün NN-ad.chapters.json; --export-ts bunları guideData.ts-ə (chapters, duration, guidePoster) yazır.
 Tələb: Google Chrome (Playwright channel='chrome'), edge-tts + imageio-ffmpeg (requirements-dev.txt), frontend/dist (yoxdursa `npm run build` işlədilir).
@@ -79,7 +81,7 @@ OUTRO = {'student': (L('Hazırsan!', 'You are ready!', 'Всё готово!'),
 SCENARIOS: list[dict] = [
     # ============================================================ ŞAGİRD
     # Yığcam tanıtım (≤ 75 san.): addım 'chapter' – fəsil lövhəsi (səssiz), qalanı mövcud addımlardan.
-    {'role': 'student', 'id': '00-tanitim', 'intro': True, 'fresh': True,
+    {'role': 'student', 'id': '00-tanitim', 'intro': True,
      'title': L('Qısa tanıtım', 'Quick tour', 'Краткий обзор'),
      'slogan': L('Hər şey bir dəqiqəyə', 'Everything in one minute', 'Всё за одну минуту'),
      'steps': [
@@ -150,7 +152,7 @@ SCENARIOS: list[dict] = [
           'cap': L('«Bələdçi» – bu videolara istənilən vaxt qayıda bilərsən.', '«Guide» – come back to these videos any time.',
                    '«Гид» – к этим видео можно вернуться в любой момент.')},
      ]},
-    {'role': 'student', 'id': '03-movzu-testi', 'fresh': True,
+    {'role': 'student', 'id': '03-movzu-testi',
      'title': L('Mövzu testini işləmək', 'Taking a topic test', 'Как пройти тест по теме'),
      'steps': [
          {'act': 'nav', 'sel': '/tasks', 'wait': 3000, 'sel_check': '.panel',
@@ -1076,15 +1078,7 @@ def main():
             browser = p.chromium.launch(channel='chrome', headless=not a.headed)
             for s in todo:
                 for lg in langs:
-                    d = demo
-                    if s.get('fresh') and not a.check:          # testi başladan ssenari: hər dil üçün təmiz demo (başlanmış test «Başla»nı aparır)
-                        d = Demo()
-                        d.start()
-                    try:
-                        _, errs = run_scenario(browser, d, s, a.check, audio, lg)
-                    finally:
-                        if d is not demo:
-                            d.stop()
+                    _, errs = run_scenario(browser, demo, s, a.check, audio, lg)
                     for e in errs:
                         bad += 1
                         print(f'  XƏTA {pick(s)} [{lg}]: {e}')
