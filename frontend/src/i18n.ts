@@ -3188,6 +3188,7 @@ const D: Record<string, [string, string]> = {
   "«Siniflər və qruplar» → «Məşğələ qrupları».": ["«Classes and groups» → «Extra-class groups».", "«Классы и группы» → «Группы занятий»."],
   "Qrup yarat, şagirdləri əlavə et və qrupa proqram təyin et.": ["Create a group, add students and assign a programme to the group.", "Создай группу, добавь учеников и назначь группе программу."],
   "Jurnal və hesabatlar": ["Journal and reports", "Журнал и отчёты"],
+  "Müddətsiz testdə taymer yoxdur: «Vaxt məhdudiyyəti yoxdur». İstədiyin vaxt «Təhvil ver» edə bilərsən.": ["An untimed test has no timer: «No time limit». Submit whenever you are ready.", "В тесте без срока нет таймера: «Без ограничения по времени». Сдать можно в любой момент."],
   "«Jurnal»da davamiyyət və qiymətlər yazılır.": ["Attendance and grades are entered in the «Journal».", "В «Журнале» отмечаются посещаемость и оценки."],
   "«Analitika və hesabat» – sinif və şagird üzrə statistika.": ["«Analytics and reports» – statistics by class and student.", "«Аналитика и отчёты» – статистика по классам и ученикам."],
   "Müddətsiz": ["No deadline", "Без срока"],

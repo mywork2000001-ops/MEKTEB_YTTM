@@ -33,6 +33,7 @@ export const GUIDE: GuideItem[] = [
     "steps": [
       "«Tapşırıqlar» bölməsində testi tap.",
       "«Başla» düyməsi ilə testə başla.",
+      "Müddətsiz testdə taymer yoxdur: «Vaxt məhdudiyyəti yoxdur». İstədiyin vaxt «Təhvil ver» edə bilərsən.",
       "Düzgün hesab etdiyin variantı seç. Cavab avtomatik saxlanır.",
       "Suallar arasında irəli-geri keçə bilərsən. Sonda «Təhvil ver» düyməsini bas."
     ]

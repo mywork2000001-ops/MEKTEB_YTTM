@@ -92,9 +92,14 @@ SCENARIOS: list[dict] = [
      'steps': [
          {'act': 'nav', 'sel': '/tasks', 'wait': 3000, 'sel_check': '.panel',
           'cap': L('«Tapşırıqlar» bölməsində testi tap.', 'Find the test in «Tasks».', 'Найди тест в разделе «Задания».')},
-         {'act': 'click', 'sel': 'button:has-text("Başla"), a:has-text("Başla")', 'wait': 3000,
+         {'act': 'click', 'sel': 'button:has-text("Başla")', 'wait': 1500,
           'cap': L('«Başla» düyməsi ilə testə başla.', 'Press «Start» to begin the test.', 'Нажми «Начать», чтобы приступить к тесту.')},
-         {'act': 'click', 'sel': '.opt >> nth=1', 'wait': 2200, 'optional': True,
+         {'act': 'click', 'sel': 'button:has-text("Tam ekrana keç")', 'wait': 1500, 'optional': True},
+         {'act': 'wait', 'wait': 2500,
+          'cap': L('Müddətsiz testdə taymer yoxdur: «Vaxt məhdudiyyəti yoxdur». İstədiyin vaxt «Təhvil ver» edə bilərsən.',
+                   'An untimed test has no timer: «No time limit». Submit whenever you are ready.',
+                   'В тесте без срока нет таймера: «Без ограничения по времени». Сдать можно в любой момент.')},
+         {'act': 'click', 'sel': '.q-opt >> nth=1', 'wait': 2200, 'optional': True,
           'cap': L('Düzgün hesab etdiyin variantı seç. Cavab avtomatik saxlanır.', 'Choose the option you think is right. Your answer is saved automatically.',
                    'Выбери вариант, который считаешь верным. Ответ сохраняется автоматически.')},
          {'act': 'wait', 'wait': 2500,
@@ -160,7 +165,7 @@ SCENARIOS: list[dict] = [
     {'role': 'teacher', 'id': '01-menyu',
      'title': L('Menyu və əsas səhifə', 'Menu and home page', 'Меню и главная страница'),
      'steps': [
-         {'act': 'goto', 'sel': '/', 'wait': 3500, 'sel_check': '.top',
+         {'act': 'goto', 'sel': '/', 'wait': 3500, 'sel_check': 'h1',
           'cap': L('Əsas səhifədə «Bu həftə diqqət» və günün işləri görünür.', 'The home page shows «Needs attention this week» and today\'s work.',
                    'На главной показаны «Внимание на этой неделе» и дела дня.')},
          {'act': 'nav', 'sel': '/journal', 'wait': 3000,
@@ -287,14 +292,14 @@ def find_ffmpeg() -> str | None:
     return None
 
 
-def compress(src: Path, dst: Path) -> float:
+def compress(src: Path, dst: Path, ss: float = 0.0) -> float:
     """webm -> ≤ MAX_MB (VP8, 15 fps); crf artırılır."""
     ff = find_ffmpeg()
     if not ff:
         shutil.copy(src, dst)
         return dst.stat().st_size / 1e6
     for crf in (34, 38, 42, 46, 51):
-        subprocess.run([ff, '-y', '-loglevel', 'error', '-i', str(src), '-an', '-r', '15', '-c:v', 'libvpx', '-b:v', '0',
+        subprocess.run([ff, '-y', '-loglevel', 'error', '-ss', f'{ss:.2f}', '-i', str(src), '-an', '-r', '15', '-c:v', 'libvpx', '-b:v', '0',
                         '-crf', str(crf), '-cpu-used', '4', '-deadline', 'good', str(dst)], check=True)
         mb = dst.stat().st_size / 1e6
         if mb <= MAX_MB:
@@ -364,16 +369,21 @@ class Demo:
             raise RuntimeError(f'join cavabında assignment id yoxdur: {ta.text[:200]}')
         now = dt.datetime.now(dt.timezone.utc)
         body = {'title': 'Kvadrat tənliklər – mövzu testi', 'opens_at': (now - dt.timedelta(hours=1)).isoformat(),
-                'closes_at': (now + dt.timedelta(days=7)).isoformat(), 'duration_min': 40, 'shuffle': False,
+                'shuffle': False,                       # müddətsiz test: closes_at və duration_min yoxdur
                 'custom': [
                     {'kind': 'mcq', 'text': 'x² − 9 = 0 tənliyinin kökləri hansılardır?', 'options': ['3', '±3', '9', '−3'], 'correct': 1,
                      'explanation': 'x² = 9, deməli x = 3 və ya x = −3.'},
                     {'kind': 'mcq', 'text': '2 + 2 · 2 = ?', 'options': ['8', '6', '4', '10'], 'correct': 1,
                      'explanation': 'Əvvəl vurma: 2 · 2 = 4, sonra 2 + 4 = 6.'},
                     {'kind': 'open', 'text': 'x + 5 = 12 tənliyində x = ?', 'answer': '7'}]}
-        r = c.post(f'/api/tasks/{ta_id}', json=body)
-        if r.status_code >= 400:
-            print('  XƏBƏRDARLIQ: demo tapşırıq yaradılmadı:', r.status_code, r.text[:200])
+        timed = {**body, 'title': 'Tənliklər – vaxtlı test', 'closes_at': (now + dt.timedelta(days=7)).isoformat(), 'duration_min': 40}
+        for b in (body, timed):
+            r = c.post(f'/api/tasks/{ta_id}', json=b)
+            if r.status_code >= 400:
+                print('  XƏBƏRDARLIQ: demo tapşırıq yaradılmadı:', r.status_code, r.text[:200])
+        import sqlite3                                                    # tapşırıq → «Mövzu testləri» bölməsində görünsün
+        with sqlite3.connect(self.tmp / 'demo.db') as cx:
+            cx.execute("UPDATE online_tasks SET kind='movzu'")
 
     def stop(self):
         if self.proc:
@@ -403,6 +413,14 @@ def login_api(page, demo: Demo, role: str):
         raise RuntimeError(f'giriş alınmadı: {r.status} {r.text()[:120]}')
 
 
+def settle(page):
+    """Səhifə yüklənsin; arxa plan sorğuları (polling) sonsuz gözlətməsin."""
+    try:
+        page.wait_for_load_state('networkidle', timeout=3000)
+    except Exception:                                                          # noqa: BLE001
+        pass
+
+
 def move_to(page, loc):
     box = loc.bounding_box()
     if box:
@@ -416,7 +434,7 @@ def do_step(page, st: dict, check: bool) -> str | None:
     try:
         if act == 'goto':
             page.goto(sel)
-            page.wait_for_load_state('networkidle')
+            settle(page)
         elif act == 'nav':
             link = page.locator(f'.nav-sec a[href="{sel}"], aside a[href="{sel}"]').first
             if link.count() == 0:
@@ -426,9 +444,12 @@ def do_step(page, st: dict, check: bool) -> str | None:
                 if not link.is_visible():
                     page.locator(f'.nav-sec:has(a[href="{sel}"]) .nav-ghead').first.click()
                     page.wait_for_timeout(500)
-                move_to(page, link)
-                link.click(timeout=tmo)
-            page.wait_for_load_state('networkidle')
+                try:
+                    move_to(page, link)
+                    link.click(timeout=3000)
+                except Exception:                                              # noqa: BLE001 – menyu bağlıdır/örtülüdür: birbaşa keç
+                    page.goto(sel)
+            settle(page)
         elif act in ('click', 'hover'):
             loc = page.locator(sel).first
             loc.wait_for(state='visible', timeout=tmo)
@@ -474,7 +495,7 @@ def run_scenario(browser, demo: Demo, scn: dict, check: bool) -> tuple[Path | No
         if scn.get('login', True):
             login_api(page, demo, scn['role'])
         page.goto('/')
-        page.wait_for_load_state('networkidle')
+        settle(page)
         page.wait_for_timeout(600 if check else 1200)
         t_start = time.monotonic() - t0
         for st in scn['steps']:
@@ -487,7 +508,7 @@ def run_scenario(browser, demo: Demo, scn: dict, check: bool) -> tuple[Path | No
             b = time.monotonic() - t0
             if st.get('cap') and not check:
                 for lg in cues:
-                    cues[lg].append((max(a - 0.0, t_start), b, st['cap'][lg]))
+                    cues[lg].append((max(a - t_start, 0.0), b - t_start, st['cap'][lg]))
     finally:
         vid = page.video
         ctx.close()
@@ -497,7 +518,7 @@ def run_scenario(browser, demo: Demo, scn: dict, check: bool) -> tuple[Path | No
     d = OUT / scn['role']
     d.mkdir(parents=True, exist_ok=True)
     dst = d / f"{scn['id']}.webm"
-    mb = compress(raw, dst)
+    mb = compress(raw, dst, t_start)
     for lg in cues:
         write_vtt(d / f"{scn['id']}.{lg}.vtt", cues[lg])
     print(f'  {pick(scn)}: {mb:.2f} MB')
