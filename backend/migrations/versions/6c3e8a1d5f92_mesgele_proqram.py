@@ -23,7 +23,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     with op.batch_alter_table('extra_courses') as b:
         b.add_column(sa.Column('kind', sa.String(length=10), nullable=True))
-        b.add_column(sa.Column('program_id', sa.Integer(), sa.ForeignKey('plan_programs.id', ondelete='SET NULL'), nullable=True))
+        b.add_column(sa.Column('program_id', sa.Integer(), sa.ForeignKey('plan_programs.id', ondelete='SET NULL', name='fk_extra_courses_program_id'), nullable=True))
         b.add_column(sa.Column('program_sections', sa.JSON(), nullable=True))
     with op.batch_alter_table('extra_sessions') as b:
         b.add_column(sa.Column('topic_ref', sa.String(length=80), nullable=True))

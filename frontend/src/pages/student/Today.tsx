@@ -57,7 +57,7 @@ export default function Today() {
         <section className="panel" style={{ marginTop: 16 }}>
           <h2>{tt('Əlavə məşğələ')}</h2>
           {(extra || []).filter(c => c.next).map(c => (
-            <div key={c.id} style={{ marginBottom: 8 }}><span className="small muted">{c.title} · {c.teacher}</span><NextExtra x={c.next} onJoined={reloadExtra} /></div>))}
+            <div key={c.id} style={{ marginBottom: 8 }}><span className="small muted">{c.neutral ? tt('{s} – əlavə məşğələ', { s: tt(c.subject) }) : c.title} · {c.teacher}</span><NextExtra x={c.next} onJoined={reloadExtra} /></div>))}
           <button className="btn sm" onClick={() => nav('/extra')}>{tt('Məşğələlər')}</button>
         </section>)}
       <Prepare />

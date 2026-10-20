@@ -28,7 +28,7 @@ export default function Extra() {
       {list.length === 0 && <div className="empty">{tt('Sizin üçün əlavə məşğələ yoxdur.')}</div>}
       {list.map(c => (
         <section key={c.id} className="panel" style={{ marginBottom: 16 }}>
-          <h2>{c.title} <small>{c.subject} · {c.teacher}</small></h2>
+          <h2>{c.neutral ? tt('{s} – əlavə məşğələ', { s: tt(c.subject) }) : c.title} <small>{c.subject} · {c.teacher}</small></h2>
           {c.goal && <p className="small muted" style={{ margin: '0 0 8px' }}>{c.goal}</p>}
           <div className="row" style={{ marginBottom: 8 }}>
             <Pill tone="ok">{tt('iştirak')}: {c.present}/{c.held}</Pill>
