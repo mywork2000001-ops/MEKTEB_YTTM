@@ -43,3 +43,13 @@ canlı tətbiq – ehtiyat nüsxə + önbaxış + istifadəçinin «hə»-si.
 2. Kart `docs/tasks/inkisaf-zencir.md` → `kodcu` → review, pytest, build → merge → push → Render.
 3. Canlıda: ehtiyat nüsxə → önbaxış (say/tarixlər istifadəçiyə) → «hə» → tətbiq → qrupda gözlə yoxlama (ilk 5 məşğələ, son tarix).
 4. Audit sətri.
+
+## 5. İstifadəçinin dəqiqləşdirməsi (20.10.2026) – §2-ni əvəz edir
+- **Günlər:** həftənin 1, 3, 5-ci günləri (B.e., Ç., C.), 21:00–22:00.
+- **Müddət:** başlanğıc tarixindən **26.01.2027**-yə qədər (daxil) – yalnız bu aralıqdakı məşğələlər doldurulur.
+- **Başlanğıc nöqtəsi:** qrup hazırda **V sinif, 2-ci yarımil** mövzularındadır → zəncir V sinfin 2-ci yarımilindən (bölmələr 3–6:
+  Onluq kəsrlər, Həndəsə elementləri, Faiz, Statistika. Ehtimal – 6 mövzu) başlayır, sonra **V sinif illik test** (bir məşğələ), sonra VI → VII → …
+  V sinfin 1-ci yarımili və giriş diaqnostikası buraxılır.
+- 26.01.2027-yə qədər ≈ 14 həftə × 3 = **≈ 40–42 məşğələ** (tətillər çıxılır): V 2-ci yarımil (6) + V illik (1) + VI (15 + yekun) + VII (16 + yekun)
+  ≈ 40 – yəni təxminən **VII sinfin sonuna** çatır. Dəqiq say önbaxışda; sığmayanlar növbəti dövrə qalır (xəbərdarlıq).
+- Texniki: `chain` konfiqurasiyasında `start: {grade: 5, semester: 2}`, `end_date: 2027-01-26`, `weekdays: [0, 2, 4]`.
