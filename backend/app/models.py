@@ -1028,3 +1028,33 @@ def _points_on_insert(mapper, conn, t):
     from .domain.scoring import has_points
     if t.questions and not has_points(t.questions):
         t.questions = prepare_points(conn, t.questions)
+
+
+# ---------------------------------------------------------------- işlənməyənlər hesabatı (docs/islenmeyenler-hesabati-promtu.md §5.2–5.3)
+class MissingNote(Base):
+    """Müəllimin «yazmayıb» səbəbi: bir test (task_key – matris sütun açarı) + bir şagird = bir qeyd. `excused` – məxrəcdən çıxır."""
+    __tablename__ = 'missing_notes'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ta_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'), index=True)
+    task_key: Mapped[str] = mapped_column(String(40))
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'))
+    reason: Mapped[str] = mapped_column(String(12))               # excused | technical | no_device | forgot | refused | other
+    note: Mapped[str | None] = mapped_column(Text)
+    teacher_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('ta_id', 'task_key', 'student_id', name='uq_missing_note'),)
+
+
+class MissingRequest(Base):
+    """«Tələb et» tarixçəsi: kimə, nə vaxt, hansı testlər; chat mesajı (oxunub-oxunmayıb) və yenidən açılış."""
+    __tablename__ = 'missing_requests'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ta_id: Mapped[int] = mapped_column(ForeignKey('teaching_assignments.id', ondelete='CASCADE'), index=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'))
+    task_keys: Mapped[list | None] = mapped_column(JSON)
+    message: Mapped[str | None] = mapped_column(Text)
+    new_deadline: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    reopened: Mapped[bool] = mapped_column(Boolean, default=False)
+    message_id: Mapped[int | None] = mapped_column(Integer)      # chat_messages.id (hesab yoxdursa boş)
+    teacher_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
