@@ -90,3 +90,22 @@ Yoxlama: quiz.html brauzerdə açılır, sonda ad soruşulmur, sertifikat düym�
 - Hesablama: ≈ 14 həftə × 3 gün × 2 dərs ≈ **84 dərs**, qış tətili çıxılsa ≈ 76–80 → V 2-ci yarımil (6) + V illik (1) + VI (15+1) + VII (16+1) +
   VIII (23+1) = 64, qalan ≈ 12–16 dərs IX sinfə düşür → 26.01.2027-də **təxminən IX sinfin ortası**. Dəqiq say önbaxışda.
 - Yekun/illik test günü: test bir dərsi tutur, ikinci dərs növbəti mövzudur.
+
+## 8. Ümumi, təkrar istifadə olunan proqram (istifadəçi, 20.10.2026) – əsas tələb
+Bu iş bir dəfəlik deyil: **«Ardıcıl proqram» şablonu** kimi qurulur – müəllim gələcəkdə istənilən qrup, sinif aralığı və cədvəl üçün özü işlədir.
+1. **Şablon (preset) – bir yerdə, adla saxlanır** (məs. «İnkişaf V→IX, axşam, 2×dərs»). Parametrlər:
+   - mənbə proqramlar: sinif aralığı (`grades: 5..9`, istənilən 5–11), proqram ailəsi (defolt «Sinif testləri»; başqa `PlanProgram` də seçilə bilər);
+   - başlanğıc nöqtəsi: sinif + yarımil (+ istəyə görə mövzu №); «Təkrar» bölmələrini keç (bəli/xeyr); yekun/illik testləri əlavə et (bəli/xeyr);
+   - cədvəl: həftə günləri, başlanğıc saatı, **gündəki dərslər** (hər birinin müddəti) və fasilələr – məs. `[30, fasilə 5, 25]`;
+   - müddət: başlanğıc tarixi → son tarix (və ya «proqram bitənə qədər»); tətil günləri – məktəb təqvimindən;
+   - alt mövzu mənbəyi: uyğunluq faylı (V üçün P001; gələcəkdə başqa sinif/layihə üçün yeni fayl) – boşdursa alt mövzu yoxdur.
+2. **Saxlama:** şablon `PlanProgram`-a yaxın, miqrasiyasız JSON (məs. `School.doc_settings['chain_presets']` və ya müəllimin parametrləri) –
+   lazım olsa ayrıca cədvəl `program_presets` (yalnız yeni cədvəl). Şablon kopyalana, redaktə oluna, silinə bilər.
+3. **Tətbiq:** Məşğələ qrupu → «📚 Proqram» → «Şablondan» → şablon seç → parametrləri bu qrup üçün dəyiş (tarix, başlanğıc) → önbaxış → tətbiq.
+   Qrup sonradan geri qalsa/irəli getsə: «Buradan davam et» (başlanğıc nöqtəsini dəyiş, gələcək məşğələlər yenidən hesablanır – keçirilmişlərə toxunulmur).
+4. **Skript (eyni mühərrik):** `backend/scripts/chain_program.py --course ID --preset "ad" [--from 2026-10-21 --to 2027-01-26] [--dry]` –
+   API ilə eyni funksiyanı çağırır (tək mühərrik qaydası, `plan_tests.py` kimi).
+5. **İlk şablon** bu promtdakı parametrlərlə yaradılır: V→IX, başlanğıc V sinif 2-ci yarımil, illik test, günlər Ç./C.a./C., 21:00 → 30 + 5 + 25,
+   son tarix 26.01.2027, alt mövzular P001.
+6. Sənəd: `docs/ardicil-proqram-sablonu.md` – müəllim üçün qısa izah (AZ), addım-addım, ekran şəkilləri olmadan.
+7. Testlər: şablonun saxlanması/oxunması, eyni şablonla iki fərqli qrup, «Buradan davam et», skript = API nəticəsi.
