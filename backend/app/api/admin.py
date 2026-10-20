@@ -171,3 +171,31 @@ def roster_health(user: User = Depends(admin_only), db: Session = Depends(get_db
         put('lessons_attendance_incomplete', [])
         put('students_no_recent_mark', [])
     return {'school_id': sid, 'year': year.name, 'categories': cats}
+
+
+UNLIMIT_FROM = dt.datetime(2026, 9, 15, tzinfo=dt.timezone.utc)      # bu tədris ili
+
+
+@router.post('/unlimit-tasks')
+def unlimit_tasks(dry: int = 1, user: User = Depends(admin_only), db: Session = Depends(get_db)):
+    """Bir dəfəlik: bu ilin hələ bağlanmamış mövzu testləri və sınaqları müddətsiz olur (taymer və son tarix yoxdur).
+    KSQ/BSQ, viktorina/əlavə və bağlanmışlara toxunulmur. dry=1 (defolt) – yalnız önbaxış, heç nə yazılmır."""
+    from ..models import OnlineTask, SchoolClass, TaskAttempt, TeachingAssignment, now
+    from ..timing import NO_DEADLINE
+    from .tasks import aware
+    at = now()
+    rows = []
+    for t in db.scalars(select(OnlineTask).where(OnlineTask.kind.in_(('movzu', 'sinaq')), OnlineTask.archived_at.is_(None))):
+        if aware(t.opens_at) < UNLIMIT_FROM or aware(t.closes_at) <= at or aware(t.closes_at) >= NO_DEADLINE:
+            continue
+        ta = db.get(TeachingAssignment, t.assignment_id)
+        cls = db.get(SchoolClass, ta.class_id) if ta else None
+        rows.append((t, {'id': t.id, 'class': cls.name if cls else None, 'title': t.title, 'kind': t.kind}))
+    if not dry:
+        for t, _ in rows:
+            t.duration_min, t.closes_at = 0, NO_DEADLINE
+            for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.submitted_at.is_(None))):
+                a.deadline = NO_DEADLINE
+        audit(db, user, 'update', 'online_task', 0, unlimit_tasks=[r['id'] for _, r in rows])
+        db.commit()
+    return {'dry': bool(dry), 'count': len(rows), 'tasks': [r for _, r in rows]}

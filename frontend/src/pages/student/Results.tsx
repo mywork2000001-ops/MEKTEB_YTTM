@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom'
 import { Review } from './Tasks'
 import { Bar } from './Achievements'
 import { ResultPackage } from './ResultPackage'
-import { azDT } from '../../ui'
+import { azDT, noDeadline } from '../../ui'
 
 
 export default function Results() {
@@ -88,7 +88,7 @@ export default function Results() {
           {[...ex.items].reverse().map((x: any) => (
             <div key={x.batch_id} style={{ borderBottom: '1px solid var(--line)', padding: '8px 0' }}>
               <div className="row"><b className="grow">{x.title}</b><span className="small muted">{fmtDate(x.opens_at)}</span></div>
-              {!x.closed ? <span className="small muted">{x.my_pct != null ? <>{tt('Sənin nəticən')}: <b>{fmt(x.my_pct)}%</b> ({x.my_correct}/{x.my_total}) · </> : ''}{tt('Yer və sinif nəticələri sınaq {t} bağlandıqdan sonra görünəcək.', { t: azDT(new Date(x.closes_at), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) })}</span>
+              {!x.closed ? <span className="small muted">{x.my_pct != null ? <>{tt('Sənin nəticən')}: <b>{fmt(x.my_pct)}%</b> ({x.my_correct}/{x.my_total}) · </> : ''}{noDeadline(x.closes_at) ? tt('Yer və sinif nəticələri müəllim sınağı bağlayandan sonra görünəcək.') : tt('Yer və sinif nəticələri sınaq {t} bağlandıqdan sonra görünəcək.', { t: azDT(new Date(x.closes_at), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) })}</span>
                 : x.status !== 'yazıb' ? <span className="small muted">{tt('Sınağı yazmamısan.')}</span> : (
                 <div className="row" style={{ gap: 6, marginTop: 4 }}>
                   <Pill tone={x.pct >= 70 ? 'ok' : x.pct >= 40 ? 'warn' : 'bad'}>{fmt(x.pct)}% · {tt('{a} düz, {b} səhv, {c} boş', { a: x.correct, b: x.wrong, c: x.blank })}</Pill>

@@ -28,6 +28,7 @@ from ..models import (AuditLog, BankFile, BankQuestion, OnlineTask, Role, School
                       User, now)
 from ..services import class_grade, roster
 from .common import audit, need_school
+from ..timing import NOT_DONE, closes_or_none, fits_window, is_unlimited
 from .tasks import CustomQ, TestMinutes, _snapshot, aware, custom_snapshot, exam_score, expire_due, is_ok, purge_tasks, score
 
 router = APIRouter(prefix='/api/exams-online', tags=['exams-online'])
@@ -226,7 +227,8 @@ def results(db: Session, b: TestBatch) -> dict:
                 row['status'] = 'yazır'
                 row['task_id'] = next(x for x, y in got if not y.submitted_at).id
             elif any(t0 < aware(x.closes_at) for x in mine):
-                row['status'] = 'gözlənilir'              # vaxtı bitməyib – hələ yaza bilər
+                # vaxtı bitməyib – hələ yaza bilər; müddətsiz açıq test – «işlənməyib»
+                row['status'] = NOT_DONE if any(is_unlimited(x) and t0 >= aware(x.opens_at) for x in mine) else 'gözlənilir'
             rows.append(row)
     wrote = [r for r in rows if r['status'] == 'yazıb']
     for k, _, place in rank([(str(i), r['points']) for i, r in enumerate(rows) if r['status'] == 'yazıb']):
@@ -323,14 +325,14 @@ def given(ta_ids: str = '', user: User = Depends(staff), db: Session = Depends(g
 class ExamTarget(BaseModel):
     ta_id: int
     opens_at: dt.datetime
-    closes_at: dt.datetime
+    closes_at: dt.datetime | None = None        # boş – son tarix yoxdur
     student_ids: list[int] | None = None
 
 
 class ExamIn(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     description: str | None = Field(None, max_length=2000)
-    duration_min: TestMinutes = 60
+    duration_min: TestMinutes = 0               # 0 – taymer yoxdur
     bank_ids: list[int] = Field(default_factory=list)
     custom: list[CustomQ] = Field(default_factory=list)
     shuffle: bool = True
@@ -358,12 +360,12 @@ def create_exam(body: ExamIn, user: User = Depends(staff), db: Session = Depends
     for tg in body.targets:
         ta, cls = _can_target(db, user, tg.ta_id)
         subjects.add(ta.subject)
-        o, c = (aware(x) for x in (tg.opens_at, tg.closes_at))
+        o, c = aware(tg.opens_at), closes_or_none(tg.closes_at)
         if c <= o:
             raise HTTPException(400, f'{cls.name}: bitmə vaxtı başlamadan sonra olmalıdır')
         if c <= t0:
             raise HTTPException(400, f'{cls.name}: bitmə vaxtı keçmişdədir')
-        if body.duration_min > (c - o).total_seconds() / 60:
+        if not fits_window(body.duration_min, o, c):
             raise HTTPException(400, f'{cls.name}: həll müddəti ({body.duration_min} dəq) açıq qalma aralığından uzundur')
         if tg.student_ids is not None and (not tg.student_ids or set(tg.student_ids) - {s.id for s in roster(db, ta)}):
             raise HTTPException(400, f'{cls.name}: şagirdlər bu sinifdən/qrupdan seçilməlidir')
@@ -448,6 +450,23 @@ def list_exams(user: User = Depends(staff), db: Session = Depends(get_db)):
                     'avg_pct': round(sum(pcts) / len(pcts), 1) if pcts else None,
                     'state': 'gözlənilir' if t0 < o else 'açıqdır' if t0 < c else 'bitib'})
     return out
+
+
+@router.post('/{batch_id}/close')
+def close_exam(batch_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«Bağla»: sınaq öz siniflərimdə dərhal bağlanır (müddətsiz sınağı bitirmək üçün); yarımçıq cəhdlər təhvil verilir."""
+    from .tasks import close_task
+    b, access = _batch(db, user, batch_id)
+    n = tasks_n = 0
+    for t in _tasks(db, b):
+        if access != 'full' and db.get(TeachingAssignment, t.assignment_id).teacher_id != user.id:
+            continue
+        if aware(t.closes_at) > now():
+            n += close_task(db, t)
+            tasks_n += 1
+    audit(db, user, 'update', 'test_batch', batch_id, closed=tasks_n, auto_submitted=n)
+    db.commit()
+    return {'ok': True, 'closed': tasks_n, 'auto_submitted': n}
 
 
 @router.get('/rating')

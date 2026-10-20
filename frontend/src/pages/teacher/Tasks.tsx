@@ -9,7 +9,7 @@ import { PeriodBar, usePeriod } from '../../periods'
 import { Link } from 'react-router-dom'
 import TaskEditor from './TaskEditor'
 import { esc, head, mathHtml, printDoc, table } from '../../print'
-import { azDT } from '../../ui'
+import { azDT, noDeadline } from '../../ui'
 
 type Task = { id: number; title: string; created_at?: string | null; opens_at: string; closes_at: string; duration_min: number; questions: number; submitted: number; avg_pct: number | null; student_ids: number[] | null
   kind?: string | null; topic?: { seq: number; topic: string } | null; journal_auto?: boolean; journal_done_at?: string | null
@@ -83,7 +83,7 @@ export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta
     else groups.push({ key, items: [t] })
   }
   const statePill = (s: Exclude<St, 'all'>) => s === 'soon' ? <Pill>{t('gözlənilir')}</Pill> : s === 'open' ? <Pill tone="ok">{t('● açıqdır')}</Pill> : <Pill tone="info">{t('bağlanıb')}</Pill>
-  const when = (t: Task) => `${dt(t.opens_at)} – ${t.opens_at.slice(0, 10) === t.closes_at.slice(0, 10) ? hm(t.closes_at) : dt(t.closes_at)}`
+  const when = (t: Task) => `${dt(t.opens_at)} – ${noDeadline(t.closes_at) ? tt('Müddətsiz') : t.opens_at.slice(0, 10) === t.closes_at.slice(0, 10) ? hm(t.closes_at) : dt(t.closes_at)}`
   const actions = (t: Task, s: Exclude<St, 'all'>) => (<>
     {archived ? (
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
@@ -149,9 +149,9 @@ export default function Tasks({ embedded, ta: taProp }: { embedded?: boolean; ta
                   {one && sendsPill(head)}
                   {statePill(s)}
                 </div>
-                {one ? <><span className="small muted">{when(head)} · {head.duration_min} {t('dəq ·')} {head.questions} {t('sual ·')} {head.student_ids ? t('{length} şagird', { length: head.student_ids.length }) : 'bütün sinif'} · <b>{head.submitted}</b> {t('təhvil')}{head.avg_pct != null ? <> {t('· orta')} <b>{fmt(head.avg_pct)}%</b></> : ''}</span>
+                {one ? <><span className="small muted">{when(head)} · {head.duration_min ? <>{head.duration_min} {t('dəq ·')}</> : <>{t('Vaxt məhdudiyyəti yoxdur')} ·</>} {head.questions} {t('sual ·')} {head.student_ids ? t('{length} şagird', { length: head.student_ids.length }) : 'bütün sinif'} · <b>{head.submitted}</b> {t('təhvil')}{head.avg_pct != null ? <> {t('· orta')} <b>{fmt(head.avg_pct)}%</b></> : ''}</span>
                   {actions(head, stateOf(head, now))}{kidRows(head)}</>
-                  : <><span className="small muted">{head.duration_min} {t('dəq ·')} {head.questions} {t('sual ·')} <b>{sub}</b> {t('təhvil')}{avg != null ? <> {t('· orta')} <b>{fmt(avg)}%</b></> : ''}</span>
+                  : <><span className="small muted">{head.duration_min ? <>{head.duration_min} {t('dəq ·')}</> : <>{t('Müddətsiz')} ·</>} {head.questions} {t('sual ·')} <b>{sub}</b> {t('təhvil')}{avg != null ? <> {t('· orta')} <b>{fmt(avg)}%</b></> : ''}</span>
                     <div className="subrows">{g.items.map(t => (
                       <div key={t.id} className="subrow">
                         <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
@@ -257,12 +257,12 @@ function Resend({ ta, task, lessons, preset, onlyIds, onClose, onDone }: { ta: n
   useEffect(() => { if (res && preset === 'absent' && !onlyIds) setIds(presets[0].ids) }, [res])
   const start = new Date(); start.setMinutes(Math.ceil(start.getMinutes() / 5) * 5 + 5, 0, 0)
   const end = new Date(start.getTime() + Math.max(Math.max(task.duration_min, 45) + 10, 60) * 60000)
-  const [f, setF] = useState({ target: ta, opens: localInput(start), closes: localInput(end), duration: Math.max(task.duration_min, 45), title: task.title })
+  const [f, setF] = useState({ target: ta, opens: localInput(start), closes: localInput(end), duration: Math.max(task.duration_min, 45), title: task.title, unl: true })
   const [err, setErr] = useState<unknown>()
   const save = async () => {
     try {
       const t = await post<Task>(`/api/tasks/${ta}/${task.id}/copy`, { target_ta_id: f.target, opens_at: new Date(f.opens).toISOString(),
-        closes_at: new Date(f.closes).toISOString(), duration_min: f.duration, title: f.title, student_ids: ids })
+        closes_at: f.unl ? null : new Date(f.closes).toISOString(), duration_min: f.unl ? 0 : f.duration, title: f.title, student_ids: ids })
       toast(tt('Test yenidən göndərildi')); onDone(t, f.target === ta)
     } catch (e) { setErr(e) }
   }
@@ -276,8 +276,9 @@ function Resend({ ta, task, lessons, preset, onlyIds, onClose, onDone }: { ta: n
             {lessons.map(l => <option key={l.id} value={l.id}>{l.class_name}{l.subject !== 'Riyaziyyat' ? ` · ${l.subject}` : ''}{l.id === ta ? (' ' + t('(həmin sinif)')) : ''}</option>)}</select></Field>
           <Field label={t('Ad')} full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
           <Field label={t('Açılır')}><input type="datetime-local" value={f.opens} onChange={e => setF({ ...f, opens: e.target.value })} /></Field>
-          <Field label={t('Bağlanır')}><input type="datetime-local" value={f.closes} onChange={e => setF({ ...f, closes: e.target.value })} /></Field>
-          <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+          <label className="check full"><input type="checkbox" checked={f.unl} onChange={e => setF({ ...f, unl: e.target.checked })} /> {t('Müddətsiz (taymer və son tarix yoxdur)')}</label>
+          {!f.unl && <><Field label={t('Bağlanır')}><input type="datetime-local" value={f.closes} onChange={e => setF({ ...f, closes: e.target.value })} /></Field>
+          <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field></>}
         </div>
         {(f.target !== ta || res) && <StudentPicker key={`${f.target}-${!!res}`} ta={f.target} presets={f.target === ta ? presets : []}
           value={f.target === ta && onlyIds ? onlyIds : f.target === ta && preset === 'absent' && res ? presets[0].ids : null}
@@ -372,6 +373,7 @@ function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; on
           <div className="row">
             {live ? <label className="check small"><input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} /> {t('Canlı (hər 5 san.)')}</label> : <Pill tone="info">{t('bağlanıb')}</Pill>}
             <button className="btn sm" onClick={reload}>{t('Yenilə')}</button>
+            {live && d.task.kind !== 'ksq' && <AsyncBtn className="btn sm" ok={tt('Test bağlandı')} onClick={async () => { if (!window.confirm(tt('Test bağlansın? Başlayıb təhvil verməyən şagirdlərin cavabları avtomatik təhvil veriləcək.'))) return; await post(`/api/tasks/${ta}/${id}/close`); reload() }}>{t('Testi bağla')}</AsyncBtn>}
             <input className="sel grow" placeholder={t('Şagird axtar')} value={q} onChange={e => setQ(e.target.value)} />
             {!live && onResendAbsent && d.summary['başlamayıb'] + d.summary['həll edir'] > 0 &&
               <button className="btn sm" onClick={onResendAbsent}>{t('Yazmayanlara yenidən göndər (')}{d.summary['başlamayıb'] + d.summary['həll edir']})</button>}
@@ -385,7 +387,7 @@ function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; on
                 {r.solution_at && <> <a className="small" href={`/api/tasks/${ta}/${id}/solution/${r.student_id}`} target="_blank" rel="noreferrer" title={t('Şagirdin həll şəkilləri (PDF)')}>{t('📄 Həll')}</a></>}
                 {r.status === 'həll edir' && <>
                   <div className="cmp" style={{ marginTop: 6 }}><i style={{ width: (total ? r.answered * 100 / total : 0) + '%' }} /></div>
-                  <span className="small muted">{r.answered}/{total} {t('cavab ·')} {left(r.deadline)}</span></>}
+                  <span className="small muted">{r.answered}/{total} {t('cavab ·')} {noDeadline(r.deadline) ? t('Vaxt məhdudiyyəti yoxdur') : left(r.deadline)}</span></>}
               </span>
               <span className="row">{r.status === 'təhvil verib'
                 ? <><span className="small">{r.correct}/{r.total}</span><Pill tone={r.grade ? gradeTone(r.grade) : r.pct >= 70 ? 'ok' : r.pct >= 40 ? 'warn' : 'bad'}>{fmt(r.pct, r.grade ? 0 : 1)}%{r.grade ? ` → ${r.grade}` : ''}</Pill></>

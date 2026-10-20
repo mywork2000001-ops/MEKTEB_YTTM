@@ -65,7 +65,7 @@ export default function Tasks() {
           {mine.length > 0 && shown.length === 0 && <div className="empty">{t('Bu dövrdə test yoxdur – «‹ ›» ilə başqa dövrə keçin və ya «Hamısı»nı seçin.')}</div>}
           {shown.map(x => (
             <div key={x.id} className="jrow">
-              <span><b>{x.title}</b><span className="sub small muted"><br />{x.subject}{x.topic_seq ? ` · ${t('mövzu №{n}', { n: x.topic_seq })}` : ''} · {x.teacher} · {azRange(x.opens_at, x.closes_at)} · {t('{n} dəq', { n: x.duration_min })} · {t('{n} sual', { n: x.questions })}</span></span>
+              <span><b>{x.title}</b><span className="sub small muted"><br />{x.subject}{x.topic_seq ? ` · ${t('mövzu №{n}', { n: x.topic_seq })}` : ''} · {x.teacher} · {azRange(x.opens_at, x.closes_at)} · {x.no_timer ? t('Vaxt məhdudiyyəti yoxdur') : t('{n} dəq', { n: x.duration_min })} · {t('{n} sual', { n: x.questions })}</span></span>
               <span className="row">{x.result ? <Pill tone={x.result.grade ? gradeTone(x.result.grade) : x.result.pct >= 70 ? 'ok' : x.result.pct >= 40 ? 'warn' : 'bad'}>{fmt(x.result.pct)} {t('bal')}{x.result.grade ? ` → ${x.result.grade}` : ''}</Pill> : <Pill tone={x.status === 'açıq' || x.status === 'həll edilir' ? 'ok' : x.status === 'buraxılıb' ? 'bad' : undefined}>{t(x.status)}</Pill>}</span>
               <span>{(x.status === 'açıq' || x.status === 'həll edilir') && <button className="btn primary sm" onClick={() => { enterFs(); setSolving(x.id) }}>{x.status === 'açıq' ? t('Başla') : t('Davam et')}</button>}
                 {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>{t('Cavablara bax')}</button>}
@@ -197,6 +197,7 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
   if (err) return <><ErrorBox error={err} /><button className="btn" onClick={onDone}>‹ {t('Geri')}</button></>
   if (!d) return <Loading />
   const q = d.questions[i]
+  const noLimit = !!d.unlimited && !!d.no_timer                        // müddətsiz test – taymer göstərilmir
   const mm = String(Math.floor(left / 60)).padStart(2, '0'), ss = String(left % 60).padStart(2, '0')
   return (
     <>
@@ -204,13 +205,14 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
         <div className="fs-guard" role="alertdialog" aria-modal="true" aria-labelledby="fs-guard-t">
           <div className="panel" style={{ maxWidth: 420 }}>
             <h2 id="fs-guard-t">{exits ? t('⚠ Tam ekrandan çıxdınız') : t('Test tam ekranda yazılır')}</h2>
-            <p>{exits ? t('Testə qayıtmaq üçün tam ekrana keçin. Vaxt dayanmır – qalan vaxt: ') : t('Başlamaq üçün tam ekrana keçin. Qalan vaxt: ')}<b>{mm}:{ss}</b></p>
+            <p>{exits ? t('Testə qayıtmaq üçün tam ekrana keçin. Vaxt dayanmır – qalan vaxt: ') : t('Başlamaq üçün tam ekrana keçin. Qalan vaxt: ')}<b>{noLimit ? t('Vaxt məhdudiyyəti yoxdur') : `${mm}:${ss}`}</b></p>
             {exits > 0 && <p className="small muted">{t('Tam ekrandan çıxma: {n} dəfə.', { n: exits })}</p>}
             <button className="btn primary w100" onClick={backToFs}>{t('Tam ekrana keç')}</button>
           </div>
         </div>)}
       <div className="row" style={{ marginBottom: 12, position: 'sticky', top: 0, background: 'var(--bg)', padding: '8px 0', zIndex: 5 }}>
-        <b className="grow">{d.title}</b><span className="small muted">{t('Qalan vaxt')}</span><span className={'timer' + (left < 60 ? ' low' : '')}>{mm}:{ss}</span>
+        <b className="grow">{d.title}</b>{noLimit ? <span className="small muted" title={t('Müddətsiz test: cavablar avtomatik saxlanır, istədiyiniz vaxt «Təhvil ver» edə bilərsiniz.')}>{t('Vaxt məhdudiyyəti yoxdur')}</span>
+          : <><span className="small muted">{t('Qalan vaxt')}</span><span className={'timer' + (left < 60 ? ' low' : '')}>{mm}:{ss}</span></>}
       </div>
       <div className="row" style={{ marginBottom: 12, gap: 4 }}>
         {d.questions.map((x: any, k: number) => (
