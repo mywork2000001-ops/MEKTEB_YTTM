@@ -31,3 +31,9 @@ Hesabat: budaq, commit, fayllar, build, köçürmə cədvəli, edilməyənlər.
 - A13 Surveys nəticə görünüşü → «Sorğu nəticələri» qrupu; yaratma Surveys-də.
 - A14 Home rəqəmləri → uyğun tablara keçid.
 Komponenti köçür (import et), məntiqi kopyalama; köhnə yerdə keçid. Köçürmə cədvəli hesabatda.
+
+## Əlavə (audit `docs/audit/hesabatlar-ve-islenmeyenler-audit-2026-10-20.md` §II–III, istifadəçi: «bütün hesabatlar yalnız Analitikada»)
+- Mərhələ 2-yə: A16 İşlənməyənlər (`MissingReport`, bütün siniflər + tək sinif) → «Testlər və sınaqlar → İşlənməyənlər» (ilk tab);
+  A17 Home «hamısı PDF» / «Bu həftə diqqət» keçidləri → `/reports?g=tests&t=missing`. Hədəf quruluş – auditin §III (10 qrup).
+- Mərhələ 3-ə: A18 ExtraCourses «Hesabatı çap et» → «Məşğələlər» + Çap mərkəzi; A19 HomeroomAttendance hesabat görünüşü → «Sinif rəhbəri»;
+  A20 Exams köçürmə şübhəliləri → Çap mərkəzi; A21 rəsmi çaplar (giriş vərəqələri, sinif siyahısı, plan) – yerində, Çap mərkəzində keçid.
