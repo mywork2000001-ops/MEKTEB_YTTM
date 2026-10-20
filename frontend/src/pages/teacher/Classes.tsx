@@ -119,7 +119,7 @@ function StudentCard({ s, onClose }: { s: Stud; onClose: () => void }) {
             <dt>{t('Sinif')}</dt><dd>{s.class_name}</dd><dt>{t('ID (giriş kodu)')}</dt><dd className="mono">{s.portal_code}</dd>
             <dt>{t('Doğum tarixi')}</dt><dd>{fmtDate(s.birth_date)}</dd><dt>{t('Cins')}</dt><dd>{s.gender || '—'}</dd>
           </dl>
-          <button className="btn sm" style={{ marginTop: 12 }} onClick={() => nav(`/tests?s=netice&v=student&student=${s.id}`)}>{t('Test nəticələri və AI rəyi →')}</button>
+          <button className="btn sm" style={{ marginTop: 12 }} onClick={() => nav(`/reports?g=student&t=student&student=${s.id}`)}>{t('Test nəticələri və AI rəyi →')}</button>
           <h3 className="small muted" style={{ margin: '16px 0 8px' }}>{t('IX sinif buraxılış balları')}</h3>
           <div className="scores">
             <div className="score-b"><b>{fmt(s.score_language)}</b><span>{t('Tədris dili')}</span></div>

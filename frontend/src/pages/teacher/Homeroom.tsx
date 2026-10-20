@@ -5,12 +5,13 @@ import { useT } from '../../i18n'
 import { esc, head, kpis, printDoc, SIGN, signs, table } from '../../print'
 import { AsyncBtn, Drawer, Empty, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, PickFirst, Pill, Seg, Stat, toast, Top, useLoad, useNarrow } from '../../ui'
 import { usePick } from './common'
-import { LessonCountTable, PerfStats } from './Reports'
+import { LessonCountTable } from './reports/ClassTabs'
 import HomeroomAttendance, { ClassTimetable } from './HomeroomAttendance'
+import { CAT_TONE } from './reports/HomeroomReports'
+import AnalyticsLink from './reports/AnalyticsLink'
 
 const TABS = [['overview', 'İcmal'], ['lessons', 'Dərslər'], ['grades', 'Qiymət cədvəli'], ['attendance', 'Davamiyyət'], ['timetable', 'Dərs cədvəli'],
   ['parents', 'Valideynlər'], ['events', 'Rəhbərin jurnalı'], ['print', 'Çap / PDF']] as const
-const CAT_TONE: Record<string, 'ok' | 'info' | 'warn' | 'bad'> = { 'Əlaçı': 'ok', 'Zərbəçi': 'info', 'Bir «3»-lü': 'warn', '«3»-lü': 'warn', 'Geridə qalan': 'bad' }
 
 export default function Homeroom() {
   const t = useT()
@@ -54,8 +55,8 @@ export default function Homeroom() {
               {tab === 'grades' && <Grades h={h} />}
               {tab === 'attendance' && <>
                 <HomeroomAttendance cid={h.class.id} className={h.class.name} onSaved={reload} />
-                <h2 style={{ margin: '20px 0 8px', fontSize: 16 }}>{t('Dövr üzrə (seçilmiş yarımil)')}</h2>
-                <Attendance h={h} /></>}
+                <p className="small muted" style={{ margin: '16px 0 8px' }}>{t('Aylıq cədvəl və dövr üzrə davamiyyət hesabatı «Analitika və hesabat» bölməsindədir.')}</p>
+                <AnalyticsLink to={`/reports?g=homeroom&t=attendance&cid=${h.class.id}`} /></>}
               {tab === 'timetable' && <ClassTimetable cid={h.class.id} />}
               {tab === 'parents' && <Parents h={h} reload={reload} />}
               {tab === 'events' && <Events cid={cid} students={h.students} />}
@@ -71,7 +72,6 @@ export default function Homeroom() {
 function Overview({ h }: { h: any }) {
   const t = useT()
   const s = h.summary
-  const total = s.graded || 1
   return (
     <div className="grid g2">
       <section className="panel"><h2>{t('Sinif')}</h2>
@@ -82,26 +82,9 @@ function Overview({ h }: { h: any }) {
         {s.absent_today.length > 0 && <p style={{ margin: '12px 0 0' }}><Pill tone="warn">{t('Bu gün dərsdə yoxdur:')} {s.absent_today.length}</Pill> <span className="small">{s.absent_today.join(', ')}</span></p>}
         {s.absence_warnings > 0 && <p style={{ margin: '8px 0 0' }}><Pill tone="bad">{s.absence_limit_pct}{t('%+ buraxma:')} {s.absence_warnings} {t('şagird')}</Pill></p>}
       </section>
-      <section className="panel"><h2>{t('Müvəffəqiyyət (şagird üzrə)')}</h2>
-        <div className="kpis">
-          <Stat value={fmt(s.success_pct) + '%'} label={t('müvəffəqiyyət')} /><Stat value={fmt(s.quality_pct) + '%'} label={t('keyfiyyət')} />
-          <Stat value={`${s.graded}/${s.students}`} label={t('qiymətləndirilib')} />
-        </div>
-        <div className="bar" style={{ height: 14, marginTop: 12 }}>{Object.entries(s.categories).map(([k, v]) => <i key={k} style={{ width: (v as number) * 100 / total + '%', background: `var(--${CAT_TONE[k]})` }} />)}</div>
-        <div className="row" style={{ marginTop: 8, gap: 6 }}>{Object.entries(s.categories).map(([k, v]) => <Pill key={k} tone={CAT_TONE[k]}>{k}: {v as number}</Pill>)}</div>
-        <h2 style={{ marginTop: 16 }}>{t('Bütün qiymətlər üzrə')}</h2>
-        <PerfStats m={s.grades} />
-      </section>
-      <section className="panel" style={{ gridColumn: '1/-1' }}><h2>{t('Fənlər üzrə müvəffəqiyyət')}</h2>
-        <div className="tbl-wrap"><table className="sticky-first">
-          <thead><tr><th>{t('Fənn')}</th><th>{t('Müəllim')}</th><th className="r">{t('Müvəffəqiyyət')}</th><th className="r">{t('Keyfiyyət')}</th><th className="r">{t('Orta')}</th><th className="r">{t('SOU')}</th><th className="r">«5»·«4»·«3»·«2»</th><th className="r">{t('Qiymətsiz')}</th></tr></thead>
-          <tbody>{h.subjects.map((x: any) => (
-            <tr key={x.ta_id}><td>{x.label}</td><td className="small">{x.teacher}</td>
-              <td className="r num">{fmt(x.performance.success_pct)}%</td><td className="r num">{fmt(x.performance.quality_pct)}%</td>
-              <td className="r num">{fmt(x.performance.avg, 2)}</td><td className="r num">{fmt(x.performance.sou)}</td>
-              <td className="r num">{[5, 4, 3, 2].map(g => x.performance.distribution[g]).join(' · ')}</td><td className="r num">{x.performance.not_graded}</td></tr>))}
-            {h.subjects.length === 0 && <tr><td colSpan={8} className="muted">{t('Bu sinfə hələ heç bir müəllim qoşulmayıb.')}</td></tr>}</tbody>
-        </table></div>
+      <section className="panel" style={{ gridColumn: '1/-1' }}><h2>{t('Müvəffəqiyyət')} <small>{fmt(s.success_pct)}% · {t('keyfiyyət')} {fmt(s.quality_pct)}%</small></h2>
+        <p className="small muted" style={{ margin: '0 0 8px' }}>{t('Fənlər üzrə müvəffəqiyyət, əlaçı / zərbəçi kateqoriyaları və dövr üzrə davamiyyət hesabatı «Analitika və hesabat» bölməsindədir.')}</p>
+        <AnalyticsLink to={`/reports?g=homeroom&t=success&cid=${h.class.id}`} />
       </section>
     </div>
   )
@@ -145,19 +128,6 @@ function Grades({ h }: { h: any }) {
   )
 }
 
-function Attendance({ h }: { h: any }) {
-  const t = useT()
-  const rows = [...h.students].sort((a: any, b: any) => (b.missed_pct ?? -1) - (a.missed_pct ?? -1))
-  return (
-    <div className="tbl-wrap"><table className="sticky-first">
-      <thead><tr><th>{t('Şagird')}</th><th className="r">{t('Dərs')}</th><th className="r">{t('Buraxıb')}</th><th className="r">{t('Üzrsüz')}</th><th className="r">{t('Üzrlü')}</th><th className="r">{t('Gecikib')}</th><th className="r">{t('Buraxma %')}</th></tr></thead>
-      <tbody>{rows.map((r: any) => (
-        <tr key={r.student_id}><td>{r.full_name}{r.absent_today && <> <Pill tone="warn">{t('bu gün yoxdur')}</Pill></>}</td>
-          <td className="r num">{r.lessons}</td><td className="r num">{r.missed}</td><td className="r num">{r.unexcused}</td><td className="r num">{r.excused}</td><td className="r num">{r.late}</td>
-          <td className="r">{r.absence_warning ? <Pill tone="bad">{fmt(r.missed_pct, 0)}%</Pill> : r.missed_pct == null ? '—' : fmt(r.missed_pct, 0) + '%'}</td></tr>))}</tbody>
-    </table></div>
-  )
-}
 
 const REL = ['ana', 'ata', 'qəyyum', 'nənə', 'baba', 'digər']
 

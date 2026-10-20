@@ -11,6 +11,7 @@ const SurveyPublic = lazy(() => import('./pages/SurveyPublic'))
 const Verify = lazy(() => import('./pages/Verify'))
 import { Loading, ToastHost } from './ui'
 import { UpdateBanner } from './version'
+import { ResultsCenterRedirect } from './pages/teacher/reports/legacy'
 
 // Yeni yayımdan sonra açıq səhifə köhnə hissəni (chunk) tapmırsa – bir dəfə avtomatik yenilənir (ağ ekran olmasın)
 function lazy<T extends ComponentType<any>>(f: () => Promise<{ default: T }>) {
@@ -129,7 +130,7 @@ export default function App() {
                 {/* köhnə ünvanlar – «Testlər və sınaqlar»a (parametrlər saxlanır) */}
                 <Route path="/tasks" element={<ToTests s="movzu" />} />
                 <Route path="/exams-online" element={<ToTests s="sinaq" />} />
-                <Route path="/results-center" element={<ToTests s="netice" />} />
+                <Route path="/results-center" element={<ResultsCenterRedirect />} />
                 <Route path="/surveys" element={<T.Surveys />} />
                 <Route path="/extra" element={<Navigate to="/classes?tab=extra" replace />} />
                 <Route path="/t/:id" element={<Navigate to="/tests" replace />} />

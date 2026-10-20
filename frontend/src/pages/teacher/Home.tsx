@@ -117,9 +117,9 @@ export default function Home() {
               <div key={c.ta_id} className="row" style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--line)', paddingBottom: 8 }}>
                 <span className="ctag">{c.class_name}</span>
                 <span className="row small">
-                  <span>{c.avg_grade != null ? <>{t('orta qiymət')} <b>{fmt(c.avg_grade, 2)}</b></> : <span className="muted">{t('qiymət yoxdur')}</span>}</span>
-                  {c.risk?.['Qırmızı'] > 0 && <Pill tone="bad">{t('risk')} {c.risk['Qırmızı']}</Pill>}
-                  {c.absence_warnings > 0 && <Pill tone="warn"><Icon name="bell" className="ico" /> 25%+ {c.absence_warnings}</Pill>}
+                  <span className="click" title={t('Analitikada ətraflı')} onClick={() => nav(`/reports?g=academic&t=performance&ta=${c.ta_id}`)}>{c.avg_grade != null ? <>{t('orta qiymət')} <b>{fmt(c.avg_grade, 2)}</b></> : <span className="muted">{t('qiymət yoxdur')}</span>}</span>
+                  {c.risk?.['Qırmızı'] > 0 && <span className="click" title={t('Analitikada ətraflı')} onClick={() => nav(`/reports?g=student&t=risk&ta=${c.ta_id}`)}><Pill tone="bad">{t('risk')} {c.risk['Qırmızı']}</Pill></span>}
+                  {c.absence_warnings > 0 && <span className="click" title={t('Analitikada ətraflı')} onClick={() => nav(`/reports?g=attendance&t=attendance&ta=${c.ta_id}`)}><Pill tone="warn"><Icon name="bell" className="ico" /> 25%+ {c.absence_warnings}</Pill></span>}
                 </span>
               </div>))}
             {ov && !ov.length && <p className="muted">{t('Hələ sinfə qoşulmamısınız – Tənzimləmələr → Siniflər.')}</p>}
@@ -159,9 +159,8 @@ function Weekly() {
   const seen = (() => { try { return !!key && localStorage.getItem(key) === '1' } catch { return false } })()
   const [ms] = useLoad<{ items: { ta_id: number; class_name: string; subject: string; students: number; total: number }[] }>(() => get('/api/results-center/missing-summary'), [])
   const miss = ms?.items || []
-  const openMissing = (ta: number) => {                 // Testlər və sınaqlar → Nəticələr → Sinif → «Kim nəyi işləyib» → «Yalnız işlənməyənlər»
-    try { sessionStorage.setItem('mk-pick-tasks', String(ta)); sessionStorage.setItem('mk-matrix-missing', '1') } catch { /* yaddaş yoxdur */ }
-    nav('/tests?s=netice&v=class')
+  const openMissing = (ta: number) => {                 // Analitika və hesabat → Testlər və sınaqlar → İşlənməyənlər (həmin sinif)
+    nav(`/reports?g=tests&t=missing&ta=${ta}`)
   }
   const extra = miss.filter(m => !(w?.items || []).some((x: any) => x.ta_id === m.ta_id))
   if (!w || (!w.items.length && !miss.length) || seen || closed === key) return null
@@ -174,7 +173,8 @@ function Weekly() {
       {extra.map(m => <WkRow key={m.ta_id} x={{ ta_id: m.ta_id, class_name: m.class_name, subject: m.subject, red: [], absence: [], missing_week: [], no_marks: [] }} m={m} onMiss={openMissing} />)}
       <div className="row" style={{ marginTop: 10 }}>
         <button className="btn sm" onClick={() => nav('/journal')}>{t('Jurnala keç')}</button>
-        <button className="btn sm" onClick={() => nav('/reports')}>{t('Analitika → Risk')}</button>
+        <button className="btn sm" onClick={() => nav('/reports?g=student&t=risk')}>{t('Analitika → Risk')}</button>
+        <button className="btn sm" onClick={() => nav('/reports?g=tests&t=missing')}>{t('📊 İşlənməyənlər – Analitikada ətraflı →')}</button>
       </div>
     </Disclosure>
   )

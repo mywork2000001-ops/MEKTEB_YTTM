@@ -2,13 +2,14 @@
 // Dərs cədvəlindən və gündəlik plandan ayrıdır: jurnala qiymət yazmır, işçi planı sürüşdürmür. Şagird planı görür.
 import { useState } from 'react'
 import { del as apiDel, get, post, put } from '../../api'
-import { AsyncBtn, Chips, Drawer, ErrorBox, Field, fmt, fmtDate, levelTone, Loading, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
+import { AsyncBtn, Chips, Drawer, ErrorBox, Field, fmt, fmtDate, levelTone, Loading, Pill, Seg, toast, Top, useLoad } from '../../ui'
 import { head, printDoc, table } from '../../print'
 import { useMyLessons } from './common'
 import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
 import { azDT } from '../../ui'
 import { useT, tt } from '../../i18n'
 import { AssignPrograms, ProgramPanel } from './ExtraPrograms'
+import AnalyticsLink from './reports/AnalyticsLink'
 
 type Sess = { id: number; date: string; weekday: string; start: string; end: string; format: 'əyani' | 'onlayn'; room: string | null; link: string | null
   topics: { plan_lesson_id: number | null; seq: number | null; text: string }[]; goals: string | null; resources: string | null; homework: string | null
@@ -425,48 +426,15 @@ function BulkTopics({ course, onClose, onDone }: { course: number; onClose: () =
     </Drawer>
   )
 }
-
-const sign = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+' : ''}${fmt(v)}`)
-
+// ---------------------------------------------------------------- statistika «Analitika və hesabat»a köçürülüb (reports/CourseStats.tsx)
 function Stats({ id }: { id: number }) {
   const t = useT()
-  const [d, err] = useLoad<any>(() => get(`/api/extra/${id}/stats`), [id])
-  if (!d) return err ? <ErrorBox error={err} /> : <Loading />
-  const s = d.summary, cmp = d.compare
-  const print = () => printDoc({ title: 'Əlavə məşğələ – hesabat', body: head('Əlavə məşğələ – hesabat', `keçirildi ${s.held} məşğələ · ${fmt(s.hours)} saat · orta iştirak ${fmt(s.attendance_pct)}%`) +
-    table(['Şagird', 'Sinif', 'İştirak', '%', 'Məşğələ testi %', 'Kursdan əvvəl %', 'Sonra %', 'Dinamika'], d.students.map((x: any) => [x.full_name, x.class_name, `${x.present}/${x.held}`, fmt(x.attendance_pct), fmt(x.extra_test_avg), fmt(x.before_pct), fmt(x.after_pct), x.delta == null ? '—' : fmt(x.delta)]), [2, 3, 4, 5, 6, 7]) })
+  const [d] = useLoad<any>(() => get(`/api/extra/${id}/stats`), [id])
   return (
     <div className="stack">
-      <div className="kpis">
-        <Stat value={`${s.held}/${s.sessions - s.cancelled}`} label={t('keçirildi')} /><Stat value={fmt(s.hours)} label={t('saat')} />
-        <Stat value={fmt(s.attendance_pct) + '%'} label={t('orta iştirak')} /><Stat value={fmt(s.extra_test_avg) + '%'} label={t('məşğələ testi')} />
-      </div>
-      {s.at_risk > 0 && <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>{s.at_risk} {t('şagird ardıcıl 2 məşğələni buraxıb – valideynlə əlaqə saxlayın.')}</div>}
-      <section className="panel"><h2>{t('Effekt')} <small>{t('irəliləyiş: kursdan sonrakı nəticə − əvvəlki (mövzu testləri və sınaqlar)')}</small></h2>
-        {cmp.participants_delta == null && cmp.others_delta == null ? <p className="small muted">{t('Kursdan əvvəl və sonra test/sınaq nəticəsi yığıldıqca burada görünəcək.')}</p> : (
-          <div className="row">
-            <Pill tone="ok">{t('iştirakçılar (')}{cmp.participants}): {sign(cmp.participants_delta)}</Pill><Pill>{t('digərləri (')}{cmp.others}): {sign(cmp.others_delta)}</Pill>
-            {cmp.participants_delta != null && cmp.others_delta != null && <b>{t('fərq')} {sign(cmp.participants_delta - cmp.others_delta)}</b>}
-          </div>)}
-        <p className="small muted">{t('İştirakçı – məşğələlərin ən azı yarısında olan şagird. Zəif qrup üçün mütləq nəticə yox, irəliləyiş müqayisə olunur. Kursdan sonrakı orta: iştirakçılar')} {fmt(cmp.participants_pct)}{t('%, digərləri')} {fmt(cmp.others_pct)}{t('%. Format üzrə iştirak: əyani')} {fmt(d.by_format['əyani'].attendance_pct)}{t('%, onlayn')} {fmt(d.by_format.onlayn.attendance_pct)}%.</p></section>
-      {d.entry_exit && (d.entry_exit.entry_avg != null || d.entry_exit.exit_avg != null) && (
-        <section className="panel"><h2>{t('Giriş və çıxış testi')}</h2>
-          <div className="row"><Pill>{t('giriş')}: {fmt(d.entry_exit.entry_avg)}%</Pill><Pill>{t('çıxış')}: {fmt(d.entry_exit.exit_avg)}%</Pill>
-            <Pill tone={d.entry_exit.effect > 0 ? 'ok' : undefined}>{t('fərq')} {sign(d.entry_exit.effect)}</Pill></div>
-          <p className="small muted">{t('Əlaqə səbəb demək deyil: iştirak edən şagird daha motivli ola bilər.')}</p></section>)}
-      {d.transitions?.length > 0 && (
-        <section className="panel"><h2>{t('Qrup dəyişmə təklifi')} <small>{t('yalnız təklifdir – qərar müəllimindir')}</small></h2>
-          {d.transitions.map((x: any) => <p key={x.student_id} className="small" style={{ margin: '0 0 4px' }}><b>{x.full_name}</b> – {x.to === 'tereqqi'
-            ? t('çıxış testi {pct}% – tərəqqi qrupuna keçmək olar', { pct: fmt(x.pct, 0) }) : t('çıxış testi {pct}% – inkişaf qrupuna keçid düşünün', { pct: fmt(x.pct, 0) })}</p>)}</section>)}
-      <div className="tbl-wrap"><table>
-        <thead><tr><th>{t('Şagird')}</th><th className="r">{t('İştirak')}</th><th className="r">{t('Test %')}</th><th className="r">{t('Əvvəl')}</th><th className="r">{t('Sonra')}</th><th className="r">±</th></tr></thead>
-        <tbody>{d.students.map((x: any) => (
-          <tr key={x.student_id}><td><b>{x.full_name}</b>{x.risk && <Pill tone="bad">{t('2 buraxma')}</Pill>}<span className="sub">{x.class_name}</span></td>
-            <td className="r num">{x.present}/{x.held}{x.attendance_pct != null ? ` (${fmt(x.attendance_pct, 0)}%)` : ''}</td><td className="r num">{fmt(x.extra_test_avg)}</td>
-            <td className="r num">{fmt(x.before_pct)}</td><td className="r num">{fmt(x.after_pct)}</td>
-            <td className="r num">{x.delta == null ? '—' : <Pill tone={x.delta > 0 ? 'ok' : x.delta < 0 ? 'bad' : undefined}>{x.delta > 0 ? '+' : ''}{fmt(x.delta)}</Pill>}</td></tr>))}</tbody>
-      </table></div>
-      <button className="btn sm" onClick={print}>{t('Hesabatı çap et (tədris hissəsi üçün)')}</button>
+      {d && <p className="small" style={{ margin: 0 }}>{t('keçirildi')}: <b>{d.summary.held}/{d.summary.sessions - d.summary.cancelled}</b> · {t('orta iştirak')}: <b>{fmt(d.summary.attendance_pct)}%</b>{d.summary.at_risk > 0 && <> · <Pill tone="warn">{d.summary.at_risk} {t('risk')}</Pill></>}</p>}
+      <p className="small muted" style={{ margin: 0 }}>{t('Tam statistika, «Effekt» və hesabat çapı «Analitika və hesabat → Məşğələlər» bölməsindədir.')}</p>
+      <AnalyticsLink to={`/reports?g=courses&t=courses&course=${id}`} text="Məşğələlər" />
     </div>
   )
 }
