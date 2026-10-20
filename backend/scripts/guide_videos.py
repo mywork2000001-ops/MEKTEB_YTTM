@@ -214,6 +214,7 @@ SCENARIOS: list[dict] = [
          {'act': 'goto', 'sel': '/classes?tab=extra', 'wait': 3500, 'sel_check': '.top',
           'cap': L('«Siniflər və qruplar» → «Məşğələ qrupları».', '«Classes and groups» → «Extra-class groups».',
                    '«Классы и группы» → «Группы занятий».')},
+         {'act': 'click', 'sel': 'button:has-text("Proqramları təyin et")', 'wait': 1500, 'optional': True},
          {'act': 'wait', 'wait': 3500,
           'cap': L('Qrup yarat, şagirdləri əlavə et və qrupa proqram təyin et.', 'Create a group, add students and assign a programme to the group.',
                    'Создай группу, добавь учеников и назначь группе программу.')},
