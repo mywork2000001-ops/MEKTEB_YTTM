@@ -23,6 +23,8 @@ type Data = {
 }
 type Preset = 'inherit' | 'week' | 'month' | 'sem' | 'all'
 type Kind = 'all' | 'movzu' | 'sinaq'
+type Flt = 'all' | 'missed' | 'open' | 'late'
+const matchFlt = (i: Item, f: Flt) => f === 'all' || (f === 'missed' ? i.status === 'yazmayıb' : f === 'open' ? i.status !== 'yazmayıb' : i.state === 'late_open')
 
 const REASONS = ['excused', 'technical', 'no_device', 'forgot', 'refused', 'other'] as const
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -32,8 +34,9 @@ function presetRange(p: Preset): { from?: string; to?: string } {
   if (p === 'week') { const d = new Date(now); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return { from: iso(d), to: iso(now) } }
   if (p === 'month') return { from: iso(new Date(now.getFullYear(), now.getMonth(), 1)), to: iso(now) }
   if (p === 'sem') {
+    // 1-ci yarımil 15.09–31.01, 2-ci yarımil 01.02-dən; «to» heç vaxt gələcək tarix olmur
     const y = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
-    const first = now.getMonth() >= 8 || now.getMonth() === 0 && now.getDate() <= 26
+    const first = now.getMonth() >= 8 || now.getMonth() === 0
     return first ? { from: `${y}-09-15`, to: iso(now) } : { from: `${y + 1}-02-01`, to: iso(now) }
   }
   return {}
@@ -62,8 +65,9 @@ export default function MissingReport({ ta, params, label, kind, onStudent }: {
 }) {
   const t = useT()
   const [preset, setPreset] = useState<Preset>('inherit')
-  const [pending, setPending] = useState(false)          // «Gözlənilənləri də göstər»
-  const [plan, setPlan] = useState<'late_open' | 'all'>('late_open')
+  const [pending, setPending] = useState(true)           // «Gözlənilənləri də göstər» – defolt AÇIQ (hamısı görünür)
+  const [plan, setPlan] = useState<'late_open' | 'all'>('all')
+  const [flt, setFlt] = useState<Flt>('all')
   const [everyone, setEveryone] = useState(false)
   const [sel, setSel] = useState<Set<number>>(new Set())
   const [selT, setSelT] = useState<Set<string>>(new Set())
@@ -75,7 +79,10 @@ export default function MissingReport({ ta, params, label, kind, onStudent }: {
     ...(pending ? {} : { only_missed: '1' }), plan }
   const [d, err, loading, reload] = useLoad<Data>(() => get(`/api/results-center/class/${ta}/missing-list`, { ...q, all: '1', sort: 'risk' }),
     [ta, kind, label, preset, pending, plan])
-  const rows = (d?.rows || []).filter(r => everyone || r.items.length > 0)
+  const shownRows = (d?.rows || []).map(r => flt === 'all' ? r : { ...r, items: r.items.filter(i => matchFlt(i, flt)) })
+  const rows = shownRows.filter(r => everyone || r.items.length > 0)
+  const allItems = (d?.rows || []).flatMap(r => r.items)
+  const cnt = { all: allItems.length, missed: allItems.filter(i => matchFlt(i, 'missed')).length, open: allItems.filter(i => matchFlt(i, 'open')).length, late: allItems.filter(i => matchFlt(i, 'late')).length }
   const url = (path: string, extra: Record<string, string>) => `/api/results-center/class/${ta}/${path}?` + new URLSearchParams({ ...q, ...extra }).toString()
   const sidsQ: Record<string, string> = sel.size ? { sids: [...sel].join(',') } : {}
   const keysQ: Record<string, string> = selT.size ? { task_keys: [...selT].join(',') } : {}
@@ -113,6 +120,11 @@ export default function MissingReport({ ta, params, label, kind, onStudent }: {
           <Kpi label={t('Tam icra edən')} value={d.summary.full} color="var(--ok)" />
         </div>
         {Object.keys(d.summary.reasons).length > 0 && <p className="small muted">{t('Səbəblər')}: {Object.entries(d.summary.reasons).map(([k, v]) => `${reasonLabel(t, k)} – ${v}`).join(' · ')}</p>}
+        <div className="row no-print" role="group" aria-label={t('Süzgəc')} style={{ gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {([['all', t('Cəmi: {n}', { n: cnt.all })], ['missed', t('Bağlanıb, yazılmayıb: {n}', { n: cnt.missed })],
+            ['open', t('Açıq (gözlənilir): {n}', { n: cnt.open })], ['late', t('Plan günü keçib: {n}', { n: cnt.late })]] as const).map(([k, l]) => (
+            <button key={k} type="button" className={'btn sm' + (flt === k ? ' primary' : ' ghost')} aria-pressed={flt === k} onClick={() => setFlt(k)}>{l}</button>))}
+        </div>
         <section className="panel">
           <h2>{t('Onlayn testləri yazmayanlar')} <small>{d.class_name} · {d.subject}</small>{' '}
             <span className="pill warn">{t('{n} şagird · {m} işlənməmiş test', { n: d.students, m: d.total })}</span></h2>
@@ -140,8 +152,9 @@ export default function MissingReport({ ta, params, label, kind, onStudent }: {
                     <td className="c"><RateBar v={r.rate} />{r.rate_on_time != null && r.rate_on_time !== r.rate && <div className="small muted">{t('plan üzrə {n}%', { n: fmt(r.rate_on_time) })}</div>}</td>
                     <td className="c">{r.late_days || '—'}</td>
                     <td><span className="row" style={{ gap: 4, flexWrap: 'wrap' }}>{r.items.map(i => (
-                      <span key={i.key} className={'pill' + (i.status === 'yazmayıb' ? ' bad' : '')} title={`${fmtD(i.date)}${i.late_days ? ' · ' + t('{n} gün gecikmə', { n: i.late_days }) : ''}${i.reason ? ' · ' + reasonLabel(t, i.reason) : ''}`}>
-                        {itemLabel(i)}{i.status !== 'yazmayıb' ? ' ⏳' : ''}{i.reason ? ` (${reasonLabel(t, i.reason)})` : ''}</span>))}
+                      <span key={i.key} className={'pill' + (i.status === 'yazmayıb' ? ' bad' : i.state === 'late_open' ? ' warn' : '')} title={`${fmtD(i.date)}${i.late_days ? ' · ' + t('{n} gün gecikmə', { n: i.late_days }) : ''}${i.reason ? ' · ' + reasonLabel(t, i.reason) : ''}`}>
+                        {itemLabel(i)}{i.status !== 'yazmayıb' ? ' ⏳' : ''}{i.reason ? ` (${reasonLabel(t, i.reason)})` : ''}{' '}
+                        <small>· {i.status === 'yazmayıb' ? t('yazmayıb') : i.state === 'late_open' ? t('gecikir') : t('açıq')}</small></span>))}
                       {r.items.length === 0 && <span className="muted">—</span>}</span></td>
                     <td className="small">{r.advice_key === 'contact' ? t('Valideynlə əlaqə + fərdi söhbət') : r.advice_key === 'remind' ? t('Xatırlatma, təkrar imkan') : r.advice_key === 'deadline' ? t('Son tarixi xatırlat') : ''}</td>
                     <td className="no-print" style={{ whiteSpace: 'nowrap' }}>
@@ -151,6 +164,7 @@ export default function MissingReport({ ta, params, label, kind, onStudent }: {
               </table>
             </div>)}
           <p className="small muted">{t('● Kritik – icra < 50% və ya ardıcıl ≥ 3 buraxma · Diqqət – 50–79% · Normal – ≥ 80% · ⏳ – test açıqdır, hələ təhvil verilməyib')}</p>
+          <p className="small muted">ⓘ {t('Siyahıya daxil deyil: hələ açılmamış testlər, üzrlü qeydlər, arxiv dərslər, çıxmış şagirdlər, növsüz tapşırıqlar.')}</p>
         </section>
         <details className="panel" style={{ marginTop: 12 }}>
           <summary><b>{t('Test üzrə')}</b> <span className="small muted">{t('({n} test; çap üçün seçin)', { n: d.tests.length })}</span></summary>

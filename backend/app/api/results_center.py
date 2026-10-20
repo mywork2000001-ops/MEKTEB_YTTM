@@ -414,7 +414,7 @@ def missing_all_api(format: Literal['pdf', 'json'] = 'pdf', kind: Literal['movzu
     ms = [class_missing(db, user, ta.id, kind, date_from, date_to, all_students=True, plan=plan, sort='risk') for ta in _my_tas(db, user)]
     db.commit()
     if format == 'json':
-        return {'classes': [{k: m[k] for k in ('ta_id', 'class_name', 'subject', 'summary')} for m in ms]}
+        return {'classes': [{k: m[k] for k in ('ta_id', 'class_name', 'subject', 'summary', 'students', 'total')} for m in ms]}
     period = f'{_d(date_from.isoformat() if date_from else None)} – {_d(date_to.isoformat() if date_to else None)}' if date_from or date_to else 'bütün dövr'
     audit(db, user, 'export', 'missing_all', str(user.id))
     db.commit()

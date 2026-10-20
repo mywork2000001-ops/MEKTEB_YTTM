@@ -365,7 +365,7 @@ def _cell(status: str, pct: float | None = None, published: bool = True) -> dict
 
 
 def class_matrix(db: Session, user: User, ta_id: int, kind: str = 'all', date_from: dt.date | None = None,
-                 date_to: dt.date | None = None) -> dict:
+                 date_to: dt.date | None = None, period_by: str = 'open') -> dict:
     """Bir dərsin (sinif/qrup) «şagird × test» cədvəli: sütun – mövzu testləri (№), sınaqlar (adla), kağız KSQ/BSQ; xana – nəticə.
     Mənbə qaydaları `_build` ilə eyni: onlayn + kağız, eyni test bir dəfə (nəşr olunmuş kağız balı onlayn xananı əvəz edir).
     Yalnız öz dərsim (başqa müəllim – 404). Nəşr olunmamış skan balı `nəşr olunmayıb` (bal göstərilir, `published=False`)."""
@@ -384,7 +384,7 @@ def class_matrix(db: Session, user: User, ta_id: int, kind: str = 'all', date_fr
     for k in KINDS:
         if kind != 'all' and kind != k:
             continue
-        data = collect(db, user, k, {ta.id}, date_from, date_to)
+        data = collect(db, user, k, {ta.id}, date_from, date_to, period_by=period_by)
         by_unit = {t['unit']: t for t in data['tests']}
         for r in data['rows']:
             if r['ta_id'] != ta.id or not r['visible']:
@@ -556,7 +556,7 @@ def class_missing(db: Session, user: User, ta_id: int, kind: str = 'all', date_f
     from .services import today
     if plan not in ('all', 'late_open'):
         raise HTTPException(400, 'plan: all və ya late_open')
-    m = class_matrix(db, user, ta_id, kind, date_from, date_to)
+    m = class_matrix(db, user, ta_id, kind, date_from, date_to, period_by='due')   # M3: dövr – plan günü/son tarixə görə
     td = today()
     keys = set(task_keys) if task_keys else None            # test süzgəci (məntiqi test açarı: b…/t…/e…; surətlər birləşib)
     sids = set(sids) if sids else None
