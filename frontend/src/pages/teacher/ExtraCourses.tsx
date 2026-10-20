@@ -8,14 +8,22 @@ import { useMyLessons } from './common'
 import { BankPicker, iso, localParts, OwnQuestion, toCustom, type Q } from './TaskEditor'
 import { azDT } from '../../ui'
 import { useT, tt } from '../../i18n'
+import { AssignPrograms, ProgramPanel } from './ExtraPrograms'
 
 type Sess = { id: number; date: string; weekday: string; start: string; end: string; format: 'əyani' | 'onlayn'; room: string | null; link: string | null
   topics: { plan_lesson_id: number | null; seq: number | null; text: string }[]; goals: string | null; resources: string | null; homework: string | null
   status: 'planned' | 'held' | 'cancelled'; note: string | null; recording_url: string | null; batch_id: number | null; present: number; joined: number; students: number | null
   material_ids: number[]; materials: { id: number; title: string; kind: string }[] }
-type Course = { id: number; title: string; subject: string; format: string; classes: string[]; audience: { ta_ids: number[]; levels: string[] | null; student_ids: number[] | null }
+export type Course = { id: number; title: string; subject: string; format: string; classes: string[]; audience: { ta_ids: number[]; levels: string[] | null; student_ids: number[] | null }
   schedule: { weekday: number; start: string; end: string; room?: string | null; link?: string | null }[]; starts_on: string; ends_on: string; goal: string | null
-  students: number; sessions: number; held: number; cancelled: number; next: Sess | null; session_list?: Sess[]; members?: { student_id: number; full_name: string; class_name: string }[]; warnings?: string[] }
+  students: number; sessions: number; held: number; cancelled: number; next: Sess | null; session_list?: Sess[]; members?: { student_id: number; full_name: string; class_name: string }[]; warnings?: string[]
+  kind: Kind; kind_set: boolean; program: { id: number; key: string | null; title: string } | null; program_applied: boolean }
+export type Kind = 'inkisaf' | 'tereqqi' | 'diger'
+export type Warn = { key: string; params?: Record<string, string | number> }
+export type FillRep = { course_id: number; title: string; owner?: string | null; kind: Kind; kind_auto: boolean; grade: number | null; mode: string | null
+  program: { key: string | null; title: string | null } | null; sessions: number; held: number; to_fill: number; kept_manual: number; topics: number; topics_left: number
+  warnings: Warn[]; applicable: boolean; skip: string | null; tests: { ok: number; pending: number; none: number }; rows?: { date: string; ref: string; text: string; variants: string | null; test: { status: string } | null }[] }
+export const KIND_LABEL: Record<Kind, string> = { inkisaf: 'İnkişaf', tereqqi: 'Tərəqqi', diger: 'Digər' }
 
 const DAYS = ['Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə', 'Bazar']
 const ST: Record<string, [string, any]> = { planned: ['planlaşdırılıb', undefined], held: ['keçirildi', 'ok'], cancelled: ['ləğv edildi', 'bad'] }
@@ -27,27 +35,30 @@ export default function ExtraCourses({ embedded }: { embedded?: boolean } = {}) 
   const [list, err, loading, reload] = useLoad<Course[]>(() => get('/api/extra', view === 'archived' ? { archived: true } : {}), [view])
   const [creating, setCreating] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
+  const [assigning, setAssigning] = useState(false)
   return (
     <>
       {embedded ? <div className="hub-head"><span className="small muted grow">{t('Əyani və onlayn məşğələ qrupları – öz planı, davamiyyət, statistika (jurnala qiymət yazmır). Qrupa istənilən sinfinizdən şagird əlavə edə və çıxara bilərsiniz.')}</span><button className="btn primary" onClick={() => setCreating(true)}>{t('+ Yeni məşğələ qrupu')}</button></div>
-        : <Top title={t('Əlavə məşğələ')} sub="Əyani və onlayn məşğələ kursu – öz perspektiv planı, davamiyyət, statistika (jurnala qiymət yazmır)"
+        : <Top title={t('Əlavə məşğələ')} sub={t('Əyani və onlayn məşğələ kursu – öz perspektiv planı, davamiyyət, statistika (jurnala qiymət yazmır)')}
           actions={<button className="btn primary" onClick={() => setCreating(true)}>{t('+ Yeni kurs')}</button>} />}
-      <div className="toolbar"><Seg value={view} onChange={setView} options={[['active', t('Kurslar')], ['archived', 'Arxiv']]} /></div>
+      <div className="toolbar"><Seg value={view} onChange={setView} options={[['active', t('Kurslar')], ['archived', t('Arxiv')]]} />
+        <span className="grow" /><button className="btn sm" onClick={() => setAssigning(true)}>{t('📚 Proqramları təyin et')}</button></div>
       <ErrorBox error={err} />
       {loading && !list ? <Loading /> : (
         <div className="grid g2">
-          {list?.length === 0 && <div className="empty">{view === 'archived' ? 'Arxiv boşdur.' : t('Hələ kurs yoxdur. Məs.: «IX – buraxılışa hazırlıq, şənbə 10:00, 12 həftə» və ya «Zəif qrup – təkrar».')}</div>}
+          {list?.length === 0 && <div className="empty">{view === 'archived' ? t('Arxiv boşdur.') : t('Hələ kurs yoxdur. Məs.: «IX – buraxılışa hazırlıq, şənbə 10:00, 12 həftə» və ya «Zəif qrup – təkrar».')}</div>}
           {list?.map(c => (
             <section key={c.id} className="panel click" onClick={() => setOpen(c.id)}>
               <h2>{c.title} <small>{c.format}</small></h2>
               <p className="small muted" style={{ margin: '0 0 6px' }}>{c.subject} · {c.classes.join(', ')}{c.audience.levels ? (' · ' + t('{x1} qrup', { x1: c.audience.levels.join(', ') })) : ''} · {c.students} {t('şagird')}</p>
-              <p className="small" style={{ margin: '0 0 6px' }}>{c.schedule.map(s => `${DAYS[s.weekday].slice(0, 3)}. ${s.start}–${s.end}`).join(', ')} · {fmtDate(c.starts_on)} – {fmtDate(c.ends_on)}</p>
+              <p className="small" style={{ margin: '0 0 6px' }}>{c.schedule.map(s => `${t(DAYS[s.weekday]).slice(0, 3)}. ${s.start}–${s.end}`).join(', ')} · {fmtDate(c.starts_on)} – {fmtDate(c.ends_on)}</p>
               <div className="row">
                 <Pill tone="ok">{t('keçirildi')} {c.held}/{c.sessions - c.cancelled}</Pill>
                 {c.next && <Pill tone="info">{t('növbəti:')} {fmtDate(c.next.date)} {c.next.start}{c.next.topics.length ? ` · ${c.next.topics[0].text}` : ''}</Pill>}
               </div>
             </section>))}
         </div>)}
+      {assigning && <AssignPrograms onClose={() => { setAssigning(false); reload() }} />}
       {creating && <NewCourse onClose={() => setCreating(false)} onDone={id => { setCreating(false); reload(); setOpen(id) }} />}
       {open && <CourseView id={open} archived={view === 'archived'} onClose={() => { setOpen(null); reload() }} />}
     </>
@@ -61,7 +72,7 @@ function NewCourse({ onClose, onDone }: { onClose: () => void; onDone: (id: numb
   const [f, setF] = useState(() => {
     const t = localParts(new Date().toISOString())[0]
     const end = new Date(); end.setDate(end.getDate() + 84)
-    return { title: '', format: 'əyani', goal: '', starts_on: t, ends_on: localParts(end.toISOString())[0], audience: 'all' as 'all' | 'levels', levels: ['Zəif'] as string[] }
+    return { title: '', format: 'əyani', goal: '', starts_on: t, ends_on: localParts(end.toISOString())[0], audience: 'all' as 'all' | 'levels', levels: ['Zəif'] as string[], kind: '' as '' | Kind }
   })
   const [tas, setTas] = useState<number[]>([])
   const [slots, setSlots] = useState([{ weekday: 5, start: '10:00', end: '11:00', room: '', link: '' }])
@@ -73,7 +84,7 @@ function NewCourse({ onClose, onDone }: { onClose: () => void; onDone: (id: numb
     try {
       const r = await post<Course>('/api/extra', {
         title: f.title.trim(), format: f.format, goal: f.goal || null, ta_ids: tas, starts_on: f.starts_on, ends_on: f.ends_on,
-        levels: f.audience === 'levels' ? f.levels : null,
+        levels: f.audience === 'levels' ? f.levels : null, kind: f.kind || null,
         schedule: slots.map(s => ({ weekday: s.weekday, start: s.start, end: s.end, room: s.room || null, link: s.link || null })),
       })
       toast(t('Kurs yaradıldı – {sessions} məşğələ planlaşdırıldı', { sessions: r.sessions }))
@@ -90,6 +101,9 @@ function NewCourse({ onClose, onDone }: { onClose: () => void; onDone: (id: numb
           <Field label={t('Ad')} full><input value={f.title} maxLength={200} placeholder={t('məs. IX – buraxılışa hazırlıq')} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
           <Field label={t('Format')}><select value={f.format} onChange={e => setF({ ...f, format: e.target.value })}>
             <option value="əyani">{t('əyani (məktəbdə)')}</option><option value="onlayn">{t('onlayn')}</option><option value="qarışıq">{t('qarışıq')}</option></select></Field>
+          <Field label={t('Qrupun tipi')}><select value={f.kind} onChange={e => setF({ ...f, kind: e.target.value as '' | Kind })}>
+            <option value="">{t('avtomatik (ad və səviyyədən)')}</option>
+            {(Object.keys(KIND_LABEL) as Kind[]).map(k => <option key={k} value={k}>{t(KIND_LABEL[k])}</option>)}</select></Field>
           <Field label={t('Başlama')}><input type="date" value={f.starts_on} onChange={e => setF({ ...f, starts_on: e.target.value })} /></Field>
           <Field label={t('Bitmə')}><input type="date" value={f.ends_on} onChange={e => setF({ ...f, ends_on: e.target.value })} /></Field>
           <Field label={t('Məqsəd')} full><textarea value={f.goal} placeholder={t('məs. kəsrlər və faiz mövzularında boşluqları bağlamaq')} onChange={e => setF({ ...f, goal: e.target.value })} /></Field>
@@ -107,7 +121,7 @@ function NewCourse({ onClose, onDone }: { onClose: () => void; onDone: (id: numb
         <fieldset><legend>{t('Həftəlik cədvəl')}</legend>
           {slots.map((s, i) => (
             <div key={i} className="row" style={{ gap: 6, marginBottom: 6 }}>
-              <select className="sel" value={s.weekday} onChange={e => setSlot(i, { weekday: Number(e.target.value) })}>{DAYS.map((d, j) => <option key={j} value={j}>{d}</option>)}</select>
+              <select className="sel" value={s.weekday} onChange={e => setSlot(i, { weekday: Number(e.target.value) })}>{DAYS.map((d, j) => <option key={j} value={j}>{t(d)}</option>)}</select>
               <input type="time" className="sel" value={s.start} onChange={e => setSlot(i, { start: e.target.value })} />
               <input type="time" className="sel" value={s.end} onChange={e => setSlot(i, { end: e.target.value })} />
               {f.format !== 'onlayn' && <input className="sel" placeholder={t('otaq')} value={s.room} onChange={e => setSlot(i, { room: e.target.value })} style={{ width: 90 }} />}
@@ -144,7 +158,7 @@ function Members({ id, c, archived, onChange }: { id: number; c: Course; archive
   return (
     <div className="stack">
       <div className="row"><b className="grow">{members.length} {t('şagird')}</b>
-        {!archived && <button className="btn sm primary" onClick={() => { setAdding(a => !a); setPick([]) }}>{adding ? 'Bağla' : '+ Şagird əlavə et'}</button>}</div>
+        {!archived && <button className="btn sm primary" onClick={() => { setAdding(a => !a); setPick([]) }}>{adding ? t('Bağla') : t('+ Şagird əlavə et')}</button>}</div>
       {adding && (
         <section className="panel" style={{ padding: 12 }}>
           <div className="row" style={{ gap: 8, marginBottom: 8 }}>
@@ -154,23 +168,23 @@ function Members({ id, c, archived, onChange }: { id: number; c: Course; archive
               </select></label>
           </div>
           {cand && freeAll.length > 0 && <div style={{ marginBottom: 8 }}><Chips label={t('Səviyyə')} value={lvf} onChange={v => { setLvf(v); setPick([]) }}
-            options={[['all', 'Hamısı', lvN('all')], ['Zəif', 'Zəif', lvN('Zəif')], ['Orta', 'Orta', lvN('Orta')], ['Güclü', 'Güclü', lvN('Güclü')], ['none', 'səviyyəsiz', lvN('none')]]} /></div>}
+            options={[['all', t('Hamısı'), lvN('all')], ['Zəif', t('Zəif'), lvN('Zəif')], ['Orta', t('Orta'), lvN('Orta')], ['Güclü', t('Güclü'), lvN('Güclü')], ['none', t('səviyyəsiz'), lvN('none')]]} /></div>}
           {!cand ? <Loading /> : free.length === 0 ? <p className="small muted" style={{ margin: 0 }}>{freeAll.length ? t('Bu səviyyədə əlavə ediləsi şagird yoxdur.') : t('Bu sinfin bütün şagirdləri artıq qrupdadır.')}</p> : <>
             <div className="row" style={{ gap: 6, marginBottom: 6 }}>
-              <button className="btn sm ghost" onClick={() => setPick(pick.length === free.length ? [] : free.map(s => s.id))}>{pick.length === free.length ? 'Heç biri' : lvf === 'all' ? 'Hamısını seç' : t('Bütün «{x1}» seç', { x1: lvf === 'none' ? 'səviyyəsiz' : lvf })}</button>
+              <button className="btn sm ghost" onClick={() => setPick(pick.length === free.length ? [] : free.map(s => s.id))}>{pick.length === free.length ? t('Heç biri') : lvf === 'all' ? t('Hamısını seç') : t('Bütün «{x1}» seç', { x1: lvf === 'none' ? t('səviyyəsiz') : t(lvf) })}</button>
               <span className="small muted">{t('seçilib')} {pick.length}</span></div>
             <div className="jlist" style={{ maxHeight: 260, overflow: 'auto' }}>{free.map(s => (
               <label key={s.id} className="check" style={{ padding: '0 12px', minHeight: 36 }}>
                 <input type="checkbox" checked={pick.includes(s.id)} onChange={e => setPick(p => e.target.checked ? [...p, s.id] : p.filter(x => x !== s.id))} /> {s.full_name}
                 {s.level && <> <Pill tone={levelTone(s.level)}>{s.level}</Pill></>}</label>))}</div>
-            <AsyncBtn className="btn primary" disabled={!pick.length} ok="Qrupa əlavə olundu"
+            <AsyncBtn className="btn primary" disabled={!pick.length} ok={t('Qrupa əlavə olundu')}
               onClick={async () => { await post(`/api/extra/${id}/members`, { student_ids: pick }); setPick([]); reloadCand(); onChange() }}>{t('Qrupa əlavə et (')}{pick.length})</AsyncBtn></>}
           <p className="small muted" style={{ margin: '8px 0 0' }}>{t('Yalnız seçdiyiniz şagirdlər qoşulur – sinfin qalanı yox. Səviyyə (Zəif / Orta / Güclü) – Jurnal → «Səviyyə qrupları»ndan; zəif və güclü qrupları ayrıca məşğələ qrupu kimi saxlamaq üçün hər qrupa öz səviyyəsini əlavə edin.')}</p>
         </section>)}
       <div className="jlist">{members.map(m => (
         <div key={m.student_id} className="row small" style={{ padding: '6px 12px' }}>
           <b className="grow">{m.full_name}</b><Pill tone="info">{m.class_name}</Pill>
-          {!archived && members.length > 1 && <AsyncBtn className="btn sm ghost" ok="Qrupdan çıxarıldı"
+          {!archived && members.length > 1 && <AsyncBtn className="btn sm ghost" ok={t('Qrupdan çıxarıldı')}
             onClick={async () => { await apiDel(`/api/extra/${id}/members/${m.student_id}`); onChange(); if (adding) reloadCand() }}>{t('✕ çıxar')}</AsyncBtn>}
         </div>))}</div>
       {members.length > 0 && <p className="small muted" style={{ margin: 0 }}>{t('Çıxarılan şagirdin keçmiş davamiyyəti qalır; növbəti məşğələləri artıq görmür.')}</p>}
@@ -217,24 +231,25 @@ function CourseView({ id, archived, onClose }: { id: number; archived: boolean; 
   return (
     <Drawer title={c ? c.title : t('Kurs')} onClose={onClose}
       footer={c && <><button className="btn" onClick={print}>{t('Planı çap et')}</button><span className="grow" />
-        {archived ? <AsyncBtn className="btn" ok="Geri qaytarıldı" onClick={async () => { await post(`/api/extra/${id}/restore`); onClose() }}>{t('Geri qaytar')}</AsyncBtn>
-          : <AsyncBtn className="btn" ok="Arxivə köçürüldü" onClick={async () => { await post(`/api/extra/${id}/archive`); onClose() }}>{t('Arxivə')}</AsyncBtn>}</>}>
+        {archived ? <AsyncBtn className="btn" ok={t('Geri qaytarıldı')} onClick={async () => { await post(`/api/extra/${id}/restore`); onClose() }}>{t('Geri qaytar')}</AsyncBtn>
+          : <AsyncBtn className="btn" ok={t('Arxivə köçürüldü')} onClick={async () => { await post(`/api/extra/${id}/archive`); onClose() }}>{t('Arxivə')}</AsyncBtn>}</>}>
       <ErrorBox error={err} />
       {!c ? <Loading /> : (
         <div className="stack">
           <p className="small muted" style={{ margin: 0 }}>{c.subject} · {c.classes.join(', ')}{c.audience.levels ? (' · ' + t('{x1} qrup', { x1: c.audience.levels.join(', ') })) : ''} · {c.students} {t('şagird ·')} {c.format}{c.goal ? ` · ${c.goal}` : ''}</p>
           {(c.warnings || []).length > 0 && <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>
             {t('Məktəb cədvəli ilə toqquşma:')} {c.warnings!.join('; ')}</div>}
-          <Seg value={tab} onChange={setTab} options={[['plan', 'Plan'], ['att', 'Şagirdlər'], ['stats', t('Statistika')]]} />
+          <Seg value={tab} onChange={setTab} options={[['plan', t('Plan')], ['att', t('Şagirdlər')], ['stats', t('Statistika')]]} />
           {tab === 'plan' && <>
+            <ProgramPanel c={c} archived={archived} onChange={reload} />
             <div className="row"><button className="btn sm" onClick={() => setBulk(true)}>{t('Mövzuları paylaşdır')}</button>
               <button className="btn sm" onClick={() => setEdit('new')}>{t('+ Əlavə məşğələ')}</button></div>
             <div className="jlist">
               {(c.session_list || []).map((s, i) => (
                 <div key={s.id} className="jrow cols" style={{ ['--cols' as any]: 'minmax(0,1fr)', ['--mcols' as any]: '1fr', gap: 4, opacity: s.status === 'cancelled' ? 0.6 : 1 }}>
-                  <div className="row"><b>№{i + 1} · {fmtDate(s.date)} {s.weekday} {s.start}–{s.end}</b>
-                    <Pill tone={s.format === 'onlayn' ? 'info' : undefined}>{s.format}{s.room ? ` · ${s.room}` : ''}</Pill>
-                    <Pill tone={ST[s.status][1]}>{ST[s.status][0]}{s.status === 'held' ? ` · ${s.present}/${s.students}` : ''}</Pill>
+                  <div className="row"><b>№{i + 1} · {fmtDate(s.date)} {t(s.weekday)} {s.start}–{s.end}</b>
+                    <Pill tone={s.format === 'onlayn' ? 'info' : undefined}>{t(s.format)}{s.room ? ` · ${s.room}` : ''}</Pill>
+                    <Pill tone={ST[s.status][1]}>{t(ST[s.status][0])}{s.status === 'held' ? ` · ${s.present}/${s.students}` : ''}</Pill>
                     {s.joined > 0 && s.status === 'planned' && <Pill tone="ok">{t('qoşulub:')} {s.joined}</Pill>}
                     {s.batch_id && <Pill tone="acc">{t('test')}</Pill>}</div>
                   <span className="small">{s.topics.length ? s.topics.map(t => (t.seq ? `№${t.seq} ` : '') + t.text).join(' · ') : <span className="muted">{t('mövzu təyin edilməyib')}</span>}</span>
@@ -242,7 +257,7 @@ function CourseView({ id, archived, onClose }: { id: number; archived: boolean; 
                   {(s.homework || s.note) && <span className="small muted">{s.homework ? t('Ev tapşırığı: {homework}', { homework: s.homework }) : ''}{s.note ? ` · ${s.note}` : ''}</span>}
                   {!archived && <div className="row" style={{ gap: 6 }}>
                     <button className="btn sm" onClick={() => setEdit(s)}>{t('Redaktə')}</button>
-                    {s.status !== 'cancelled' && <button className="btn sm" onClick={() => setHeld(s)}>{s.status === 'held' ? 'Davamiyyət' : t('Keçirildi')}</button>}
+                    {s.status !== 'cancelled' && <button className="btn sm" onClick={() => setHeld(s)}>{s.status === 'held' ? t('Davamiyyət') : t('Keçirildi')}</button>}
                     {!s.batch_id && s.status !== 'cancelled' && <button className="btn sm ghost" onClick={() => setTest(s)}>{t('+ Test')}</button>}
                   </div>}
                 </div>))}
@@ -286,8 +301,8 @@ function SessionEdit({ course, s, onClose, onDone }: { course: Course; s: Sess |
     } catch (e) { setErr(e) }
   }
   return (
-    <Drawer title={s ? t('Məşğələ – {x1}', { x1: fmtDate(s.date) }) : 'Əlavə məşğələ'} onClose={onClose}
-      footer={<>{s && s.status !== 'held' && <AsyncBtn className="btn ghost" ok="Silindi" onClick={async () => { await apiDel(`/api/extra/${course.id}/sessions/${s.id}`); onDone() }}>{t('Sil')}</AsyncBtn>}
+    <Drawer title={s ? t('Məşğələ – {x1}', { x1: fmtDate(s.date) }) : t('Əlavə məşğələ')} onClose={onClose}
+      footer={<>{s && s.status !== 'held' && <AsyncBtn className="btn ghost" ok={t('Silindi')} onClick={async () => { await apiDel(`/api/extra/${course.id}/sessions/${s.id}`); onDone() }}>{t('Sil')}</AsyncBtn>}
         <span className="grow" /><button className="btn" onClick={onClose}>{t('Ləğv et')}</button><button className="btn primary" onClick={save}>{t('Yadda saxla')}</button></>}>
       <div className="stack">
         <div className="fg">
@@ -303,7 +318,7 @@ function SessionEdit({ course, s, onClose, onDone }: { course: Course; s: Sess |
           <select className="sel" value="" onChange={e => { const v = Number(e.target.value); if (v) setTopics(x => [...x, { plan_lesson_id: v, text: '' }]) }}>
             <option value="">{t('+ Perspektiv plandan mövzu')}</option>
             {sug?.suggested.length ? <optgroup label={t('Təklif (təkrar / zəif nəticə)')}>{sug.suggested.map(x => <option key={'s' + x.plan_lesson_id} value={x.plan_lesson_id}>№{x.seq} {x.topic} – {x.reason}</option>)}</optgroup> : null}
-            <optgroup label={t('Plan')}>{sug?.plan.map(x => <option key={x.id} value={x.id}>№{x.seq} {x.topic}</option>)}</optgroup>
+            <optgroup label={t('Plan')}>{sug?.plan.map(x => <option key={x.id} value={x.id}>{course.classes.length > 1 && x.class_name ? x.class_name + ' · ' : ''}№{x.seq} {x.topic}</option>)}</optgroup>
           </select>
           <div className="row" style={{ marginTop: 6 }}><input className="sel grow" placeholder={t('və ya sərbəst mövzu (məs. sınaq səhvlərinin təhlili)')} value={free} onChange={e => setFree(e.target.value)} />
             <button className="btn sm" disabled={!free.trim()} onClick={() => { setTopics(x => [...x, { plan_lesson_id: null, text: free.trim() }]); setFree('') }}>{t('Əlavə et')}</button></div>
@@ -321,7 +336,7 @@ function SessionEdit({ course, s, onClose, onDone }: { course: Course; s: Sess |
           <Field label={t('Ev tapşırığı')} full><input value={f.homework} onChange={e => setF({ ...f, homework: e.target.value })} /></Field>
           <Field label={t('Status')}><select value={f.status} onChange={e => setF({ ...f, status: e.target.value as any })}>
             <option value="planned">{t('planlaşdırılıb')}</option><option value="cancelled">{t('ləğv edildi')}</option>{s?.status === 'held' && <option value="held">{t('keçirildi')}</option>}</select></Field>
-          <Field label={f.status === 'cancelled' ? t('Ləğv səbəbi') : 'Qeyd'}><input value={f.note} maxLength={300} onChange={e => setF({ ...f, note: e.target.value })} /></Field>
+          <Field label={f.status === 'cancelled' ? t('Ləğv səbəbi') : t('Qeyd')}><input value={f.note} maxLength={300} onChange={e => setF({ ...f, note: e.target.value })} /></Field>
           {s?.status === 'held' && f.format === 'onlayn' && <Field label={t('Yazı keçidi (istəyə görə)')} full><input value={f.recording_url} onChange={e => setF({ ...f, recording_url: e.target.value })} /></Field>}
         </div>
         <ErrorBox error={err} />
@@ -338,7 +353,7 @@ function Held({ course, s, onClose, onDone }: { course: number; s: Sess; onClose
   return (
     <Drawer title={t('Davamiyyət – {x1} {start}', { x1: fmtDate(s.date), start: s.start })} onClose={onClose}
       footer={<><span className="grow" /><button className="btn" onClick={onClose}>{t('Ləğv et')}</button>
-        <AsyncBtn className="btn primary" ok="Keçirildi kimi qeyd olundu" onClick={async () => {
+        <AsyncBtn className="btn primary" ok={t('Keçirildi kimi qeyd olundu')} onClick={async () => {
           await post(`/api/extra/${course}/sessions/${s.id}/held`, { attendance: Object.fromEntries((rows || []).map(r => [r.student_id, val(r)])) }); onDone()
         }}>{t('Yadda saxla')}</AsyncBtn></>}>
       <ErrorBox error={err} />
@@ -346,7 +361,7 @@ function Held({ course, s, onClose, onDone }: { course: number; s: Sess; onClose
       {!rows ? <Loading /> : rows.map(r => (
         <div key={r.student_id} className="row" style={{ borderTop: '1px solid var(--line)', padding: '6px 0' }}>
           <span className="grow small"><b>{r.full_name}</b>{r.joined_at ? <span className="muted"> {t('· qoşulub')} {azDT(new Date(r.joined_at), { hour: '2-digit', minute: '2-digit' })}</span> : null}</span>
-          <Seg value={val(r)} onChange={v => setSt(x => ({ ...x, [r.student_id]: v }))} options={[['var', 'var'], ['gecikdi', 'gecikdi'], ['yox', 'yox'], ['üzrlü', 'üzrlü']]} />
+          <Seg value={val(r)} onChange={v => setSt(x => ({ ...x, [r.student_id]: v }))} options={[['var', t('var')], ['gecikdi', t('gecikdi')], ['yox', t('yox')], ['üzrlü', t('üzrlü')]]} />
         </div>))}
     </Drawer>
   )
@@ -434,6 +449,15 @@ function Stats({ id }: { id: number }) {
             {cmp.participants_delta != null && cmp.others_delta != null && <b>{t('fərq')} {sign(cmp.participants_delta - cmp.others_delta)}</b>}
           </div>)}
         <p className="small muted">{t('İştirakçı – məşğələlərin ən azı yarısında olan şagird. Zəif qrup üçün mütləq nəticə yox, irəliləyiş müqayisə olunur. Kursdan sonrakı orta: iştirakçılar')} {fmt(cmp.participants_pct)}{t('%, digərləri')} {fmt(cmp.others_pct)}{t('%. Format üzrə iştirak: əyani')} {fmt(d.by_format['əyani'].attendance_pct)}{t('%, onlayn')} {fmt(d.by_format.onlayn.attendance_pct)}%.</p></section>
+      {d.entry_exit && (d.entry_exit.entry_avg != null || d.entry_exit.exit_avg != null) && (
+        <section className="panel"><h2>{t('Giriş və çıxış testi')}</h2>
+          <div className="row"><Pill>{t('giriş')}: {fmt(d.entry_exit.entry_avg)}%</Pill><Pill>{t('çıxış')}: {fmt(d.entry_exit.exit_avg)}%</Pill>
+            <Pill tone={d.entry_exit.effect > 0 ? 'ok' : undefined}>{t('fərq')} {sign(d.entry_exit.effect)}</Pill></div>
+          <p className="small muted">{t('Əlaqə səbəb demək deyil: iştirak edən şagird daha motivli ola bilər.')}</p></section>)}
+      {d.transitions?.length > 0 && (
+        <section className="panel"><h2>{t('Qrup dəyişmə təklifi')} <small>{t('yalnız təklifdir – qərar müəllimindir')}</small></h2>
+          {d.transitions.map((x: any) => <p key={x.student_id} className="small" style={{ margin: '0 0 4px' }}><b>{x.full_name}</b> – {x.to === 'tereqqi'
+            ? t('çıxış testi {pct}% – tərəqqi qrupuna keçmək olar', { pct: fmt(x.pct, 0) }) : t('çıxış testi {pct}% – inkişaf qrupuna keçid düşünün', { pct: fmt(x.pct, 0) })}</p>)}</section>)}
       <div className="tbl-wrap"><table>
         <thead><tr><th>{t('Şagird')}</th><th className="r">{t('İştirak')}</th><th className="r">{t('Test %')}</th><th className="r">{t('Əvvəl')}</th><th className="r">{t('Sonra')}</th><th className="r">±</th></tr></thead>
         <tbody>{d.students.map((x: any) => (

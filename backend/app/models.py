@@ -883,6 +883,10 @@ class ExtraCourse(Base, Archivable):
     ends_on: Mapped[dt.date] = mapped_column(Date)
     goal: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # proqram (docs/meshgele-proqram-ve-video-beledci-promtu.md §A): qrupun tipi və ona təyin olunan perspektiv proqram
+    kind: Mapped[str | None] = mapped_column(String(10))               # inkisaf | tereqqi | diger (None – avtomatik tanınır)
+    program_id: Mapped[int | None] = mapped_column(ForeignKey('plan_programs.id', ondelete='SET NULL'))
+    program_sections: Mapped[list | None] = mapped_column(JSON)        # proqramın seçilmiş bölmələri (None – hamısı)
 
 
 class ExtraSession(Base):
@@ -904,6 +908,7 @@ class ExtraSession(Base):
     status: Mapped[str] = mapped_column(String(10), default='planned')   # planned | held | cancelled
     note: Mapped[str | None] = mapped_column(String(300))              # ləğv / köçürmə səbəbi
     recording_url: Mapped[str | None] = mapped_column(String(500))
+    topic_ref: Mapped[str | None] = mapped_column(String(80))          # proqramdan gələn mövzunun işarəsi: «diag-in», «5.2», «plan:3.1»
 
 
 class ExtraAttendance(Base):
