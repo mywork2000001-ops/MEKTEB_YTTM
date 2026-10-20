@@ -5,7 +5,7 @@ import { useT } from '../../i18n'
 import { esc, head, kpis, printDoc, SIGN, signs, table } from '../../print'
 import { AsyncBtn, Drawer, Empty, ErrorBox, Field, fmt, fmtDate, gradeTone, Loading, PickFirst, Pill, Seg, Stat, toast, Top, useLoad, useNarrow } from '../../ui'
 import { usePick } from './common'
-import { LessonCountTable, PerfStats } from './Reports'
+import { LessonCountTable, PerfStats } from './reports/ClassTabs'
 import HomeroomAttendance, { ClassTimetable } from './HomeroomAttendance'
 
 const TABS = [['overview', 'İcmal'], ['lessons', 'Dərslər'], ['grades', 'Qiymət cədvəli'], ['attendance', 'Davamiyyət'], ['timetable', 'Dərs cədvəli'],

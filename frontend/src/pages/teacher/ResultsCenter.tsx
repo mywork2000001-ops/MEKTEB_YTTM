@@ -32,7 +32,7 @@ function downloadCsv(name: string, heads: string[], rows: (string | number | nul
   setTimeout(() => URL.revokeObjectURL(a.href), 30_000)
 }
 const KIND_LABEL: Record<Kind, string> = { movzu: 'Mövzu testləri', sinaq: 'Sınaqlar' }
-export const TABS = [['rating', 'Reytinq'], ['missing', 'Yazmayanlar'], ['student', 'Şagird'], ['class', 'Sinif və qrup'], ['overall', 'Ümumi']] as const
+export const TABS = [['missing', 'İşlənməyənlər'], ['matrix', 'Kim nəyi işləyib'], ['rating', 'Test reytinqi'], ['student', 'Şagird'], ['class', 'Sinif və qrup'], ['overall', 'Ümumi']] as const
 export type Tab = (typeof TABS)[number][0]
 const LV = ['Zəif', 'Orta', 'Güclü'] as const
 const pct = (v: number | null | undefined) => (v == null ? '—' : fmt(v) + '%')
@@ -87,16 +87,19 @@ function ClassSelect({ lessons, value, onChange, all = tt('Hamısı (bütün sin
 
 // ---------------------------------------------------------------- səhifə
 /** embedded – «Testlər və sınaqlar» mərkəzində: bölmə (tab) və sinif yuxarıdakı açılan siyahılardan gəlir. */
-export default function ResultsCenter({ embedded, ta, tab: tabProp, onTab }: { embedded?: boolean; ta?: number | null; tab?: Tab; onTab?: (t: Tab) => void } = {}) {
+export default function ResultsCenter({ embedded, ta, tab: tabProp, onTab, student: studentProp, onStudent: onStudentProp }: {
+  embedded?: boolean; ta?: number | null; tab?: Tab; onTab?: (t: Tab) => void; student?: number | null; onStudent?: (id: number | null) => void } = {}) {
   const t = useT()
   const [sp, setSp] = useSearchParams()
   const [tabOwn, setTabOwn] = useState<Tab>(() => (sp.get('student') ? 'student' : (sp.get('tab') as Tab) || 'rating'))
   const tab = embedded ? tabProp ?? 'rating' : tabOwn
   const setTab = (t: Tab) => (embedded ? onTab?.(t) : setTabOwn(t))
-  const [student, setStudent] = useState<number | null>(() => (sp.get('student') ? Number(sp.get('student')) : null))
+  const [studentOwn, setStudentOwn] = useState<number | null>(() => (sp.get('student') ? Number(sp.get('student')) : null))
+  const student = onStudentProp ? studentProp ?? null : studentOwn      // «Analitika» qabığında şagird URL-dədir
+  const setStudent = (v: number | null) => (onStudentProp ? onStudentProp(v) : setStudentOwn(v))
   const f = usePeriodParams()
   const [lessons] = useMyLessons()
-  const openStudent = (id: number) => { setStudent(id); setTab('student') }
+  const openStudent = (id: number) => { if (onStudentProp) onStudentProp(id); else { setStudentOwn(id); setTab('student') } }
   const [kf, setKfRaw] = useState<KF>(() => {
     const q = sp.get('kind') as KF | null                    // «Sınaq imtahanları → Reytinq» keçidi
     if (q && ['all', 'movzu', 'sinaq'].includes(q)) return q
@@ -110,8 +113,9 @@ export default function ResultsCenter({ embedded, ta, tab: tabProp, onTab }: { e
   const [miss] = useLoad<{ students: { chronic: boolean }[] }>(() => get('/api/results-center/missing', { kind: kf, ...f.params }), [kf, f.label])
   const chronic = miss?.students.filter(x => x.chronic).length || 0
   useEffect(() => {                                   // yalnız öz parametrləri silinir (mərkəzin s/v qalır)
-    if (sp.get('student') || sp.get('tab') || sp.get('kind'))
-      setSp(prev => { const n = new URLSearchParams(prev); ['student', 'tab', 'kind'].forEach(k => n.delete(k)); return n }, { replace: true })
+    const own = onStudentProp ? ['tab', 'kind'] : ['student', 'tab', 'kind']       // qabıqda («Analitika») şagird URL-də qalır
+    if (own.some(k => sp.get(k)))
+      setSp(prev => { const n = new URLSearchParams(prev); own.forEach(k => n.delete(k)); return n }, { replace: true })
   }, [])   // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
@@ -125,7 +129,8 @@ export default function ResultsCenter({ embedded, ta, tab: tabProp, onTab }: { e
       {tab === 'rating' && kinds.map(k => <div key={k} style={{ marginBottom: 18 }}><RatingPanel f={f} lessons={lessons} onStudent={openStudent} kind={k} ta={rta} sort={sort} /></div>)}
       {tab === 'missing' && <Missing key={embedded ? `m${ta ?? ''}` : 'm'} f={f} lessons={lessons} onStudent={openStudent} kind={kf} fixedTa={embedded ? ta ?? null : undefined} />}
       {tab === 'student' && <StudentPanel f={f} id={student} setId={setStudent} kinds={kinds} kf={kf} />}
-      {tab === 'class' && <ClassPanel key={embedded ? `c${ta ?? ''}` : 'c'} f={f} lessons={lessons} onStudent={openStudent} kinds={kinds} kf={kf} fixedTa={embedded ? ta ?? null : undefined} />}
+      {tab === 'class' && <ClassPanel key={embedded ? `c${ta ?? ''}` : 'c'} f={f} lessons={lessons} onStudent={openStudent} kinds={kinds} kf={kf} fixedTa={embedded ? ta ?? null : undefined} forceView={embedded ? 'sum' : undefined} />}
+      {tab === 'matrix' && <ClassPanel key={embedded ? `x${ta ?? ''}` : 'x'} f={f} lessons={lessons} onStudent={openStudent} kinds={kinds} kf={kf} fixedTa={embedded ? ta ?? null : undefined} forceView="matrix" />}
       {tab === 'overall' && <Overall f={f} kinds={kinds} kf={kf} />}
     </>
   )
@@ -234,7 +239,7 @@ function Missing({ f, lessons, onStudent, kind, fixedTa }: { f: PP; lessons?: My
   const ta = fixedTa ?? taOwn      // null – «Bütün siniflərim» (defolt)
   return (
     <>
-      {lessons && fixedTa == null && <div className="toolbar no-print"><ClassSelect lessons={lessons} value={ta} onChange={setTa} all={t('Bütün siniflərim')} /></div>}
+      {lessons && fixedTa === undefined && <div className="toolbar no-print"><ClassSelect lessons={lessons} value={ta} onChange={setTa} all={t('Bütün siniflərim')} /></div>}
       {ta == null ? <MissingAllClasses lessons={lessons} f={f} onStudent={onStudent} kind={kind} /> : <MissingReport key={ta} ta={ta} params={f.params} label={f.label} kind={kind} onStudent={onStudent} />}
     </>
   )
@@ -422,16 +427,17 @@ type CPart = { summary: { tests: number; students: number; avg_pct: number | nul
   students: (RRow & { level: string | null })[] }
 type CData = { ta_id: number; class_name: string; subject: string; level: string | null; parts: Record<Kind, CPart> }
 
-function ClassPanel({ f, lessons, onStudent, kinds, kf, fixedTa }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kinds: Kind[]; kf: KF; fixedTa?: number | null }) {
+function ClassPanel({ f, lessons, onStudent, kinds, kf, fixedTa, forceView }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kinds: Kind[]; kf: KF; fixedTa?: number | null; forceView?: 'sum' | 'matrix' }) {
   const t = useT()
   const [taOwn, setTa] = useState<number | null>(null)         // null – «Hamısı (bütün siniflərim)»
   const ta = fixedTa !== undefined ? fixedTa : taOwn
   const [level, setLevel] = useState<'all' | (typeof LV)[number]>('all')
   const [d, err, loading] = useLoad<CData>(() => get(ta ? `/api/results-center/class/${ta}` : '/api/results-center/class', { ...(level !== 'all' ? { level } : {}), ...f.params }), [ta, level, f.label])
   const [review, setReview] = useState<Review | null>(null)
-  const [view, setView] = useState<'sum' | 'matrix'>(() => { try { return sessionStorage.getItem('mk-matrix-missing') === '1' ? 'matrix' : 'sum' } catch { return 'sum' } })
+  const [viewOwn, setView] = useState<'sum' | 'matrix'>(() => { try { return sessionStorage.getItem('mk-matrix-missing') === '1' ? 'matrix' : 'sum' } catch { return 'sum' } })
+  const view = forceView ?? viewOwn
   const [rs, setRs] = useState<MStud[] | null>(null)
-  const viewSeg = ta ? <Seg label={t('Görünüş')} value={view} onChange={setView} options={[['sum', 'Xülasə'], ['matrix', 'Kim nəyi işləyib']]} /> : null
+  const viewSeg = ta && !forceView ? <Seg label={t('Görünüş')} value={view} onChange={setView} options={[['sum', 'Xülasə'], ['matrix', 'Kim nəyi işləyib']]} /> : null
   const openResend = async () => {
     const m = await get<MData>('/api/results-center/missing', { kind: 'all', ta_id: ta!, ...f.params })
     if (!m.students.length) toast(t('Bu dövrdə bağlanmış testləri yazmayan şagird yoxdur.')); else setRs(m.students)
@@ -453,6 +459,7 @@ function ClassPanel({ f, lessons, onStudent, kinds, kf, fixedTa }: { f: PP; less
           weakHtml(p.weak_topics) }).join('') +
       aiHtml(review),
   })
+  if (view === 'matrix' && !ta) return <PickFirst />
   if (ta && view === 'matrix') return (
     <>
       <div className="toolbar no-print">

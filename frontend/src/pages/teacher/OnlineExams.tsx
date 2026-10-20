@@ -63,7 +63,7 @@ export default function OnlineExams({ embedded, ta, view: viewProp }: { embedded
       {embedded ? <div className="hub-head"><span className="small muted grow">{view === 'series' ? t('Seçilmiş sınaqlar dövrə görə (gün / həftə / ay) siniflərə özü gedir.') : t('Plandan kənar sınaqlar – bir neçə sinfə eyni anda; sınaq jurnalı. Formativ qiymətə təsir etmir.')}</span>
         {view === 'list' && <button className="btn primary" onClick={() => setCreating(true)}>{t('+ Yeni sınaq')}</button>}</div>
         : <Top title={t('Sınaq imtahanları')} sub="Plandan kənar sınaqlar və avtomatik seriyalar – yaratmaq, sınaq jurnalı. Formativ qiymətə təsir etmir; reytinq və analitika – «Test nəticələri»."
-          actions={<><Link className="btn" to="/tests?s=netice&v=rating&kind=sinaq">{t('Reytinq →')}</Link><button className="btn primary" onClick={() => setCreating(true)}>{t('+ Yeni sınaq')}</button></>} />}
+          actions={<><Link className="btn" to="/reports?g=tests&t=rating&kind=sinaq">{t('Reytinq →')}</Link><button className="btn primary" onClick={() => setCreating(true)}>{t('+ Yeni sınaq')}</button></>} />}
       {!embedded && <div className="toolbar"><Seg value={view} onChange={setView} options={[['list', 'Sınaqlar'], ['series', 'Avtomatik seriyalar']]} /></div>}
       <ErrorBox error={err} />
       {view === 'series' ? <ExamSeriesPanel /> : loading && !list ? <Loading /> : (
