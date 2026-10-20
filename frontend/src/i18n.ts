@@ -3043,6 +3043,39 @@ const D: Record<string, [string, string]> = {
   "Kart skan olunub qiymətləndirilən kimi həmin şagirdə nəticə paketi açılır. Eyni imtahan başqa sinifdə hələ keçirilməyibsə bloklanır.": [
     "As soon as a card is scanned and graded, that student gets the result package. Blocked if the same exam has not yet been held in another class.",
     "Как только бланк отсканирован и проверен, этот ученик получает пакет результата. Блокируется, если такая же работа ещё не проведена в другом классе."],
+
+  // ---- şagirdin fərdi hesabatı (docs/sagird-ferdi-hesabat-promtu.md)
+  "Bal, %": ["Score, %", "Балл, %"],
+  "Bu dövrdə nəticə yoxdur.": ["No results in this period.", "В этом периоде результатов нет."],
+  "Əsas çatışmazlıq yoxdur – eyni tempdə davam edin.": ["No major gaps – keep going at the same pace.", "Существенных пробелов нет – продолжайте в том же темпе."],
+  "Fayl hazırlanmadı": ["The file could not be prepared", "Файл не удалось подготовить"],
+  "İştirak aşağıdır ({pct}%) – buraxılmış testləri yazması təmin edilməlidir.": ["Participation is low ({pct}%) – the missed tests should be taken.", "Низкое участие ({pct}%) – нужно написать пропущенные тесты."],
+  "iştirak, %": ["participation, %", "участие, %"],
+  "jurnal": ["journal", "журнал"],
+  "nəşr olunmayıb": ["not published", "не опубликовано"],
+  "orta, %": ["average, %", "средний, %"],
+  "son nəticə, %": ["latest result, %", "последний результат, %"],
+  "Son nəticələr enir ({delta} bal) – səbəbi aydınlaşdırın.": ["Recent results are falling ({delta} points) – find out why.", "Последние результаты снижаются ({delta}) – выясните причину."],
+  "Təkrar edin: {topic} ({pct}%) – təkrar testi təyin edin.": ["Revise: {topic} ({pct}%) – assign a repeat test.", "Повторите: {topic} ({pct}%) – назначьте повторный тест."],
+  "Təkrar testi təyin et": ["Assign a repeat test", "Назначить повторный тест"],
+  "Tövsiyə": ["Recommendation", "Рекомендация"],
+  "trend (son 3)": ["trend (last 3)", "тренд (последние 3)"],
+  "Valideyn nüsxəsi (AZ)": ["Parent copy (AZ)", "Копия для родителей (AZ)"],
+  "Valideyn nüsxəsi (RU)": ["Parent copy (RU)", "Копия для родителей (RU)"],
+  "Zəif mövzular (≤ 50%)": ["Weak topics (≤ 50%)", "Слабые темы (≤ 50%)"],
+  "Bütün şagirdlərin hesabatı (PDF)": ["All students' reports (PDF)", "Отчёты всех учеников (PDF)"],
+  "Valideyn iclası (RU)": ["Parents' meeting (RU)", "Родительское собрание (RU)"],
+  "PDF hazırdır": ["PDF is ready", "PDF готов"],
+  // sinif matrisi «Kim nəyi işləyib» (docs/tasks/sinif-test-matrisi.md)
+  "Kim nəyi işləyib": ["Who wrote what", "Кто что писал"],
+  "Fayl hazırdır": ["File is ready", "Файл готов"],
+  "hələ açıqdır": ["still open", "ещё открыт"],
+  "təyin olunmayıb": ["not assigned", "не назначено"],
+  "Bu dövrdə test və sınaq yoxdur.": ["No tests or exams in this period.", "В этом периоде нет тестов и экзаменов."],
+  "✗ – yazmayıb · ⏳ – hələ açıqdır · — – təyin olunmayıb · (xx) – nəticə şagirdə hələ nəşr olunmayıb": ["✗ – not written · ⏳ – still open · — – not assigned · (xx) – result not yet published to the student", "✗ – не писал · ⏳ – ещё открыт · — – не назначено · (xx) – результат ещё не опубликован для ученика"],
+  "Yazıb/təyin": ["Wrote/assigned", "Писал/назначено"],
+  "Yazan / təyin olunan": ["Wrote / assigned", "Писали / назначено"],
+  "Orta, %": ["Average, %", "Средний, %"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

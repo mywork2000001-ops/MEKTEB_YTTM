@@ -69,6 +69,7 @@ main{padding-block:28px 56px;padding-inline:32px;min-width:0;max-width:1240px;wi
 
 /* ---------------------------------------------------------------- controls */
 .btn{min-height:40px;border:1px solid var(--line);background:var(--surface);padding:0 16px;border-radius:var(--r-sm);cursor:pointer;font-weight:500;font-size:14px;display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap}
+.btn:not(.ghost){color:var(--ink)}  /* tünd fonda (skan kamerası) ağ rəng miras alınmasın – ağ fonda ağ yazı olmasın */
 .btn:hover{border-color:var(--accent-line);background:var(--surface-2)}
 .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .btn.primary:hover{filter:brightness(1.06);background:var(--accent)}
