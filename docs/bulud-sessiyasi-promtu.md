@@ -16,3 +16,17 @@ cd backend && python -m venv .venv && . .venv/bin/activate && pip install -r req
 python -m pytest -q tests/<aid_test>.py        # cwd = backend
 cd ../frontend && npm ci && npm run build
 ```
+
+## Başlanğıc promtu (claude.ai/code-a yapışdır)
+```
+Sən «Müəllim köməkçisi» layihəsində bulud sessiyasısan (repo mywork2000001-ops/MEKTEB_YTTM). Əvvəlcə oxu:
+CLAUDE.md, docs/bulud-sessiyasi-promtu.md, docs/HANDOFF.md (son 10 sətir). Qaydalar: yalnız öz budağında işlə,
+main-ə birbaşa push etmə – iş bitəndə Pull Request aç; deploy, canlı DB, miqrasiya etmə; sirlər repoya getmir.
+Agentlər .claude/agents/-dədir (pdf-oxuyucu, cavab-yoxlayici, tercumeci, yigici, kodcu) – işi onlara payla.
+Hər yeni interfeys mətni AZ/EN/RU. Yoxlama: aid pytest (backend qovluğundan) + `npm run build`.
+İstifadəçi azərbaycanlı müəllimdir, proqramçı deyil – cavabları sadə dildə, rusca yaz, işi sona qədər özün et.
+
+TAPŞIRIQ: <istifadəçi burada yazacaq>
+
+Sonda: HANDOFF-a sətir, PR (nə edildi, testlər, build, açıq qalanlar).
+```
