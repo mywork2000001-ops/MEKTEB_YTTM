@@ -51,7 +51,7 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
   const [p10, setP10] = useState<P0010 | null>(null)
   const qs = variants ? vqs[vk] : plain
   const setQs = (fn: (cur: Q[]) => Q[]) => (variants ? setVqs(v => ({ ...v, [vk]: fn(v[vk]) })) : setPlain(fn))
-  const [f, setF] = useState({ title: '', duration: 45, show: 'after_close', shuffle: true, journal: true })
+  const [f, setF] = useState({ title: '', duration: 45, show: 'after_close', shuffle: true, journal: true, unl: true })
   const [err, setErr] = useState<unknown>()
   const [busy, setBusy] = useState(false)
 
@@ -118,7 +118,7 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
   const problem = !f.title.trim() ? t('Testin adını yazın') : noQs ? (variants ? t('«Orta» variantına ən azı 1 sual seçin (səviyyəsi olmayanlar onu alır)') : t('Ən azı 1 sual seçin')) : !chosen.length ? t('Ən azı bir sinif seçin')
     : chosen.some(c => !rows[c.ta_id].pl) ? t('Mövzusu tapılmayan sinifdə mövzunu seçin')
     : chosen.some(c => rows[c.ta_id].ids?.length === 0) ? t('«Kimə» bölməsində ən azı bir şagird seçin')
-    : chosen.some(c => { const r = rows[c.ta_id]; return iso(r.d2, r.t2) <= iso(r.d1, r.t1) }) ? t('Bitmə vaxtı başlamadan sonra olmalıdır')
+    : !f.unl && chosen.some(c => { const r = rows[c.ta_id]; return iso(r.d2, r.t2) <= iso(r.d1, r.t1) }) ? t('Bitmə vaxtı başlamadan sonra olmalıdır')
     : !variants && plain.length > 100 ? t('Bir testdə ən çoxu 100 sual') : ''
 
   const submit = async () => {
@@ -126,10 +126,10 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
     setBusy(true)
     try {
       const r = await post<{ tasks: any[] }>(`/api/plan/${ta}/topics/${pl}/test`, {
-        title: f.title.trim(), duration_min: f.duration, shuffle: f.shuffle, show_answers: f.show, journal_auto: f.journal,
+        title: f.title.trim(), duration_min: f.unl ? 0 : f.duration, shuffle: f.shuffle, show_answers: f.show, journal_auto: f.journal,
         bank_ids: [], custom: variants ? [] : plain.map(toCustom),
         variants: variants ? Object.fromEntries(LV.filter(k => vqs[k].length).map(k => [k, { bank_ids: [], custom: vqs[k].map(toCustom) }])) : null,
-        targets: chosen.map(c => { const x = rows[c.ta_id]; return { ta_id: c.ta_id, plan_lesson_id: x.pl, opens_at: iso(x.d1, x.t1), closes_at: iso(x.d2, x.t2), student_ids: x.ids } }),
+        targets: chosen.map(c => { const x = rows[c.ta_id]; return { ta_id: c.ta_id, plan_lesson_id: x.pl, opens_at: iso(x.d1, x.t1), closes_at: f.unl ? null : iso(x.d2, x.t2), student_ids: x.ids } }),
       })
       toast(r.tasks.length > 1 ? t('Test {length} sinfə göndərildi', { length: r.tasks.length }) : t('Test göndərildi'))
       onDone()
@@ -148,7 +148,8 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
           </div></div>
           <div className="fg">
             <Field label={t('Ad')} full><input value={f.title} maxLength={200} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
-            <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+            <label className="check full"><input type="checkbox" checked={f.unl} onChange={e => setF({ ...f, unl: e.target.checked })} /> {t('Müddətsiz (taymer və son tarix yoxdur)')}</label>
+            {!f.unl && <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>}
             <Field label={t('Düzgün cavablar görünsün')}><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
               <option value="after_close">{t('test bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvil verdikdən dərhal sonra')}</option><option value="never">{t('heç vaxt')}</option></select></Field>
             <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> {t('Sualların sırası hər şagirdə fərqli')}</label>
@@ -182,9 +183,9 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
                         <span className="small">{t('Başlama')}</span>
                         <input type="date" className="sel" value={r.d1} onChange={e => set(c.ta_id, { d1: e.target.value })} />
                         <input type="time" className="sel" value={r.t1} onChange={e => set(c.ta_id, { t1: e.target.value })} />
-                        <span className="small">{t('Bitmə')}</span>
+                        {!f.unl && <><span className="small">{t('Bitmə')}</span>
                         <input type="date" className="sel" value={r.d2} onChange={e => set(c.ta_id, { d2: e.target.value })} />
-                        <input type="time" className="sel" value={r.t2} onChange={e => set(c.ta_id, { t2: e.target.value })} />
+                        <input type="time" className="sel" value={r.t2} onChange={e => set(c.ta_id, { t2: e.target.value })} /></>}
                       </div>)}
                     {r.on && <StudentPicker ta={c.ta_id} legend={t('Kimə – {class_name}', { class_name: c.class_name })} onChange={ids => set(c.ta_id, { ids })} />}
                     {r.on && variants && r.ids && <span className="small muted">{t('Seçilmiş şagirdlər öz səviyyəsinin variantını alır.')}</span>}

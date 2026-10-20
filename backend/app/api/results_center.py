@@ -15,6 +15,7 @@ from .. import ai
 from ..db import get_db
 from ..deps import staff
 from ..domain.rules import summative_grade
+from ..timing import GIVEN
 from ..models import AiReview, LevelOverride, SchoolClass, Student, TeachingAssignment, User, now
 from ..services import own_assignment, ws_cond
 from ..test_stats import KINDS, avg, collect, missing, per_student, rating
@@ -348,7 +349,7 @@ def _class_data(db: Session, user: User, ta_id: int | None, level: str | None, d
             if not rs:
                 continue
             w = [r['pct'] for r in rs if r['status'] == 'yazıb']
-            g = [r for r in rs if r['status'] in ('yazıb', 'yazmayıb')]
+            g = [r for r in rs if r['status'] in GIVEN]
             tests.append({'unit': t['unit'], 'title': t['title'], 'date': t['date'], 'topic': t['topic'],
                           'avg_pct': avg(w), 'wrote': len(w), 'given': len(g), 'max_pct': max(w) if w else None,
                           'min_pct': min(w) if w else None, 'missed': sum(1 for r in rs if r['status'] == 'yazmayıb')})
@@ -369,7 +370,7 @@ def _class_data(db: Session, user: User, ta_id: int | None, level: str | None, d
                                             'missed', 'participation', 'attention', 'chronic')} | {'level': lv.get(p['student_id'])}
                         for p in ps.values()], key=lambda x: (x['avg_pct'] is None, -(x['avg_pct'] or 0), x['full_name']))
         allw = [r['pct'] for r in rows if r['status'] == 'yazıb']
-        given = sum(1 for r in rows if r['status'] in ('yazıb', 'yazmayıb'))
+        given = sum(1 for r in rows if r['status'] in GIVEN)
         out['parts'][k] = {'summary': {'tests': len(tests), 'students': len(ps), 'avg_pct': avg(allw),
                                        'participation': round(len(allw) * 100 / given, 1) if given else None,
                                        'missed': sum(p['missed'] for p in ps.values()),
@@ -399,7 +400,7 @@ def _overview_data(db: Session, user: User, date_from=None, date_to=None) -> dic
         for k in KINDS:
             rows = [r for r in datas[k]['rows'] if r['ta_id'] == ta.id and r['visible']]
             w = [r['pct'] for r in rows if r['status'] == 'yazıb']
-            g = sum(1 for r in rows if r['status'] in ('yazıb', 'yazmayıb'))
+            g = sum(1 for r in rows if r['status'] in GIVEN)
             ps = per_student(rows)
             c[k] = {'tests': len({r['unit'] for r in rows}), 'avg_pct': avg(w),
                     'participation': round(len(w) * 100 / g, 1) if g else None,

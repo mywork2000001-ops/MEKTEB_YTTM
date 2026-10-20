@@ -202,8 +202,12 @@ export function azDT(v: Date | string | number, o?: Intl.DateTimeFormatOptions, 
 export function azRange(a: string | Date, b: string | Date): string {
   const x = new Date(a), y = new Date(b)
   const dm: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }
+  if (noDeadline(y.toISOString())) return `${azDT(x, dm)} – ${tt('Müddətsiz')}`
   return `${azDT(x, dm)} – ${x.toDateString() === y.toDateString() ? azDT(y, { hour: '2-digit', minute: '2-digit' }) : azDT(y, dm)}`
 }
+
+/** Son tarix yoxdur (server: closes_at = 2100-01-01, app/timing.py). */
+export const noDeadline = (s?: string | null) => !!s && Date.parse(s) >= Date.parse('2099-01-01T00:00:00Z')
 
 /** «IV BÖLMƏ – FAİZ. NİSBƏT» → «IV bölmə – Faiz. Nisbət» (böyük hərflə yazılmış bölmə adı oxunaqlı olsun). */
 export const prettySection = (s: string) => s.replace(/\s+/g, ' ').trim().split(' – ').map((part, i) => {

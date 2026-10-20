@@ -41,7 +41,7 @@ export default function ExamSeriesPanel() {
               <div className="row"><b className="grow">{s.title}</b>
                 <Pill tone={s.active ? 'ok' : undefined}>{s.active ? 'işləyir' : 'dayandırılıb'}</Pill>
                 {s.auto_new && <Pill tone="info">{t('yeni sınaqlar avtomatik')}</Pill>}</div>
-              <span className="small muted">{s.subject} · {rule(s)}, {s.open_time} · {s.window_hours} {t('saat açıq ·')} {s.duration_min} {t('dəq · növbədə')} {s.queue.length} {t('· göndərilib')} {s.done.length}</span>
+              <span className="small muted">{s.subject} · {rule(s)}, {s.open_time} · {s.window_hours ? <>{s.window_hours} {t('saat açıq ·')}</> : <>{t('Müddətsiz')} ·</>} {s.duration_min ? <>{s.duration_min} {t('dəq')}</> : t('Vaxt məhdudiyyəti yoxdur')} {t('· növbədə')} {s.queue.length} {t('· göndərilib')} {s.done.length}</span>
               {s.active && <div className="small">{s.preview.slice(0, 4).map((p, i) => (
                 <div key={i}>{p.weekday} {when(p.at)} – {p.label ? <b>{p.label}</b> : <span className="muted">{t('növbə boşdur – yeni sınaq gözlənilir')}</span>}</div>))}</div>}
               <div className="row" style={{ gap: 6 }}>
@@ -71,7 +71,7 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
   const today = new Date().toISOString().slice(0, 10)
   const [targets, , tl] = useLoad<Target[]>(() => get('/api/exams-online/targets'), [])
   const [f, setF] = useState({ title: t('Həftəlik sınaqlar'), sources: ['sinaqlar', 'p012'], grade: '' as string, period: 'week' as 'day' | 'week' | 'month',
-    every: 1, weekday: 5, month_day: 1, start: today, open_time: '15:00', window_hours: 48, duration_min: 60, penalty: 0,
+    every: 1, weekday: 5, month_day: 1, start: today, open_time: '15:00', window_hours: 0, duration_min: 0, penalty: 0,
     show_answers: 'after_close', auto_new: true })
   const [tas, setTas] = useState<number[]>([])
   const [files, setFiles] = useState<BFile[] | null>(null)
@@ -125,8 +125,10 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
           {f.period === 'month' && <Field label={t('Ayın günü')}><input type="number" min={1} max={31} value={f.month_day} onChange={e => setF({ ...f, month_day: Number(e.target.value) || 1 })} /></Field>}
           <Field label={t('Başlama tarixi')}><input type="date" value={f.start} onChange={e => setF({ ...f, start: e.target.value })} /></Field>
           <Field label={t('Açılma saatı')}><input type="time" value={f.open_time} onChange={e => setF({ ...f, open_time: e.target.value })} /></Field>
+          <label className="check full"><input type="checkbox" checked={!f.window_hours && !f.duration_min} onChange={e => setF({ ...f, window_hours: e.target.checked ? 0 : 48, duration_min: e.target.checked ? 0 : 60 })} /> {t('Müddətsiz (taymer və son tarix yoxdur)')}</label>
+          {(f.window_hours > 0 || f.duration_min > 0) && <>
           <Field label={t('Açıq qalır (saat)')}><input type="number" min={1} max={744} value={f.window_hours} onChange={e => setF({ ...f, window_hours: Number(e.target.value) || 48 })} /></Field>
-          <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration_min} onChange={e => setF({ ...f, duration_min: Number(e.target.value) || 60 })} /></Field>
+          <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration_min} onChange={e => setF({ ...f, duration_min: Number(e.target.value) || 60 })} /></Field></>}
           <Field label={t('Cərimə')}><select value={f.penalty} onChange={e => setF({ ...f, penalty: Number(e.target.value) })}><option value={0}>{t('yoxdur')}</option><option value={3}>{t('3 səhv 1 düzü aparır')}</option><option value={4}>{t('4 səhv 1 düzü aparır')}</option></select></Field>
           <Field label={t('Düzgün cavablar')}><select value={f.show_answers} onChange={e => setF({ ...f, show_answers: e.target.value })}><option value="after_close">{t('bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvildən dərhal sonra')}</option><option value="never">{t('göstərilməsin')}</option></select></Field>
         </div>
