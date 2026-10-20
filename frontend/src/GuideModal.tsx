@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { post } from './api'
 import { useAuth } from './auth'
 import { I18nCtx, LANGS, useT } from './i18n'
+import { guideSubLangs, guideVideoSrc } from './guideData'
 import { Drawer } from './ui'
 
 const OPEN_EVT = 'mk-guide-open'
@@ -17,12 +18,11 @@ const ss = { get: (k: string) => { try { return sessionStorage.getItem(k) } catc
 const ls = { get: (k: string) => { try { return localStorage.getItem(k) } catch { return null } },
   set: (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* yaddaş əlçatmazdır */ } } }
 
-/** Video yolu: rus dili – .ru.mp4, qalanı – .az.mp4 (telefon – 08-telefon, kompüter – 02-ana-sehife). */
-function videoBase(): string {
+/** Video: telefon – 08-telefon, kompüter – 02-ana-sehife (yol və alt yazı dili – guideData). */
+function videoId(): string {
   const narrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 599px)').matches
-  return `/guide/student/${narrow ? '08-telefon' : '02-ana-sehife'}`
+  return narrow ? '08-telefon' : '02-ana-sehife'
 }
-const videoSrc = (base: string, lang: string) => `${base}.${lang === 'ru' ? 'ru' : 'az'}.mp4`
 
 function GuideDialog({ due, onClose }: { due: boolean; onClose: () => void }) {
   const t = useT()
@@ -30,7 +30,8 @@ function GuideDialog({ due, onClose }: { due: boolean; onClose: () => void }) {
   const { refresh } = useAuth()
   const nav = useNavigate()
   const ref = useRef<HTMLVideoElement>(null)
-  const [base] = useState(videoBase)
+  const [vid] = useState(videoId)
+  const base = `/guide/student/${vid}`
   const [playing, setPlaying] = useState(false)
   const [noVideo, setNoVideo] = useState(false)
   const markSeen = async () => {
@@ -55,10 +56,10 @@ function GuideDialog({ due, onClose }: { due: boolean; onClose: () => void }) {
       <p className="muted">{t('Bu qısa videoya bax – hər şey aydın olacaq.')}</p>
       {noVideo ? <p className="muted">{t('Video açılmadı.')}</p> : (
         <div style={{ position: 'relative' }}>
-          <video ref={ref} controls={playing} preload="metadata" playsInline src={videoSrc(base, lang)}
+          <video ref={ref} controls={playing} preload="metadata" playsInline src={guideVideoSrc('student', vid, lang)}
             style={{ width: '100%', maxHeight: '60vh', background: '#000', borderRadius: 8 }}
             onError={() => setNoVideo(true)} onPlay={() => setPlaying(true)} onEnded={() => { void markSeen() }}>
-            {LANGS.map(([k, n]) => <track key={k} kind="subtitles" src={`${base}.${k}.vtt`} srcLang={k} label={n} default={k === lang && lang !== 'az'} />)}
+            {LANGS.filter(([k]) => guideSubLangs(lang).includes(k)).map(([k, n]) => <track key={k} kind="subtitles" src={`${base}.${k}.vtt`} srcLang={k} label={n} default={k === lang && lang !== 'az'} />)}
           </video>
           {!playing && (
             <button type="button" aria-label={t('Videonu oynat')} onClick={play}
