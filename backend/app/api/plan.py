@@ -83,6 +83,11 @@ def attach_p0010(db: Session, cls, lessons: list[dict], ta=None) -> None:
     gm = GradeMatcher(db, explicit)
     ids = [l['id'] for l in lessons if l.get('id')]
     manual = {k.plan_lesson_id: k for k in db.scalars(select(LessonBankLink).where(LessonBankLink.plan_lesson_id.in_(ids or [0])))}
+    # mövzu nömrəsi («2.3») bütün planın sırasından hesablanır (görünüşdə yalnız bir hissə olsa da); ünvanlanan test: app/plan_tests.py
+    from ..bank.match import topic_numbers
+    from ..models import PlanLesson
+    allpl = list(db.scalars(select(PlanLesson).where(PlanLesson.assignment_id == ta.id).order_by(PlanLesson.seq))) if ta is not None else []
+    nos = {pl.id: n for pl, n in zip(allpl, topic_numbers(allpl, prog))}
 
     def info(f):
         return {'file_id': f.id, 'label': f.label, 'url': f.url, 'grades': file_grades(f), 'source': f.source_key}
@@ -93,18 +98,26 @@ def attach_p0010(db: Session, cls, lessons: list[dict], ta=None) -> None:
             continue
         l['lesson_grade'] = g
         l['p0010_sources'] = srcs
+        l['topic_no'] = nos.get(l.get('id'))
         k = manual.get(l.get('id'))
         if k is not None:
             f = db.get(BankFile, k.file_id) if k.file_id else None
             l['p0010'] = f and info(f)
             l['p0010_manual'] = True
             l['p0010_src'] = f.source_key if f else srcs[0]
+            l['p0010_status'] = 'manual' if f else 'none'
             continue
         if l.get('assessment_type') in ('KSQ', 'BSQ'):          # summativ dərsə mövzu testi verilmir
             continue
-        best, src = gm.find(g, l['topic'], l.get('section'), 1)
-        l['p0010_src'] = src
-        l['p0010'] = info(best[0][0]) if best else None
+        from ..bank.match import lesson_query
+        q = lesson_query(l['topic'], l.get('section'))
+        if q is None:                                           # qarışıq təkrar – tək fayl yoxdur
+            l['p0010_src'], l['p0010'], l['p0010_status'] = srcs[0], None, 'skip'
+            continue
+        r = gm.find_ex(g, q[0], q[1], 1, no=l['topic_no'])
+        l['p0010_src'] = r.source
+        l['p0010_status'] = r.status                            # ok | weak (şübhəli ⚠) | none (tapılmadı) | pending (gözlənilir)
+        l['p0010'] = info(r.files[0][0]) if r.files and r.status in ('ok', 'weak') else None
 
 
 class P0010In(BaseModel):

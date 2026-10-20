@@ -301,12 +301,13 @@ def p0010_for_topic(ta_id: int, pl_id: int, file_id: int | None = None, n: int =
     ta = own_assignment(db, user, ta_id)
     pl = _pl(db, ta, pl_id)
     # plan görünüşü ilə eyni yol: dərsin öz sinfi → sinfin sıralı mənbələri (bank/match.py GradeMatcher)
+    from .. import plan_tests as E                       # tək mühərrik: sinif + mövzu nömrəsi + ad (app/plan_tests.py)
     explicit = ta.bank_source if ta.bank_source != 'none' else None
     gm = GradeMatcher(db, explicit)
-    g = lesson_grade(pl, db.get(PlanProgram, ta.program_id) if ta.program_id else None, class_grade(db, db.get(SchoolClass, ta.class_id)))
-    if ta.bank_source == 'none' or not gm.sources(g):
+    g, fx, _no = E.locate(db, ta, pl, 6, E.TaCtx(db, ta, gm))
+    if ta.bank_source == 'none' or not gm.sources(g) or fx is None:
         return {'eligible': False, 'matches': [], 'questions': []}
-    found, SOURCE = gm.find(g, pl.topic, pl.section, 6)
+    found, SOURCE = fx.files, fx.source
     if SOURCE == 'p007':                     # «Test toplusu» dərsi – sualları öz S/E/M aralığından gəlir (programs.toplu_questions)
         from .programs import _toplu_src, toplu_lesson
         if toplu_lesson(pl, _toplu_src()) is not None:

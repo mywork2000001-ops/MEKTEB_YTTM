@@ -6,6 +6,8 @@ yanlış qoşulanlar düzəlsin; bankda olan, amma qoşulmayan testlər əlavə 
 Baza: docs/sinfe-gore-testler-promtu.md (dərsin öz sinfi, sinif süzgəci, `bank/coverage`) – bu promt onun üzərində qurulur.
 
 ## 0. Sabit qaydalar
+- **V–VIII «gözlənilir» (`pending`), istifadəçi qərarı 19.10.2026:** `PENDING_GRADES = {5,6,7,8}` (`bank/match.py`) – bu siniflərdə test
+  tapılmayan mövzu «yoxdur» yox, «⏳ Gözlənilir» (Plan nişanı, hesabat, `bank/coverage`); IX–XI üçün «yoxdur» qalır.
 - Müəllimin əl ilə seçimi (`LessonBankLink`, «Test yoxdur» seçimi daxil) heç vaxt dəyişmir.
 - KSQ/BSQ, diaqnostik dərslərə mövzu testi qoşulmur (indiki qayda). Plan mətni, tarixlər, jurnal toxunulmaz.
 - Bankda olmayan test uydurulmur. Mənbə PDF olmadan sual yazılmır.

@@ -40,16 +40,19 @@ def coverage(db: Session, program: PlanProgram, ta: TeachingAssignment | None = 
         if sections and section not in sections:
             continue
         g = grade or group_grade
-        best, src = gm.find(g, topic, section, 1)
+        fx = gm.find_ex(g, topic, section, 1)
+        best, src = fx.files, fx.source
         f, cover = (best[0][0], gm.matcher(src, g).cover(best[0][0], topic)) if best and src else (None, 0.0)
         ok = f is not None and cover >= MIN_COVER
+        pend = not ok and fx.status == 'pending'          # V–VIII: bank hələ hazırlanır (PENDING_GRADES)
         items.append({'topic': topic, 'section': section, 'grade': g, 'found': ok, 'source': src if f else None,
                       'file_id': f.id if f else None, 'label': f.label if f else None, 'file_grades': file_grades(f) if f else [],
-                      'score': best[0][1] if best else None, 'cover': round(cover, 2)})
-        b = by_grade.setdefault(g, {'total': 0, 'found': 0, 'missing': 0})
+                      'score': best[0][1] if best else None, 'cover': round(cover, 2), 'pending': pend})
+        b = by_grade.setdefault(g, {'total': 0, 'found': 0, 'missing': 0, 'pending': 0})
         b['total'] += 1
-        b['found' if ok else 'missing'] += 1
-    miss = [{'topic': i['topic'], 'grade': i['grade']} for i in items if not i['found']]
-    return {'total': len(items), 'found': len(items) - len(miss), 'missing': len(miss),
+        b['found' if ok else 'pending' if pend else 'missing'] += 1
+    miss = [{'topic': i['topic'], 'grade': i['grade']} for i in items if not i['found'] and not i['pending']]
+    n_pend = sum(1 for i in items if i['pending'])
+    return {'total': len(items), 'found': len(items) - len(miss) - n_pend, 'missing': len(miss), 'pending': n_pend,
             'by_grade': {str(k) if k else '—': v for k, v in sorted(by_grade.items(), key=lambda kv: kv[0] or 0)},
             'items': items, 'missing_list': miss}
