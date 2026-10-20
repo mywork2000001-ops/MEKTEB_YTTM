@@ -411,6 +411,7 @@ def class_matrix(db: Session, user: User, ta_id: int, kind: str = 'all', date_fr
     exams = [e for e in db.scalars(select(Exam).where(Exam.assignment_id == ta.id, Exam.kind.in_(wanted)).order_by(Exam.date, Exam.id))
              if _in_range(e.date, date_from, date_to)]
     smap = _series_map(db, {e.batch_id for e in exams if e.batch_id})
+    scans = set(db.execute(select(ExamScan.exam_id, ExamScan.student_id).where(ExamScan.exam_id.in_([e.id for e in exams])))) if exams else set()   # exam_published üçün toplu
     for e in exams:
         link = f'b{e.batch_id}' if e.batch_id else f't{e.online_task_id}' if e.online_task_id else None
         key = link if link in cols else f'e{e.id}'
@@ -437,7 +438,7 @@ def class_matrix(db: Session, user: User, ta_id: int, kind: str = 'all', date_fr
                 if s.id not in cells[key]:                        # onlayn xana kağız boşluğu ilə əzilmir
                     cells[key][s.id] = _cell('gözlənilir' if e.date > today() else 'yazmayıb')
                 continue
-            pub = exam_published(db, e, s.id)
+            pub = e.results_published_at is not None or (e.id, s.id) not in scans      # = exam_published
             if not pub and cells[key].get(s.id, {}).get('status') == 'yazıb':
                 continue
             pct = round(sc.points * 100 / e.max_points, 1)

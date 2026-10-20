@@ -47,6 +47,14 @@ def avg(v):
 
 
 # ---------------------------------------------------------------- görünən tapşırıqlar
+def prefetch(db: Session, model, ids) -> list:
+    """Toplu yükləmə: bir `IN` sorğusu ilə obyektlər sessiyaya düşür, sonrakı `db.get` sorğusuz oxuyur (N+1 əvəzinə)."""
+    ids = {i for i in ids if i is not None}
+    out = list(db.scalars(select(model).where(model.id.in_(ids)))) if ids else []
+    db.info.setdefault('prefetched', []).extend(out)       # sessiyanın identity map-i zəif istinaddır – sorğu bitənə qədər güclü saxla
+    return out
+
+
 def _visible_tasks(db: Session, user: User | None, kind: str,
                    ta_ids: set[int] | None = None) -> tuple[list[OnlineTask], dict[int, bool]]:
     """(tapşırıqlar, {task_id: adlar görünürmü}). Sınaqda başqa müəllimin sinfi də (yer üçün) gəlir – adsız.
@@ -63,8 +71,14 @@ def _visible_tasks(db: Session, user: User | None, kind: str,
         return ts, {t.id: True for t in ts}
     from .api.exams_online import _access
     out, vis, acc = [], {}, {}
-    for t in db.scalars(select(OnlineTask).where(OnlineTask.kind == 'sinaq', OnlineTask.archived_at.is_(None),
-                                                 OnlineTask.batch_id.is_not(None))):
+    rows = list(db.scalars(select(OnlineTask).where(OnlineTask.kind == 'sinaq', OnlineTask.archived_at.is_(None),
+                                                    OnlineTask.batch_id.is_not(None))))
+    if ta_ids is not None:               # yalnız tələb olunan dərslərin iştirak etdiyi paketlər üçün _access (qalanı nəticəyə düşmürdü)
+        rel = {t.batch_id for t in rows if t.assignment_id in ta_ids}
+        rows = [t for t in rows if t.batch_id in rel]
+    prefetch(db, TestBatch, {t.batch_id for t in rows})
+    prefetch(db, SchoolClass, {x.class_id for x in prefetch(db, TeachingAssignment, {t.assignment_id for t in rows})})
+    for t in rows:
         if t.batch_id not in acc:
             b = db.get(TestBatch, t.batch_id)
             try:
@@ -123,6 +137,17 @@ def collect(db: Session, user: User | None, kind: str, ta_ids: set[int] | None =
     tasks, vis = _visible_tasks(db, user, kind, ta_ids)
     root = _roots(db, tasks)
     t0 = now()
+    prefetch(db, OnlineTask, set(root.values()) - {t.id for t in tasks})              # toplu: köklər, paketlər, dərslər, siniflər, planlar
+    rts = [db.get(OnlineTask, i) or t for t, i in ((t, root[t.id]) for t in tasks)]
+    db.info.setdefault('prefetched', []).extend(tasks)         # tapşırıqlar sonradan `db.get` ilə (class_matrix) sorğusuz oxunsun
+    prefetch(db, TestBatch, {x.batch_id for x in tasks + rts})
+    prefetch(db, SchoolClass, {x.class_id for x in prefetch(db, TeachingAssignment, {x.assignment_id for x in tasks + rts})})
+    prefetch(db, PlanLesson, {x.plan_lesson_id for x in tasks + rts})
+    used = [t for t in tasks if ta_ids is None or t.assignment_id in ta_ids]
+    atts_by: dict[int, dict[int, TaskAttempt]] = {t.id: {} for t in used}           # bütün cəhdlər bir sorğuda
+    if used:
+        for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id.in_(list(atts_by)))):
+            atts_by[a.task_id][a.student_id] = a
     units: dict[str, dict] = {}
     for t in tasks:
         r = db.get(OnlineTask, root[t.id]) or t
@@ -151,16 +176,17 @@ def collect(db: Session, user: User | None, kind: str, ta_ids: set[int] | None =
         per: dict[int, dict] = {}
         tas = set()
         for t in sorted(u['tasks'], key=lambda x: _aware(x.opens_at)):
-            expire_due(db, t)
             ta = db.get(TeachingAssignment, t.assignment_id)
             if ta_ids is not None and ta.id not in ta_ids:
                 continue
+            if any(a.submitted_at is None for a in atts_by[t.id].values()):        # bitmiş cəhdlər yalnız bunlarda ola bilər
+                expire_due(db, t)
             tas.add(ta.id)
             if ta.id not in rosters:
                 rosters[ta.id] = roster(db, ta)
             cls = db.get(SchoolClass, ta.class_id)
             closed = t0 >= _aware(t.closes_at)
-            atts = {a.student_id: a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id))}
+            atts = atts_by[t.id]
             for s in rosters[ta.id]:
                 if t.student_ids is not None and s.id not in t.student_ids:
                     continue
