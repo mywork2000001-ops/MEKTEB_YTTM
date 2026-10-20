@@ -287,3 +287,50 @@ def test_investigate_facts(mat):
     assert f['requests']['count'] == 1 and f['last_login'] is None
     assert len(d['history']) == 1 and d['history'][0]['reopened'] is False
     assert admin.get(f'{U}/student/999999/missing-investigate', params={'ta': ta}).status_code == 404
+
+
+def test_filters_by_students_and_tests(mat):
+    admin, S, ta, st = mat
+    full, _ = _rows(S, ta)
+    keys = [t['key'] for t in full['tests']]
+    sq = next(t['key'] for t in full['tests'] if t['kind'] == 'sinaq')
+    with S() as db:
+        one = class_missing(db, _staff(S), ta, 'all', task_keys=[sq])
+        two = class_missing(db, _staff(S), ta, 'all', sids=[st[1]['id'], st[2]['id']])
+    assert [t['key'] for t in one['tests']] == [sq] and one['summary']['tests'] == 1
+    assert all(i['key'] == sq for r in one['rows'] for i in r['items'])
+    assert {r['student_id'] for r in one['rows']} == {st[1]['id'], st[2]['id']} and one['rows'][0]['assigned'] == 1
+    assert {r['student_id'] for r in two['rows']} == {st[1]['id'], st[2]['id']} and len(keys) == 4
+    assert two['summary']['students_total'] == 3                                          # xülasə bütün sinifdir
+    u = f'{U}/class/{ta}/missing-list'
+    j = admin.get(u, params={'task_keys': sq, 'sids': f"{st[1]['id']}"}).json()
+    assert j['students'] == 1 and j['total'] == 1
+    assert admin.get(u, params={'sids': 'a'}).status_code == 422
+    t = admin.get(f'{U}/class/{ta}/missing-share', params={'task_keys': sq, 'names': 'none'}).json()['text']
+    assert 'ÜSİ-1' in t and '2.3' not in t
+
+
+def test_by_test_form(mat):
+    import io
+    from openpyxl import load_workbook
+    from app.missing_list_print import by_test_blocks, by_test_html
+    admin, S, ta, st = mat
+    full, _ = _rows(S, ta)
+    ks = [t['key'] for t in full['tests'] if t['kind'] in ('sinaq', 'ksq')]
+    u = f'{U}/class/{ta}/missing-by-test'
+    p = admin.get(u, params={'task_keys': ','.join(ks)})
+    assert p.status_code == 200 and p.content[:4] == b'%PDF'
+    x = admin.get(u, params={'task_keys': ','.join(ks), 'format': 'xlsx'})
+    wb = load_workbook(io.BytesIO(x.content))
+    assert len(wb.sheetnames) == 2
+    ws = wb[wb.sheetnames[0]]
+    assert ws.cell(6, 2).value == 'Şagird' and ws.cell(7, 2).value
+    with S() as db:
+        m = class_missing(db, _staff(S), ta, 'all', task_keys=ks)
+    blocks = by_test_blocks(m)
+    assert [b['test']['key'] for b in blocks] == [t['key'] for t in m['tests']]
+    assert all(len(b['students']) == b['test']['missed'] + b['test']['pending'] for b in blocks)
+    assert by_test_html(m, 'M', 'T').count('Test üzrə yazmayanlar</h1>') == 2
+    assert admin.get(u, params={'task_keys': ''}).status_code == 400
+    assert admin.get(u, params={'task_keys': 'zzz'}).status_code == 404
+    assert admin.get(u).status_code == 422

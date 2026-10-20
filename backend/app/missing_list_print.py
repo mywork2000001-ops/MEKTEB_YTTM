@@ -19,7 +19,7 @@ CSS = ('@page{size:A4 landscape;margin:10mm}body{font:11px/1.35 "Times New Roman
        'table{border-collapse:collapse;width:100%;margin-top:5px}th,td{border:1px solid #444;padding:2px 4px;vertical-align:top}'
        'th{background:#E4E4E4;font-weight:bold}thead{display:table-header-group}tr{page-break-inside:avoid}.sign{margin-top:20px}'
        '.kpi td{text-align:center;font-size:13px;border:1px solid #888;padding:4px}.kpi small{display:block;font-size:9.5px;color:#333}'
-       '.dot{font-size:13px;line-height:1}.small{font-size:10px;color:#222}.r{text-align:right}.sec{page-break-before:always}'
+       '.dot{font-size:13px;line-height:1}.small{font-size:10px;color:#222}.r{text-align:right}.sec{break-before:page}'
        'section.stu{page-break-inside:avoid}')
 STUDENT_CSS = CSS.replace('A4 landscape', 'A4').replace('font:11px/1.35', 'font:12px/1.4')
 
@@ -292,3 +292,95 @@ def request_text(lang: str, name: str, items: list[dict], deadline: str | None =
     if message and message.strip():
         return f'{message.strip()}\n\n{lst}' + (f'\n{b.format(d=deadline)}' if deadline else '')
     return f'{a.format(name=name)}\n{lst}' + (f'\n{b.format(d=deadline)}' if deadline else '') + f'\n{c}'
+
+
+# ---------------------------------------------------------------- «Test üzrə yazmayanlar» (hər test ayrıca blok)
+BY_TEST_DOC = 'Test üzrə yazmayanlar'
+
+
+def by_test_blocks(m: dict) -> list[dict]:
+    """Hər test üçün: test məlumatı + yazmayanlar (ad, status, gecikmə günü, səbəb). Yalnız `m['tests']` (süzgəc tətbiq olunub)."""
+    out = []
+    for t in m['tests']:
+        lst = []
+        for r in m['rows']:
+            it = next((i for i in r['items'] if i['key'] == t['key']), None)
+            if it:
+                st = ('Yazmayıb' if it['status'] == 'yazmayıb' else 'Gözlənilir') + (
+                    ' (plan günü keçib)' if it.get('state') == 'late_open' and it['status'] != 'yazmayıb' else '')
+                lst.append({'name': r['full_name'], 'status': st, 'late_days': it.get('late_days'),
+                            'reason': (REASON_AZ[it['reason']] if it.get('reason') else '') + (f' – {it["note"]}' if it.get('note') else '')})
+                continue
+            ex = next((e for e in r.get('excused', []) if e['key'] == t['key']), None)
+            if ex:
+                lst.append({'name': r['full_name'], 'status': 'Üzrlü', 'late_days': None,
+                            'reason': REASON_AZ['excused'] + (f' – {ex["note"]}' if ex.get('note') else '')})
+        out.append({'test': t, 'students': lst})
+    return out
+
+
+def _t_line(t: dict) -> str:
+    return (f'verilib: {t["assigned"]} · işləyib: {t["done"]} · icra: {_n(t["rate"])}{"%" if t["rate"] is not None else ""} · '
+            f'yazmayıb: {t["missed"]} · gözlənilir: {t["pending"]}')
+
+
+def by_test_html(m: dict, school: str, teacher: str) -> str:
+    blocks = []
+    for n, b in enumerate(by_test_blocks(m)):
+        t = b['test']
+        rows = ''.join(f"<tr><td class=\"c\">{i}</td><td>{_e(x['name'])}</td><td>{_e(x['status'])}</td>"
+                       f"<td class=\"c\">{x['late_days'] if x['late_days'] is not None else '—'}</td><td>{_e(x['reason']) or '—'}</td></tr>"
+                       for i, x in enumerate(b['students'], 1)) or '<tr><td colspan="5" class="c">Bu testi yazmayan yoxdur.</td></tr>'
+        blocks.append(
+            f'<section class="{"sec" if n else ""}"><p class="c"><b>{_e(school)}</b></p><h1>{_e(BY_TEST_DOC)}</h1>'
+            f'<p class="c">{_e(m["class_name"])} · {_e(m["subject"])} · müəllim: {_e(teacher)}</p>'
+            f'<h2>{_e(item_text(t))}</h2>'
+            f'<p>Tarix: <b>{_e(_d(t["date"]))}</b> · plan günü: <b>{_e(_d(t.get("plan_date")))}</b> · {_e(_t_line(t))}</p>'
+            '<table><thead><tr><th>№</th><th>Şagird</th><th>Status</th><th>Gecikmə (gün)</th><th>Səbəb qeydi</th></tr></thead><tbody>'
+            f'{rows}</tbody></table><p class="sign">Fənn müəllimi: {_e(teacher)} ______________ (imza)</p></section>')
+    if not blocks:
+        blocks.append(f'<p class="c">{_e(BY_TEST_DOC)}: test seçilməyib.</p>')
+    return _doc(''.join(blocks), title=BY_TEST_DOC)
+
+
+def by_test_xlsx(m: dict, school: str, teacher: str) -> bytes:
+    """Excel: hər test ayrıca vərəq (vərəq adı ≤ 31 simvol, təkrarsız)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    thin = Side(style='thin', color='000000')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    grey = PatternFill('solid', fgColor='D9D9D9')
+    wb = Workbook()
+    wb.remove(wb.active)
+    used: set[str] = set()
+    empty = {'test': {'no': None, 'title': 'Test yoxdur', 'date': None, 'plan_date': None, 'assigned': 0, 'done': 0, 'rate': None,
+                      'missed': 0, 'pending': 0}, 'students': []}
+    for n, b in enumerate(by_test_blocks(m) or [empty], 1):
+        t = b['test']
+        base = ''.join(ch for ch in f'{n}. {item_text(t)}' if ch not in '[]:*?/\\')[:28] or f'Test {n}'
+        name, k = base, 1
+        while name in used:
+            k += 1
+            name = f'{base[:26]}~{k}'
+        used.add(name)
+        ws = wb.create_sheet(name)
+        head = [(school, True), (f'{BY_TEST_DOC} – {m["class_name"]} · {m["subject"]} · müəllim: {teacher}', True),
+                (f'{item_text(t)} · tarix: {_d(t["date"])} · plan günü: {_d(t.get("plan_date"))}', False), (_t_line(t), False)]
+        for i, (txt, bold) in enumerate(head, 1):
+            ws.cell(i, 1, txt).font = Font(bold=bold)
+            ws.merge_cells(start_row=i, start_column=1, end_row=i, end_column=5)
+        for j, h in enumerate(['№', 'Şagird', 'Status', 'Gecikmə (gün)', 'Səbəb qeydi'], 1):
+            c = ws.cell(6, j, h)
+            c.font, c.fill, c.border = Font(bold=True), grey, border
+        for i, x in enumerate(b['students'], 1):
+            ws.append([i, x['name'], x['status'], x['late_days'], x['reason']])
+            for c in ws[ws.max_row]:
+                c.border = border
+                c.alignment = Alignment(wrap_text=True, vertical='top')
+        ws.cell(ws.max_row + 2, 1, f'Fənn müəllimi: {teacher}   ______________ (imza)')
+        for col, w in zip('ABCDE', (5, 32, 26, 14, 40)):
+            ws.column_dimensions[col].width = w
+        ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

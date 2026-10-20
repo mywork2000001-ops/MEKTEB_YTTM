@@ -32,6 +32,21 @@ def _my_tas(db: Session, user: User, subject: str | None = None) -> list[Teachin
     return [t for t in db.scalars(st) if not subject or t.subject == subject]
 
 
+def _ids(v: str | None) -> list[int] | None:
+    """«1,2,3» → [1, 2, 3] (şagird süzgəci); boş – süzgəc yoxdur."""
+    try:
+        out = [int(x) for x in (v or '').split(',') if x.strip()]
+    except ValueError:
+        raise HTTPException(422, 'sids: vergüllə ayrılmış rəqəmlər')
+    return out or None
+
+
+def _keys(v: str | None) -> list[str] | None:
+    """«b3,t7» → ['b3', 't7'] (test süzgəci: məntiqi test açarı – yenidən göndərmə surətləri bir açardır)."""
+    out = [x.strip() for x in (v or '').split(',') if x.strip()]
+    return out or None
+
+
 def _tas_filter(db: Session, user: User, ta_id: int | None) -> set[int] | None:
     return {own_assignment(db, user, ta_id).id} if ta_id else None
 
@@ -274,7 +289,7 @@ def class_missing_api(ta_id: int, kind: Literal['movzu', 'sinaq', 'all'] = 'all'
                       date_to: dt.date | None = Query(None, alias='to'), format: Literal['json', 'xlsx', 'pdf'] = 'json',
                       per_student: int = Query(0, ge=0, le=1), sid: int | None = None,
                       only_missed: int = Query(0, ge=0, le=1), all_students: int = Query(0, ge=0, le=1, alias='all'),
-                      plan: Literal['all', 'late_open'] = 'all', sort: Literal['name', 'risk'] | None = None,
+                      plan: Literal['all', 'late_open'] = 'all', sort: Literal['name', 'risk'] | None = None, sids: str | None = None, task_keys: str | None = None,
                       user: User = Depends(staff), db: Session = Depends(get_db)):
     """İşlənməyənlər siyahısı (matrisdən): json; pdf/xlsx – sinif üzrə bir sənəd (rəsmi, AZ); per_student=1 – hər şagirdə ayrıca vərəqə
     (PDF; şagirdin dili ru isə AZ|RU), sid – tək şagird. Yalnız öz dərsim."""
@@ -284,7 +299,7 @@ def class_missing_api(ta_id: int, kind: Literal['movzu', 'sinaq', 'all'] = 'all'
     from ..student_report import class_missing
     # sinif hesabatı (H1/Excel) – bütün şagirdlər (icra göstəriciləri üçün); şagird vərəqələri – yalnız borcu olanlar
     m = class_missing(db, user, ta_id, kind, date_from, date_to, sid, all_students=bool(all_students) or (format != 'json' and not per_student),
-                      only_missed=bool(only_missed), plan=plan, sort=sort or ('name' if format == 'json' else 'risk'))
+                      only_missed=bool(only_missed), plan=plan, sids=_ids(sids), task_keys=_keys(task_keys), sort=sort or ('name' if format == 'json' else 'risk'))
     db.commit()                                       # expire_due avtomatik təhvilləri saxlasın
     if format == 'json':
         return m
@@ -338,6 +353,35 @@ def student_missing_api(sid: int, kind: Literal['movzu', 'sinaq', 'all'] = 'all'
                     headers={'Content-Disposition': f'attachment; filename="islenmeyenler-sagird-{sid}.pdf"'})
 
 
+@router.get('/class/{ta_id}/missing-by-test')
+def class_missing_by_test(ta_id: int, task_keys: str, format: Literal['json', 'xlsx', 'pdf'] = 'pdf', sids: str | None = None,
+                          kind: Literal['movzu', 'sinaq', 'all'] = 'all', date_from: dt.date | None = Query(None, alias='from'),
+                          date_to: dt.date | None = Query(None, alias='to'), plan: Literal['all', 'late_open'] = 'all',
+                          user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«Test üzrə yazmayanlar» (AZ, PDF/Excel): seçilmiş hər test üçün ayrıca blok – test, tarix, plan günü, verilib/işləyib/icra %,
+    yazmayanlar (status, gecikmə günü, səbəb). `task_keys` – məntiqi test açarları (vergüllə), `sids` – istəyə görə şagird süzgəci."""
+    from fastapi.responses import Response
+    from ..missing_list_print import by_test_html, by_test_xlsx
+    from ..student_report import class_missing
+    keys = _keys(task_keys)
+    if not keys:
+        raise HTTPException(400, 'Ən azı bir test seçin')
+    m = class_missing(db, user, ta_id, kind, date_from, date_to, plan=plan, sort='risk', sids=_ids(sids), task_keys=keys)
+    db.commit()
+    if not m['tests']:
+        raise HTTPException(404, 'Seçilmiş test tapılmadı')
+    if format == 'json':
+        return m
+    school = _school_name(db, user)
+    audit(db, user, 'export', 'missing_by_test', str(ta_id), format=format, tests=len(m['tests']))
+    db.commit()
+    if format == 'xlsx':
+        return Response(by_test_xlsx(m, school, user.full_name), headers={'Content-Disposition': f'attachment; filename="test-uzre-{ta_id}.xlsx"'},
+                        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    return Response(_render_pdf(by_test_html(m, school, user.full_name)), media_type='application/pdf',
+                    headers={'Content-Disposition': f'attachment; filename="test-uzre-{ta_id}.pdf"'})
+
+
 def _school_name(db: Session, user: User) -> str:
     from ..models import School
     from .lessonplans import SCHOOL_DEFAULT
@@ -349,11 +393,11 @@ def _school_name(db: Session, user: User) -> str:
 def class_missing_share(ta_id: int, lang: Literal['az', 'en', 'ru'] = 'az', names: Literal['full', 'short', 'none'] = 'short',
                         kind: Literal['movzu', 'sinaq', 'all'] = 'all', date_from: dt.date | None = Query(None, alias='from'),
                         date_to: dt.date | None = Query(None, alias='to'), only_missed: int = Query(0, ge=0, le=1),
-                        plan: Literal['all', 'late_open'] = 'all', user: User = Depends(staff), db: Session = Depends(get_db)):
+                        plan: Literal['all', 'late_open'] = 'all', sids: str | None = None, task_keys: str | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
     """H4: qrupa göndəriləcək qısa mətn (seçilmiş dildə, ad rejimi: tam / ad + soyadın baş hərfi / adsız)."""
     from ..missing_list_print import share_text
     from ..student_report import class_missing
-    m = class_missing(db, user, ta_id, kind, date_from, date_to, only_missed=bool(only_missed), plan=plan, sort='risk')
+    m = class_missing(db, user, ta_id, kind, date_from, date_to, only_missed=bool(only_missed), plan=plan, sort='risk', sids=_ids(sids), task_keys=_keys(task_keys))
     db.commit()
     return {'text': share_text(m, lang, names)}
 

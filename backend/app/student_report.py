@@ -546,7 +546,8 @@ def unit_tasks(db: Session, ta_id: int, key: str) -> list[OnlineTask]:
 
 def class_missing(db: Session, user: User, ta_id: int, kind: str = 'all', date_from: dt.date | None = None,
                   date_to: dt.date | None = None, sid: int | None = None, *, all_students: bool = False,
-                  only_missed: bool = False, plan: str = 'all', sort: str = 'name') -> dict:
+                  only_missed: bool = False, plan: str = 'all', sort: str = 'name',
+                  sids: list[int] | None = None, task_keys: list[str] | None = None) -> dict:
     """İşlənməyənlər hesabatı – TƏK mənbə (`class_matrix`-dən qurulur, təkrar məntiq yoxdur). Geriyə uyğun: köhnə sahələr qalır
     (`rows[].items`, `students`, `total`), yenilər əlavə olunur: göstəricilər (assigned/done/missed/pending, rate, rate_on_time),
     risk, streak, tövsiyə, plan günü vəziyyəti, səbəb qeydləri, tələb tarixçəsi; `summary` və test üzrə `tests`.
@@ -557,6 +558,8 @@ def class_missing(db: Session, user: User, ta_id: int, kind: str = 'all', date_f
         raise HTTPException(400, 'plan: all və ya late_open')
     m = class_matrix(db, user, ta_id, kind, date_from, date_to)
     td = today()
+    keys = set(task_keys) if task_keys else None            # test süzgəci (məntiqi test açarı: b…/t…/e…; surətlər birləşib)
+    sids = set(sids) if sids else None
     cols = {c['key']: c for c in m['columns']}
     by_date = sorted(m['columns'], key=lambda c: (c['date'] or '', c['title']))
     ids = [r['student_id'] for r in m['rows']]
@@ -578,7 +581,7 @@ def class_missing(db: Session, user: User, ta_id: int, kind: str = 'all', date_f
         late_days = 0
         for k, x in r['cells'].items():
             st = x['status']
-            if st == 'təyin olunmayıb':
+            if st == 'təyin olunmayıb' or (keys is not None and k not in keys):
                 continue
             c = cols[k]
             state, days = plan_state(st, c, x, td)
@@ -620,7 +623,7 @@ def class_missing(db: Session, user: User, ta_id: int, kind: str = 'all', date_f
         streak = 0
         for c in reversed(by_date):                     # ardıcıl buraxma (ən son testlərdən geriyə)
             x = r['cells'].get(c['key'])
-            if not x or x['status'] == 'təyin olunmayıb' or any(e['key'] == c['key'] for e in excused):
+            if not x or x['status'] == 'təyin olunmayıb' or (keys is not None and c['key'] not in keys) or any(e['key'] == c['key'] for e in excused):
                 continue
             if x['status'] in _DONE:
                 break
@@ -645,7 +648,8 @@ def class_missing(db: Session, user: User, ta_id: int, kind: str = 'all', date_f
                     'requests': {'count': len(rq), 'last': _iso(local_date(rq[-1].created_at)) if rq else None}})
 
     summary_rows = out
-    rows = [x for x in out if (sid is None or x['student_id'] == sid) and (all_students or sid is not None or x['items'])]
+    rows = [x for x in out if (sid is None or x['student_id'] == sid) and (sids is None or x['student_id'] in sids)
+            and (all_students or sid is not None or x['items'])]
     if sid is not None and not rows:
         raise HTTPException(404, 'Şagird bu sinifdə/qrupda deyil')
     rates = [x['rate'] for x in summary_rows if x['rate'] is not None]
@@ -658,11 +662,11 @@ def class_missing(db: Session, user: User, ta_id: int, kind: str = 'all', date_f
     else:
         rows.sort(key=lambda x: x['full_name'])
     tests = []
-    for c in m['columns']:
+    for c in (c for c in m['columns'] if keys is None or c['key'] in keys):
         ts = tstat[c['key']]
         tests.append({'key': c['key'], 'kind': c['kind'], 'no': c['no'], 'title': c['title'], 'date': c['date'], 'plan_date': c.get('plan_date'),
                       'task_id': c.get('task_id'), 'test_title': c.get('test_title') or c['title'], **ts, 'rate': _pct(ts['done'], ts['assigned'])})
-    summary = {'students_total': len(summary_rows), 'tests': len(m['columns']), 'avg_rate': avg(rates),
+    summary = {'students_total': len(summary_rows), 'tests': len(tests), 'avg_rate': avg(rates),
                'full': sum(1 for x in summary_rows if x['rate'] == 100.0),
                'critical': sum(1 for x in summary_rows if x['risk'] == 'critical'),
                'attention': sum(1 for x in summary_rows if x['risk'] == 'attention'), 'reasons': reason_sum}
