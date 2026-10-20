@@ -24,3 +24,8 @@ skript `scripts/plan_tests.py`, API `/api/plan-tests/*`, düymə və gündəlik 
   kod → `kodcu`, tərcümə → `tercumeci`, PDF → `pdf-oxuyucu`, cavab açarı → `cavab-yoxlayici`, mexaniki iş → `yigici`. Paralel iş – `isolation: "worktree"`, birləşdikdən sonra worktree və budaq silinir.
 - **Pro limitinə qənaət:** Rəhbər kodu özü yazmır – dəqiq kart yazır; fayl hissə-hissə (Grep), i18n.ts heç vaxt tam; pytest yalnız aid testlər; uzun çıxış `tail`; ekran şəkli scale 0.5. Təkrar oxu, təkrar yoxlama və uzun izah yoxdur.
 - Sessiya əvvəli: `docs/HANDOFF.md` (son sətirlər) + `git worktree list`.
+
+## İcra auditi – hər sessiyanın sonunda (istifadəçi tələbi, 20.10.2026)
+Sessiyanı bitirməzdən əvvəl `docs/audit/icra-YYYY-MM-DD.md`: hər istifadəçi istəyi ayrıca sətir, status (✅/🟡/⏳/❌/🔒) və **sübut**
+(commit, test sayı, build, deploy, miqrasiya); tam pytest + build; açıq qalanlar P1/P2/P3. Növbəti sessiya əvvəlcə son auditin
+«Açıq qalanlar» bölməsini oxuyur. Ətraflı: `docs/icra-auditi-promtu.md`.
