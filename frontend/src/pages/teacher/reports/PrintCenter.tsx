@@ -20,7 +20,7 @@ function ClassPrintLoader({ ta, sem }: { ta: number; sem: Sem }) {
   return a ? <ClassPrint a={a} ta={ta} sem={sem} /> : null
 }
 
-export default function PrintCenter({ ta, sem, isAdmin }: { ta: number | null; sem: Sem; isAdmin: boolean }) {
+export default function PrintCenter({ ta, sem, isAdmin, hr }: { ta: number | null; sem: Sem; isAdmin: boolean; hr: boolean }) {
   const t = useT()
   const nav = useNavigate()
   const [cfg, setCfg] = useState(false)
@@ -38,12 +38,20 @@ export default function PrintCenter({ ta, sem, isAdmin }: { ta: number | null; s
     { name: 'Kim nəyi işləyib – sinif matrisi', desc: 'Şagird × test cədvəli (rəsmi forma).', fmt: 'PDF · Excel', act: open('tests', 'matrix') },
     { name: 'Test nəticələri – sinif və qrup', desc: 'Sinif xülasəsi, bütün şagirdlərin hesabatı, valideyn iclası (RU).', fmt: 'PDF', act: open('tests', 'class') },
     { name: 'Şagird hesabatı', desc: 'Bir şagirdin test nəticələri və süni intellektin rəyi; valideyn nüsxəsi.', fmt: 'PDF · Word', act: open('student', 'student') },
+    { name: 'Standartlar / bölmələr üzrə icra', desc: 'Standart və mövzu mənimsəməsi, bölmələr üzrə plan icrası.', fmt: 'ekran · çap', act: open('academic', 'standards') },
+    { name: 'Test sual təhlili', desc: 'Seçilən testin hər sualı üzrə düzgün cavab faizi.', fmt: 'ekran · çap', act: open('tests', 'questions') },
+    { name: 'Məşğələ hesabatı (tədris hissəsi üçün)', desc: 'Kurs statistikası, iştirak və «Effekt».', fmt: 'PDF · çap', act: open('courses', 'courses') },
+    { name: 'Sorğu nəticələri', desc: 'Şagird sorğusu: indeks, siniflər, dinamika, süni intellektin rəyi.', fmt: 'PDF · Excel', act: open('surveys', 'results') },
+    ...(hr ? [
+      { name: 'Sinif rəhbəri: aylıq davamiyyət', desc: 'Aylıq davamiyyət cədvəli (albom) və dövr üzrə yekun.', fmt: 'PDF · çap', act: open('homeroom', 'attendance') } as Row,
+      { name: 'Sinif rəhbəri: fənlər üzrə müvəffəqiyyət', desc: 'Əlaçı / zərbəçi kateqoriyaları, fənlər üzrə müvəffəqiyyət.', fmt: 'ekran', act: open('homeroom', 'success') } as Row] : []),
     ...(isAdmin ? [{ name: 'Məktəb üzrə müvəffəqiyyət', desc: 'Siniflər, paralellər, «2»-lilər, yazılmamış dərslər.', fmt: 'PDF', act: open('school', 'school') } as Row] : []),
   ]
   const other: Row[] = [
     { name: 'Jurnal (səhifə, yarımil, il)', desc: 'Rəsmi jurnal çapı.', fmt: 'PDF · çap', act: link('/journal') },
     { name: 'KSQ / BSQ – cavab kartları və nəticə paketləri', desc: 'Variantlar, kart şəkli ilə nəticə paketi (hər şagird ayrıca səhifə).', fmt: 'PDF', act: link('/journal') },
     { name: 'Köçürmə şübhəsi hesabatı (kağız)', desc: 'Şübhəli şagirdə yeni variantın çapı.', fmt: 'PDF · çap', act: link('/journal') },
+    ...(hr ? [{ name: 'Sinif rəhbərinin sənədləri (Çap / PDF)', desc: 'Sinif rəhbərinin rəsmi çap forması.', fmt: 'PDF · çap', act: link('/homeroom') } as Row] : []),
     { name: 'Sinif siyahısı', desc: 'Sinif və qrup şagird siyahısı.', fmt: 'PDF · çap', act: link('/classes') },
     { name: 'Şagirdlərin giriş vərəqələri', desc: 'Giriş və parol vərəqləri.', fmt: 'PDF · çap', act: link('/settings?tab=classes') },
     { name: 'Perspektiv plan', desc: 'Rəsmi perspektiv plan.', fmt: 'PDF · çap', act: link('/plan') },

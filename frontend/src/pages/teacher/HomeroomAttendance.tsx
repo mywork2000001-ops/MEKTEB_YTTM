@@ -13,17 +13,17 @@ const REASONS = ['xəstəlik (arayış)', 'ailə səbəbi', 'tədbir / yarış',
 const short = (s?: string) => ST.find(x => x[0] === s)?.[1] || ''
 const cls = (s?: string) => ST.find(x => x[0] === s)?.[2] || ''
 
-export default function HomeroomAttendance({ cid, className, onSaved }: { cid: number; className: string; onSaved?: () => void }) {
+/** Gündəlik qeyd (əməliyyat). Aylıq cədvəl (hesabat) – «Analitika və hesabat → Sinif rəhbəri → Davamiyyət» (export edilən `Month`). */
+export default function HomeroomAttendance({ cid, onSaved }: { cid: number; className?: string; onSaved?: () => void }) {
   const t = useT()
-  const [view, setView] = useState<'day' | 'month'>('day')
   const narrowTop = useNarrow()
   return (
     <>
       <div className="row no-print" style={{ marginBottom: 12 }}>
-        <Seg value={view} onChange={setView} options={[['day', t('Gündəlik qeyd')], ['month', t('Aylıq cədvəl')]]} />
+        <b>{t('Gündəlik qeyd')}</b>
         {!narrowTop && <span className="small muted">{t('Fənn müəlliminin jurnalı olan dərs kilidlidir (🔒) – əsas mənbə jurnaldır.')}</span>}
       </div>
-      {view === 'day' ? <Day cid={cid} onSaved={onSaved} /> : <Month cid={cid} className={className} />}
+      <Day cid={cid} onSaved={onSaved} />
     </>
   )
 }
@@ -181,7 +181,7 @@ function DayMobile({ d, val, set, locked, wholeDay, absentNow, changed, save }: 
   )
 }
 
-function Month({ cid, className }: { cid: number; className: string }) {
+export function Month({ cid, className }: { cid: number; className: string }) {
   const t = useT()
   const [month, setMonth] = useState(() => isoDate(new Date()).slice(0, 7))
   const [m, err, loading] = useLoad<any>(() => get(`/api/homeroom/${cid}/attendance/month`, { month }), [cid, month])

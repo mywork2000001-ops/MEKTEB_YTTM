@@ -2,12 +2,12 @@
 import { useEffect, useState } from 'react'
 import { useT, ml, tt } from '../../i18n'
 import { del as apiDel, get, post } from '../../api'
-import { MathText } from '../../MathText'
 import { AsyncBtn, Chips, ConfirmName, Drawer, ErrorBox, Field, fmt, fmtDate, gradeTone, isoDate, Loading, More, Pill, toast, Top, useLoad, hourN } from '../../ui'
 import { type MyLesson, type Preset, StudentPicker, useMyLessons, usePick } from './common'
 import { PeriodBar, usePeriod } from '../../periods'
 import { Link } from 'react-router-dom'
 import TaskEditor from './TaskEditor'
+import AnalyticsLink from './reports/AnalyticsLink'
 import { esc, head, mathHtml, printDoc, table } from '../../print'
 import { azDT, noDeadline } from '../../ui'
 
@@ -402,14 +402,8 @@ function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; on
           {d.task.kind === 'sinaq' ? <p className="small muted">{t('Sınaq imtahanı formativ jurnala köçürülmür – nəticə «Sınaq imtahanları» bölməsində (jurnal və reytinq).')}</p>
             : d.summary['təhvil verib'] > 0 && <ToJournal ta={ta} id={id} opens={d.task.opens_at} />}
           {d.questions.length > 0 && d.summary['təhvil verib'] > 0 && (
-            <section className="panel"><h2>{t('Suallar üzrə')}</h2>
-              {d.questions.map((x: any) => (
-                <div key={x.index} className="row small" style={{ marginBottom: 6, flexWrap: 'nowrap' }}>
-                  <span className="grow clamp2">{x.index + 1}. <MathText text={ml(x.text)} /></span>
-                  <div className="cmp" style={{ width: 100, marginTop: 0, flex: 'none' }}><i style={{ width: (x.pct || 0) + '%', background: (x.pct ?? 100) < 50 ? 'var(--bad)' : 'var(--accent)' }} /></div>
-                  <b className="num" style={{ width: 44, textAlign: 'right' }}>{fmt(x.pct, 0)}%</b>
-                </div>))}
-            </section>)}
+            <section className="panel"><p className="small muted" style={{ margin: '0 0 8px' }}>{t('Suallar üzrə təhlil «Analitika və hesabat → Testlər və sınaqlar → Sual təhlili» bölməsindədir.')}</p>
+              <AnalyticsLink to={`/reports?g=tests&t=questions&ta=${ta}&task=${id}`} text="Sual təhlili" /></section>)}
         </div>)}
     </Drawer>
   )

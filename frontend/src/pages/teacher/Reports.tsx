@@ -14,6 +14,11 @@ import ResultsCenter, { type Tab as RcTab } from './ResultsCenter'
 import SchoolReport from './SchoolReport'
 import { Attendance, LessonCounts, Levels, Overview, Performance, Rating, Risk } from './reports/ClassTabs'
 import PrintCenter from './reports/PrintCenter'
+import Standards, { SectionProgress } from './reports/Standards'
+import QuestionAnalysis from './reports/QuestionAnalysis'
+import CoursesReport from './reports/CourseStats'
+import SurveysReport from './reports/SurveysReport'
+import HomeroomTabs from './reports/HomeroomTabs'
 import type { Sem } from './reports/common'
 
 
@@ -22,8 +27,9 @@ type TabDef = {
   all?: boolean        // «Bütün siniflərim» mənalıdır (sinif seçilməsə – hamısı)
   cls?: boolean        // tək sinif lazımdır
   sem?: boolean        // yarımil seçimi
+  hr?: boolean         // sinif rəhbərinin sinfi lazımdır
 }
-type Group = { k: string; label: string; tabs: TabDef[]; admin?: boolean }
+type Group = { k: string; label: string; tabs: TabDef[]; admin?: boolean; homeroom?: boolean }
 
 const GROUPS: Group[] = [
   { k: 'overview', label: 'İcmal', tabs: [{ k: 'overview', label: 'Sinif icmalı', cls: true, sem: true }] },
@@ -31,12 +37,14 @@ const GROUPS: Group[] = [
     { k: 'performance', label: 'Müvəffəqiyyət', cls: true, sem: true },
     { k: 'total', label: 'Ümumi reytinq', cls: true, sem: true, sub: 'Qiymət 40% · KSQ 30% · ev tapşırığı 15% · davamiyyət 15% – jurnal əsasında kompleks reytinq (test reytinqindən fərqlidir).' },
     { k: 'levels', label: 'Güclü / orta / zəif', cls: true, sem: true },
+    { k: 'standards', label: 'Standartlar üzrə', cls: true, sub: 'Perspektiv plan testlərinə əsasən standart və mövzular üzrə mənimsəmə; bölmələr üzrə plan icrası.' },
     { k: 'lessons', label: 'Dərs sayı', cls: true },
   ] },
   { k: 'tests', label: 'Testlər və sınaqlar', tabs: [
     { k: 'missing', label: 'İşlənməyənlər', all: true },
     { k: 'matrix', label: 'Kim nəyi işləyib', cls: true },
     { k: 'rating', label: 'Test reytinqi', all: true, sub: 'Onlayn mövzu testləri və sınaqların nəticələri üzrə reytinq (jurnal qiyməti və davamiyyət daxil deyil).' },
+    { k: 'questions', label: 'Sual təhlili', all: true, sub: 'Seçilən testin hər sualı üzrə düzgün cavab faizi.' },
     { k: 'class', label: 'Sinif və qrup', all: true },
     { k: 'overall', label: 'Ümumi' },
   ] },
@@ -45,6 +53,12 @@ const GROUPS: Group[] = [
     { k: 'risk', label: 'Risk', cls: true, sem: true },
   ] },
   { k: 'attendance', label: 'Davamiyyət', tabs: [{ k: 'attendance', label: 'Davamiyyət', cls: true, sem: true }] },
+  { k: 'courses', label: 'Məşğələlər', tabs: [{ k: 'courses', label: 'Qrupların statistikası', sub: 'Əlavə məşğələ qruplarının müqayisəsi, iştirak, «Effekt» və hesabat çapı.' }] },
+  { k: 'surveys', label: 'Sorğu nəticələri', tabs: [{ k: 'results', label: 'Şagird sorğusu' }] },
+  { k: 'homeroom', label: 'Sinif rəhbəri', homeroom: true, tabs: [
+    { k: 'success', label: 'Fənlər üzrə müvəffəqiyyət', hr: true, sem: true },
+    { k: 'attendance', label: 'Davamiyyət', hr: true, sem: true },
+  ] },
   { k: 'print', label: 'Çap mərkəzi', tabs: [{ k: 'docs', label: 'Bütün sənədlər', sem: true }] },
   { k: 'school', label: 'Məktəb üzrə', admin: true, tabs: [{ k: 'school', label: 'Məktəb hesabatı' }, { k: 'certs', label: 'Sertifikatlar', cls: true }] },
 ]
@@ -78,20 +92,28 @@ export default function Reports() {
   const [allSel, setAllSel] = useState(true)             // «Bütün siniflərim» (yalnız `all` tablarda)
   const [semPick, setSem] = useState<Sem | null>(null)
 
-  const groups = GROUPS.filter(g => !g.admin || isAdmin)
+  // «Sinif rəhbəri» qrupu yalnız sinif rəhbərinə (Layout ilə eyni qayda: admin və ya rəhbəri olduğu sinif var)
+  const [hrList, hrErr] = useLoad<any[]>(() => get('/api/homeroom', isAdmin ? { all: 1 } : {}), [isAdmin])
+  const hrVisible = isAdmin || (hrList?.length ?? 0) > 0
+  const [cidPick, setCidPick] = usePick('homeroom')
+  const cid: number | null = hrList?.some(c => c.id === cidPick) ? cidPick : hrList?.length === 1 ? hrList[0].id : null
+
+  const groups = GROUPS.filter(g => (!g.admin || isAdmin) && (!g.homeroom || hrVisible))
   const last = readLast()
   const gParam = sp.get('g')
+  const hrPending = (gParam === 'homeroom' || (!gParam && last?.g === 'homeroom')) && !hrList && !hrErr
   const group = groups.find(g => g.k === gParam) ?? (!gParam ? groups.find(g => g.k === last?.g) : undefined) ?? groups[0]
   const tParam = sp.get('t')
   const tab = group.tabs.find(x => x.k === tParam) ?? (!tParam && last?.g === group.k ? group.tabs.find(x => x.k === last.t) : undefined) ?? group.tabs[0]
-  useEffect(() => { try { localStorage.setItem(LAST, JSON.stringify({ g: group.k, t: tab.k })) } catch { /* noop */ } }, [group.k, tab.k])
+  useEffect(() => { if (!hrPending) { try { localStorage.setItem(LAST, JSON.stringify({ g: group.k, t: tab.k })) } catch { /* noop */ } } }, [group.k, tab.k, hrPending])
 
-  // köhnə/xarici keçidlər: ?ta=ID – sinfi seçir və parametri silir
+  // keçidlər: ?ta=ID (dərs/sinif) və ?cid=ID (sinif rəhbəri sinfi) – seçimi qoyur və parametri silir
   useEffect(() => {
-    const x = sp.get('ta')
-    if (!x) return
-    setTaPick(Number(x)); setAllSel(false)
-    setSp(prev => { const n = new URLSearchParams(prev); n.delete('ta'); return n }, { replace: true })
+    const x = sp.get('ta'), c = sp.get('cid')
+    if (!x && !c) return
+    if (x) { setTaPick(Number(x)); setAllSel(false) }
+    if (c) setCidPick(Number(c))
+    setSp(prev => { const n = new URLSearchParams(prev); n.delete('ta'); n.delete('cid'); return n }, { replace: true })
   }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (g: string, tb?: string, extra: Record<string, string> = {}, replace = false) => {
@@ -105,6 +127,7 @@ export default function Reports() {
   const cur = lessons?.find(l => l.id === (ta ?? single))
   const sem: Sem = semPick ?? (cur?.semester ? (String(cur.semester) as Sem) : '1')
   const needClass = !!(tab.cls || tab.all)
+  const numParam = (k: string) => (sp.get(k) ? Number(sp.get(k)) : null)
 
   const student = sp.get('student') ? Number(sp.get('student')) : null
   const rcTab = (RC_TABS.includes(tab.k) ? tab.k : 'rating') as RcTab
@@ -112,16 +135,22 @@ export default function Reports() {
   const onStudent = (id: number | null) => go('student', 'student', id ? { student: String(id) } : {})
 
   const body = (): ReactNode => {
+    if (hrPending) return <Loading />
+    if (tab.hr) return cid == null ? <PickFirst /> : <HomeroomTabs cid={cid} sem={sem} tab={tab.k as 'success' | 'attendance'} />
     if (tab.cls && ta == null) return <PickFirst />
     switch (group.k + '/' + tab.k) {
       case 'overview/overview': return <WithA ta={ta!} sem={sem}>{a => <Overview a={a} />}</WithA>
       case 'academic/performance': return <Performance ta={ta!} sem={sem} />
       case 'academic/total': return <WithA ta={ta!} sem={sem}>{a => <Rating a={a} />}</WithA>
       case 'academic/levels': return <WithA ta={ta!} sem={sem}>{a => <Levels a={a} />}</WithA>
+      case 'academic/standards': return <><Standards ta={ta!} /><SectionProgress ta={ta!} /></>
       case 'academic/lessons': return <LessonCounts ta={ta!} />
+      case 'tests/questions': return <QuestionAnalysis key={ta ?? 'all'} ta={ta} task={numParam('task')} />
+      case 'courses/courses': return <CoursesReport course={numParam('course')} />
+      case 'surveys/results': return <SurveysReport survey={numParam('survey')} />
       case 'student/risk': return <WithA ta={ta!} sem={sem}>{a => <Risk a={a} ta={ta!} />}</WithA>
       case 'attendance/attendance': return <WithA ta={ta!} sem={sem}>{(a, params) => <Attendance ta={ta!} params={params} a={a} />}</WithA>
-      case 'print/docs': return <PrintCenter ta={single} sem={sem} isAdmin={isAdmin} />
+      case 'print/docs': return <PrintCenter ta={single} sem={sem} isAdmin={isAdmin} hr={hrVisible} />
       case 'school/school': return <SchoolReport />
       case 'school/certs': return <CertificatesPanel ta={ta!} />
     }
@@ -143,7 +172,12 @@ export default function Reports() {
             {tab.all ? <option value="">{t('Bütün siniflərim')}</option> : <option value="">{t('— Sinif / qrup seçin —')}</option>}
             {(lessons || []).map(l => <option key={l.id} value={l.id}>{l.class_name}{l.subject !== 'Riyaziyyat' ? ` · ${l.subject}` : ''}</option>)}
           </select></label>}
-        {tab.sem && (ta != null || group.k === 'print') && <Seg value={sem} onChange={setSem} options={[['1', 'I yarımil'], ['2', 'II yarımil'], ['all', 'Bütün il']]} />}
+        {tab.hr && hrList && (hrList.length > 1 || isAdmin) && <label className="hub-pick"><span>{t('Sinif')}</span>
+          <select value={cid ?? ''} onChange={e => setCidPick(e.target.value ? Number(e.target.value) : null)}>
+            <option value="">{t('— Sinif seçin —')}</option>
+            {hrList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></label>}
+        {tab.sem && (tab.hr ? cid != null : (ta != null || group.k === 'print')) && <Seg value={sem} onChange={setSem} options={[['1', 'I yarımil'], ['2', 'II yarımil'], ['all', 'Bütün il']]} />}
       </div>
       {group.tabs.length > 1 && <div className="tabs rtabs no-print">{group.tabs.map(x =>
         <button key={x.k} aria-selected={tab.k === x.k} onClick={() => go(group.k, x.k, student && group.k === 'student' ? { student: String(student) } : {})}>{t(x.label)}</button>)}</div>}
