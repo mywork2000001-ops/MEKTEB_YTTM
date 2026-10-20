@@ -6,7 +6,7 @@ import decimal
 import json
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -64,17 +64,27 @@ def _val(v):
 
 @router.get('/backup')
 def backup(user: User = Depends(admin_only), db: Session = Depends(get_db)):
-    data = {'format': 'muellim-komekcisi-backup', 'version': 1, 'created_at': dt.datetime.now(dt.timezone.utc).isoformat(),
-            'tables': {}}
-    for t in Base.metadata.sorted_tables:
-        if t.name in SKIP:
-            continue
-        data['tables'][t.name] = [{k: _val(v) for k, v in row._mapping.items()} for row in db.execute(select(t))]
-    audit(db, user, 'export', 'backup', None, tables=len(data['tables']))
+    """Cədvəl-cədvəl axınla (StreamingResponse): bütün baza yaddaşa yığılmır – Render 512 MB-da 502 olmasın."""
+    tables = [t for t in Base.metadata.sorted_tables if t.name not in SKIP]
+    audit(db, user, 'export', 'backup', None, tables=len(tables))
     db.commit()
+    bind = db.get_bind()
+
+    def gen():
+        head = {'format': 'muellim-komekcisi-backup', 'version': 1, 'created_at': dt.datetime.now(dt.timezone.utc).isoformat()}
+        yield json.dumps(head, ensure_ascii=False)[:-1] + ', "tables": {'
+        with Session(bind=bind) as s:
+            for i, t in enumerate(tables):
+                yield ('' if i == 0 else ', ') + json.dumps(t.name) + ': ['
+                rows = s.execute(select(t).execution_options(yield_per=500))
+                for j, row in enumerate(rows):
+                    yield ('' if j == 0 else ', ') + json.dumps({k: _val(v) for k, v in row._mapping.items()}, ensure_ascii=False)
+                yield ']'
+        yield '}}'
+
     name = f'muellim-komekcisi-{dt.date.today():%Y%m%d}.json'
-    return Response(json.dumps(data, ensure_ascii=False), media_type='application/json',
-                    headers={'Content-Disposition': f'attachment; filename="{name}"'})
+    return StreamingResponse(gen(), media_type='application/json',
+                             headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
 
 # ---------------------------------------------------------------- məlumat sağlamlığı (yalnız oxuma)
