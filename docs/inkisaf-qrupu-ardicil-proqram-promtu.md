@@ -53,3 +53,32 @@ canlı tətbiq – ehtiyat nüsxə + önbaxış + istifadəçinin «hə»-si.
 - 26.01.2027-yə qədər ≈ 14 həftə × 3 = **≈ 40–42 məşğələ** (tətillər çıxılır): V 2-ci yarımil (6) + V illik (1) + VI (15 + yekun) + VII (16 + yekun)
   ≈ 40 – yəni təxminən **VII sinfin sonuna** çatır. Dəqiq say önbaxışda; sığmayanlar növbəti dövrə qalır (xəbərdarlıq).
 - Texniki: `chain` konfiqurasiyasında `start: {grade: 5, semester: 2}`, `end_date: 2027-01-26`, `weekdays: [0, 2, 4]`.
+
+## 6. V sinif alt mövzuları – P001 (istifadəçi, 20.10.2026)
+**Mənbə:** `C:\Users\Administrator\Documents\Claude\Projects\P001_Math_5_DIM\5dim_sinif_testi2025\` – 17 dərs (Lesson-1…17.html) + `quiz.html` (viktorina).
+| P001 | Mövzu | P001 | Mövzu |
+|---|---|---|---|
+| L1 | Natural ədədlərin yazılması və oxunması | L10 | Faiz |
+| L2 | Natural ədədlərin toplanması və çıxılması | L11 | (başlıqsız – faylın içindən təyin et) |
+| L3 | Natural ədədlərin vurulması və bölünməsi | L12 | Tənliklər və bərabərsizliklər |
+| L4 | Adi kəsrlər | L13 | Müstəvi fiqurlar |
+| L5 | Adi kəsrlərin müqayisəsi | L14 | Fəza fiqurları |
+| L6 | Adi kəsrlərin toplanması və çıxılması | L15 | Statistika və məlumatların təsviri |
+| L7 | Adi kəsrlərin vurulması və bölünməsi | L16 | İkinci yarımil – yekunlaşdırıcı test |
+| L8 | Onluq kəsrlər | L17 | İllik material – yekunlaşdırıcı test |
+| L9 | Adi və onluq kəsrlər (qarışıq əməllər) | | |
+
+**Qayda (hər məşğələ mövzusuna V sinif alt mövzusu):**
+1. **V sinif mövzuları** (2-ci yarımil, §5): proqram mövzusu → uyğun P001 dərsinin **alt mövzuları** (dərs faylının `h2/h3` bölmələri)
+   məşğələnin mövzu mətninə «Alt mövzular: …» kimi əlavə olunur + P001 dərsinə və viktorinaya keçid (material). Məs.: «Onluq kəsrlər» → L8 (+ L9),
+   «Faiz» → L10, «Həndəsə elementləri» → L13, L14, «Statistika. Ehtimal» → L15; yarımil yekunu → L16, V illik → L17.
+2. **VI–VII sinif mövzuları:** hər mövzuya **V sinifdən ilkin şərt (prerequisite) alt mövzusu** – «5-ci sinifdən təkrar: …» (məşğələnin
+   ilk 10 dəqiqəsi). Uyğunluq cədvəli (`app/program_data/inkisaf_v_prereq.json`: VI/VII mövzu → P001 dərsi + alt mövzu) icraçı tərəfindən
+   hazırlanır, önbaxışda müəllimə göstərilir, müəllim düzəldə bilər. Uyğun V mövzusu yoxdursa – boş qalır (uydurma yoxdur).
+3. Alt mövzu adları AZ/EN/RU (`{az,ru,en}`; P001-də RU/EN varsa ondan, yoxdursa `tercumeci`).
+4. Mövzu testi seçimi yenə yalnız `plan_tests.py`; P001 materialı test deyil, **material/keçid** kimi bağlanır (Materiallar).
+
+**P001 viktorinasında ad və sertifikat silinir** (istifadəçi tələbi): `5dim_sinif_testi2025/quiz.html` – «Adınızı daxil edin» sorğusu,
+«🏆 Sertifikat» düyməsi, `openCertificate()` axını və `../../_Shared_Core/certificate.js` qoşulması çıxarılır; nəticə/bal ekranı qalır.
+P001 ayrıca repo (Projects) – dəyişiklik orada ayrıca commit; `_Shared_Core/certificate.js` faylının özünə toxunulmur (başqa layihələr istifadə edir).
+Yoxlama: quiz.html brauzerdə açılır, sonda ad soruşulmur, sertifikat düyməsi yoxdur, konsolda xəta yoxdur.
