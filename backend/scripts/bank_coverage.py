@@ -34,13 +34,13 @@ def main(argv: list[str] | None = None) -> int:
             print('Proqram tapılmadı: --id və ya --key göstərin (--list ilə siyahı)')
             return 1
         r = coverage(db, p, None, a.grade)
-        print(f'{p.title}\nMövzu: {r["total"]} · tapıldı: {r["found"]} · yoxdur: {r["missing"]}')
+        print(f'{p.title}\nMövzu: {r["total"]} · tapıldı: {r["found"]} · yoxdur: {r["missing"]} · gözlənilir: {r["pending"]}')
         for g, v in r['by_grade'].items():
-            print(f'  sinif {g}: {v["found"]}/{v["total"]} tapıldı, yoxdur {v["missing"]}')
+            print(f'  sinif {g}: {v["found"]}/{v["total"]} tapıldı, yoxdur {v["missing"]}, gözlənilir {v["pending"]}')
         for i in r['items']:
             if a.missing and i['found']:
                 continue
-            tag = 'OK ' if i['found'] else 'YOX'
+            tag = 'OK ' if i['found'] else 'GÖZ' if i['pending'] else 'YOX'
             print(f'  [{tag}] {i["grade"] or "?":>2}  {i["topic"][:60]:<60} -> {(i["source"] or "-")} {i["label"] or ""} ({i["cover"]})')
     return 0
 

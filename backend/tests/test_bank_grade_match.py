@@ -145,7 +145,8 @@ def test_coverage_report(world):
     t = as_('ilqar')
     pid = next(p['id'] for p in t.get('/api/programs').json() if p['key'] == 'hazirliq-buraxilis-9')
     r = t.get('/api/bank/coverage', params={'program_id': pid}).json()
-    assert r['total'] > 50 and r['found'] == 0 and r['missing'] == r['total']               # bank boşdur
+    assert r['total'] > 50 and r['found'] == 0 and r['missing'] + r['pending'] == r['total']      # bank boşdur; V–VIII – «gözlənilir»
+    assert r['pending'] > 0 and r['by_grade']['9']['pending'] == 0 and r['by_grade']['5']['missing'] == 0
     assert set(r['by_grade']) == {'5', '6', '7', '8', '9'}
     with S() as db:
         db.add_all([BankSource(key='p001', label='P001'), BankSource(key='p013', label='P013')]); db.flush()

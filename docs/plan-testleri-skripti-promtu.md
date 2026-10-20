@@ -8,6 +8,9 @@ Baza: docs/sinfe-gore-testler-promtu.md (birləşib: `lesson_grade`, `GradeMatch
 docs/mekteb-plan-movzu-testleri-promtu.md (mövzu nömrəsi, uyğunluq həddi – bu işlə **birlikdə** icra olunur).
 
 ## 0. Sabit qaydalar
+- **V–VIII «gözlənilir» (`pending`), istifadəçi qərarı 19.10.2026:** «Sinif testləri» sualları bankda hələ yoxdur, zamanla hazırlanacaq –
+  `bank/match.py` `PENDING_GRADES = {5,6,7,8}`: bu siniflərdə test tapılmayan mövzu «yoxdur» yox, `pending` («⏳ Gözlənilir»); hesabatda,
+  Plan nişanında və `bank/coverage`-də ayrıca sayılır. IX–XI üçün «yoxdur» qalır. Bank dolduqca siyahıdan çıxarılır.
 - Müəllimin əl ilə yaratdığı test və əl ilə seçdiyi fayl (`LessonBankLink`) toxunulmaz; testi olan dərsə ikinci test yaradılmır.
 - KSQ/BSQ/diaqnostik dərsə mövzu testi yoxdur.
 - **Tarixə görə çatışmayan testlər** (istifadəçi tələbi): keçilmiş dərslər (dövrün əvvəlindən bu günə qədər) testsizdirsə – `--missing`
