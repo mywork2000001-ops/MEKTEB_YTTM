@@ -82,3 +82,11 @@ canlı tətbiq – ehtiyat nüsxə + önbaxış + istifadəçinin «hə»-si.
 «🏆 Sertifikat» düyməsi, `openCertificate()` axını və `../../_Shared_Core/certificate.js` qoşulması çıxarılır; nəticə/bal ekranı qalır.
 P001 ayrıca repo (Projects) – dəyişiklik orada ayrıca commit; `_Shared_Core/certificate.js` faylının özünə toxunulmur (başqa layihələr istifadə edir).
 Yoxlama: quiz.html brauzerdə açılır, sonda ad soruşulmur, sertifikat düyməsi yoxdur, konsolda xəta yoxdur.
+
+## 7. Bir gündə 2 dərs (istifadəçi, 20.10.2026) – §2.2 və §5-i dəqiqləşdirir
+- Hər məşğələ günü **2 dərs = 2 mövzu**: 21:00–21:30 (1-ci dərs) və 21:30–22:00 (2-ci dərs) – fərdi qrupdakı alt vaxtlar məntiqi kimi
+  (`units`; mövcud `ferdi_units` üslubu, ayrıca mühərrik yazılmır). «Hər dərsə bir mövzu» qaydası qalır – günə iki mövzu düşür.
+  V sinif ilkin şərt alt mövzusu (§6.2) hər dərsin əvvəlində qısa (≈ 5 dəq.).
+- Hesablama: ≈ 14 həftə × 3 gün × 2 dərs ≈ **84 dərs**, qış tətili çıxılsa ≈ 76–80 → V 2-ci yarımil (6) + V illik (1) + VI (15+1) + VII (16+1) +
+  VIII (23+1) = 64, qalan ≈ 12–16 dərs IX sinfə düşür → 26.01.2027-də **təxminən IX sinfin ortası**. Dəqiq say önbaxışda.
+- Yekun/illik test günü: test bir dərsi tutur, ikinci dərs növbəti mövzudur.
