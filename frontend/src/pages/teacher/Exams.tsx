@@ -8,6 +8,7 @@ import { useT, ml, tt } from '../../i18n'
 import { printKey, printSheets, type KsqPrint } from '../../ksqPrint'
 import ScanCamera, { aiErrorText } from '../../scanCamera'
 import { printCards } from '../../examCardPrint'
+import { printPackages } from '../../packagePrint'
 import OwnNumbersReport, { type OwnReport } from '../../OwnNumbersReport'
 
 type Exam = { id: number; kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; max_points: number; items: { n: number; points: number; standard?: string }[] | null; extra_of?: number | null; extra_seq?: number; extra_students?: number[] | null }
@@ -187,6 +188,7 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
   const [rows, setRows] = useState<Record<number, { points: string; marks: number[] | null; absent: boolean; later: boolean; taken_on: string }>>({})
   const [days, setDays] = useState(3)                     // apelyasiya müddəti (gün)
   const [appeals, setAppeals] = useState(false)
+  const [dv] = useLoad<Record<string, { status: string; sent_at: string | null }>>(() => get(`/api/exams/${ta.id}/${examId}/delivery`), [ta.id, examId, d])     // göndəriş statusu
   useEffect(() => {
     if (!d) return
     setRows(Object.fromEntries(d.rows.map((r: any) => [r.student_id, {
@@ -222,6 +224,11 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
             <button className="btn sm" onClick={() => setAppeals(true)}>⚖ {tt('Apelyasiyalar')} ({d.appeals_open || 0})</button>
             {d.exam.results_published_at && <Pill tone="ok">{tt('Şagirdlər görür')}</Pill>}
             <AsyncBtn className="btn sm" onClick={async () => { const r = await get<any>(`/api/exams/${ta.id}/${examId}/cards`); if (!r.cards.length) { toast(tt('Cavab kartı olan şagird yoxdur')); return } printCards(exLabel(r.exam), r.class_name, r.cards) }}>🖨 {tt('Cavab kartlarını çap et')}</AsyncBtn>
+            <AsyncBtn className="btn sm" onClick={async () => { const r = await get<any>(`/api/exams/${ta.id}/${examId}/packages`); if (!r.packages.length) { toast(tt('Paketi olan şagird yoxdur')); return } await printPackages(`${r.class_name} ${exLabel(r.exam)}`, r.subject, r.packages, '/api/exam-scans/image') }}
+              title={tt('Hər şagird ayrıca səhifədən: kartın şəkli + öz testi, altmövzu və №')}>📄 {tt('Nəticə paketləri (PDF)')}</AsyncBtn>
+            <AsyncBtn className={`btn sm${d.exam.send_on_scan ? ' primary' : ''}`} title={tt('Kart skan olunub qiymətləndirilən kimi həmin şagirdə nəticə paketi açılır. Eyni imtahan başqa sinifdə hələ keçirilməyibsə bloklanır.')}
+              onClick={async () => { const x = d.exam; await patch(`/api/exams/${ta.id}/${examId}`, { kind: x.kind, no: x.no, semester: x.semester, date: x.date, max_points: x.max_points, items: x.items, title: x.title, send_on_scan: !x.send_on_scan }); reload() }}>
+              {d.exam.send_on_scan ? '☑' : '☐'} {tt('Skan olunan kimi şagirdə göndər')}</AsyncBtn>
           </div>
           {d.rows.some((r: any) => r.online || r.paper) && <div className="row" style={{ marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
             <AsyncBtn className="btn sm" onClick={async () => { await put(`/api/exams/${ta.id}/${examId}/choice`, { chosen: 'max' }); reload() }}
@@ -236,6 +243,8 @@ function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose
                 <div className="jrow cols" key={r.student_id} style={{ ['--cols' as any]: '1fr', ['--mcols' as any]: '1fr', gap: 6 }}>
                   <div className="row"><b className="grow">{r.full_name}</b>
                     {r.grade != null && <Pill tone={gradeTone(r.grade)}>{fmt(r.pct)}% → {r.grade}</Pill>}
+                    {(r.paper || r.online) && dv?.[r.student_id] && <span className="small muted" title={tt('Nəticə paketi')}>📄 {dv[r.student_id].status === 'not_sent' ? tt('göndərilməyib')
+                      : `${dv[r.student_id].status === 'seen' ? tt('baxıb') : tt('göndərildi')} ${dv[r.student_id].sent_at ? azDT(new Date(dv[r.student_id].sent_at!), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}`}</span>}
                     {r.taken_on && <Pill tone="info">{t('sonradan:')} {fmtDate(r.taken_on)}</Pill>}
                     <label className="check small"><input type="checkbox" checked={v.absent} onChange={e => set({ absent: e.target.checked, later: false })} /> {t('yox idi')}</label>
                     {!v.absent && <label className="check small" title={t('Üzrlü səbəbdən imtahan günü olmayıb, sonradan yazıb')}><input type="checkbox" checked={v.later} onChange={e => set({ later: e.target.checked })} /> {t('sonradan yazdı')}</label>}

@@ -3028,6 +3028,21 @@ const D: Record<string, [string, string]> = {
   "Təsdiq et və çevir": ["Confirm and convert", "Подтвердить и преобразовать"],
   "Çevrildi: {n} qrup": ["Converted: {n} groups", "Преобразовано групп: {n}"],
   "plan yenilənəcək": ["plan will be rebuilt", "план будет перестроен"],
+  // --- kağız KSQ/BSQ nəticə paketi (kart skanı + öz testi, altmövzu və №)
+  "Nəticə paketi": ["Result package", "Пакет результата"],
+  "nəticə paketi": ["result package", "пакет результата"],
+  "Öz testin": ["Your test", "Твой тест"],
+  "Böyütmək üçün toxun": ["Tap to enlarge", "Нажми, чтобы увеличить"],
+  "PDF hazırlanır…": ["Preparing PDF…", "Готовим PDF…"],
+  "baxıb": ["viewed", "просмотрено"],
+  "göndərildi": ["sent", "отправлено"],
+  "Paketi olan şagird yoxdur": ["No student has a package", "Нет учеников с пакетом"],
+  "Nəticə paketləri (PDF)": ["Result packages (PDF)", "Пакеты результатов (PDF)"],
+  "Skan olunan kimi şagirdə göndər": ["Send to the student as soon as scanned", "Отправлять ученику сразу после сканирования"],
+  "Hər şagird ayrıca səhifədən: kartın şəkli + öz testi, altmövzu və №": ["Each student on a separate page: card image + own test, subtopic and number", "Каждый ученик с новой страницы: фото бланка + свой тест, подтема и №"],
+  "Kart skan olunub qiymətləndirilən kimi həmin şagirdə nəticə paketi açılır. Eyni imtahan başqa sinifdə hələ keçirilməyibsə bloklanır.": [
+    "As soon as a card is scanned and graded, that student gets the result package. Blocked if the same exam has not yet been held in another class.",
+    "Как только бланк отсканирован и проверен, этот ученик получает пакет результата. Блокируется, если такая же работа ещё не проведена в другом классе."],
 }
 
 export const I18nCtx = createContext<Lang>('az')

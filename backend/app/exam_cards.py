@@ -100,7 +100,8 @@ def student_package(db: Session, e: Exam, sid: int, lang: str | None, published:
     return {'exam': {'id': e.id, 'kind': e.kind, 'no': e.no, 'extra_seq': e.extra_seq or 0, 'semester': e.semester, 'date': e.date,
                      'title': e.title, 'subject': ta.subject if ta else None},
             'code': base['code'],
-            'scan': {'scan_id': info['scan_id'], 'image': info['image'], 'online': info['online'], 'read_by': info['source'], 'at': info['at']},
+            'scan': {'scan_id': info['scan_id'], 'image': info['image'], 'online': info['online'], 'read_by': info['source'],
+                     'source': info['source'], 'at': info['at']},
             'questions': qs, 'total': total, 'published': published}
 
 
