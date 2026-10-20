@@ -4,6 +4,7 @@ import { get } from '../../api'
 import { useAuth } from '../../auth'
 import { useT } from '../../i18n'
 import { Disclosure, ErrorBox, fmt, Icon, isoDate, longDateT, Pill, setAllDisclosures, Stat, SumChip, useLoad, wdT, hourN, lessonWhen } from '../../ui'
+import { download } from './StudentReport'
 
 type Cell = { ta_id: number; class_name: string; subject: string; time: string | null; topic: string | null; assessment_type: string | null }
 type TT = { days: { date: string; weekday: string; periods: Record<string, Cell[]> }[] }
@@ -168,7 +169,7 @@ function Weekly() {
   return (
     <Disclosure id="home.weekly" icon="risk" defaultOpen className="weekly" style={{ marginBottom: 16 }} title={t('Bu həftə diqqət')}
       summary={<SumChip tone="warn">{t('{n} sinif', { n: w.items.length + extra.length })}</SumChip>}
-      actions={<button type="button" className="btn sm ghost" onClick={hide}>{t('Oxudum')}</button>}>
+      actions={<><button type="button" className="btn sm ghost" onClick={() => { download('/api/results-center/missing-all?format=pdf', 'islenmeyenler-butun-siniflerim.pdf').catch(() => { /* xəta – Nəticələr mərkəzində göstərilir */ }) }}>🖨 {t('Bütün siniflərim – xülasə (PDF)')}</button> <button type="button" className="btn sm ghost" onClick={hide}>{t('Oxudum')}</button></>}>
       {w.items.map((x: any) => <WkRow key={x.ta_id} x={x} m={miss.find(z => z.ta_id === x.ta_id)} onMiss={openMissing} />)}
       {extra.map(m => <WkRow key={m.ta_id} x={{ ta_id: m.ta_id, class_name: m.class_name, subject: m.subject, red: [], absence: [], missing_week: [], no_marks: [] }} m={m} onMiss={openMissing} />)}
       <div className="row" style={{ marginTop: 10 }}>

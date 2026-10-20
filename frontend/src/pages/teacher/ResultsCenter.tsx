@@ -12,6 +12,7 @@ import { periodRange, type Period } from '../../periods'
 import { useMyLessons, type MyLesson } from './common'
 import StudentReport, { download } from './StudentReport'
 import ClassMatrix from './ClassMatrix'
+import MissingReport from './MissingReport'
 
 type Kind = 'movzu' | 'sinaq'
 type KF = 'all' | Kind
@@ -31,7 +32,6 @@ function downloadCsv(name: string, heads: string[], rows: (string | number | nul
   setTimeout(() => URL.revokeObjectURL(a.href), 30_000)
 }
 const KIND_LABEL: Record<Kind, string> = { movzu: 'Mövzu testləri', sinaq: 'Sınaqlar' }
-const KIND_ONE: Record<string, string> = { movzu: 'mövzu testi', sinaq: 'sınaq' }
 export const TABS = [['rating', 'Reytinq'], ['missing', 'Yazmayanlar'], ['student', 'Şagird'], ['class', 'Sinif və qrup'], ['overall', 'Ümumi']] as const
 export type Tab = (typeof TABS)[number][0]
 const LV = ['Zəif', 'Orta', 'Güclü'] as const
@@ -227,62 +227,15 @@ type MTest = { unit: string; kind: Kind; title: string; date: string; topic: str
 type MStud = { student_id: number; full_name: string; class_name: string; given: number; missed: number; last_missed: string; chronic: boolean; tests: MTest[] }
 type MData = { students: MStud[]; tests: { unit: string; kind: Kind; title: string; date: string; topic: string | null; given: number; missed: number }[] }
 
+// «Yazmayanlar» bölməsi – tək hesabat paneli (MissingReport): sinif seçilir, sinif hesabatı ilə eyni saylar/statuslar.
 function Missing({ f, lessons, onStudent, kind, fixedTa }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kind: KF; fixedTa?: number | null }) {
   const t = useT()
   const [taOwn, setTa] = useState<number | null>(null)
-  const ta = fixedTa !== undefined ? fixedTa : taOwn
-  const [sel, setSel] = useState<Set<number>>(new Set())
-  const [resend, setResend] = useState(false)
-  const [note, setNote] = useState<MStud | null>(null)
-  const [d, err, loading, reload] = useLoad<MData>(() => get('/api/results-center/missing', { kind, ...(ta ? { ta_id: ta } : {}), ...f.params }), [kind, ta, f.label])
-  const toggle = (id: number) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const chosen = (d?.students || []).filter(s => sel.has(s.student_id))
-  const cls = lessons?.find(l => l.id === ta)
-  const print = () => d && printDoc({
-    title: 'Testi yazmayanlar', internal: true, signers: [SIGN.teacher()],
-    body: head('Onlayn testləri yazmayan şagirdlər', `${cls ? cls.class_name + ' · ' : ''}${kind === 'all' ? 'mövzu testləri və sınaqlar' : KIND_LABEL[kind].toLowerCase()} · ${f.label}`) +
-      kpis([[d.students.length, 'şagird'], [d.students.filter(s => s.chronic).length, 'xroniki'], [d.tests.length, 'test']]) +
-      table(['№', 'Şagird', 'Sinif', 'Yazmayıb / verilən', 'Yazmadığı testlər', 'Qeyd'],
-        d.students.map((s, i) => [i + 1, s.full_name, s.class_name, `${s.missed} / ${s.given}`, s.tests.map(t => `${fmtD(t.date)} ${t.title}`).join('; '), s.chronic ? 'xroniki' : '']), [3]) +
-      '<h2>Testlər üzrə</h2>' + table(['Tarix', 'Növ', 'Test', 'Yazmayıb / verilən'], d.tests.map(t => [fmtD(t.date), KIND_ONE[t.kind], t.title, `${t.missed} / ${t.given}`]), [3]) +
-      '<p class="note">Yalnız bağlanmış testlər. «Xroniki» – 3 və daha çox test və ya verilənlərin yarısı. Yenidən göndərilən testi yazan şagird siyahıdan çıxır.</p>',
-  })
+  const ta = fixedTa ?? taOwn ?? lessons?.[0]?.id ?? null
   return (
     <>
-      <div className="toolbar no-print">
-        {lessons && fixedTa === undefined && <ClassSelect lessons={lessons} value={ta} onChange={v => { setTa(v); setSel(new Set()) }} />}
-        {d && d.students.length > 0 && <span className="row right" style={{ gap: 6 }}>
-          <button className="btn sm" onClick={() => downloadCsv('Testi yazmayanlar', ['Şagird', 'Sinif', 'Yazmayıb', 'Verilən', 'Son', 'Xroniki', 'Testlər'],
-            d.students.map(x => [x.full_name, x.class_name, x.missed, x.given, fmtD(x.last_missed), x.chronic ? 'bəli' : '', x.tests.map(t => `${fmtD(t.date)} ${t.title}`).join('; ')]))}>Excel (CSV)</button>
-          <button className="btn sm" onClick={print}>{t('Çap / PDF')}</button></span>}
-      </div>
-      <ErrorBox error={err} />
-      {loading && !d ? <Loading /> : d && (d.students.length === 0 ? <div className="empty">{t('Bu dövrdə bağlanmış testləri yazmayan şagird yoxdur.')}</div> : (
-        <div className="grid g2">
-          <section className="panel" style={{ gridColumn: '1 / -1' }}>
-            <h2>{t('Testi yazmayanlar')} <small>{d.students.length} {t('şagird ·')} {d.students.filter(s => s.chronic).length} {t('xroniki')}</small></h2>
-            <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '6px 0 10px' }}>
-              <button className="btn sm" onClick={() => setSel(new Set(d.students.map(s => s.student_id)))}>{t('Hamısını seç')}</button>
-              <button className="btn sm" onClick={() => setSel(new Set(d.students.filter(s => s.chronic).map(s => s.student_id)))}>{t('Xronikləri seç')}</button>
-              {sel.size > 0 && <button className="btn sm ghost" onClick={() => setSel(new Set())}>{t('Seçimi təmizlə')}</button>}
-              <button className="btn sm primary" disabled={!chosen.length} onClick={() => setResend(true)}>{t('Seçilənlərə yenidən göndər (')}{chosen.length})</button>
-            </div>
-            <div className="stack" style={{ gap: 6 }}>{d.students.map(s => (
-              <div key={s.student_id} className="jrow">
-                <div className="row" style={{ gap: 8 }}>
-                  <input type="checkbox" aria-label={`${s.full_name} seç`} checked={sel.has(s.student_id)} onChange={() => toggle(s.student_id)} />
-                  <b className="grow click" onClick={() => onStudent(s.student_id)}>{s.full_name}</b>
-                  {s.chronic && <Pill tone="bad">{t('xroniki')}</Pill>}<Pill tone="warn">{s.missed} / {s.given}</Pill>
-                </div>
-                <span className="small muted">{s.class_name} {t('· son:')} {fmtDate(s.last_missed)} · {s.tests.map(t => `${t.title} (${KIND_ONE[t.kind]})`).join(', ')}</span>
-                <div className="row no-print" style={{ gap: 6 }}><button className="btn sm ghost" onClick={() => setNote(s)}>{t('Valideynlə əlaqə qeydi')}</button></div>
-              </div>))}</div>
-          </section>
-          <section className="panel" style={{ gridColumn: '1 / -1' }}><h2>{t('Testlər üzrə')}</h2>
-            {d.tests.map(t => <div key={t.unit} className="row small"><span className="muted">{fmtDate(t.date)}</span><span className="grow">{t.title}</span><Pill>{KIND_ONE[t.kind]}</Pill><b>{t.missed} / {t.given}</b></div>)}</section>
-        </div>))}
-      {resend && <ResendDrawer students={chosen} onClose={() => setResend(false)} onDone={() => { setResend(false); setSel(new Set()); reload() }} />}
-      {note && <ContactNote s={note} onClose={() => setNote(null)} />}
+      {lessons && fixedTa == null && <div className="toolbar no-print"><ClassSelect lessons={lessons} value={ta} onChange={setTa} all={null} /></div>}
+      {ta == null ? <div className="empty">{t('Sinif seçin.')}</div> : <MissingReport key={ta} ta={ta} params={f.params} label={f.label} kind={kind} onStudent={onStudent} />}
     </>
   )
 }
@@ -323,24 +276,6 @@ function ResendDrawer({ students, onClose, onDone }: { students: MStud[]; onClos
       </div>
       <h3 className="small muted" style={{ margin: '12px 0 6px' }}>{t('Göndəriləcək testlər')}</h3>
       {items.map(i => <div key={`${i.ta_id}:${i.task_id}`} className="row small"><span className="grow">{i.title}</span><b>{i.student_ids.length} {t('şagird')}</b></div>)}
-    </Drawer>
-  )
-}
-
-function ContactNote({ s, onClose }: { s: MStud; onClose: () => void }) {
-  const t = useT()
-  const [text, setText] = useState(`${s.missed} onlayn testi yazmayıb: ${s.tests.map(t => `${t.title} (${fmtD(t.date)})`).join('; ')}.`)
-  const [method, setMethod] = useState<'zəng' | 'mesaj' | 'görüş'>('zəng')
-  return (
-    <Drawer title={t('Valideynlə əlaqə – {full_name}', { full_name: s.full_name })} onClose={onClose}
-      footer={<AsyncBtn className="btn primary" ok="Qeyd şagird kartına əlavə olundu" onClick={async () => {
-        await post(`/api/students/${s.student_id}/contacts`, { date: iso(new Date()), method, topic: t('Onlayn testləri yazmır'), outcome: text }); onClose()
-      }}>{t('Saxla')}</AsyncBtn>}>
-      <div className="form">
-        <Field label={t('Üsul')}><Seg value={method} onChange={setMethod} options={[['zəng', t('Zəng')], ['mesaj', t('Mesaj')], ['görüş', t('Görüş')]]} /></Field>
-        <Field label={t('Qeyd')} full><textarea className="sel" rows={5} value={text} onChange={e => setText(e.target.value)} /></Field>
-      </div>
-      <p className="small muted">{t('Qeyd şagird kartında «Valideynlə əlaqə» bölməsinə düşür (Siniflər → şagird).')}</p>
     </Drawer>
   )
 }
