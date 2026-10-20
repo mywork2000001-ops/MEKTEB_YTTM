@@ -3279,7 +3279,16 @@ const D: Record<string, [string, string]> = {
   "Bu məşğələ əyanidir – otaq: {room}": ["This session is in person – room: {room}", "Это очное занятие – кабинет: {room}"],
   "Keçid {a}–{b} arasında açıqdır": ["The link is open between {a} and {b}", "Ссылка открыта с {a} до {b}"],
   "«Keçirildi» yalnız davamiyyət qeyd olunanda qoyulur (məşğələdə «Keçirildi» düyməsi)": ["\"Held\" is set only when attendance is recorded (use the \"Held\" button)", "«Проведено» ставится только при отметке посещаемости (кнопка «Проведено»)"],
-  "Bu məşğələdə test artıq var – əvəz etmək üçün «yenilə» seçin": ["This session already has a test – choose \"replace\" to replace it", "В этом занятии уже есть тест – выберите «заменить»"],
+  // şagirdin giriş videosu (20.10.2026)
+  "Tətbiqdən necə istifadə etməli": ["How to use the app", "Как пользоваться приложением"],
+  "Bu qısa videoya bax – hər şey aydın olacaq.": ["Watch this short video – everything will be clear.", "Посмотри это короткое видео – всё станет понятно."],
+  "Bütün videolar": ["All videos", "Все видео"],
+  "Sonra bax": ["Watch later", "Посмотреть позже"],
+  "🎬 Necə istifadə etməli": ["🎬 How to use", "🎬 Как пользоваться"],
+  "Bələdçi videosuna baxıb": ["Watched the guide video", "Посмотрел(а) видео-инструкцию"],
+  "Video açılmadı.": ["The video could not be opened.", "Видео не открылось."],
+  "Videonu oynat": ["Play the video", "Воспроизвести видео"],
+  "Bu məşğələdə test artıq var – əvəz etmək üçün «yenilə» seçin":["This session already has a test – choose \"replace\" to replace it", "В этом занятии уже есть тест – выберите «заменить»"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

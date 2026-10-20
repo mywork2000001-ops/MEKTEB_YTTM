@@ -58,7 +58,10 @@ def list_students(class_id: int | None = None, archived: bool = False, q: str | 
         st = st.where(Student.id.in_(my_student_ids(db, user)))
     if q:
         st = st.where(func.lower(Student.full_name).contains(q.strip().lower()))
-    return [student_out(s, n) for s, n in db.execute(st.order_by(SchoolClass.name, Student.full_name))]
+    rows = list(db.execute(st.order_by(SchoolClass.name, Student.full_name)))
+    uids = [s.user_id for s, _ in rows if s.user_id]
+    seen = dict(db.execute(select(User.id, User.guide_seen_version).where(User.id.in_(uids))).all()) if uids else {}
+    return [{**student_out(s, n), 'guide_seen': (seen.get(s.user_id) or 0) >= 1} for s, n in rows]    # «🎬 ✓» – giriş videosuna baxıb
 
 
 class StudentIn(BaseModel):

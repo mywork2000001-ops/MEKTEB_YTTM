@@ -64,6 +64,7 @@ class User(Base, Archivable):
     avatar: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)   # çat şəkli (≤ 300 KB, 256 px)
     avatar_type: Mapped[str | None] = mapped_column(String(20))
     avatar_v: Mapped[int | None] = mapped_column(Integer)                # versiya (keş üçün); boş – şəkil yoxdur
+    guide_seen_version: Mapped[int | None] = mapped_column(Integer)      # şagird: giriş videosunun görülən versiyası (GUIDE_VERSION)
     failed_logins: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)

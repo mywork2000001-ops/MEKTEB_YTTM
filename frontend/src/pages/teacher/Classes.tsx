@@ -14,7 +14,7 @@ import { useT } from '../../i18n'
 type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; students: number; can_open: boolean; split_with: string | null
   teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number } | null; exam_date: string | null; homeroom?: { id: number; name: string } | null }
 type Stud = { id: number; full_name: string; birth_date: string | null; gender: string | null; portal_code: string; class_name: string
-  score_language: number | null; score_math: number | null; score_foreign: number | null; score_total: number | null; level: string | null }
+  score_language: number | null; score_math: number | null; score_foreign: number | null; score_total: number | null; level: string | null; guide_seen?: boolean }
 const LV: Record<string, string> = { 'Yüksək': 'Güclü', 'Orta': 'Orta', 'Zəif': 'Zəif' }
 
 export default function Classes() {
@@ -93,7 +93,7 @@ function StudentList({ cls, all, onOpen }: { cls: Cls; all: Cls[]; onOpen: (s: S
         <thead><tr><th>{t('Şagird')}</th><th>{t('ID (giriş kodu)')}</th><th className="r">{t('IX riyaziyyat')}</th><th className="r">{t('Yekun bal')}</th>{math && <th>{t('Səviyyə (IX riyaziyyat üzrə)')}</th>}</tr></thead>
         <tbody>{list.map(s => (
           <tr key={s.id} className="click" onClick={() => onOpen(s)}>
-            <td><b>{s.full_name}</b><span className="sub">{fmtDate(s.birth_date)} · {s.gender || ''}{s.class_name !== cls.name ? (' · ' + t('əsas sinif: {class_name}', { class_name: s.class_name })) : ''}</span>
+            <td><b>{s.full_name}</b>{s.guide_seen && <span title={t('Bələdçi videosuna baxıb')} style={{ marginLeft: 6, fontSize: '.8em' }}>🎬 ✓</span>}<span className="sub">{fmtDate(s.birth_date)} · {s.gender || ''}{s.class_name !== cls.name ? (' · ' + t('əsas sinif: {class_name}', { class_name: s.class_name })) : ''}</span>
               {extra(s) && <span onClick={e => e.stopPropagation()}><AsyncBtn className="btn sm ghost" ok="Çıxarıldı"
                 onClick={async () => { await apiDel(`/api/classes/${cls.id}/members/${s.id}`); reload() }}>✕ {cls.kind === 'qrup' ? 'qrupdan' : t('bu sinifdən')} {t('çıxar')}</AsyncBtn></span>}</td>
             <td className="mono">{s.portal_code}</td><td className="r num">{fmt(s.score_math)}</td><td className="r num">{fmt(s.score_total)}</td>

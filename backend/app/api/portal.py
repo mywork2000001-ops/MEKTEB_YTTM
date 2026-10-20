@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..bank_labels import label_ml
+from ..config import GUIDE_VERSION
 from ..db import get_db
 from ..deps import require
 from ..domain.plan import view_range
@@ -87,7 +88,16 @@ def me(user: User = Depends(student_only), db: Session = Depends(get_db)):
     return {'full_name': s.full_name, 'portal_code': s.portal_code, 'class_name': c.name,
             'teachers': sorted({(_teacher(db, ta), ta.subject) for ta, _ in tas}),
             'exam_date': exam, 'days_to_exam': (exam - d).days if exam and exam >= d else None,
-            'motivation': motivation, 'personal': personal, 'language': user.language, 'theme': user.theme}
+            'motivation': motivation, 'personal': personal, 'language': user.language, 'theme': user.theme,
+            'guide_due': (user.guide_seen_version or 0) < GUIDE_VERSION}
+
+
+@router.post('/guide-seen')
+def guide_seen(user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Giriş videosu görüldü/bağlandı – bütün cihazlarda bir daha çıxmasın (GUIDE_VERSION artırılana qədər)."""
+    user.guide_seen_version = GUIDE_VERSION
+    db.commit()
+    return {'ok': True, 'guide_due': False}
 
 
 def _plan_fields(pl, sl, e) -> dict:
