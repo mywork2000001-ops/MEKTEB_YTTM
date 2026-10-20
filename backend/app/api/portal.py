@@ -21,6 +21,7 @@ from ..models import (Attendance, Exam, ExamAppeal, ExamScore, GroupMember, Home
                       Role, SchoolClass, Student, TaskAttempt, TeachingAssignment, User, now)
 from ..services import SCHOOL_TZ, journal_entries, plan_ctx, roster, taught_lesson, today
 from .plan import WEEKDAYS, bell
+from ..timing import attempt_deadline, is_unlimited, no_timer
 from .tasks import apct, attempt_pct, aware, expire_due, finalize, is_ok, review_opens_at
 
 router = APIRouter(prefix='/api/portal', tags=['portal'])
@@ -282,10 +283,20 @@ def _status(t: OnlineTask, a: TaskAttempt | None, at: dt.datetime) -> str:
     return 'açıq'
 
 
+def _notice_text(t: OnlineTask, L, hm) -> str:
+    """Bildiriş mətni: «…-dək · N dəq.»; müddətsiz testdə «Müddətsiz»."""
+    until = L('Müddətsiz', 'Без срока', 'No deadline') if is_unlimited(t) else \
+        L(f'{hm(t.closes_at)}-dək', f'до {hm(t.closes_at)}', f'until {hm(t.closes_at)}')
+    if no_timer(t):
+        return until + ('' if is_unlimited(t) else ' · ' + L('vaxt məhdudiyyəti yoxdur', 'без ограничения времени', 'no time limit'))
+    return until + ' · ' + L(f'{t.duration_min} dəq', f'{t.duration_min} мин', f'{t.duration_min} min')
+
+
 def _can_review(db: Session, t: OnlineTask, a: TaskAttempt | None, at: dt.datetime) -> bool:
     if not a or not a.submitted_at or t.show_answers == 'never':
         return False
-    return t.show_answers == 'after_submit' or at >= review_opens_at(db, t)
+    # müddətsiz testdə «bağlandıqdan sonra» = şagird təhvil verdikdən sonra
+    return t.show_answers == 'after_submit' or is_unlimited(t) or at >= review_opens_at(db, t)
 
 
 def _shown_grade(t: OnlineTask, a: TaskAttempt) -> int | None:
@@ -305,6 +316,7 @@ def tasks(user: User = Depends(student_only), db: Session = Depends(get_db)):
         out.append({'id': t.id, 'title': t.title, 'description': t.description, 'subject': ta.subject,
                     'teacher': _teacher(db, ta), 'opens_at': aware(t.opens_at), 'closes_at': aware(t.closes_at),
                     'duration_min': t.duration_min, 'questions': len(t.questions), 'status': _status(t, a, at),
+                    'unlimited': is_unlimited(t), 'no_timer': no_timer(t),
                     'deadline': aware(a.deadline) if a else None,
                     'result': {'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a),
                                'pct': attempt_pct(db, t, a)} if a and a.submitted_at and t.kind != 'ksq' else None,
@@ -342,7 +354,7 @@ def start(task_id: int, user: User = Depends(student_only), db: Session = Depend
         if t.shuffle:
             random.Random(f'{t.id}:{s.id}').shuffle(order)
         a = TaskAttempt(task_id=t.id, student_id=s.id, started_at=at, order=order, answers={},
-                        deadline=min(at + dt.timedelta(minutes=t.duration_min), aware(t.closes_at)))
+                        deadline=attempt_deadline(t, at))
         db.add(a)
         try:
             db.commit()
@@ -355,6 +367,7 @@ def start(task_id: int, user: User = Depends(student_only), db: Session = Depend
     if a.submitted_at:
         raise HTTPException(409, _L(user, 'Tapşırıq artıq təhvil verilib', 'Задание уже сдано', 'The task has already been submitted'))
     return {'task_id': t.id, 'title': t.title, 'deadline': aware(a.deadline), 'server_time': at,
+            'unlimited': is_unlimited(t), 'no_timer': no_timer(t),
             'answers': a.answers, 'questions': [_public_q(t.questions[i], i) for i in a.order]}
 
 
@@ -539,7 +552,7 @@ def notifications(user: User = Depends(student_only), db: Session = Depends(get_
         kind = 'sınaq' if t.kind == 'sinaq' else 'test'
         if st in ('açıq', 'həll edilir'):
             out.append({'key': f'task-open-{t.id}', 'kind': kind, 'title': f"{t.title} – {L('açıqdır', 'открыт', 'open')}",
-                        'text': L(f'{hm(t.closes_at)}-dək', f'до {hm(t.closes_at)}', f'until {hm(t.closes_at)}') + ' · ' + L(f'{t.duration_min} dəq', f'{t.duration_min} мин', f'{t.duration_min} min'), 'link': f'/t/{t.id}', 'at': aware(t.opens_at)})
+                        'text': _notice_text(t, L, hm), 'link': f'/t/{t.id}', 'at': aware(t.opens_at)})
         elif st == 'gözlənilir' and aware(t.opens_at) - at <= dt.timedelta(hours=24):
             out.append({'key': f'task-soon-{t.id}', 'kind': kind, 'title': f"{t.title} – {L('tezliklə', 'скоро', 'soon')}",
                         'text': L('açılır', 'открывается', 'opens') + f': {hm(t.opens_at)}', 'link': '/tasks', 'at': aware(t.opens_at)})

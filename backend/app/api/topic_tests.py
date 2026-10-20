@@ -26,6 +26,7 @@ from ..models import (LevelOverride, OnlineTask, PlanLesson, SchoolClass, TaskAt
 from ..services import SCHOOL_TZ, class_grade, own_assignment, plan_ctx, roster
 from .common import audit
 from .plan import bell
+from ..timing import closes_or_none, fits_window
 from .tasks import CustomQ, TestMinutes, _snapshot, apct, aware, custom_snapshot, task_out
 
 router = APIRouter(prefix='/api', tags=['topic-tests'])
@@ -109,7 +110,7 @@ class TopicTarget(BaseModel):
     ta_id: int
     plan_lesson_id: int
     opens_at: dt.datetime
-    closes_at: dt.datetime
+    closes_at: dt.datetime | None = None        # boş – son tarix yoxdur
     student_ids: list[int] | None = None
     levels: list[Literal['Zəif', 'Orta', 'Güclü']] | None = None     # hədəf: yalnız bu səviyyə qrupları
 
@@ -122,7 +123,7 @@ class VariantQs(BaseModel):
 class TopicTestIn(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     description: str | None = Field(None, max_length=2000)
-    duration_min: TestMinutes
+    duration_min: TestMinutes = 0               # 0 – taymer yoxdur
     bank_ids: list[int] = Field(default_factory=list)
     custom: list[CustomQ] = Field(default_factory=list)
     shuffle: bool = True
@@ -161,12 +162,12 @@ def create_topic_test(ta_id: int, pl_id: int, body: TopicTestIn, user: User = De
         if t.subject != ta.subject:
             raise HTTPException(400, f'{cls.name}: fənn fərqlidir ({t.subject})')
         pl = _pl(db, t, tg.plan_lesson_id)
-        o, c = (aware(x).astimezone(dt.timezone.utc) for x in (tg.opens_at, tg.closes_at))
+        o, c = aware(tg.opens_at), closes_or_none(tg.closes_at)
         if c <= o:
             raise HTTPException(400, f'{cls.name}: bitmə vaxtı başlamadan sonra olmalıdır')
         if c <= t0:
             raise HTTPException(400, f'{cls.name}: bitmə vaxtı keçmişdədir')
-        if body.duration_min > (c - o).total_seconds() / 60:
+        if not fits_window(body.duration_min, o, c):
             raise HTTPException(400, f'{cls.name}: həll müddəti ({body.duration_min} dəq) açıq qalma aralığından uzundur')
         studs = [s.id for s in roster(db, t)]
         if tg.student_ids is not None:

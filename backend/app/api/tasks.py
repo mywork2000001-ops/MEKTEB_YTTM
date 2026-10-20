@@ -19,12 +19,14 @@ from ..models import prepare_points
 from ..models import (BankFile, BankQuestion, BankSource, Mark, OnlineTask, PlanLesson, Student, TaskAttempt, TeachingAssignment,
                       TestBatch, User, now)
 from ..services import class_grade, own_assignment, roster
+from ..timing import NO_DEADLINE, attempt_deadline, closes_or_none, fits_window, is_unlimited, no_timer
 from .common import audit, get_or_404
 
 router = APIRouter(prefix='/api/tasks', tags=['tasks'])
 
 MIN_TEST_MIN = 45        # mövzu testi və sınaqda həll müddəti ən azı 45 dəqiqə (az yazılsa – 45-ə qaldırılır)
-TestMinutes = Annotated[int, Field(ge=1, le=300), AfterValidator(lambda v: max(v, MIN_TEST_MIN))]
+# 0 – taymer yoxdur (müddətsiz test, app/timing.py); 1–44 → 45-ə qaldırılır
+TestMinutes = Annotated[int, Field(ge=0, le=300), AfterValidator(lambda v: v if v == 0 else max(v, MIN_TEST_MIN))]
 
 
 def aware(t: dt.datetime) -> dt.datetime:
@@ -98,7 +100,7 @@ def review_opens_at(db: Session, task: OnlineTask) -> dt.datetime:
     """«Bağlandıqdan sonra» cavablar: bir neçə sinfə verilmiş paketdə – ən gec bağlanan sinifdən sonra
     (erkən bağlanan sinif cavabları başqa sinif hələ yazarkən görməsin)."""
     c = aware(task.closes_at)
-    if task.batch_id:
+    if task.batch_id and not is_unlimited(task):
         for x in db.scalars(select(OnlineTask.closes_at).where(OnlineTask.batch_id == task.batch_id,
                                                                OnlineTask.archived_at.is_(None))):
             c = max(c, aware(x))
@@ -158,8 +160,8 @@ class TaskIn(BaseModel):
     title: str = Field(min_length=2, max_length=200)
     description: str | None = Field(None, max_length=2000)
     opens_at: dt.datetime
-    closes_at: dt.datetime
-    duration_min: TestMinutes
+    closes_at: dt.datetime | None = None        # boş – son tarix yoxdur
+    duration_min: TestMinutes = 0               # 0 – taymer yoxdur
     bank_ids: list[int] = Field(default_factory=list)
     custom: list[CustomQ] = Field(default_factory=list)
     shuffle: bool = True
@@ -168,10 +170,10 @@ class TaskIn(BaseModel):
 
     @model_validator(mode='after')
     def _v(self):
-        o, c = aware(self.opens_at), aware(self.closes_at)
+        o, c = aware(self.opens_at), closes_or_none(self.closes_at)
         if c <= o:
             raise ValueError('bağlanma vaxtı açılmadan sonra olmalıdır')
-        if self.duration_min > (c - o).total_seconds() / 60:
+        if not fits_window(self.duration_min, o, c):
             raise ValueError('həll müddəti açıq qalma aralığından uzun ola bilməz')
         if not self.bank_ids and not self.custom:
             raise ValueError('ən azı bir sual seçin')
@@ -242,7 +244,7 @@ def create_task(ta_id: int, body: TaskIn, user: User = Depends(staff), db: Sessi
     qs = _snapshot(db, body.bank_ids) + [custom_snapshot(q) for q in body.custom]
     b = exam_batch(db, ta, body.title, user)          # perspektiv plana bağlı olmayan test – sınaq
     t = OnlineTask(assignment_id=ta.id, title=body.title, description=body.description,
-                   opens_at=aware(body.opens_at), closes_at=aware(body.closes_at), duration_min=body.duration_min,
+                   opens_at=aware(body.opens_at), closes_at=closes_or_none(body.closes_at), duration_min=body.duration_min,
                    questions=qs, shuffle=body.shuffle, show_answers=body.show_answers,
                    student_ids=body.student_ids, created_by=user.id, kind='sinaq', batch_id=b.id)
     db.add(t)
@@ -434,8 +436,8 @@ def restore_task(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
 class CopyIn(BaseModel):
     target_ta_id: int                              # eyni və ya başqa sinif/qrup (müəllimin öz dərsi)
     opens_at: dt.datetime
-    closes_at: dt.datetime
-    duration_min: TestMinutes | None = None                  # boş – əvvəlki müddət
+    closes_at: dt.datetime | None = None                     # boş – son tarix yoxdur
+    duration_min: TestMinutes | None = None                  # boş – əvvəlki müddət; 0 – taymer yoxdur
     title: str | None = Field(None, min_length=2, max_length=200)
     student_ids: list[int] | None = None           # boş – bütün sinif/qrup
 
@@ -449,13 +451,13 @@ def copy_task(ta_id: int, task_id: int, body: CopyIn, user: User = Depends(staff
     if src.assignment_id != ta_id:
         raise HTTPException(404, 'Tapşırıq tapılmadı')
     target = own_assignment(db, user, body.target_ta_id)
-    o, c = aware(body.opens_at), aware(body.closes_at)
-    dur = body.duration_min or max(src.duration_min, MIN_TEST_MIN)
+    o, c = aware(body.opens_at), closes_or_none(body.closes_at)
+    dur = body.duration_min if body.duration_min is not None else (max(src.duration_min, MIN_TEST_MIN) if src.duration_min else 0)
     if c <= o:
         raise HTTPException(400, 'Bağlanma vaxtı açılmadan sonra olmalıdır')
     if c <= now():
         raise HTTPException(400, 'Bağlanma vaxtı keçmişdədir – gələcək vaxt seçin')
-    if dur > (c - o).total_seconds() / 60:
+    if not fits_window(dur, o, c):
         raise HTTPException(400, f'Həll müddəti ({dur} dəq) açıq qalma aralığından uzun ola bilməz')
     if body.student_ids is not None:
         bad = set(body.student_ids) - {x.id for x in roster(db, target)}
@@ -520,9 +522,15 @@ def _resume(db: Session, t: OnlineTask, a: TaskAttempt, minutes: int | None = No
     """Cəhdi yenidən açır: cavablar saxlanır, qalan vaxt (və ya verilən dəqiqə), jurnal qiyməti silinir (təhvildə yenidən)."""
     at = now()
     used = ((aware(a.submitted_at) if a.submitted_at else min(at, aware(a.deadline))) - aware(a.started_at)).total_seconds() / 60
-    minutes = minutes or max(10, round(t.duration_min - used))
     a.submitted_at, a.auto_submitted = None, False
     a.correct = a.total = a.grade = a.points = None
+    if no_timer(t) and not minutes:                       # müddətsiz test – yenə müddətsiz davam edir
+        a.deadline = aware(t.closes_at)
+        _forget(t.batch_id)
+        for m in db.scalars(select(Mark).where(Mark.task_id == t.id, Mark.student_id == a.student_id)):
+            db.delete(m)
+        return 0
+    minutes = minutes or max(10, round(t.duration_min - used))
     a.deadline = at + dt.timedelta(minutes=minutes)
     _forget(t.batch_id)
     for m in db.scalars(select(Mark).where(Mark.task_id == t.id, Mark.student_id == a.student_id)):
@@ -656,6 +664,7 @@ class TaskPatch(BaseModel):
     opens_at: dt.datetime | None = None
     closes_at: dt.datetime | None = None
     duration_min: TestMinutes | None = None
+    unlimited_deadline: bool = False             # True – son tarix yoxdur (closes_at = NO_DEADLINE)
     shuffle: bool | None = None
     show_answers: Literal['after_close', 'after_submit', 'never'] | None = None
     student_ids: list[int] | None = None
@@ -670,10 +679,12 @@ def update_task(ta_id: int, task_id: int, body: TaskPatch, user: User = Depends(
     data = body.model_dump(exclude_unset=True)
     o = aware(body.opens_at) if body.opens_at else aware(t.opens_at)
     c = aware(body.closes_at) if body.closes_at else aware(t.closes_at)
-    d = body.duration_min or t.duration_min
+    if body.unlimited_deadline:
+        c = NO_DEADLINE
+    d = body.duration_min if body.duration_min is not None else t.duration_min
     if c <= o:
         raise HTTPException(400, 'Bağlanma vaxtı açılmadan sonra olmalıdır')
-    if d > (c - o).total_seconds() / 60:
+    if not fits_window(d, o, c):
         raise HTTPException(400, 'Həll müddəti açıq qalma aralığından uzun ola bilməz')
     if body.questions is not None:
         # sınaq paketi: suallar bütün siniflərdə eyni olmalıdır (jurnal, sual analizi, reytinq) – birlikdə dəyişir
@@ -705,11 +716,45 @@ def update_task(ta_id: int, task_id: int, body: TaskPatch, user: User = Depends(
             setattr(t, k, data[k])
     if c != aware(t.closes_at):
         t.journal_done_at = None                      # yeni bitmə vaxtında jurnala yenidən yazılsın
+        clamp_open_attempts(db, t, c)
     t.opens_at, t.closes_at = o, c
     _forget(t.batch_id)
     audit(db, user, 'update', 'task', t.id, fields=sorted(data))
     db.commit()
     return task_out(t)
+
+
+def clamp_open_attempts(db: Session, t: OnlineTask, closes: dt.datetime) -> None:
+    """Müddətsiz testə yeni bağlanma vaxtı qoyulanda: təhvil verilməmiş cəhdlər də həmin vaxtda bitir."""
+    for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.submitted_at.is_(None))):
+        if aware(a.deadline) > closes:
+            a.deadline = closes
+
+
+def close_task(db: Session, t: OnlineTask) -> int:
+    """Müəllim testi əl ilə bağlayır (closes_at = indi): yarımçıq cəhdlər avtomatik təhvil verilir. Qaytarır: təhvil sayı."""
+    at = now()
+    t.closes_at = at
+    t.journal_done_at = None
+    clamp_open_attempts(db, t, at)
+    n = 0
+    for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.submitted_at.is_(None))):
+        finalize(db, t, a, at, auto=True)
+        n += 1
+    _forget(t.batch_id)
+    return n
+
+
+@router.post('/{ta_id}/{task_id}/close')
+def close_one(ta_id: int, task_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«Bağla»: test dərhal bağlanır (müddətsiz testi bitirmək üçün də)."""
+    t = _own_task(db, user, ta_id, task_id)
+    if t.kind == 'ksq':
+        raise HTTPException(400, 'KSQ/BSQ bu yolla bağlanmır')
+    n = close_task(db, t)
+    audit(db, user, 'update', 'online_task', t.id, closed=True, auto_submitted=n)
+    db.commit()
+    return {'ok': True, 'auto_submitted': n}
 
 
 # ---------------------------------------------------------------- səliqə (miqrasiya f7b9d1e3a5c8)
@@ -736,7 +781,7 @@ def tidy_tasks(bind, at: dt.datetime | None = None) -> dict:
                                 "AND archived_at IS NULL")).fetchall()
     for r in rows:
         o, c = ts(r.opens_at), ts(r.closes_at)
-        if c and c > t0 and r.duration_min < MIN_TEST_MIN:
+        if c and t0 < c < NO_DEADLINE and 0 < r.duration_min < MIN_TEST_MIN:   # müddətsiz (0) testlərə toxunulmur
             new = min(MIN_TEST_MIN, int((c - o).total_seconds() // 60))
             if new > r.duration_min:
                 bind.execute(sa.text('UPDATE online_tasks SET duration_min = :d WHERE id = :i'), {'d': new, 'i': r.id})

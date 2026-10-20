@@ -1,7 +1,7 @@
 """Hər plan dərsinə avtomatik mövzu testi (sinif/qrupda «auto_tests» açıqdırsa).
 
 Dərs günü (işçi plana görə) həmin dərsin mövzusuna test yaradılır – müəllimin əl ilə açdığı «🧪 Test» ilə eyni:
-açılır dərsin sonunda, bağlanır ertəsi gün 22:00, 20 dəqiqə, sualların sırası qarışıq, cavablar bağlanandan sonra,
+açılır dərsin sonunda, müddətsiz (taymer və son tarix yoxdur), sualların sırası qarışıq, cavablar bağlanandan sonra,
 nəticə formativ jurnala. Suallar: «Test toplusu» dərsi – P007 (dərsin S/E/M aralığı), X–XI – P0010 (müəllimin seçdiyi
 və ya mövzuya ən uyğun fayl, ən çoxu 15 sual). Sualı olmayan, KSQ/BSQ və artıq testi olan dərsə yaradılmır."""
 from __future__ import annotations
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from .models import OnlineTask, SchoolClass, TeachingAssignment, TestBatch, User, now
 from .services import class_grade, plan_ctx, today
-from .api.tasks import MIN_TEST_MIN
+from .timing import NO_DEADLINE, UNLIMITED_MIN
 
 log = logging.getLogger('auto_tests')
 
@@ -54,13 +54,12 @@ def run(db: Session, day: dt.date | None = None) -> int:
                 continue
             qs, title = got
             o = _lesson_end(db, ctx.cls, s.date, s.period, ta).astimezone(dt.timezone.utc)
-            c = dt.datetime.combine(s.date + dt.timedelta(days=1), dt.time(22, 0), tzinfo=TZ)
             batch = TestBatch(kind='movzu', title=title[:200], subject=ta.subject, grade=class_grade(db, ctx.cls),
                               created_by=teacher.id)
             db.add(batch)
             db.flush()
             t = OnlineTask(assignment_id=ta.id, title=title[:200], description='Avtomatik mövzu testi (perspektiv plan)',
-                           opens_at=o, closes_at=c.astimezone(dt.timezone.utc), duration_min=MIN_TEST_MIN, questions=qs, shuffle=True,
+                           opens_at=o, closes_at=NO_DEADLINE, duration_min=UNLIMITED_MIN, questions=qs, shuffle=True,
                            show_answers='after_close', student_ids=None, created_by=teacher.id, kind='movzu',
                            batch_id=batch.id, plan_lesson_id=pl.id, journal_auto=True)
             db.add(t)
