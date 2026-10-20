@@ -9,7 +9,7 @@ NO_DEADLINE = dt.datetime(2100, 1, 1, tzinfo=dt.timezone.utc)
 UNLIMITED_MIN = 0
 NOT_DONE = 'işlənməyib'        # müddətsiz test açıqdır, şagird hələ təhvil verməyib (hesabat statusu)
 
-GIVEN = ('yazıb', 'yazmayıb', NOT_DONE)     # «təyin olunub» sayılan statuslar (yazıb/təyin hesabı)
+GIVEN = ('yazıb', 'yazmayıb')     # iştirak faizinin məxrəci: açıq müddətsiz test (NOT_DONE) faizi aşağı salmır, işlənməyənlər siyahısındadır
 
 
 def _aware(t: dt.datetime) -> dt.datetime:

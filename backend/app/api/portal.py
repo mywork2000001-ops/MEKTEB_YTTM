@@ -1,4 +1,4 @@
-﻿"""Şagird portalı – şagird YALNIZ özünə aid məlumatı görür; sinif ortası adsızdır.
+"""Şagird portalı – şagird YALNIZ özünə aid məlumatı görür; sinif ortası adsızdır.
 Bu gün (motivasiya, imtahan sayğacı, müəllimlər) · Dərs (gündəlik) · Plan · Tapşırıqlar (vaxtlı) · Nəticələrim · Analitika."""
 from __future__ import annotations
 
