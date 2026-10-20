@@ -20,6 +20,7 @@ from ..models import (BankFile, BankQuestion, BankSource, ExamSeries, OnlineTask
 from ..services import SCHOOL_TZ, class_grade, roster
 from .common import audit
 from .exams_online import _can_target, given_files, grade_fits
+from ..timing import NO_DEADLINE
 from .tasks import MIN_TEST_MIN, TestMinutes, _snapshot, aware
 
 router = APIRouter(prefix='/api/exam-series', tags=['exam-series'])
@@ -140,7 +141,7 @@ def _send(db: Session, s: ExamSeries, f: BankFile, o: dt.datetime) -> TestBatch 
     if not ids:
         return None
     qs = _snapshot(db, ids)
-    c = o + dt.timedelta(hours=s.window_hours)
+    c = o + dt.timedelta(hours=s.window_hours) if s.window_hours else NO_DEADLINE      # 0 – müddətsiz
     title = f.label[:200]
     given = _given_to(db, [tg['ta_id'] for tg in s.targets]).get(f.id, {})
     b = None
@@ -164,7 +165,7 @@ def _send(db: Session, s: ExamSeries, f: BankFile, o: dt.datetime) -> TestBatch 
             sids = [x for x in sids if x in mine] or None
         t = OnlineTask(assignment_id=ta.id, title=title, description=f'Sınaq seriyası: {s.title}',
                        opens_at=o.astimezone(dt.timezone.utc), closes_at=c.astimezone(dt.timezone.utc),
-                       duration_min=max(s.duration_min, MIN_TEST_MIN), questions=copy.deepcopy(qs), shuffle=s.shuffle,
+                       duration_min=max(s.duration_min, MIN_TEST_MIN) if s.duration_min else 0, questions=copy.deepcopy(qs), shuffle=s.shuffle,
                        show_answers=s.show_answers, student_ids=sids, created_by=user.id, kind='sinaq', batch_id=b.id)
         db.add(t)
         db.flush()
@@ -227,8 +228,8 @@ class SeriesIn(BaseModel):
     month_day: int | None = Field(None, ge=1, le=31)
     start: dt.date | None = None
     open_time: str = Field('15:00', pattern=r'^([01]\d|2[0-3]):[0-5]\d$')
-    window_hours: int = Field(48, ge=1, le=24 * 31)
-    duration_min: TestMinutes = 60
+    window_hours: int = Field(0, ge=0, le=24 * 31)      # 0 – müddətsiz
+    duration_min: TestMinutes = 0                       # 0 – taymer yoxdur
     penalty: Literal[0, 3, 4] = 0
     show_answers: Literal['after_close', 'after_submit', 'never'] = 'after_close'
     shuffle: bool = True
@@ -239,7 +240,7 @@ class SeriesIn(BaseModel):
             raise ValueError('həftənin gününü seçin')
         if self.period == 'month' and self.month_day is None:
             raise ValueError('ayın gününü seçin')
-        if self.duration_min > self.window_hours * 60:
+        if self.window_hours and self.duration_min > self.window_hours * 60:
             raise ValueError('həll müddəti açıq qalma müddətindən uzundur')
         if not self.queue and not self.auto_new:
             raise ValueError('ən azı bir sınaq seçin və ya «yeni sınaqları avtomatik əlavə et»i açın')

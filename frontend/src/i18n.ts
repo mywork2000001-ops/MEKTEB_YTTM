@@ -3125,6 +3125,19 @@ const D: Record<string, [string, string]> = {
   "Yazıb/təyin": ["Wrote/assigned", "Писал/назначено"],
   "Yazan / təyin olunan": ["Wrote / assigned", "Писали / назначено"],
   "Orta, %": ["Average, %", "Средний, %"],
+  "Müddətsiz": ["No deadline", "Без срока"],
+  "Müddətsiz (taymer və son tarix yoxdur)": ["No time limit and no deadline", "Без таймера и без срока"],
+  "Vaxt məhdudiyyəti yoxdur": ["No time limit", "Без ограничения времени"],
+  "Müddətsiz test: cavablar avtomatik saxlanır, istədiyiniz vaxt «Təhvil ver» edə bilərsiniz.": ["Untimed test: answers are saved automatically; submit whenever you are ready.", "Тест без ограничения времени: ответы сохраняются автоматически, сдайте работу, когда будете готовы."],
+  "Yer və sinif nəticələri müəllim sınağı bağlayandan sonra görünəcək.": ["Place and class results will appear after the teacher closes the exam.", "Место и результаты класса появятся после того, как учитель закроет пробный экзамен."],
+  "İşlənməyib": ["Not done", "Не выполнено"],
+  "işlənməyib": ["not done", "не выполнено"],
+  "Testi bağla": ["Close the test", "Закрыть тест"],
+  "Test bağlansın? Başlayıb təhvil verməyən şagirdlərin cavabları avtomatik təhvil veriləcək.": ["Close the test? Answers of students who started but did not submit will be submitted automatically.", "Закрыть тест? Ответы учеников, которые начали, но не сдали, будут сданы автоматически."],
+  "Test bağlandı": ["Test closed", "Тест закрыт"],
+  "Sınaq bağlansın? Başlayıb təhvil verməyən şagirdlərin cavabları avtomatik təhvil veriləcək.": ["Close the exam? Answers of students who started but did not submit will be submitted automatically.", "Закрыть пробный экзамен? Ответы учеников, которые начали, но не сдали, будут сданы автоматически."],
+  "Sınaq bağlandı": ["Exam closed", "Экзамен закрыт"],
+  "Müddətsiz (bağlanma tarixi yoxdur)": ["No deadline (stays open until you close it)", "Без срока (открыт, пока вы не закроете)"],
 }
 
 export const I18nCtx = createContext<Lang>('az')

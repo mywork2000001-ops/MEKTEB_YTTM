@@ -23,7 +23,7 @@ def cell_text(x: dict) -> str:
         return _n(x['pct'])
     if st == 'nəşr olunmayıb':
         return f"({_n(x['pct'])})" if x['pct'] is not None else 'nəşr olunmayıb'
-    return {'yazmayıb': 'yazmayıb', 'təyin olunmayıb': '—', 'gözlənilir': 'gözlənilir'}.get(st, '—')
+    return {'yazmayıb': 'yazmayıb', 'təyin olunmayıb': '—', 'gözlənilir': 'gözlənilir', 'işlənməyib': 'işlənməyib'}.get(st, '—')
 
 
 def col_head(c: dict) -> str:

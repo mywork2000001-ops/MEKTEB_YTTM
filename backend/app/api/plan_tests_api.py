@@ -20,9 +20,10 @@ router = APIRouter(prefix='/api/plan-tests', tags=['plan-tests'])
 
 class OptsIn(BaseModel):
     n_questions: int = Field(15, ge=1, le=100)
-    duration: int = Field(45, ge=1, le=300)
+    duration: int = Field(0, ge=0, le=300)                   # 0 – taymer yoxdur
     missing: bool = False
-    missing_close_days: int = Field(3, ge=1, le=30)
+    missing_close_days: int = Field(0, ge=0, le=30)          # 0 – son tarix yoxdur
+    close_days: int = Field(0, ge=0, le=60)                  # 0 – son tarix yoxdur
     include_weak: bool = False
 
 

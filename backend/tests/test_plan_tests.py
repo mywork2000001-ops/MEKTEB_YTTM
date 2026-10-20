@@ -60,7 +60,7 @@ def test_defaults_and_dry_run_no_writes(world, day):
     """0/1. Defolt 45 dəq.; quru rejim DB-yə yazmır, statuslar düzgün (ok/none/summative/past)."""
     as_, S = world
     admin = as_('admin')
-    assert E.Opts().norm().duration == 45 and E.Opts(duration=20).norm().duration == 45
+    assert E.Opts().norm().duration == 0 and E.Opts(duration=20).norm().duration == 45
     _bank(S, [('p003', 'a', 'Tənliklər — Kvadrat tənliklər', None)])
     # Ç.a. 2-ci saat: 17.09, 24.09, 01.10, 08.10, 15.10 (keçib), 22.10, 29.10, 05.11
     ta = _class(admin, S, 'X a', [('Mövzu A', 'formativ', None), ('B', 'formativ', None), ('C', 'formativ', None), ('D', 'formativ', None),
@@ -89,7 +89,7 @@ def test_apply_twice_no_duplicates_and_times(world, day):
     assert sum(r['created'] for r in r2.rows) == 0 and any(r['status'] == 'has_test' for r in r2.rows)
     with S() as db:
         t = db.query(OnlineTask).one()
-        assert t.duration_min == 45 and t.kind == 'movzu' and t.journal_auto and len(t.questions) == 15 and t.shuffle
+        assert t.duration_min == 0 and t.closes_at.year == 2100 and t.kind == 'movzu' and t.journal_auto and len(t.questions) == 15 and t.shuffle
         pl = db.get(PlanLesson, t.plan_lesson_id)
         assert pl.topic == 'Kvadrat tənliklər'
         assert db.query(AuditLog).filter_by(entity='plan_tests').count() == 1
@@ -119,7 +119,7 @@ def test_missing_mode(world, day):
                           closes_at=dt.datetime(2026, 9, 21, tzinfo=dt.timezone.utc), duration_min=45, questions=[], kind='movzu',
                           plan_lesson_id=pl2, created_by=1))
         db.commit()
-    rep = _assign(S, [ta], None, dt.date(2026, 10, 19), apply=True, missing=True)
+    rep = _assign(S, [ta], None, dt.date(2026, 10, 19), apply=True, missing=True, missing_close_days=3, duration=45)
     by = {r['seq']: r for r in rep.rows}
     assert by[1]['status'] == 'missing' and by[1]['created'] and by[2]['status'] == 'has_test'
     with S() as db:
@@ -153,7 +153,7 @@ def test_toplu_p007_regression(world, day):
     assert r1['status'] == 'ok' and r1['source'] == 'p007' and r1['created'] and r1['questions'] == 26      # S 1–14 + E 15–24 + M 25–27 (16 deaktiv)
     with S() as db:
         t = db.query(OnlineTask).filter_by(plan_lesson_id=pls[0]).one()
-        assert all('qid' not in q for q in t.questions) and t.duration_min == 45
+        assert all('qid' not in q for q in t.questions) and t.duration_min == 0
 
 
 def test_manual_wins_and_none_choice(world, day):

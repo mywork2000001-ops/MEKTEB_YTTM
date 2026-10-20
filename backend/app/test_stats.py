@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .domain.rules import rank, summative_grade
+from .timing import NOT_DONE, GIVEN, is_unlimited
 from .models import AuditLog, OnlineTask, PlanLesson, SchoolClass, TaskAttempt, TeachingAssignment, TestBatch, User, now
 from .services import SCHOOL_TZ, roster, ws_cond
 
@@ -164,7 +165,9 @@ def collect(db: Session, user: User | None, kind: str, ta_ids: set[int] | None =
                                  submitted_at=_aware(a.submitted_at))
                 elif p['status'] != 'yazıb':
                     st = 'yazır' if a and not closed else 'gözlənilir' if not closed else 'yazmayıb'
-                    order = ['yazmayıb', 'gözlənilir', 'yazır']
+                    if not closed and is_unlimited(t) and t0 >= _aware(t.opens_at):
+                        st = NOT_DONE                 # müddətsiz test açıqdır, hələ təhvil verilməyib (başlayıb və ya yox)
+                    order = ['yazmayıb', 'gözlənilir', NOT_DONE, 'yazır']
                     if p['status'] is None or order.index(st) >= order.index(p['status']):
                         p.update(status=st, task_id=t.id)
         if not per:
@@ -181,7 +184,7 @@ def collect(db: Session, user: User | None, kind: str, ta_ids: set[int] | None =
             x.setdefault('place_class', None)
             x['submitted_at'] = None if x['submitted_at'] is None else x['submitted_at'].isoformat()
         wrote = [x['pct'] for x in rs if x['status'] == 'yazıb']
-        given = [x for x in rs if x['status'] in ('yazıb', 'yazmayıb')]
+        given = [x for x in rs if x['status'] in GIVEN]
         tests.append({'unit': key, 'kind': kind, 'title': u['title'], 'date': d, 'topic': pl and pl.topic,
                       'subject': rta.subject if rta else None,
                       'closed': all(t0 >= _aware(t.closes_at) for t in u['tasks']),
@@ -200,7 +203,7 @@ def per_student(rows: list[dict]) -> dict[int, dict]:
                                              'class_name': r['class_name'], 'ta_id': r['ta_id'], 'visible': False,
                                              'series': [], 'given': 0, 'wrote': 0, 'missed': 0})
         p['visible'] |= r['visible']
-        if r['status'] in ('yazıb', 'yazmayıb'):
+        if r['status'] in GIVEN:
             p['given'] += 1
         if r['status'] == 'yazmayıb':
             p['missed'] += 1
@@ -233,7 +236,7 @@ def rating(data: dict) -> dict:
     classes: dict[str, dict] = {}
     for r in data['rows']:
         c = classes.setdefault(r['class_name'], {'class_name': r['class_name'], 'pcts': [], 'given': 0, 'wrote': 0})
-        if r['status'] in ('yazıb', 'yazmayıb'):
+        if r['status'] in GIVEN:
             c['given'] += 1
         if r['status'] == 'yazıb':
             c['wrote'] += 1

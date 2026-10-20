@@ -35,7 +35,8 @@ def main(argv: list[str] | None = None, db=None) -> int:
     ap.add_argument('--yes', action='store_true', help='təsdiq sualı vermə')
     ap.add_argument('--include-weak', action='store_true', help='şübhəli uyğunluqda da yarat')
     ap.add_argument('--n', type=int, default=15, help='sual sayı (defolt 15)')
-    ap.add_argument('--duration', type=int, default=45, help='həll müddəti, dəq. (defolt 45)')
+    ap.add_argument('--duration', type=int, default=0, help='həll müddəti, dəq. (defolt 0 – taymer yoxdur)')
+    ap.add_argument('--days', type=int, default=0, help='dərsdən N gün sonra 22:00 bağlansın (defolt 0 – son tarix yoxdur)')
     ap.add_argument('--out', help='CSV faylı')
     a = ap.parse_args(argv)
 
@@ -52,7 +53,7 @@ def main(argv: list[str] | None = None, db=None) -> int:
             return 1
         d1 = a.d1 or (None if a.missing else today())
         d2 = a.d2 or ((d1 or today()) + dt.timedelta(days=7))
-        opts = E.Opts(n_questions=a.n, duration=a.duration, missing=a.missing, include_weak=a.include_weak)
+        opts = E.Opts(n_questions=a.n, duration=a.duration, close_days=a.days, missing_close_days=a.days, missing=a.missing, include_weak=a.include_weak)
         rep = E.assign(db, None, tas, d1, d2, opts, apply=False)
         _print(rep, d1, d2)
         n = sum(1 for r in rep.rows if r['will_create'])

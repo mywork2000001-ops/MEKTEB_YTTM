@@ -25,6 +25,7 @@ from .bank.match import (_NOT_TOPIC, GradeMatcher, base_topic, derived, lesson_q
 from .models import (BankFile, BankQuestion, LessonBankLink, OnlineTask, PlanLesson, PlanProgram, School, SchoolClass,
                      TeachingAssignment, TestBatch, User, now)
 from .services import SCHOOL_TZ, class_grade, plan_ctx, today
+from .timing import NO_DEADLINE
 
 TZ = ZoneInfo(SCHOOL_TZ)
 SUMMATIVE = ('KSQ', 'BSQ', 'diaqnostik')
@@ -54,19 +55,19 @@ R_MISSING = 'Keçmiş dərs – çatışan test'
 class Opts:
     """Təyin seçimləri. Yeni seçim = bura bir sahə + RESOLVERS/POST_STEPS-də istifadə."""
     n_questions: int = 15
-    duration: int = 45                    # dəq.; MIN_TEST_MIN-dən az ola bilməz
+    duration: int = 0                     # dəq.; 0 – taymer yoxdur (defolt); verilsə MIN_TEST_MIN-dən az ola bilməz
     missing: bool = False                 # keçilmiş testsiz dərslərə də (açılma – indi)
-    missing_close_days: int = 3           # çatışan test: açılmadan N gün sonra 22:00
-    close_days: int = 1                   # adi test: dərsdən N gün sonra 22:00 (defolt ertəsi gün)
+    missing_close_days: int = 0           # çatışan test: açılmadan N gün sonra 22:00; 0 – son tarix yoxdur (defolt)
+    close_days: int = 0                   # adi test: dərsdən N gün sonra 22:00; 0 – son tarix yoxdur (defolt)
     include_weak: bool = False            # şübhəli uyğunluqda da yarat
     variants: str | None = None           # məşğələ qrupu: «A+B» (inkişaf), «B+C» (tərəqqi) – başlığa yazılır
 
     def norm(self) -> 'Opts':
         from .api.tasks import MIN_TEST_MIN
         self.n_questions = max(1, min(int(self.n_questions or 15), 100))
-        self.duration = max(int(self.duration or MIN_TEST_MIN), MIN_TEST_MIN)
-        self.missing_close_days = max(1, int(self.missing_close_days or 3))
-        self.close_days = max(1, int(self.close_days or 1))
+        self.duration = max(int(self.duration), MIN_TEST_MIN) if self.duration else 0
+        self.missing_close_days = max(0, int(self.missing_close_days or 0))
+        self.close_days = max(0, int(self.close_days or 0))
         return self
 
 
@@ -322,14 +323,17 @@ def _questions(db: Session, choice: Choice, opts: Opts) -> list[dict]:
 
 def _times(db: Session, item: Item, opts: Opts, past: bool) -> tuple[dt.datetime, dt.datetime]:
     from .api.topic_tests import _lesson_end
-    if past:                                           # çatışan test: indi açılır, N gün sonra 22:00 bağlanır
+    if past:                                           # çatışan test: indi açılır (müddətsiz və ya N gün sonra 22:00)
         o = now()
-        c = dt.datetime.combine(today() + dt.timedelta(days=opts.missing_close_days), dt.time(22, 0), tzinfo=TZ)
+        days, base = opts.missing_close_days, today()
     else:
         o = _lesson_end(db, item.cls, item.date, item.period, item.ta)
-        c = dt.datetime.combine(item.date + dt.timedelta(days=opts.close_days), dt.time(22, 0), tzinfo=TZ)
-    o, c = o.astimezone(dt.timezone.utc), c.astimezone(dt.timezone.utc)
-    if (c - o).total_seconds() < opts.duration * 60:   # açıq qalma aralığı həll müddətindən qısa ola bilməz
+        days, base = opts.close_days, item.date
+    o = o.astimezone(dt.timezone.utc)
+    if not days:                                       # defolt – son tarix yoxdur (app/timing.py)
+        return o, NO_DEADLINE
+    c = dt.datetime.combine(base + dt.timedelta(days=days), dt.time(22, 0), tzinfo=TZ).astimezone(dt.timezone.utc)
+    if opts.duration and (c - o).total_seconds() < opts.duration * 60:   # açıq qalma aralığı həll müddətindən qısa ola bilməz
         c = o + dt.timedelta(minutes=opts.duration)
     return o, c
 

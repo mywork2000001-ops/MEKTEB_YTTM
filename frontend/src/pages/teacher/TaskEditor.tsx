@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useT, ml } from '../../i18n'
 import { get, patch, post } from '../../api'
 import { MathText } from '../../MathText'
-import { Drawer, ErrorBox, Field, Pill, toast } from '../../ui'
+import { Drawer, ErrorBox, Field, noDeadline, Pill, toast } from '../../ui'
 import { TargetPicker } from './common'
 import { PointsSummary, previewPoints, QPoints, type Level } from '../../scoring'
 import { heldLabel, useExamDates } from './examDates'
@@ -37,7 +37,7 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
   { ta: number; taskId?: number; fromBank?: boolean; onClose: () => void; onDone: () => void }) {
   const t = useT()
   const today = new Date().toISOString().slice(0, 10)
-  const [f, setF] = useState({ title: `Test – ${today.split('-').reverse().join('.')}`, date: today, from: '15:00', to: '16:00', duration: 45, show: 'after_close', shuffle: true })
+  const [f, setF] = useState({ title: `Test – ${today.split('-').reverse().join('.')}`, date: today, from: '15:00', to: '16:00', duration: 45, show: 'after_close', shuffle: true, unl: true })
   const [qs, setQs] = useState<Q[]>([])
   const [targets, setTargets] = useState<number[] | null | undefined>(taskId ? undefined : null)
   const [started, setStarted] = useState(0)
@@ -49,8 +49,9 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
   useEffect(() => {
     if (!taskId) return
     get(`/api/tasks/${ta}/${taskId}/full`).then(t => {
-      const [d1, t1] = localParts(t.opens_at), [, t2] = localParts(t.closes_at)
-      setF({ title: t.title, date: d1, from: t1, to: t2, duration: Math.max(t.duration_min, 45), show: t.show_answers, shuffle: t.shuffle })
+      const unl = noDeadline(t.closes_at)
+      const [d1, t1] = localParts(t.opens_at), [, t2] = unl ? ['', '23:59'] : localParts(t.closes_at)
+      setF({ title: t.title, date: d1, from: t1, to: t2, duration: Math.max(t.duration_min, 45), show: t.show_answers, shuffle: t.shuffle, unl: unl && !t.duration_min })
       setQs(t.questions_full.map((s: any, i: number) => fromSnapshot(s, 'e' + i)))
       setStarted(t.started)
       setAud(t.student_ids ?? null)
@@ -62,11 +63,11 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
   const remove = (k: string) => setQs(cur => cur.filter(q => q.key !== k))
 
   const problem = !f.title.trim() ? t('Tapşırığın adını yazın') : !qs.length ? 'Ən azı 1 sual seçin'
-    : f.to <= f.from ? t('Bağlanma saatı açılma saatından sonra olmalıdır') : targets && !targets.length ? t('«Kimə» bölməsində şagird seçin')
+    : !f.unl && f.to <= f.from ? t('Bağlanma saatı açılma saatından sonra olmalıdır') : targets && !targets.length ? t('«Kimə» bölməsində şagird seçin')
     : qs.length > 100 ? t('Bir tapşırıqda ən çoxu 100 sual') : ''
   const submit = async () => {
     if (problem) { setErr(new Error(problem)); return }
-    const meta = { title: f.title.trim(), opens_at: iso(f.date, f.from), closes_at: iso(f.date, f.to), duration_min: f.duration, shuffle: f.shuffle, show_answers: f.show }
+    const meta = { title: f.title.trim(), opens_at: iso(f.date, f.from), closes_at: f.unl ? null : iso(f.date, f.to), duration_min: f.unl ? 0 : f.duration, shuffle: f.shuffle, show_answers: f.show, ...(f.unl && taskId ? { unlimited_deadline: true } : {}) }
     try {
       if (taskId) {
         const body: any = { ...meta }
@@ -93,9 +94,10 @@ export default function TaskEditor({ ta, taskId, fromBank: bankFirst = false, on
         <div className="fg">
           <Field label={t('Ad')} full><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder={t('məs. Kvadrat tənliklər – test')} /></Field>
           <Field label={t('Tarix')}><input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></Field>
-          <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+          <label className="check full"><input type="checkbox" checked={f.unl} onChange={e => setF({ ...f, unl: e.target.checked })} /> {t('Müddətsiz (taymer və son tarix yoxdur)')}</label>
+          {!f.unl && <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>}
           <Field label={t('Açılır')}><input type="time" value={f.from} onChange={e => setF({ ...f, from: e.target.value })} /></Field>
-          <Field label={t('Bağlanır')}><input type="time" value={f.to} onChange={e => setF({ ...f, to: e.target.value })} /></Field>
+          {!f.unl && <Field label={t('Bağlanır')}><input type="time" value={f.to} onChange={e => setF({ ...f, to: e.target.value })} /></Field>}
           <Field label={t('Düzgün cavablar görünsün')} full><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
             <option value="after_close">{t('tapşırıq bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvil verdikdən dərhal sonra')}</option><option value="never">{t('heç vaxt')}</option></select></Field>
           <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> {t('Sualların sırası hər şagirdə fərqli')}</label>

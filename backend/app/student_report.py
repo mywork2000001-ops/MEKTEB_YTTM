@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .domain.rules import rank, summative_grade
+from .timing import NOT_DONE, GIVEN
 from .models import (Exam, ExamScan, ExamScore, ExamSeries, GroupMember, JournalEntry, Mark, OnlineTask, PlanLesson, Role,
                      SchoolClass, Student, TeachingAssignment, User)
 from .services import class_grade, roster
@@ -217,7 +218,7 @@ def _build(db: Session, s: Student, tas: list[TeachingAssignment], user: User | 
     given = wrote = 0
 
     for r in online['movzu']:
-        if r['status'] in ('yazıb', 'yazmayıb'):
+        if r['status'] in GIVEN:
             given += 1
         if r['status'] == 'yazmayıb':
             missed.append({'title': r['title'], 'date': _iso(r['date']), 'kind': 'movzu'})
@@ -243,7 +244,7 @@ def _build(db: Session, s: Student, tas: list[TeachingAssignment], user: User | 
     batch_ids = {int(r['unit'][1:]) for r in online['sinaq'] if r['unit'].startswith('b')}
     smap.update(_series_map(db, batch_ids))
     for r in online['sinaq']:
-        if r['status'] in ('yazıb', 'yazmayıb'):
+        if r['status'] in GIVEN:
             given += 1
         if r['status'] == 'yazmayıb':
             missed.append({'title': sinaq_name(r['title']), 'date': _iso(r['date']), 'kind': 'sinaq'})
@@ -356,7 +357,7 @@ MATRIX_KINDS = ('movzu', 'sinaq', 'all')
 _COL_ORDER = {'movzu': 0, 'sinaq': 1, 'ksq': 2, 'bsq': 3}
 _DONE = ('yazıb', 'nəşr olunmayıb')
 # «İşləməli» statuslar (işlənməyənlər siyahısı, Əsas səhifə sayı). Müddətsiz testlər üçün `işlənməyib` statusu əlavə olunanda YALNIZ bura yazılır.
-MISSING_STATUSES = ('yazmayıb', 'gözlənilir')
+MISSING_STATUSES = ('yazmayıb', 'gözlənilir', NOT_DONE)
 
 
 def _cell(status: str, pct: float | None = None, published: bool = True) -> dict:
@@ -399,7 +400,7 @@ def class_matrix(db: Session, user: User, ta_id: int, kind: str = 'all', date_fr
                 cells[u] = {}
             st = r['status']
             cells[u][r['student_id']] = _cell('yazıb', r['pct']) if st == 'yazıb' else \
-                _cell('yazmayıb') if st == 'yazmayıb' else _cell('gözlənilir')
+                _cell(st) if st in ('yazmayıb', NOT_DONE) else _cell('gözlənilir')
 
     # ---- kağız / skan
     wanted = {'movzu': ('TEST',), 'sinaq': ('SINAQ',), 'all': ('KSQ', 'BSQ', 'TEST', 'SINAQ')}[kind]
@@ -449,7 +450,7 @@ def class_matrix(db: Session, user: User, ta_id: int, kind: str = 'all', date_fr
             cs[c['key']] = x
             if x['status'] in _DONE:
                 wrote += 1
-            if x['status'] in _DONE or x['status'] == 'yazmayıb':
+            if x['status'] in _DONE or x['status'] in ('yazmayıb', NOT_DONE):
                 given += 1
             if x['status'] == 'yazıb':
                 pcts.append(x['pct'])
