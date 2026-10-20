@@ -21,3 +21,13 @@ CertificatesPanel) yeni qruplara bağla.
 `cd frontend && npm run build 2>&1 | tail -5`; backend toxunulubsa aid pytest.
 Hesabata **köçürmə cədvəli** yaz: köhnə yer → yeni yer (hər tab/düymə), itən funksiya olmamalıdır.
 Hesabat: budaq, commit, fayllar, build, köçürmə cədvəli, edilməyənlər.
+
+## Mərhələ 3 (promt §5–6; Mərhələ 2 birləşəndən sonra ayrıca icra)
+- A8 Journal «Bölmələr üzrə icra» → Analitika «Akademik nəticələr → Standartlar üzrə»; Jurnalda qısa sətir + keçid.
+- A9 Homeroom «Fənlər üzrə müvəffəqiyyət / Müvəffəqiyyət (şagird üzrə)» → «Sinif rəhbəri» qrupu (yalnız sinif rəhbərinə; `me` üzrə yoxla).
+- A10 Tasks «Suallar üzrə» → «Testlər və sınaqlar → Sual təhlili» (test seçimi); Tasks-da keçid.
+- A11 OnlineExams «Reytinq →» → `/reports?g=tests&t=rating`.
+- A12 ExtraCourses «Statistika/Effekt» → «Məşğələlər» qrupu (müqayisə cədvəli); kursda qısa göstərici + keçid.
+- A13 Surveys nəticə görünüşü → «Sorğu nəticələri» qrupu; yaratma Surveys-də.
+- A14 Home rəqəmləri → uyğun tablara keçid.
+Komponenti köçür (import et), məntiqi kopyalama; köhnə yerdə keçid. Köçürmə cədvəli hesabatda.

@@ -48,3 +48,30 @@ Yuxarıda: sinif seçimi (+ «Bütün siniflərim»), dövr (yarımil / ay / ara
 
 ## 4. İcra ardıcıllığı
 1) İşlənməyənlər hesabatı merge → 2) kart → `kodcu` (worktree) → 3) review + build + Chrome yoxlaması → 4) merge → push → Render → audit sətri.
+
+## 5. Genişləndirilmiş audit – bütün tətbiq (istifadəçi: «analitikaya aid nə varsa hamısı», 20.10.2026)
+| # | Tapıntı | Yer | Qərar |
+|---|---|---|---|
+| A8 | Standartlar/bölmələr üzrə icra (sinif ortası %, şagird orta %) | `Journal.tsx` («Bölmələr üzrə icra», «Şagirdlər (orta %…)») | Analitika → **Akademik nəticələr → Standartlar üzrə** (tam görünüş); Jurnalda yalnız qısa sətir + «Analitikada ətraflı →» |
+| A9 | Fənlər üzrə müvəffəqiyyət və keyfiyyət, əlaçı/zərbəçi | `Homeroom.tsx` (sinif rəhbəri) | Analitika → **Sinif rəhbəri** qrupu (yalnız sinif rəhbərinə görünür); Homeroom-da keçid |
+| A10 | Suallar üzrə təhlil (item analysis) | `Tasks.tsx` («Suallar üzrə») | Analitika → **Testlər və sınaqlar → Sual təhlili** (test seçimi ilə); Tasks-da keçid qalır |
+| A11 | Sınaq statistikası (orta, ən yüksək, yazıb) | `OnlineExams.tsx` | kart üzərində qısa rəqəmlər qalır; «Reytinq →» → Analitika «Test reytinqi» |
+| A12 | Məşğələ statistikası və «Effekt» (giriş/çıxış testi, irəliləyiş) | `ExtraCourses.tsx` | Analitika → **Məşğələlər** tabı (bütün qruplar müqayisəli); kurs daxilində qısa göstərici + keçid |
+| A13 | Sorğu nəticələri və AI xülasə | `Surveys.tsx` | Analitika → **Sorğu nəticələri** tabı (nəticə görünüşü); sorğu yaratma/link Ünsiyyət → Sorğu-da qalır |
+| A14 | Əsas səhifə göstəriciləri (risk, yazılmış dərs, «Bu həftə diqqət») | `Home.tsx` | yerində qalır (xülasə), hər rəqəm Analitikada uyğun taba keçid |
+| A15 | Səviyyə qrupları bölgüsü | `LevelGroups.tsx` | quraşdırma (əməliyyat) yerində; nəticə → «Səviyyələr» tabı (artıq var) |
+
+**Prinsip:** əməliyyat (yaratmaq, yazmaq, təyin etmək) öz bölməsində qalır; **tam analitik görünüş və çap** yalnız «Analitika və hesabat»da.
+Əməliyyat səhifəsində ən çox 1 sətir qısa göstərici + «📊 Analitikada ətraflı →» keçidi. Hesablama məntiqi dəyişmir və təkrarlanmır:
+komponent köçürülür, köhnə yerdə yalnız keçid qalır.
+
+### Yenilənmiş hədəf quruluş (§2-yə əlavə)
+- **Akademik nəticələr:** + *Standartlar üzrə* (A8)
+- **Testlər və sınaqlar:** + *Sual təhlili* (A10)
+- **Məşğələlər** (yeni qrup, A12) · **Sorğu nəticələri** (yeni qrup, A13) · **Sinif rəhbəri** (yeni qrup, rola görə, A9)
+
+## 6. Ardıcıl icra planı
+1. **Mərhələ 1 (icrada):** İşlənməyənlər hesabatı + vahid yazmayanlar mühərriki (A3) → merge, deploy.
+2. **Mərhələ 2:** Analitika bölməsinin skeleti + A1, A2, A4–A7 (Reports + ResultsCenter + Çap mərkəzi + yönləndirmələr) → merge, deploy.
+3. **Mərhələ 3:** A8–A13 köçürmələri (Jurnal, Sinif rəhbəri, Sual təhlili, Məşğələlər, Sorğu) + keçidlər → merge, deploy.
+4. Hər mərhələdən sonra: build, aid pytest, Chrome-da kompüter/telefon ekran şəkli, köçürmə cədvəli, audit sətri.
