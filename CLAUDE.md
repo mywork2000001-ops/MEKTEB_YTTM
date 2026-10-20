@@ -29,3 +29,6 @@ skript `scripts/plan_tests.py`, API `/api/plan-tests/*`, düymə və gündəlik 
 Sessiyanı bitirməzdən əvvəl `docs/audit/icra-YYYY-MM-DD.md`: hər istifadəçi istəyi ayrıca sətir, status (✅/🟡/⏳/❌/🔒) və **sübut**
 (commit, test sayı, build, deploy, miqrasiya); tam pytest + build; açıq qalanlar P1/P2/P3. Növbəti sessiya əvvəlcə son auditin
 «Açıq qalanlar» bölməsini oxuyur. Ətraflı: `docs/icra-auditi-promtu.md`.
+
+## Bulud sessiyası (ikinci hesab, claude.ai/code) – testlər üzrə
+Yalnız öz budağında, `main`-ə PR ilə; deploy / canlı DB / miqrasiya – yalnız əsas sessiya. Ətraflı: `docs/bulud-sessiyasi-promtu.md`.
