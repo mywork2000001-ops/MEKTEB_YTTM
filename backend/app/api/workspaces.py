@@ -180,3 +180,32 @@ def reset_private_calendar(user: User = Depends(settings_unlocked), db: Session 
     audit(db, user, 'update', 'private_year', y.id, reset=True)
     db.commit()
     return _calendar(db, y)
+
+
+# ---------------------------------------------------------------- köhnə fərdi vaxtları görüş formatına çevirmək
+def _ferdi_owner_school(db: Session, user: User) -> School:
+    s = private_of(db, user)          # yalnız öz fərdi məkanı (admin də başqasınınkını görmür)
+    if not s:
+        raise HTTPException(404, 'Fərdi məkan yoxdur')
+    return s
+
+
+@router.get('/ferdi-units')
+def ferdi_units_preview(user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Quru hesabat: köhnə vaxtlar → görüşlər (units, alt vaxtlar 45+5), yuva sayı, proqram var/yox. Heç nə yazmır."""
+    from ..ferdi_units import build_report
+    s = _ferdi_owner_school(db, user)
+    rows = build_report(db, user, s.id)
+    return {'groups': rows, 'pending': sum(1 for r in rows if r['changed']), 'changed': []}
+
+
+@router.post('/ferdi-units')
+def ferdi_units_apply(user: User = Depends(settings_unlocked), db: Session = Depends(get_db)):
+    """Tətbiq edir (idempotent). Proqramı olan qruplarda plan avtomatik yenidən tətbiq olunur, keçilmiş dərslər dondurulur."""
+    from ..ferdi_units import apply_all
+    s = _ferdi_owner_school(db, user)
+    rows, changed = apply_all(db, user, s.id)
+    if changed:
+        audit(db, user, 'update', 'workspace', s.id, ferdi_units=len(changed))
+    db.commit()
+    return {'groups': rows, 'pending': 0, 'changed': changed}

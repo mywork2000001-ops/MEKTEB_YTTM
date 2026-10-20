@@ -733,7 +733,7 @@ def test_student_sees_own_card(world, monkeypatch):
     img = c.get(f'/api/portal/exam-card/{card["scan_id"]}/image')
     assert img.status_code == 200 and img.headers['content-type'] == 'image/jpeg'
     assert c.get(f'/api/portal/exam-card/{other.id}/image').status_code == 404                     # başqasının kartı
-    assert any(n['key'].startswith(f'card-{card["scan_id"]}-') for n in c.get('/api/portal/notifications').json())
+    assert any(n['key'] == f'pkg-{e["id"]}' for n in c.get('/api/portal/notifications').json())      # paket bildirişi (bir dəfə)
 
 
 def test_gemini_model_fallback_and_no_sleep(monkeypatch):

@@ -65,6 +65,8 @@ def apply(db: Session, e: Exam, sc: ExamScan) -> None:
     sc.marks, sc.points, sc.flagged, sc.status, sc.error = g['marks'], g['points'], g['flagged'], 'graded', None
     db.flush()
     recompute_score(db, e, sc.student_id)                   # jurnal balı: seçimə görə (onlayn / yazılı / ən yüksək / əl ilə)
+    from ..exam_cards import deliver_on_scan                # «skan olunan kimi göndər» / artıq göndərilmiş imtahan: bu şagirdə paket açılır
+    deliver_on_scan(db, e, sc.student_id)
 
 
 def _ai_error(db: Session, ta, scans: list[ExamScan]) -> str | None:

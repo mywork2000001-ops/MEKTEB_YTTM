@@ -455,7 +455,20 @@ class Exam(Base):
     batch_id: Mapped[int | None] = mapped_column(ForeignKey('test_batches.id', ondelete='SET NULL'))
     to_journal: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     variant_mode: Mapped[str | None] = mapped_column(String(10))
+    # «Skan olunan kimi şagirdə göndər»: kart qiymətləndirilən kimi həmin şagirdə nəticə paketi açılır (docs/ksq-kagiz-netice-paketi-promtu.md §2.2)
+    send_on_scan: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     __table_args__ = (UniqueConstraint('assignment_id', 'kind', 'semester', 'no', 'extra_seq'),)
+
+
+class ExamDelivery(Base):
+    """Şagirdə nəticə paketinin göndərilməsi (bir imtahan + bir şagird – bir sətir; təkrar nəşrdə ikinci bildiriş/mesaj yoxdur).
+    via: publish (müəllim «Nəticələri göndər») | scan (send_on_scan – skan olunan kimi); seen_at – şagird paketi açıb."""
+    __tablename__ = 'exam_deliveries'
+    exam_id: Mapped[int] = mapped_column(ForeignKey('exams.id', ondelete='CASCADE'), primary_key=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
+    via: Mapped[str] = mapped_column(String(8))
+    sent_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ExamVariant(Base):

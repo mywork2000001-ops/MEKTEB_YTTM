@@ -145,6 +145,6 @@ def test_e_script_matches_api(world, tmp_path):
 def test_migrate_plan_ta_keeps_old_period():
     from scripts.ferdi_units_migrate import plan_ta
     nt, ns, added = plan_ta({'1:3': '17:00–18:30', '5:0': '10:00–10:45'}, {'1': [3], '5': [0]})
-    assert nt['1:3'] == '17:00–17:45' and added == 1 and nt['1:0'] == '17:50–18:35' and nt['5:0'] == '10:00–10:45'
-    assert ns == {'1': [0, 3], '5': [0]}
+    assert nt['1:3'] == '17:00–17:45' and added == 1 and nt['1:4'] == '17:50–18:35' and nt['5:0'] == '10:00–10:45'
+    assert ns == {'1': [3, 4], '5': [0]}
     assert plan_ta(nt, ns)[2] == 0                                   # təkrar işlətmək dəyişmir

@@ -3057,6 +3057,34 @@ const D: Record<string, [string, string]> = {
   "Avtomatik uyğunluq": ["Automatic match", "Автоматическое совпадение"],
   "Keçmiş dərs – çatışan test": ["Past lesson – missing test", "Прошедший урок – недостающий тест"],
   "Gözlənilir – bu sinif üçün test sualları hələ hazırlanır": ["Pending – test questions for this grade are still being prepared", "Ожидается – вопросы тестов для этого класса ещё готовятся"],
+  // --- köhnə fərdi vaxtları görüşə çevirmək (Tənzimləmə → fərdi məkan)
+  "Köhnə dərs vaxtlarını görüşə çevir (2×45)": ["Convert old lesson times to meetings (2×45)", "Преобразовать старые времена уроков во встречи (2×45)"],
+  "Köhnə bir yuvalı vaxtlar (məs. 17:00–18:30) görüş formatına keçirilir: hər 45 dəqiqəlik hissə ayrıca dərs saatıdır, aralarında 5 dəqiqə fasilə. Jurnal yazıları birinci hissədə qalır, proqramı olan qruplarda plan yenidən qurulur (keçilmiş dərslər dəyişmir).": [
+    "Old single-slot times (e.g. 17:00–18:30) are converted to the meeting format: each 45-minute part is a separate lesson hour with a 5-minute break between. Journal entries stay on the first part; for groups with a program the plan is rebuilt (past lessons do not change).",
+    "Старые времена в один слот (напр. 17:00–18:30) переводятся в формат встреч: каждая часть по 45 минут – отдельный урок, между ними перерыв 5 минут. Записи журнала остаются на первой части, у групп с программой план перестраивается (пройденные уроки не меняются)."],
+  "Köhnə vaxtlar": ["Old times", "Старые времена"],
+  "Yeni görüşlər": ["New meetings", "Новые встречи"],
+  "Yuva": ["Slots", "Слоты"],
+  "Hamısı artıq görüş formatındadır": ["Everything is already in the meeting format", "Всё уже в формате встреч"],
+  "Təsdiq et və çevir": ["Confirm and convert", "Подтвердить и преобразовать"],
+  "Çevrildi: {n} qrup": ["Converted: {n} groups", "Преобразовано групп: {n}"],
+  "plan yenilənəcək": ["plan will be rebuilt", "план будет перестроен"],
+  // --- kağız KSQ/BSQ nəticə paketi (kart skanı + öz testi, altmövzu və №)
+  "Nəticə paketi": ["Result package", "Пакет результата"],
+  "nəticə paketi": ["result package", "пакет результата"],
+  "Öz testin": ["Your test", "Твой тест"],
+  "Böyütmək üçün toxun": ["Tap to enlarge", "Нажми, чтобы увеличить"],
+  "PDF hazırlanır…": ["Preparing PDF…", "Готовим PDF…"],
+  "baxıb": ["viewed", "просмотрено"],
+  "göndərildi": ["sent", "отправлено"],
+  "Paketi olan şagird yoxdur": ["No student has a package", "Нет учеников с пакетом"],
+  "Nəticə paketləri (PDF)": ["Result packages (PDF)", "Пакеты результатов (PDF)"],
+  "Skan olunan kimi şagirdə göndər": ["Send to the student as soon as scanned", "Отправлять ученику сразу после сканирования"],
+  "Hər şagird ayrıca səhifədən: kartın şəkli + öz testi, altmövzu və №": ["Each student on a separate page: card image + own test, subtopic and number", "Каждый ученик с новой страницы: фото бланка + свой тест, подтема и №"],
+  "Kart skan olunub qiymətləndirilən kimi həmin şagirdə nəticə paketi açılır. Eyni imtahan başqa sinifdə hələ keçirilməyibsə bloklanır.": [
+    "As soon as a card is scanned and graded, that student gets the result package. Blocked if the same exam has not yet been held in another class.",
+    "Как только бланк отсканирован и проверен, этот ученик получает пакет результата. Блокируется, если такая же работа ещё не проведена в другом классе."],
+
   // ---- şagirdin fərdi hesabatı (docs/sagird-ferdi-hesabat-promtu.md)
   "Bal, %": ["Score, %", "Балл, %"],
   "Bu dövrdə nəticə yoxdur.": ["No results in this period.", "В этом периоде результатов нет."],
