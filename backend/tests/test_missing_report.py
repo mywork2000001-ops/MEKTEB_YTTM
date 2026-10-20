@@ -334,3 +334,87 @@ def test_by_test_form(mat):
     assert admin.get(u, params={'task_keys': ''}).status_code == 400
     assert admin.get(u, params={'task_keys': 'zzz'}).status_code == 404
     assert admin.get(u).status_code == 422
+
+
+
+# ---------------------------------------------------------------- docs/tasks/islenmeyenler-tam-siyahi.md (M1, M2, M3, M6, M9)
+def _sinaq_task(S, **kw):
+    with S() as db:
+        t = db.query(OnlineTask).filter_by(kind='sinaq').first()
+        for k, v in kw.items():
+            setattr(t, k, v)
+        db.commit()
+        return t.id
+
+
+def test_unwritten_visible_when_opened_before_period_but_due_inside(mat):
+    """M3: açılışı dövrdən əvvəl (29.09), son tarixi dövr daxilində (03.10) olan işlənməmiş test işlənməyənlərdə görünür."""
+    admin, S, ta, st = mat
+    _sinaq_task(S, closes_at=dt.datetime(2026, 10, 3, 14, 0, tzinfo=UTC))
+    with S() as db:
+        m = class_missing(db, _staff(S), ta, 'sinaq', dt.date(2026, 10, 1), dt.date(2026, 10, 31), all_students=True)
+        mx = class_matrix(db, _staff(S), ta, 'sinaq', dt.date(2026, 10, 1), dt.date(2026, 10, 31))   # matris: açılışa görə (dəyişməyib)
+    assert m['total'] >= 2 and {r['student_id'] for r in m['rows'] if r['items']} >= {st[1]['id'], st[2]['id']}
+    assert not [c for c in mx['columns'] if c['test_title']]
+    with S() as db:                                                       # dövr son tarixdən sonra başlayırsa – görünmür
+        late = class_missing(db, _staff(S), ta, 'sinaq', dt.date(2026, 10, 5), dt.date(2026, 10, 31), all_students=True)
+    assert late['total'] == 0
+
+
+def test_unlimited_unwritten_visible_by_default(mat):
+    """M1: müddətsiz işlənməmiş test defolt (plan=all, gözlənilənlər daxil) siyahıdadır."""
+    admin, S, ta, st = mat
+    _sinaq_task(S, closes_at=NO_DEADLINE, duration_min=0)
+    with S() as db:
+        m = class_missing(db, _staff(S), ta, 'sinaq', all_students=True)
+    s1 = next(r for r in m['rows'] if r['student_id'] == st[1]['id'])
+    assert len(s1['items']) == 1
+
+
+def test_batchless_sinaq_is_collected(mat):
+    """M6: batch-siz sınaq tapşırığı atılmır – öz t{id} vahidi ilə siyahıdadır."""
+    admin, S, ta, st = mat
+    tid = _sinaq_task(S, batch_id=None)
+    with S() as db:
+        m = class_missing(db, _staff(S), ta, 'sinaq', all_students=True)
+    assert [t['key'] for t in m['tests']] == [f't{tid}']
+    assert m['total'] >= 2
+
+
+def test_home_count_equals_panel_default(mat):
+    """M2: Ana səhifə (missing_summary), panel defoltu və «hamısı» JSON eyni say verir."""
+    from app.models import TeachingAssignment
+    from app.student_report import missing_summary
+    admin, S, ta, st = mat
+    with S() as db:
+        user = _staff(S)
+        home = missing_summary(db, user, [db.get(TeachingAssignment, ta)])
+        panel = class_missing(db, user, ta, 'all', all_students=True, sort='risk')
+    assert len(home) == 1 and home[0]['total'] == panel['total'] > 0
+    r = admin.get(f'{U}/class/{ta}/missing-list', params={'kind': 'all', 'all': 1, 'sort': 'risk'})
+    assert r.status_code == 200 and r.json()['total'] == home[0]['total']
+    r = admin.get(f'{U}/missing-all', params={'format': 'json'})
+    c = next(x for x in r.json()['classes'] if x['ta_id'] == ta)
+    assert c['total'] == home[0]['total'] and c['students'] == panel['students']
+
+
+def test_resend_copy_with_audit_row_folds_into_one_unit(mat):
+    """M9: yenidən göndərmə surəti (audit copied_from) kökə bağlanır – bir vahid, bir sütun."""
+    from app.models import AuditLog
+    from app.test_stats import _roots, collect
+    admin, S, ta, st = mat
+    tid = _sinaq_task(S, batch_id=None)
+    with S() as db:
+        o = db.get(OnlineTask, tid)
+        cp = OnlineTask(**{c.name: getattr(o, c.name) for c in OnlineTask.__table__.columns if c.name != 'id'})
+        cp.title = o.title + ' (təkrar)'
+        db.add(cp)
+        db.flush()
+        db.add(AuditLog(action='create', entity='task', entity_id=str(cp.id), details={'copied_from': tid}))
+        db.commit()
+        cid = cp.id
+    with S() as db:
+        tasks = list(db.query(OnlineTask).filter(OnlineTask.id.in_([tid, cid])))
+        assert _roots(db, tasks) == {tid: tid, cid: tid}
+        data = collect(db, _staff(S), 'sinaq', {ta})
+    assert [t['unit'] for t in data['tests']] == [f't{tid}']

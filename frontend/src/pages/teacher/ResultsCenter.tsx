@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { get, post } from '../../api'
 import { useAuth } from '../../auth'
-import { AsyncBtn, Drawer, ErrorBox, Field, fmt, fmtDate, Loading, PickFirst, Pill, Seg, Stat, toast, Top, useLoad, useNarrow } from '../../ui'
+import { AsyncBtn, Disclosure, Drawer, ErrorBox, Field, fmt, fmtDate, Loading, PickFirst, Pill, Seg, Stat, SumChip, toast, Top, useLoad, useNarrow } from '../../ui'
 import { esc, fmtD, fmtN, head, kpis, printDoc, SIGN, table } from '../../print'
 import { periodRange, type Period } from '../../periods'
 import { useMyLessons, type MyLesson } from './common'
@@ -119,7 +119,7 @@ export default function ResultsCenter({ embedded, ta, tab: tabProp, onTab }: { e
       <div className="toolbar no-print lsel-bar"><LSeg label={t('Bölmə')} value={tab} onChange={setTab}
         options={TABS.map(([k, l]) => [k, k === 'missing' && chronic > 0 ? `${tt(l)} (${chronic})` : l] as const)} /></div></>}
       {embedded && tab !== 'missing' && chronic > 0 && <p className="small no-print" style={{ margin: '0 0 8px' }}><button className="btn sm ghost" onClick={() => setTab('missing')}>
-        <span className="pill bad">{chronic}</span> {t('xroniki yazmayan – «Yazmayanlar»a bax ›')}</button></p>}
+        <span className="pill bad">{chronic}</span> {t('xroniki yazmayan – «Yazmayanlar»a bax ›')}</button> <span className="small muted">({t('yalnız bağlanmış testlər')})</span></p>}
       <div className="toolbar no-print lsel-bar"><LSeg label={t('Növ')} value={kf} onChange={setKf} options={KF_OPTS} /><PeriodPick f={f} />
         {tab === 'rating' && <>{!embedded && <ClassSelect lessons={lessons} value={rta} onChange={setRta} />}<LSeg label={t('Sıralama')} value={sort} onChange={setSort} options={SORTS} /></>}</div>
       {tab === 'rating' && kinds.map(k => <div key={k} style={{ marginBottom: 18 }}><RatingPanel f={f} lessons={lessons} onStudent={openStudent} kind={k} ta={rta} sort={sort} /></div>)}
@@ -231,11 +231,32 @@ type MData = { students: MStud[]; tests: { unit: string; kind: Kind; title: stri
 function Missing({ f, lessons, onStudent, kind, fixedTa }: { f: PP; lessons?: MyLesson[]; onStudent: (id: number) => void; kind: KF; fixedTa?: number | null }) {
   const t = useT()
   const [taOwn, setTa] = useState<number | null>(null)
-  const ta = fixedTa ?? taOwn ?? lessons?.[0]?.id ?? null
+  const ta = fixedTa ?? taOwn      // null – «Bütün siniflərim» (defolt)
   return (
     <>
-      {lessons && fixedTa == null && <div className="toolbar no-print"><ClassSelect lessons={lessons} value={ta} onChange={setTa} all={null} /></div>}
-      {ta == null ? <div className="empty">{t('Sinif seçin.')}</div> : <MissingReport key={ta} ta={ta} params={f.params} label={f.label} kind={kind} onStudent={onStudent} />}
+      {lessons && fixedTa == null && <div className="toolbar no-print"><ClassSelect lessons={lessons} value={ta} onChange={setTa} all={t('Bütün siniflərim')} /></div>}
+      {ta == null ? <MissingAllClasses lessons={lessons} f={f} onStudent={onStudent} kind={kind} /> : <MissingReport key={ta} ta={ta} params={f.params} label={f.label} kind={kind} onStudent={onStudent} />}
+    </>
+  )
+}
+
+// «Bütün siniflərim»: hər sinif bir başlıq (Disclosure), daxilində sinif hesabatı. Başlıq sayları – /missing-all?format=json.
+function MissingAllClasses({ lessons, f, onStudent, kind }: { lessons?: MyLesson[]; f: PP; onStudent: (id: number) => void; kind: KF }) {
+  const t = useT()
+  const q = { format: 'json', kind, ...(f.params.date_from ? { from: f.params.date_from } : {}), ...(f.params.date_to ? { to: f.params.date_to } : {}) }
+  const [d, err, loading] = useLoad<{ classes: { ta_id: number; class_name: string; subject: string; students: number; total: number }[] }>(
+    () => get('/api/results-center/missing-all', q), [kind, f.label])
+  if (!lessons) return <Loading />
+  return (
+    <>
+      <ErrorBox error={err} />
+      {loading && !d ? <Loading /> : (d?.classes || []).length === 0 ? <div className="empty">{t('Sinif seçin.')}</div> :
+        (d?.classes || []).map(c => (
+          <Disclosure key={c.ta_id} id={`mr.${c.ta_id}`} defaultOpen={c.total > 0}
+            title={`${c.class_name}${c.subject !== 'Riyaziyyat' ? ' · ' + c.subject : ''}`}
+            summary={<SumChip tone={c.total ? 'warn' : 'ok'}>{t('{n} şagird · {m} işlənməmiş test', { n: c.students, m: c.total })}</SumChip>}>
+            {c.total > 0 ? <MissingReport ta={c.ta_id} params={f.params} label={f.label} kind={kind} onStudent={onStudent} /> : <div className="empty">{t('Bu dövrdə bütün şagirdlər testləri işləyib 👏')}</div>}
+          </Disclosure>))}
     </>
   )
 }

@@ -77,6 +77,12 @@ def _visible_tasks(db: Session, user: User | None, kind: str,
         ta = db.get(TeachingAssignment, t.assignment_id)
         out.append(t)
         vis[t.id] = a == 'full' or ta.teacher_id == user.id
+    # batch-siz (köhnə/import) sınaq tapşırığı – öz t{id} vahidi ilə, yalnız öz dərslərim (M6)
+    for t in db.scalars(select(OnlineTask).join(TeachingAssignment, TeachingAssignment.id == OnlineTask.assignment_id)
+                        .where(OnlineTask.kind == 'sinaq', OnlineTask.archived_at.is_(None), OnlineTask.batch_id.is_(None),
+                               TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None), ws_cond(user))):
+        out.append(t)
+        vis[t.id] = True
     return out, vis
 
 
@@ -109,8 +115,10 @@ def _roots(db: Session, tasks: list[OnlineTask]) -> dict[int, int]:
 
 # ---------------------------------------------------------------- toplama
 def collect(db: Session, user: User | None, kind: str, ta_ids: set[int] | None = None,
-            date_from: dt.date | None = None, date_to: dt.date | None = None, subject: str | None = None) -> dict:
-    """{tests: [...], rows: [...]} – bir növ üzrə. rows: (şagird, test) cütü, yer sinifdə və ümumi."""
+            date_from: dt.date | None = None, date_to: dt.date | None = None, subject: str | None = None,
+            period_by: str = 'open') -> dict:
+    """period_by='due' (yalnız işlənməyənlər hesabatı): dövr süzgəci plan günü / son tarixə görədir (müddətsizdə açılış).
+    {tests: [...], rows: [...]} – bir növ üzrə. rows: (şagird, test) cütü, yer sinifdə və ümumi."""
     from .api.tasks import exam_score, expire_due
     tasks, vis = _visible_tasks(db, user, kind, ta_ids)
     root = _roots(db, tasks)
@@ -133,7 +141,12 @@ def collect(db: Session, user: User | None, kind: str, ta_ids: set[int] | None =
             continue
         pl = db.get(PlanLesson, r.plan_lesson_id) if r.plan_lesson_id else None
         d = min(local_date(t.opens_at) for t in u['tasks'])
-        if (date_from and d < date_from) or (date_to and d > date_to):
+        dd = d
+        if period_by == 'due':
+            first = min(u['tasks'], key=lambda x: _aware(x.opens_at))
+            plx = next((db.get(PlanLesson, x.plan_lesson_id) for x in u['tasks'] if x.plan_lesson_id), None)
+            dd = plx.date if plx else local_date(first.closes_at) if not is_unlimited(first) else local_date(first.opens_at)
+        if (date_from and dd < date_from) or (date_to and dd > date_to):
             continue
         per: dict[int, dict] = {}
         tas = set()
