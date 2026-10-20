@@ -8,7 +8,7 @@ import { ProgramBox } from './Programs'
 import { head, printDoc, table } from '../../print'
 import TopicTest from './TopicTest'
 import AssignTests from './AssignTests'
-import { azDT } from '../../ui'
+import { azDT, noDeadline } from '../../ui'
 import { tt, useT } from '../../i18n'
 
 type TopicTestInfo = { task_id: number; title: string; opens_at: string; closes_at: string; state: 'gözlənilir' | 'açıqdır' | 'bitib'
@@ -208,9 +208,9 @@ const dm = (s: string) => { const x = new Date(s); return `${String(x.getDate())
 
 /** Mövzuya bağlı onlayn testin vəziyyəti: gözlənilir / açıqdır / bitib (orta nəticə, jurnal). */
 function TestPill({ t }: { t: TopicTestInfo }) {
-  const when = `${dm(t.opens_at)} ${hm(t.opens_at)}–${dm(t.closes_at)} ${hm(t.closes_at)}`
+  const when = noDeadline(t.closes_at) ? `${dm(t.opens_at)} ${hm(t.opens_at)}–${tt('Müddətsiz')}` : `${dm(t.opens_at)} ${hm(t.opens_at)}–${dm(t.closes_at)} ${hm(t.closes_at)}`
   const done = `${t.submitted}${t.total != null ? '/' + t.total : ''}`
   if (t.state === 'gözlənilir') return <Pill>🧪 {when}</Pill>
-  if (t.state === 'açıqdır') return <Pill tone="ok">🧪 {tt('açıqdır')} · {done} · {tt('{d}-dək', { d: `${dm(t.closes_at)} ${hm(t.closes_at)}` })}</Pill>
+  if (t.state === 'açıqdır') return <Pill tone="ok">🧪 {tt('açıqdır')} · {done} · {noDeadline(t.closes_at) ? tt('Müddətsiz') : tt('{d}-dək', { d: `${dm(t.closes_at)} ${hm(t.closes_at)}` })}</Pill>
   return <Pill tone={t.journal === 'yazılıb' ? 'info' : undefined}>🧪 {tt('bitib')} · {done}{t.avg_pct != null ? ` · ${t.avg_pct}%` : ''}{t.journal === 'yazılıb' ? ' · ' + tt('jurnalda') : ''}</Pill>
 }

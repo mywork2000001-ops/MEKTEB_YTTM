@@ -12,7 +12,7 @@ import TaskEditor, { BankPicker, iso, localParts, OwnQuestion, toCustom, type Gi
 import { ResendToStudents, TaskActions } from './Tasks'
 import { PeriodBar, usePeriod } from '../../periods'
 import ExamSeriesPanel from './ExamSeries'
-import { azDT } from '../../ui'
+import { azDT, noDeadline } from '../../ui'
 import { PointsSummary, previewPoints, QPoints } from '../../scoring'
 
 // sınaq mənbələri (viktorina): Sınaqlar qovluğu, P012, P009; TAİM (P004) – müəllim imtahanı, göstərilmir
@@ -29,7 +29,7 @@ type Res = { batch: { id: number; title: string; subject: string; grade: number 
   classes: { task_id: number; ta_id: number; own: boolean; class_name: string; students: number; wrote: number; avg_pct: number | null; max_pct: number | null; place: number | null; state: string; opens_at: string; closes_at: string }[]
   rows: Row[]; questions: { index: number; text: any; kind: string; correct: number; of: number; pct: number | null }[]; access: 'full' | 'own' }
 
-const dt = (s: string | null) => (s ? azDT(new Date(s), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—')
+const dt = (s: string | null) => (s ? noDeadline(s) ? tt('Müddətsiz') : azDT(new Date(s), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—')
 const stateTone = (s: string) => (s === 'açıqdır' ? 'ok' : s === 'bitib' ? 'info' : undefined)
 const PENALTY: [string, string][] = [['0', 'cərimə yoxdur'], ['4', '4 səhv 1 düzü aparır'], ['3', '3 səhv 1 düzü aparır']]
 
@@ -200,7 +200,7 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
   const [subject, setSubject] = useState('')
   const [common, setCommon] = useState(() => { const t = localParts(new Date().toISOString())[0]; return { d1: t, t1: '10:00', d2: t, t2: '12:00' } })
   const [rows, setRows] = useState<Record<number, TRow>>({})
-  const [f, setF] = useState({ title: '', duration: 60, penalty: '0', shuffle: true, show: 'after_close' })
+  const [f, setF] = useState({ title: '', duration: 60, penalty: '0', shuffle: true, show: 'after_close', unl: true })
   const [qs, setQs] = useState<Q[]>([])
   const [err, setErr] = useState<unknown>()
   const [busy, setBusy] = useState(false)
@@ -230,18 +230,18 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
   const minutes = (r: TRow) => (Date.parse(iso(r.d2, r.t2)) - Date.parse(iso(r.d1, r.t1))) / 60000
 
   const problem = !f.title.trim() ? t('Sınağın adını yazın') : !qs.length ? t('Ən azı 1 sual seçin') : !chosen.length ? t('Ən azı bir sinif seçin')
-    : chosen.some(t => minutes(row(t.ta_id)) <= 0) ? t('Bitmə vaxtı başlamadan sonra olmalıdır')
-    : chosen.some(t => minutes(row(t.ta_id)) < f.duration) ? t('Həll müddəti açıq qalma aralığından uzundur')
+    : !f.unl && chosen.some(t => minutes(row(t.ta_id)) <= 0) ? t('Bitmə vaxtı başlamadan sonra olmalıdır')
+    : !f.unl && chosen.some(t => minutes(row(t.ta_id)) < f.duration) ? t('Həll müddəti açıq qalma aralığından uzundur')
     : chosen.some(t => row(t.ta_id).ids?.length === 0) ? t('«Kimə» bölməsində ən azı bir şagird seçin') : ''
   const submit = async () => {
     if (problem) { setErr(new Error(problem)); return }
     setBusy(true)
     try {
       const r = await post<{ tasks: number }>('/api/exams-online', {
-        title: f.title.trim(), duration_min: f.duration, penalty: Number(f.penalty), shuffle: f.shuffle, show_answers: f.show,
+        title: f.title.trim(), duration_min: f.unl ? 0 : f.duration, penalty: Number(f.penalty), shuffle: f.shuffle, show_answers: f.show,
         bank_ids: [], custom: qs.map(toCustom),
         allow_repeat: confirm && !!ask?.repeat, allow_other_grade: confirm && !!ask?.grade,
-        targets: chosen.map(t => { const x = row(t.ta_id); return { ta_id: t.ta_id, opens_at: iso(x.d1, x.t1), closes_at: iso(x.d2, x.t2), student_ids: x.ids ?? null } }),
+        targets: chosen.map(t => { const x = row(t.ta_id); return { ta_id: t.ta_id, opens_at: iso(x.d1, x.t1), closes_at: f.unl ? null : iso(x.d2, x.t2), student_ids: x.ids ?? null } }),
       })
       toast(t('Sınaq {tasks} sinfə göndərildi', { tasks: r.tasks }))
       onDone()
@@ -262,7 +262,8 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
         <div className="stack">
           <div className="fg">
             <Field label={t('Ad')} full><input value={f.title} maxLength={200} placeholder={t('məs. Buraxılış sınağı №1')} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
-            <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>
+            <label className="check full"><input type="checkbox" checked={f.unl} onChange={e => setF({ ...f, unl: e.target.checked })} /> {t('Müddətsiz (taymer və son tarix yoxdur)')}</label>
+            {!f.unl && <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>}
             <Field label={t('Bal hesabı')}><select value={f.penalty} onChange={e => setF({ ...f, penalty: e.target.value })}>{PENALTY.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}</select></Field>
             <Field label={t('Düzgün cavablar görünsün')} full><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
               <option value="after_close">{t('sınaq bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvil verdikdən dərhal sonra')}</option><option value="never">{t('heç vaxt')}</option></select></Field>
@@ -275,9 +276,9 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
               <span className="small">{t('Hamısı üçün: başlama')}</span>
               <input type="date" className="sel" value={common.d1} onChange={e => setCommon({ ...common, d1: e.target.value, d2: e.target.value > common.d2 ? e.target.value : common.d2 })} />
               <input type="time" className="sel" value={common.t1} onChange={e => setCommon({ ...common, t1: e.target.value })} />
-              <span className="small">{t('bitmə')}</span>
+              {!f.unl && <><span className="small">{t('bitmə')}</span>
               <input type="date" className="sel" value={common.d2} onChange={e => setCommon({ ...common, d2: e.target.value })} />
-              <input type="time" className="sel" value={common.t2} onChange={e => setCommon({ ...common, t2: e.target.value })} />
+              <input type="time" className="sel" value={common.t2} onChange={e => setCommon({ ...common, t2: e.target.value })} /></>}
               <button type="button" className="btn sm" onClick={toAll}>{t('Seçilənlərə tətbiq et')}</button>
             </div>
             <p className="small muted" style={{ margin: '0 0 8px' }}>{t('Tövsiyə: sınaq üçün bir gün, 2–3 saatlıq pəncərə – uzun aralıqda cavablar paylaşılır və reytinq ədalətsiz olur.')}</p>
@@ -293,9 +294,9 @@ function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void 
                     {r.on && <div className="row" style={{ gap: 6 }}>
                       <input type="date" className="sel" value={r.d1} onChange={e => set(t.ta_id, { d1: e.target.value })} />
                       <input type="time" className="sel" value={r.t1} onChange={e => set(t.ta_id, { t1: e.target.value })} />
-                      <span className="small">–</span>
+                      {!f.unl && <><span className="small">–</span>
                       <input type="date" className="sel" value={r.d2} onChange={e => set(t.ta_id, { d2: e.target.value })} />
-                      <input type="time" className="sel" value={r.t2} onChange={e => set(t.ta_id, { t2: e.target.value })} />
+                      <input type="time" className="sel" value={r.t2} onChange={e => set(t.ta_id, { t2: e.target.value })} /></>}
                     </div>}
                     {r.on && <StudentPicker ta={t.ta_id} legend={tt('Kimə – {class_name}', { class_name: t.class_name })} onChange={ids => set(t.ta_id, { ids })} />}
                   </div>)
@@ -353,6 +354,7 @@ function Results({ id, onClose, onChange }: { id: number; onClose: () => void; o
   return (
     <Drawer title={d ? d.batch.title : 'Sınaq jurnalı'} onClose={onClose}
       footer={d && <><button className="btn" onClick={print}>{t('Çap et')}</button><span className="grow" />
+        {d.classes.some((c: any) => c.state !== 'bitib') && <AsyncBtn className="btn" ok={tt('Sınaq bağlandı')} onClick={async () => { if (!window.confirm(tt('Sınaq bağlansın? Başlayıb təhvil verməyən şagirdlərin cavabları avtomatik təhvil veriləcək.'))) return; await post(`/api/exams-online/${id}/close`); reload(); onChange() }}>{t('Bağla')}</AsyncBtn>}
         <button className="btn ghost" onClick={() => setDelAsk(true)}>{d.access === 'full' ? t('Sil') : t('Sinfimdən sil')}</button></>}>
       <ErrorBox error={err} />
       {d && delAsk && <><p className="small muted">{d.access === 'full' ? t('Sınaq bütün siniflərdən birdəfəlik silinir – nəticələr və şagird cəhdləri də (geri qaytarmaq olmur).') : t('Sınaq sinfinizdən birdəfəlik silinir – nəticələr və şagird cəhdləri də (geri qaytarmaq olmur).')}</p>

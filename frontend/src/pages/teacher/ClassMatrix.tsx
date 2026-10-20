@@ -7,7 +7,7 @@ import { fmtD } from '../../print'
 import { download } from './StudentReport'
 import { useEffect, useState } from 'react'
 
-type Cell = { status: 'yazıb' | 'yazmayıb' | 'təyin olunmayıb' | 'gözlənilir' | 'nəşr olunmayıb'; pct: number | null; grade: number | null; published: boolean }
+type Cell = { status: 'yazıb' | 'yazmayıb' | 'təyin olunmayıb' | 'gözlənilir' | 'işlənməyib' | 'nəşr olunmayıb'; pct: number | null; grade: number | null; published: boolean }
 type Col = { key: string; kind: 'movzu' | 'sinaq' | 'ksq' | 'bsq'; no: string | null; title: string; date: string | null; assigned_count: number; wrote_count: number; avg_pct: number | null }
 type Row = { student_id: number; full_name: string; cells: Record<string, Cell>; wrote: number; given: number; avg_pct: number | null }
 type MData = { class_name: string; subject: string; columns: Col[]; rows: Row[] }
@@ -25,6 +25,7 @@ function CellView({ x }: { x: Cell }) {
   if (x.status === 'nəşr olunmayıb') return <td className="c" style={{ background: shade(tone(x.pct)) }} title={t('nəşr olunmayıb')}>({fmt(x.pct)})</td>
   if (x.status === 'yazmayıb') return <td className="c" style={{ color: 'var(--bad)', fontWeight: 600 }}>✗ {t('yazmayıb')}</td>
   if (x.status === 'gözlənilir') return <td className="c" title={t('hələ açıqdır')}>⏳</td>
+  if (x.status === 'işlənməyib') return <td className="c" style={{ color: 'var(--warn)' }} title={t('işlənməyib')}>⏳</td>
   return <td className="c muted" title={t('təyin olunmayıb')}>—</td>
 }
 
@@ -65,7 +66,7 @@ export default function ClassMatrix({ ta, params, label, onStudent, onResend }: 
                 <b className="click" style={{ minWidth: 190 }} onClick={() => onStudent(r.student_id)}>{r.full_name}</b>
                 <span className="row grow" style={{ gap: 6, flexWrap: 'wrap' }}>
                   {r.items.map(i => <span key={i.key} className="pill" title={fmtD(i.date)}>
-                    {i.kind === 'movzu' ? `${i.no ? '№' + i.no + ' ' : ''}${i.title}` : i.kind === 'sinaq' ? t('Sınaq: {name}', { name: i.title }) : i.title}{i.status === 'gözlənilir' ? ' ⏳' : ''}</span>)}
+                    {i.kind === 'movzu' ? `${i.no ? '№' + i.no + ' ' : ''}${i.title}` : i.kind === 'sinaq' ? t('Sınaq: {name}', { name: i.title }) : i.title}{i.status === 'gözlənilir' || i.status === 'işlənməyib' ? ' ⏳' : ''}</span>)}
                 </span>
                 <span className="pill bad">{t('{n} işlənməmiş', { n: r.items.length })}</span>
               </div>))}
