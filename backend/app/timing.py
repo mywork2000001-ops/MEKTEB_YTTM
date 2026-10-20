@@ -9,6 +9,8 @@ NO_DEADLINE = dt.datetime(2100, 1, 1, tzinfo=dt.timezone.utc)
 UNLIMITED_MIN = 0
 NOT_DONE = 'işlənməyib'        # müddətsiz test açıqdır, şagird hələ təhvil verməyib (hesabat statusu)
 
+GIVEN = ('yazıb', 'yazmayıb', NOT_DONE)     # «təyin olunub» sayılan statuslar (yazıb/təyin hesabı)
+
 
 def _aware(t: dt.datetime) -> dt.datetime:
     return t.astimezone(dt.timezone.utc) if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)

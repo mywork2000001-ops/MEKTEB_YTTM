@@ -10,6 +10,7 @@ import { printMistakes, printResults } from './studentPrint'
 import { useNavigate } from 'react-router-dom'
 import { Review } from './Tasks'
 import { Bar } from './Achievements'
+import { ResultPackage } from './ResultPackage'
 import { azDT } from '../../ui'
 
 
@@ -21,6 +22,7 @@ export default function Results() {
   const [allMistakes, setAllMistakes] = useState(false)
   const [ach] = useLoad<any>(() => get('/api/portal/achievements'), [])
   const [review, setReview] = useState<number | null>(null)
+  const [pkg, setPkg] = useState<number | null>(() => { const v = Number(new URLSearchParams(location.search).get('pkg')); return v > 0 ? v : null })    // bildiriş/çat keçidi: ?pkg=<imtahan>
   const [tk, setTk] = useState<'all' | 'movzu' | 'sinaq'>('all')
   const nav = useNavigate()
   const { me } = useAuth()
@@ -59,6 +61,7 @@ export default function Results() {
                   {e.items?.length > 0 && <div className="row" style={{ gap: 3, marginTop: 4 }}>{e.items.map((it: any) => <span key={it.n} className="small" title={it.standard ? tt('standart') + ' ' + it.standard : ''} style={{ padding: '1px 5px', borderRadius: 4, background: it.ok ? 'var(--ok-soft)' : 'var(--bad-soft)', color: it.ok ? 'var(--ok)' : 'var(--bad)' }}>{it.n}{it.ok ? '✓' : '✗'}</span>)}</div>}
                   {e.weak_standards?.length > 0 && <div className="small" style={{ marginTop: 4 }}>{tt('Təkrarla – standart')}: <b>{e.weak_standards.join(', ')}</b></div>}
                   {e.card && <ExamCard c={e.card} />}
+                  {e.has_package && <div style={{ marginTop: 6 }}><button type="button" className="btn sm primary" onClick={() => setPkg(e.exam_id)}>📄 {tt('Nəticə paketi')}</button></div>}
                   {e.published && e.exam_id && <AnswerCard examId={e.exam_id} />}</td>
                   <td>{fmtDate(e.date)}{e.taken_on && <div className="small muted">{tt('sonradan')}: {fmtDate(e.taken_on)}</div>}</td>
                   <td className="r num">{e.absent ? tt('yox idi') : e.hidden ? <span className="small muted">{tt('müəllim açanda görünəcək')}</span> : e.points != null ? `${fmt(e.points, 1)} / ${e.max_points}` : '—'}</td><td className="r num">{fmt(e.pct)}</td>
@@ -121,6 +124,7 @@ export default function Results() {
         {!allMistakes && d.mistakes.length > 10 && <button className="btn show-more" onClick={() => setAllMistakes(true)}>{tt('Hamısını göstər')} ({d.mistakes.length})</button>}
       </section>
       {review && <Review id={review} onClose={() => setReview(null)} />}
+      {pkg != null && <ResultPackage examId={pkg} onClose={() => setPkg(null)} />}
     </>
   )
 }

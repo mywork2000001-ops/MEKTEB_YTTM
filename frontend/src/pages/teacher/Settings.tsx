@@ -311,8 +311,45 @@ function PrivatePanel() {
         await patch('/api/workspaces/private', { name: f.name.trim(), bells: f.bells }); reload(); await refresh()
       }}>{t('Yadda saxla')}</AsyncBtn>
     </section>
+    <FerdiUnits />
     <PrivateCalendar />
     </>
+  )
+}
+
+/** Köhnə (bir yuvalı) fərdi dərs vaxtlarını «görüş = N×45 dəq.» formatına çevirmək: önbaxış → təsdiq. */
+function FerdiUnits() {
+  const t = useT()
+  const [d, err, , reload] = useLoad<any>(() => get('/api/workspaces/ferdi-units'), [])
+  const [open, setOpen] = useState(false)
+  if (!d) return err ? <ErrorBox error={err} /> : <Loading />
+  const rows: any[] = d.groups.filter((g: any) => g.changed)
+  return (
+    <section className="panel" style={{ maxWidth: 720 }}>
+      {!rows.length ? <p className="small muted" style={{ margin: 0 }}>{t('Hamısı artıq görüş formatındadır')}</p> : (
+        <>
+          <button className="btn" onClick={() => setOpen(!open)}>{t('Köhnə dərs vaxtlarını görüşə çevir (2×45)')}</button>
+          {open && (
+            <>
+              <p className="small muted">{t('Köhnə bir yuvalı vaxtlar (məs. 17:00–18:30) görüş formatına keçirilir: hər 45 dəqiqəlik hissə ayrıca dərs saatıdır, aralarında 5 dəqiqə fasilə. Jurnal yazıları birinci hissədə qalır, proqramı olan qruplarda plan yenidən qurulur (keçilmiş dərslər dəyişmir).')}</p>
+              <div className="tbl-wrap"><table className="tbl">
+                <thead><tr><th>{t('Sinif')}</th><th>{t('Köhnə vaxtlar')}</th><th>{t('Yeni görüşlər')}</th><th>{t('Yuva')}</th></tr></thead>
+                <tbody>{rows.map((g: any) => (
+                  <tr key={g.ta_id}>
+                    <td>{g.class} · {g.subject}{g.has_program ? <div className="small muted">{t('plan yenilənəcək')}</div> : null}</td>
+                    <td>{g.old_times.join(', ')}</td>
+                    <td>{g.new_meetings.map((m: any) => <div key={m.day + m.start}>{m.day} {m.parts.join(' + ')}</div>)}</td>
+                    <td>{g.old_slots} → {g.new_slots}</td>
+                  </tr>))}</tbody>
+              </table></div>
+              <AsyncBtn className="btn primary" onClick={async () => {
+                const r = await post<any>('/api/workspaces/ferdi-units'); toast(t('Çevrildi: {n} qrup', { n: r.changed.length })); setOpen(false); reload()
+              }}>{t('Təsdiq et və çevir')}</AsyncBtn>
+            </>
+          )}
+        </>
+      )}
+    </section>
   )
 }
 

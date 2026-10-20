@@ -39,6 +39,7 @@ class ExamIn(BaseModel):
     title: str | None = Field(None, max_length=3000)
     extra_of: int | None = None                    # əlavə KSQ/BSQ: əsas imtahanın id-si
     extra_students: list[int] | None = None        # əlavə imtahan: yalnız bu şagirdlər (None – bütün sinif)
+    send_on_scan: bool | None = None               # «skan olunan kimi şagirdə göndər» (None – dəyişmir / yeni imtahanda söndürülü)
 
     @model_validator(mode='after')
     def _max(self):
@@ -57,7 +58,8 @@ def exam_out(e: Exam) -> dict:
             'max_points': e.max_points, 'items': e.items, 'title': e.title,
             'extra_of': e.extra_of, 'extra_seq': e.extra_seq or 0, 'extra_students': e.extra_students, 'label': exam_label(e),
             'results_published_at': e.results_published_at, 'appeal_until': e.appeal_until,
-            'online_task_id': e.online_task_id, 'batch_id': e.batch_id, 'to_journal': e.to_journal, 'variant_mode': e.variant_mode}
+            'online_task_id': e.online_task_id, 'batch_id': e.batch_id, 'to_journal': e.to_journal, 'variant_mode': e.variant_mode,
+            'send_on_scan': bool(e.send_on_scan)}
 
 
 def _exam(db: Session, ta_id: int, exam_id: int) -> Exam:
@@ -115,6 +117,17 @@ def _check_exam(db: Session, ta, body: ExamIn, exam_id: int | None = None):
             raise HTTPException(409, f'{body.semester}-ci yarımildə BSQ artıq var')
 
 
+def _check_send_on_scan(db: Session, ta, body: ExamIn, e: Exam | None) -> None:
+    """«Skan olunan kimi göndər» açılanda: eyni imtahan başqa sinifdə hələ keçirilməyibsə (tarixi gələcəkdədir) – 409."""
+    if not body.send_on_scan:
+        return
+    from ..exam_cards import same_exam_elsewhere
+    other = same_exam_elsewhere(db, ta, body.kind, body.no, body.semester, e.extra_seq if e else (1 if body.extra_of else 0), e.id if e else None)
+    if other:
+        raise HTTPException(409, f'«Skan olunan kimi göndər» bloklanıb: eyni imtahan «{other}» sinfində hələ keçirilməyib (suallar sızar). '
+                                 'Həmin sinif yazandan sonra açın və ya «Nəticələri göndər» düyməsindən istifadə edin')
+
+
 @router.post('/{ta_id}')
 def create_exam(ta_id: int, body: ExamIn, user: User = Depends(staff), db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)
@@ -122,6 +135,7 @@ def create_exam(ta_id: int, body: ExamIn, user: User = Depends(staff), db: Sessi
     if not ta.has_summative:
         raise HTTPException(400, 'Bu qrupda KSQ/BSQ keçirilmir (bütöv sinifdə keçirilir)')
     seq = 0
+    _check_send_on_scan(db, ta, body, None)
     if body.extra_of is None:
         if body.extra_students is not None:
             raise HTTPException(400, 'Şagird seçimi yalnız əlavə imtahan üçündür')
@@ -134,7 +148,7 @@ def create_exam(ta_id: int, body: ExamIn, user: User = Depends(staff), db: Sessi
     e = Exam(extra_of=body.extra_of, extra_seq=seq, extra_students=sorted(set(body.extra_students)) if body.extra_students is not None else None,
              assignment_id=ta.id, kind=body.kind, no=body.no, semester=body.semester, date=body.date,
              max_points=body.max_points, items=[i.model_dump() for i in body.items] if body.items else None,
-             title=body.title)
+             title=body.title, send_on_scan=bool(body.send_on_scan))
     db.add(e)
     db.flush()
     audit(db, user, 'create', 'exam', e.id, kind=e.kind, no=e.no, extra_seq=seq)
@@ -155,6 +169,7 @@ def update_exam(ta_id: int, exam_id: int, body: ExamIn, user: User = Depends(sta
     elif body.extra_of is not None or body.extra_students is not None:
         raise HTTPException(400, 'Əsas imtahan əlavəyə çevrilə bilməz')
     _check_exam(db, ta, body, e.id)
+    _check_send_on_scan(db, ta, body, e)
     has_scores = db.scalar(select(ExamScore).where(ExamScore.exam_id == e.id, ExamScore.points.is_not(None)))
     if has_scores and (body.max_points != e.max_points or (body.items and len(body.items) != len(e.items or []))):
         raise HTTPException(409, 'Nəticələr yazılıb – maksimal bal və tapşırıq sayı dəyişdirilə bilməz')
@@ -163,6 +178,8 @@ def update_exam(ta_id: int, exam_id: int, body: ExamIn, user: User = Depends(sta
     e.items = [i.model_dump() for i in body.items] if body.items else None
     if e.extra_seq:
         e.extra_students = sorted(set(body.extra_students)) if body.extra_students is not None else None
+    if body.send_on_scan is not None:
+        e.send_on_scan = body.send_on_scan
     audit(db, user, 'update', 'exam', e.id)
     db.commit()
     return exam_out(e)
@@ -278,9 +295,13 @@ def publish_results(ta_id: int, exam_id: int, body: PublishIn, user: User = Depe
     e = _exam(db, ta_id, exam_id)
     e.results_published_at = (e.results_published_at or now()) if body.published else None
     e.appeal_until = (now() + dt.timedelta(days=body.appeal_days)) if body.published else None
-    audit(db, user, 'update', 'exam_publish', e.id, published=body.published)
+    sent = 0
+    if body.published:                                  # nəticə paketi bütün yazan şagirdlərə açılır + bildiriş/çat (şagird üzrə bir dəfə)
+        from ..exam_cards import deliver_published
+        sent = deliver_published(db, e)
+    audit(db, user, 'update', 'exam_publish', e.id, published=body.published, sent=sent)
     db.commit()
-    return exam_out(e)
+    return {**exam_out(e), 'sent': sent}
 
 
 @router.get('/{ta_id}/{exam_id}/cards')
@@ -296,6 +317,30 @@ def exam_cards_print(ta_id: int, exam_id: int, user: User = Depends(staff), db: 
             out.append({'student_id': s.id, 'full_name': s.full_name, **c})
     cls = db.get(SchoolClass, ta.class_id)
     return {'exam': exam_out(e), 'class_name': cls.name if cls else '', 'subject': ta.subject, 'cards': out}
+
+
+@router.get('/{ta_id}/{exam_id}/packages')
+def exam_packages(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Müəllim: bütün sinfin nəticə paketləri (çap/PDF üçün – hər şagird ayrıca səhifədən). Nəşrdən asılı deyil, tam məzmun."""
+    from ..exam_cards import student_package
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    out = []
+    for s in exam_roster(db, ta, e):
+        p = student_package(db, e, s.id, None, True)
+        if p is not None:
+            out.append({'student_id': s.id, 'full_name': s.full_name, **p})
+    cls = db.get(SchoolClass, ta.class_id)
+    return {'exam': exam_out(e), 'class_name': cls.name if cls else '', 'subject': ta.subject, 'packages': out}
+
+
+@router.get('/{ta_id}/{exam_id}/delivery')
+def exam_delivery(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Hər şagird sətrində göndəriş statusu: göndərilməyib / göndərildi (tarix) / baxıb."""
+    from ..exam_cards import delivery_status
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    return {str(k): v for k, v in delivery_status(db, e, [s.id for s in exam_roster(db, ta, e)]).items()}
 
 
 class ChoiceIn(BaseModel):

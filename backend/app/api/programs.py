@@ -267,7 +267,7 @@ class EstimateIn(BaseModel):
     times: list[dict] | None = None              # fərdi qrup: [{weekday, start, end}]
     starts_on: dt.date | None = None
     ends_on: dt.date | None = None
-    has_summative: bool = True
+    has_summative: bool | None = None            # boş: fərdi məkanda – yox, məktəbdə – hə
 
 
 @router.post('/{pid}/estimate')
@@ -284,6 +284,9 @@ def estimate(pid: int, body: EstimateIn, user: User = Depends(staff), db: Sessio
             slots, _ = private_times(db, user, c, None, [TimeIn(**t) for t in body.times])
         except HTTPException as e:
             return {'lessons': 0, 'slots': 0, 'warnings': [str(e.detail)]}
+    if body.has_summative is None:
+        from ..models import School
+        body.has_summative = db.get(School, c.school_id).kind != 'private'
     ta = TeachingAssignment(teacher_id=user.id, class_id=c.id, subject='', weekly_hours=1, slots=slots,
                             has_summative=body.has_summative, starts_on=body.starts_on, ends_on=body.ends_on)
     lessons, rep = lessons_for(db, p, ta)
@@ -292,8 +295,9 @@ def estimate(pid: int, body: EstimateIn, user: User = Depends(staff), db: Sessio
     lint = [] if is_course(p) or is_toplu(p) else lint_plan(dl, db.get(AcademicYear, c.year_id), body.has_summative)
     hours = sum(len(v) for v in slots.values())
     return {'lessons': rep['lessons'], 'slots': rep['sem1_slots'] + rep['sem2_slots'], 'warnings': rep['warnings'], 'lint': lint,
+            'grade_warning': rep['grade_warning'], 'suggest_sections': rep['suggest_sections'],
             'hours_mismatch': bool(p.weekly_hours and hours and p.weekly_hours != hours), 'program_hours': p.weekly_hours,
-            'class_hours': hours}
+            'class_hours': hours, 'budget': rep['budget']}
 
 
 # ---------------------------------------------------------------- Word planı birbaşa kitabxanaya

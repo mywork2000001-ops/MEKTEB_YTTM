@@ -16,6 +16,7 @@ type Stud = { id: number; full_name: string; portal_code: string; left_on?: stri
 type MarkRow = { student_id: number; task_id?: number | null; kind: 'şifahi' | 'yazılı' | 'test'; grade?: number | null; test_correct?: number | null; test_total?: number | null; comment?: string | null }
 type Lesson = {
   period: number; time: string | null; held: boolean; shift: number; homework_to_check: string | null
+  meeting?: { part: number; of: number; time: string } | null
   plan: { topic: string; assessment_type: string; section: string | null; resources: string | null; seq: number; standards: string[] | null; tasks: { kind: string; label: string; start: number; end: number }[] | null } | null
   entry: { exists: boolean; auto?: boolean; topic?: string | null; homework?: string | null; note?: string | null; attendance: Record<string, string>; marks: MarkRow[]; homework_checks: Record<string, string> }
   prev_attendance: { period: number; attendance: Record<string, string> } | null      // həmin gün əvvəlki yazılmış dərsdən (təklif)
@@ -173,7 +174,9 @@ function LessonCard({ ta, date, lesson, students, left, noMarks, locked, canUnlo
         <label className="small row" style={{ marginTop: 6 }}>{t('Admin: bağlanmış yarımildə düzəliş səbəbi (≥ 5 simvol)')}
           <input className="sel" style={{ minWidth: 260 }} maxLength={300} value={unlock} onChange={x => setUnlock(x.target.value)} /></label>)}</div>}
       <fieldset disabled={ro} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-      <h2 style={{ flexWrap: 'wrap' }}>{lessonWhen(lesson.period, lesson.time)} {lessonWhen(lesson.period, lesson.time) !== lesson.time && <small>{lesson.time}</small>}
+      <h2 style={{ flexWrap: 'wrap' }}>{lesson.meeting ? <>{lesson.meeting.time} · {t('{n} saat', { n: lesson.meeting.of })} <small>{t('{p}-ci hissə', { p: lesson.meeting.part })}</small></>
+        : <>{lessonWhen(lesson.period, lesson.time)} {lessonWhen(lesson.period, lesson.time) !== lesson.time && <small>{lesson.time}</small>}</>}
+        {lesson.meeting && lesson.meeting.part > 1 && <Pill tone="info">{t('Davamiyyət görüşün 1-ci hissəsindən köçür')}</Pill>}
         {isExam && <Pill tone="warn">{lesson.plan!.assessment_type}</Pill>}
         {lesson.shift > 0 && <Pill tone="warn">{t('geriləmə:')} {lesson.shift} {t('dərs')}</Pill>}
         {e.exists && !e.auto && <Pill tone="ok">{t('yazılıb')}</Pill>}

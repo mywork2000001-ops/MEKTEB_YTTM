@@ -197,6 +197,18 @@ function SectionPicker({ all, sel, setSel, unit }: { all: Sec[]; sel: string[] |
   )
 }
 
+/** Proqram önbaxışı: «Testlər: 74/83 mövzu tapıldı · 9 yoxdur (VII – 5, VIII – 4)» – bank boşluqları (sinif üzrə). */
+function CoverageLine({ pid, ta, sections }: { pid: number; ta: number; sections?: string }) {
+  const t = useT()
+  const [c] = useLoad<any>(() => get(`/api/bank/coverage`, { program_id: pid, ta_id: ta, ...(sections && sections !== 'null' ? { sections } : {}) }), [pid, ta, sections])
+  if (!c || c.off || !c.total) return null
+  const miss = Object.entries(c.by_grade as Record<string, { missing: number }>).filter(([, v]) => v.missing > 0)
+    .map(([g, v]) => `${ROMAN_G[Number(g)] || g} – ${v.missing}`).join(', ')
+  return <p className="small" style={{ margin: '0 0 6px', color: c.missing ? 'var(--warn)' : undefined }}>
+    {t('Testlər: {a}/{b} mövzu tapıldı', { a: c.found, b: c.total })}{c.missing > 0 && ` · ${t('{n} yoxdur', { n: c.missing })} (${miss})`}</p>
+}
+const ROMAN_G: Record<number, string> = { 5: 'V', 6: 'VI', 7: 'VII', 8: 'VIII', 9: 'IX', 10: 'X', 11: 'XI' }
+
 function ApplyProgram({ p, ta, init, onClose, onDone }: { p: Prog; ta: number; init?: string[] | null; onClose: () => void; onDone: () => void }) {
   const t = useT()
   const sx = useSections(p.id, init ?? null)
@@ -225,6 +237,9 @@ function ApplyProgram({ p, ta, init, onClose, onDone }: { p: Prog; ta: number; i
           <div className="kpi"><b>{pv.written_lessons}</b><span>{t('jurnalda yazılıb')}</span></div>
         </div>}
         {pv.warnings.map((w: string) => <p key={w} className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {w}</p>)}
+        {pv.grade_warning && <p className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {t(pv.grade_warning.key, pv.grade_warning.params)}{' '}
+          {pv.suggest_sections?.length > 0 && <button className="btn sm" onClick={() => sx.setSel(pv.suggest_sections)}>{t('Yalnız qrupun sinfinə qədər bölmələri seç')}</button>}</p>}
+        <CoverageLine pid={p.id} ta={ta} sections={key} />
         {pv.hours_mismatch && <p className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {t('Proqram həftədə {p} saatlıqdır, cədvəldə isə {c} saat var', { p: pv.program_hours, c: pv.class_hours })}</p>}
         {(pv.lint || []).map((w: any) => <p key={w.message} className="small" style={{ color: 'var(--warn)', margin: '0 0 6px' }}>⚠ {t(w.key, w.params)}</p>)}
         <p className="small muted">{t('Tətbiq olunanda: hazırkı plan kitabxanada «əvvəlki plan» kimi qalır (geri qaytarmaq olar); jurnalda yazılmış dərslərin mövzusu dəyişmir; yeni dərslər sinfin cədvəlinə görə tarixlənir. Proqram başqa proqramla qarışdırılmır.')}</p>

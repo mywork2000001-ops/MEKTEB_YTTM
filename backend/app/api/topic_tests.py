@@ -294,21 +294,27 @@ def p0010_for_topic(ta_id: int, pl_id: int, file_id: int | None = None, n: int =
     (docs/x-xi-p0010-testleri-promtu.md). Fayldakı suallar n-dən çoxdursa – n təsadüfi (qapalı:açıq ≈ 2:1)."""
     import random
 
-    from ..bank.match import p0010_matches, source_for
-    from ..models import BankFile, BankQuestion
+    from ..bank.match import GradeMatcher
+    from ..models import BankFile, BankQuestion, PlanProgram, SchoolClass
+    from ..programs import lesson_grade
+    from ..services import class_grade
     from .programs import _pick
     ta = own_assignment(db, user, ta_id)
     pl = _pl(db, ta, pl_id)
-    from ..bank.match import ta_source
-    SOURCE = ta_source(db, ta)
-    if not SOURCE:
+    # plan görünüşü ilə eyni yol: dərsin öz sinfi → sinfin sıralı mənbələri (bank/match.py GradeMatcher)
+    from .. import plan_tests as E                       # tək mühərrik: sinif + mövzu nömrəsi + ad (app/plan_tests.py)
+    explicit = ta.bank_source if ta.bank_source != 'none' else None
+    gm = GradeMatcher(db, explicit)
+    g, fx, _no = E.locate(db, ta, pl, 6, E.TaCtx(db, ta, gm))
+    if ta.bank_source == 'none' or not gm.sources(g) or fx is None:
         return {'eligible': False, 'matches': [], 'questions': []}
+    found, SOURCE = fx.files, fx.source
     if SOURCE == 'p007':                     # «Test toplusu» dərsi – sualları öz S/E/M aralığından gəlir (programs.toplu_questions)
         from .programs import _toplu_src, toplu_lesson
         if toplu_lesson(pl, _toplu_src()) is not None:
             return {'eligible': False, 'matches': [], 'questions': [], 'toplu': True}
-    found = p0010_matches(db, pl.topic, pl.section, source=SOURCE)
-    out = {'eligible': True, 'source': SOURCE, 'matches': [{'file_id': f.id, 'label': f.label, 'count': f.question_count, 'score': s}
+    srcs = set(gm.sources(g)) | ({ta.bank_source} if ta.bank_source else set())
+    out = {'eligible': True, 'source': SOURCE, 'grade': g, 'matches': [{'file_id': f.id, 'label': f.label, 'count': f.question_count, 'score': s}
                                          for f, s in found], 'questions': []}
     if file_id is None:                      # müəllimin plan sətrində seçdiyi fayl avtomatikdən üstündür
         from ..models import LessonBankLink
@@ -321,7 +327,7 @@ def p0010_for_topic(ta_id: int, pl_id: int, file_id: int | None = None, n: int =
                 kf = db.get(BankFile, k.file_id)
                 out['matches'].insert(0, {'file_id': kf.id, 'label': kf.label, 'count': kf.question_count, 'score': None})
     f = db.get(BankFile, file_id) if file_id else (found[0][0] if found else None)
-    if f is None or f.source_key != SOURCE:
+    if f is None or (f.source_key not in srcs and not (file_id and not ta.bank_source)):
         return out
     qs = list(db.scalars(select(BankQuestion).where(BankQuestion.file_id == f.id, BankQuestion.active.is_(True))
                          .order_by(BankQuestion.n)))
@@ -329,6 +335,6 @@ def p0010_for_topic(ta_id: int, pl_id: int, file_id: int | None = None, n: int =
     if len(qs) > n:
         keep = {q.id for q in _pick(qs, n, random.Random())}
         qs = [q for q in qs if q.id in keep]
-    out.update(file={'file_id': f.id, 'label': f.label}, title=f"№{pl.seq} {pl.topic} – {'DİM 9' if SOURCE == 'p007' else 'P0010'} testi"[:200],
+    out.update(file={'file_id': f.id, 'label': f.label}, title=f"№{pl.seq} {pl.topic} – {'DİM 9' if f.source_key == 'p007' else 'P0010' if f.source_key == 'p003' else f.source_key.upper()} testi"[:200],
                questions=_snapshot(db, [q.id for q in qs]) if qs else [])
     return out

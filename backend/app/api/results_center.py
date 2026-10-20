@@ -6,7 +6,7 @@ import datetime as dt
 import json
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from .. import ai
 from ..db import get_db
 from ..deps import staff
 from ..domain.rules import summative_grade
+from ..timing import GIVEN
 from ..models import AiReview, LevelOverride, SchoolClass, Student, TeachingAssignment, User, now
 from ..services import own_assignment, ws_cond
 from ..test_stats import KINDS, avg, collect, missing, per_student, rating
@@ -122,6 +123,10 @@ def _student_data(db: Session, user: User, sid: int, date_from=None, date_to=Non
                                                                   'chronic', 'low_participation')},
                            'class_size': sum(1 for r in rt['rows'] if r['class_name'] == (me or {}).get('class_name')),
                            'items': items, 'weak_topics': tl[:5], 'strong_topics': tl[::-1][:5]}
+    # kağız / skan nəticələr, adı ilə sınaqlar və nömrəli mövzu testləri (docs/sagird-ferdi-hesabat-promtu.md; geriyə uyğun əlavə)
+    from ..student_report import student_results
+    rep = student_results(db, user, sid, date_from, date_to)
+    out.update(topic_tests=rep['topic_tests'], mocks=rep['mocks'], summatives=rep['summatives'])
     return out
 
 
@@ -131,6 +136,177 @@ def student_profile(sid: int, date_from: dt.date | None = None, date_to: dt.date
     out = _student_data(db, user, sid, date_from, date_to)
     db.commit()
     return out
+
+
+@router.get('/student/{sid}/report')
+def student_report(sid: int, date_from: dt.date | None = Query(None, alias='from'), date_to: dt.date | None = Query(None, alias='to'),
+                   format: Literal['json', 'pdf', 'docx'] = 'json', lang: Literal['az', 'ru', 'en'] = 'az', parent: bool = False,
+                   user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Şagirdin fərdi hesabatı (onlayn + kağız + sınaqlar + KSQ/BSQ). pdf/docx: rəsmi çap AZ; parent=true – valideyn nüsxəsi (AZ|RU)."""
+    from fastapi.responses import Response
+    from ..student_report import student_results
+    from ..student_report_print import report_docx, report_html
+    rep = student_results(db, user, sid, date_from, date_to)
+    db.commit()                                       # expire_due avtomatik təhvilləri saxlasın
+    if format == 'json':
+        return rep
+    if not parent:
+        lang = 'az'                                    # rəsmi sənəd yalnız Azərbaycan dilində
+    name = f"hesabat-{sid}"
+    audit(db, user, 'export', 'student_report', str(sid), format=format, parent=parent)
+    db.commit()
+    if format == 'docx':
+        return Response(report_docx(rep, lang, parent), headers={'Content-Disposition': f'attachment; filename="{name}.docx"'},
+                        media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    return Response(_render_pdf(report_html(rep, lang, parent)), media_type='application/pdf',
+                    headers={'Content-Disposition': f'attachment; filename="{name}.pdf"'})
+
+
+def _render_pdf(html: str) -> bytes:
+    from .printing import _lock, render_pdf
+    if not _lock.acquire(timeout=60):
+        raise HTTPException(503, 'Server məşğuldur – bir az sonra yenidən yoxlayın')
+    try:
+        return render_pdf(html)
+    except Exception as e:                                   # noqa: BLE001
+        raise HTTPException(500, f'PDF hazırlanmadı: {str(e)[:120]}')
+    finally:
+        _lock.release()
+
+
+MAX_BULK = 60
+
+
+@router.get('/class/{ta_id}/reports')
+def class_reports(ta_id: int, date_from: dt.date | None = Query(None, alias='from'), date_to: dt.date | None = Query(None, alias='to'),
+                  format: Literal['pdf', 'html'] = 'pdf', lang: Literal['az', 'ru', 'en'] = 'az', parent: bool = False,
+                  user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Sinfin bütün şagirdlərinin hesabatı – hər şagird ayrıca səhifə (valideyn iclası üçün). Yalnız öz dərsimin sinfi;
+    şagird adı ilə əlifba sırası. format=html – çap önbaxışı üçün hazır sənəd (testlər və brauzer)."""
+    from fastapi.responses import HTMLResponse, Response
+    from ..services import roster
+    from ..student_report import student_results
+    from ..student_report_print import report_html_many
+    ta = own_assignment(db, user, ta_id)
+    students = sorted(roster(db, ta), key=lambda s: s.full_name)
+    if len(students) > MAX_BULK:
+        raise HTTPException(400, f'Bir dəfəyə ən çox {MAX_BULK} şagird')
+    reps = []
+    for s in students:
+        try:
+            reps.append(student_results(db, user, s.id, date_from, date_to))
+        except HTTPException:
+            continue                                   # görünməyən şagird sənədə düşmür
+    if not reps:
+        raise HTTPException(404, 'Şagird tapılmadı')
+    db.commit()
+    if not parent:
+        lang = 'az'
+    audit(db, user, 'export', 'class_reports', str(ta_id), count=len(reps), parent=parent)
+    db.commit()
+    html = report_html_many(reps, lang, parent)
+    if format == 'html':
+        return HTMLResponse(html)
+    return Response(_render_pdf(html), media_type='application/pdf', headers={'Content-Disposition': f'attachment; filename="hesabatlar-{ta_id}.pdf"'})
+
+
+@router.get('/class/{ta_id}/matrix')
+def class_matrix_api(ta_id: int, kind: Literal['movzu', 'sinaq', 'all'] = 'all', date_from: dt.date | None = Query(None, alias='from'),
+                     date_to: dt.date | None = Query(None, alias='to'), format: Literal['json', 'xlsx', 'pdf'] = 'json',
+                     user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«Kim nəyi işləyib»: şagird × test cədvəli (mövzu testləri, sınaqlar, kağız KSQ/BSQ). Yalnız öz dərsim.
+    xlsx/pdf – rəsmi çap (AZ, A4 albom)."""
+    from fastapi.responses import Response
+    from ..class_matrix_print import matrix_html, matrix_xlsx
+    from ..models import School
+    from ..student_report import class_matrix
+    m = class_matrix(db, user, ta_id, kind, date_from, date_to)
+    db.commit()                                       # expire_due avtomatik təhvilləri saxlasın
+    if format == 'json':
+        return m
+    from .lessonplans import SCHOOL_DEFAULT
+    sc = db.get(School, user.school_id) if user.school_id else None
+    school = sc.name if sc and sc.name else SCHOOL_DEFAULT
+    audit(db, user, 'export', 'class_matrix', str(ta_id), format=format)
+    db.commit()
+    if format == 'xlsx':
+        deputy = ((sc.doc_settings or {}) if sc else {}).get('deputy') or ''
+        return Response(matrix_xlsx(m, school, user.full_name, deputy), headers={'Content-Disposition': f'attachment; filename="matris-{ta_id}.xlsx"'},
+                        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    return Response(_render_pdf(matrix_html(m, school, user.full_name)), media_type='application/pdf',
+                    headers={'Content-Disposition': f'attachment; filename="matris-{ta_id}.pdf"'})
+
+
+@router.get('/class/{ta_id}/missing-list')
+def class_missing_api(ta_id: int, kind: Literal['movzu', 'sinaq', 'all'] = 'all', date_from: dt.date | None = Query(None, alias='from'),
+                      date_to: dt.date | None = Query(None, alias='to'), format: Literal['json', 'xlsx', 'pdf'] = 'json',
+                      per_student: int = Query(0, ge=0, le=1), sid: int | None = None,
+                      user: User = Depends(staff), db: Session = Depends(get_db)):
+    """İşlənməyənlər siyahısı (matrisdən): json; pdf/xlsx – sinif üzrə bir sənəd (rəsmi, AZ); per_student=1 – hər şagirdə ayrıca vərəqə
+    (PDF; şagirdin dili ru isə AZ|RU), sid – tək şagird. Yalnız öz dərsim."""
+    from fastapi.responses import Response
+    from ..missing_list_print import class_html, class_xlsx, students_html
+    from ..models import School
+    from ..student_report import class_missing
+    m = class_missing(db, user, ta_id, kind, date_from, date_to, sid)
+    db.commit()                                       # expire_due avtomatik təhvilləri saxlasın
+    if format == 'json':
+        return m
+    if per_student and format == 'xlsx':
+        raise HTTPException(400, 'Hər şagirdə ayrıca vərəqə yalnız PDF-dir')
+    if per_student and not m['rows']:
+        raise HTTPException(404, 'İşlənməyən test yoxdur')
+    from .lessonplans import SCHOOL_DEFAULT
+    sc = db.get(School, user.school_id) if user.school_id else None
+    school = sc.name if sc and sc.name else SCHOOL_DEFAULT
+    audit(db, user, 'export', 'missing_list', str(ta_id), format=format, per_student=per_student, sid=sid)
+    db.commit()
+    if format == 'xlsx':
+        deputy = ((sc.doc_settings or {}) if sc else {}).get('deputy') or ''
+        return Response(class_xlsx(m, school, user.full_name, deputy), headers={'Content-Disposition': f'attachment; filename="islenmeyenler-{ta_id}.xlsx"'},
+                        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    html = students_html(m, school, user.full_name) if per_student else class_html(m, school, user.full_name)
+    return Response(_render_pdf(html), media_type='application/pdf',
+                    headers={'Content-Disposition': f'attachment; filename="islenmeyenler-{ta_id}{"-sagird" if per_student else ""}.pdf"'})
+
+
+@router.get('/student/{sid}/missing-list')
+def student_missing_api(sid: int, kind: Literal['movzu', 'sinaq', 'all'] = 'all', date_from: dt.date | None = Query(None, alias='from'),
+                        date_to: dt.date | None = Query(None, alias='to'), user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Şagird hesabatından: «İşləməli olduğu testlər» vərəqəsi (PDF) – şagirdin mənim bütün dərslərim üzrə (hər dərs ayrıca vərəq)."""
+    from fastapi.responses import Response
+    from ..missing_list_print import students_html
+    from ..models import School
+    from ..student_report import class_missing
+    rows, last = [], None
+    for ta in _my_tas(db, user):
+        try:
+            m = class_missing(db, user, ta.id, kind, date_from, date_to, sid)
+        except HTTPException:
+            continue
+        last = m
+        for r in m['rows']:
+            if r['items']:
+                rows.append({**r, 'class_name': m['class_name'], 'subject': m['subject']})
+    db.commit()
+    if not rows or last is None:
+        raise HTTPException(404, 'İşlənməyən test yoxdur')
+    from .lessonplans import SCHOOL_DEFAULT
+    sc = db.get(School, user.school_id) if user.school_id else None
+    school = sc.name if sc and sc.name else SCHOOL_DEFAULT
+    audit(db, user, 'export', 'missing_list_student', str(sid))
+    db.commit()
+    return Response(_render_pdf(students_html({**last, 'rows': rows}, school, user.full_name)), media_type='application/pdf',
+                    headers={'Content-Disposition': f'attachment; filename="islenmeyenler-sagird-{sid}.pdf"'})
+
+
+@router.get('/missing-summary')
+def missing_summary_api(user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Əsas səhifə («Bu həftə diqqət»): öz dərslərim üzrə işlənməmiş test sayı – siyahı ilə eyni statuslar (class_missing)."""
+    from ..student_report import missing_summary
+    items = missing_summary(db, user, _my_tas(db, user))
+    db.commit()
+    return {'items': items}
 
 
 @router.get('/students')
@@ -173,7 +349,7 @@ def _class_data(db: Session, user: User, ta_id: int | None, level: str | None, d
             if not rs:
                 continue
             w = [r['pct'] for r in rs if r['status'] == 'yazıb']
-            g = [r for r in rs if r['status'] in ('yazıb', 'yazmayıb')]
+            g = [r for r in rs if r['status'] in GIVEN]
             tests.append({'unit': t['unit'], 'title': t['title'], 'date': t['date'], 'topic': t['topic'],
                           'avg_pct': avg(w), 'wrote': len(w), 'given': len(g), 'max_pct': max(w) if w else None,
                           'min_pct': min(w) if w else None, 'missed': sum(1 for r in rs if r['status'] == 'yazmayıb')})
@@ -194,7 +370,7 @@ def _class_data(db: Session, user: User, ta_id: int | None, level: str | None, d
                                             'missed', 'participation', 'attention', 'chronic')} | {'level': lv.get(p['student_id'])}
                         for p in ps.values()], key=lambda x: (x['avg_pct'] is None, -(x['avg_pct'] or 0), x['full_name']))
         allw = [r['pct'] for r in rows if r['status'] == 'yazıb']
-        given = sum(1 for r in rows if r['status'] in ('yazıb', 'yazmayıb'))
+        given = sum(1 for r in rows if r['status'] in GIVEN)
         out['parts'][k] = {'summary': {'tests': len(tests), 'students': len(ps), 'avg_pct': avg(allw),
                                        'participation': round(len(allw) * 100 / given, 1) if given else None,
                                        'missed': sum(p['missed'] for p in ps.values()),
@@ -224,7 +400,7 @@ def _overview_data(db: Session, user: User, date_from=None, date_to=None) -> dic
         for k in KINDS:
             rows = [r for r in datas[k]['rows'] if r['ta_id'] == ta.id and r['visible']]
             w = [r['pct'] for r in rows if r['status'] == 'yazıb']
-            g = sum(1 for r in rows if r['status'] in ('yazıb', 'yazmayıb'))
+            g = sum(1 for r in rows if r['status'] in GIVEN)
             ps = per_student(rows)
             c[k] = {'tests': len({r['unit'] for r in rows}), 'avg_pct': avg(w),
                     'participation': round(len(w) * 100 / g, 1) if g else None,
