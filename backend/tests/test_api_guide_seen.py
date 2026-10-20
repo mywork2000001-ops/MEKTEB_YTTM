@@ -32,17 +32,29 @@ def test_guide_flow(world, monkeypatch):
     assert b.get('/api/auth/me').json()['guide_due'] is True          # başqa şagirdin bayrağı dəyişmir
     rows = {r['id']: r for r in admin.get(f'/api/students?class_id={cid}').json()}
     assert rows[st[0]['id']]['guide_seen'] is True and rows[st[1]['id']]['guide_seen'] is False
-    monkeypatch.setattr('app.api.auth.GUIDE_VERSION', 2)               # video yenilənib – yenidən göstərilir
+    monkeypatch.setattr('app.api.auth.GUIDE_VERSION', 3)               # video yenilənib – yenidən göstərilir
     assert a.get('/api/auth/me').json()['guide_due'] is True
     a.__exit__(None, None, None)
     b.__exit__(None, None, None)
 
 
 def test_guide_staff(world):
+    """Müəllim (heyət) də tanıtımı bir dəfə görür: guide_due true -> guide-seen -> false."""
     as_, _ = world
-    assert as_('ilqar').post('/api/portal/guide-seen').status_code == 403
-    assert as_('ilqar').get('/api/auth/me').json()['guide_due'] is False
-    assert as_('admin').get('/api/auth/me').json()['guide_due'] is False
+    t = as_('ilqar')
+    assert t.get('/api/auth/me').json()['guide_due'] is True
+    assert t.post('/api/auth/guide-seen').json()['ok'] is True
+    assert t.get('/api/auth/me').json()['guide_due'] is False
+    assert as_('admin').get('/api/auth/me').json()['guide_due'] is True      # başqa istifadəçinin bayrağı dəyişmir
+    assert as_('ilqar').post('/api/portal/guide-seen').status_code == 403    # şagird yolu şagirdlər üçün qalır
+
+
+def test_guide_student_common_endpoint(world):
+    admin, cid, st = _setup(world)
+    a = _student(st[0]['portal_code'], st[0]['initial_pin'])
+    assert a.post('/api/auth/guide-seen').json()['ok'] is True
+    assert a.get('/api/auth/me').json()['guide_due'] is False
+    a.__exit__(None, None, None)
 
 
 def test_single_migration_head():

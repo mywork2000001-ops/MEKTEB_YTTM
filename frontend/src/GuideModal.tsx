@@ -1,12 +1,14 @@
-// Şagirdin giriş videosu: girişdən sonra bir dəfə pəncərə (test icra ekranı istisna), «görüldü» serverdə (users.guide_seen_version).
+// Xoş gəldin pəncərəsi (şagird və müəllim): girişdən sonra bir dəfə ortada böyük pəncərə + tanıtım videosu (00-tanitim).
+// «Gördü» serverdə (users.guide_seen_version, POST /api/auth/guide-seen): video sona çatanda və ya «Bir daha göstərmə» basanda.
 // «Sonra bax» yalnız bu sessiyanı gizlədir (sessionStorage); 3 dəfədən sonra avtomatik pəncərə çıxmır – «🎬 Necə istifadə etməli» düyməsi qalır.
-import { useContext, useEffect, useRef, useState } from 'react'
+// Test icra ekranında (data-solving) və /t/ yolunda avtomatik pəncərə göstərilmir.
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { post } from './api'
 import { useAuth } from './auth'
-import { I18nCtx, LANGS, useT } from './i18n'
-import { guideSubLangs, guideVideoSrc } from './guideData'
-import { Drawer } from './ui'
+import { GuidePlayer } from './GuidePlayer'
+import { useT } from './i18n'
 
 const OPEN_EVT = 'mk-guide-open'
 const LATER_KEY = 'mk-guide-later'          // sessionStorage: bu sessiyada «Sonra bax»
@@ -18,65 +20,59 @@ const ss = { get: (k: string) => { try { return sessionStorage.getItem(k) } catc
 const ls = { get: (k: string) => { try { return localStorage.getItem(k) } catch { return null } },
   set: (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* yaddaş əlçatmazdır */ } } }
 
-/** Video: telefon – 08-telefon, kompüter – 02-ana-sehife (yol və alt yazı dili – guideData). */
-function videoId(): string {
-  const narrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 599px)').matches
-  return narrow ? '08-telefon' : '02-ana-sehife'
-}
-
-function GuideDialog({ due, onClose }: { due: boolean; onClose: () => void }) {
+function GuideDialog({ due, role, onClose }: { due: boolean; role: 'student' | 'teacher'; onClose: () => void }) {
   const t = useT()
-  const lang = useContext(I18nCtx)
   const { refresh } = useAuth()
   const nav = useNavigate()
-  const ref = useRef<HTMLVideoElement>(null)
-  const [vid] = useState(videoId)
-  const base = `/guide/student/${vid}`
-  const [playing, setPlaying] = useState(false)
-  const [noVideo, setNoVideo] = useState(false)
   const markSeen = async () => {
     if (!due) return
-    try { await post('/api/portal/guide-seen'); await refresh() } catch { /* növbəti girişdə yenə çıxar */ }
+    try { await post('/api/auth/guide-seen'); await refresh() } catch { /* növbəti girişdə yenə çıxar */ }
   }
-  const close = () => { void markSeen(); onClose() }
   const later = () => {
-    ss.set(LATER_KEY, '1')
-    ls.set(LATER_N_KEY, String((Number(ls.get(LATER_N_KEY)) || 0) + 1))
+    if (due) {
+      ss.set(LATER_KEY, '1')
+      ls.set(LATER_N_KEY, String((Number(ls.get(LATER_N_KEY)) || 0) + 1))
+    }
     onClose()
   }
+  const never = () => { void markSeen(); onClose() }
   const all = async () => { await markSeen(); onClose(); nav('/guide') }
-  const play = () => { setPlaying(true); ref.current?.play().catch(() => { /* istifadəçi özü başladar */ }) }
-  return (
-    <Drawer title={t('Tətbiqdən necə istifadə etməli')} onClose={close}
-      footer={<div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-        <button type="button" className="btn primary" onClick={close}>{t('Bağla')}</button>
-        <button type="button" className="btn" onClick={all}>{t('Bütün videolar')}</button>
-        {due && <button type="button" className="btn ghost" onClick={later}>{t('Sonra bax')}</button>}
-      </div>}>
-      <p className="muted">{t('Bu qısa videoya bax – hər şey aydın olacaq.')}</p>
-      {noVideo ? <p className="muted">{t('Video açılmadı.')}</p> : (
-        <div style={{ position: 'relative' }}>
-          <video ref={ref} controls={playing} preload="metadata" playsInline src={guideVideoSrc('student', vid, lang)}
-            style={{ width: '100%', maxHeight: '60vh', background: '#000', borderRadius: 8 }}
-            onError={() => setNoVideo(true)} onPlay={() => setPlaying(true)} onEnded={() => { void markSeen() }}>
-            {LANGS.filter(([k]) => guideSubLangs(lang).includes(k)).map(([k, n]) => <track key={k} kind="subtitles" src={`${base}.${k}.vtt`} srcLang={k} label={n} default={k === lang && lang !== 'az'} />)}
-          </video>
-          {!playing && (
-            <button type="button" aria-label={t('Videonu oynat')} onClick={play}
-              style={{ position: 'absolute', inset: 0, margin: 'auto', width: 72, height: 72, borderRadius: '50%', border: 0,
-                background: 'rgba(0,0,0,.65)', color: '#fff', fontSize: 32, cursor: 'pointer' }}>▶</button>)}
-        </div>)}
-    </Drawer>)
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') later() }
+    document.addEventListener('keydown', k)
+    document.body.style.overflow = 'hidden'
+    return () => { document.removeEventListener('keydown', k); document.body.style.overflow = '' }
+  })
+  const teacher = role === 'teacher'
+  return createPortal(
+    <div className="gw-scrim" onMouseDown={e => { if (e.target === e.currentTarget) later() }}>
+      <section className="gw" role="dialog" aria-modal="true" aria-label={t('Tətbiqdən necə istifadə etməli')}>
+        <header className="gw-head">
+          <div>
+            <h2>{teacher ? t('Xoş gəlmisiniz!') : t('Xoş gəldin!')}</h2>
+            <p>{teacher ? t('Qısa tanıtım videosu – planlaşdırma, testlər və jurnal bir yerdə.') : t('Qısa tanıtım videosu – bir dəqiqəyə hər şey aydın olacaq.')}</p>
+          </div>
+          <button type="button" className="gw-x" onClick={later} aria-label={t('Sonra bax')}>✕</button>
+        </header>
+        <div className="gw-body">
+          <GuidePlayer role={role} id="00-tanitim" onEnded={() => { void markSeen() }} />
+        </div>
+        <footer className="gw-foot">
+          <button type="button" className="btn" onClick={later}>{t('Sonra bax')}</button>
+          {due && <button type="button" className="btn ghost" onClick={never}>{t('Bir daha göstərmə')}</button>}
+          <button type="button" className="btn primary" onClick={all}>{t('Bütün videolar')}</button>
+        </footer>
+      </section>
+    </div>, document.body)
 }
 
-/** Şagird üçün: avtomatik pəncərə (guide_due) + «🎬 Necə istifadə etməli» düyməsi eyni pəncərəni açır. */
+/** Şagird və müəllim üçün: avtomatik pəncərə (guide_due) + «🎬 Necə istifadə etməli» düyməsi eyni pəncərəni açır. */
 export function GuideGate() {
   const { me } = useAuth()
   const { pathname } = useLocation()
   const [open, setOpen] = useState<null | 'auto' | 'manual'>(null)
   const [solving, setSolving] = useState(false)
   const [shown, setShown] = useState(false)       // bu yüklənmədə avtomatik pəncərə bir dəfə
-  const student = me?.role === 'student'
   const due = !!me?.guide_due
   useEffect(() => {
     const h = () => setOpen('manual')
@@ -88,12 +84,12 @@ export function GuideGate() {
     return () => window.clearInterval(id)
   }, [])
   useEffect(() => {
-    if (student && due && !open && !shown && !pathname.startsWith('/t/') && !ss.get(LATER_KEY) && (Number(ls.get(LATER_N_KEY)) || 0) < MAX_LATER
+    if (me && due && !open && !shown && !pathname.startsWith('/t/') && !ss.get(LATER_KEY) && (Number(ls.get(LATER_N_KEY)) || 0) < MAX_LATER
       && !document.body.dataset.solving) setOpen('auto')
     if (open) setShown(true)
-  }, [student, due, open, shown, pathname])
-  if (!student || !open || (solving && open === 'auto')) return null
-  return <GuideDialog due={due} onClose={() => setOpen(null)} />
+  }, [me, due, open, shown, pathname])
+  if (!me || !open || (solving && open === 'auto')) return null
+  return <GuideDialog due={due} role={me.role === 'student' ? 'student' : 'teacher'} onClose={() => setOpen(null)} />
 }
 
 export function GuideButton() {
