@@ -1,9 +1,17 @@
 WEBVTT
 
 1
-00:00:00.000 --> 00:00:07.750
-«Long-term plan» lists lessons by topic.
+00:00:00.000 --> 00:00:02.453
+In «Long-term plan» choose a class.
 
 2
-00:00:07.750 --> 00:00:15.532
-A test for a plan topic is assigned from «Tests and exams».
+00:00:02.453 --> 00:00:06.359
+Lessons are listed by topic, with each topic's test next to it.
+
+3
+00:00:06.359 --> 00:00:09.219
+«🧪 Assign tests» assigns topic tests from the plan automatically.
+
+4
+00:00:09.219 --> 00:00:13.547
+First «Preview» – it writes nothing and shows which test goes to which lesson. Then «Confirm».

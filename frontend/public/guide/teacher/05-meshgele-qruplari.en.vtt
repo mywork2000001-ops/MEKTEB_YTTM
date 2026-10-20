@@ -2,8 +2,16 @@ WEBVTT
 
 1
 00:00:00.000 --> 00:00:04.453
-«Classes and groups» → «Extra-class groups».
+«Classes and groups» → «Extra-class groups»: development (Weak) and progress (Strong) groups.
 
 2
-00:00:06.312 --> 00:00:09.828
-Create a group, add students and assign a programme to the group.
+00:00:04.453 --> 00:00:09.843
+«📚 Assign programmes» – a preview table for all groups: type, class, programme, how many sessions get filled.
+
+3
+00:00:09.843 --> 00:00:13.187
+«Apply» fills only future sessions that have no topic.
+
+4
+00:00:14.531 --> 00:00:19.859
+Open a group: choose the programme in «Programme», use «Preview» and «Recalculate»; the sessions show their topics.

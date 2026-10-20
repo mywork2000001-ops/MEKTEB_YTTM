@@ -44,7 +44,8 @@ export const GUIDE: GuideItem[] = [
     "title": "Sınaq və planlaşdırılmış imtahanlar",
     "steps": [
       "«Plan» bölməsində yaxınlaşan summativ və sınaqları gör.",
-      "Sınaq vaxtı gələndə o, «Tapşırıqlar»da açılır."
+      "Sınaq vaxtı gələndə o, «Tapşırıqlar»da açılır.",
+      "«Sınaqlar» bölməsində sınaq imtahanları ayrıca göstərilir."
     ]
   },
   {
@@ -53,8 +54,8 @@ export const GUIDE: GuideItem[] = [
     "title": "Nəticələr və səhvlər üzərində iş",
     "steps": [
       "«Nəticələrim»də bütün nəticələr tarix üzrə sıralanır.",
-      "Nəticəni aç: səhv suallar, düzgün cavab və izah burada görünür.",
-      "Səhvlərə baxıb təkrar et. Razı deyilsənsə – apelyasiya yaza bilərsən."
+      "«Nəticə paketi»ni aç: öz cavabın, düzgün cavab və hər sualın mövzusu burada görünür.",
+      "Səhv suallara baxıb izahı oxu və təkrar et. Razı deyilsənsə – apelyasiya yaza bilərsən."
     ]
   },
   {
@@ -63,7 +64,7 @@ export const GUIDE: GuideItem[] = [
     "title": "İşləməli olduğun testlər",
     "steps": [
       "«Tapşırıqlar»da hələ işləmədiyin testlər siyahıda görünür.",
-      "Hər testin müddəti və bağlanma vaxtı yanında yazılıb."
+      "Hər testin müddəti və bağlanma vaxtı yanında yazılıb. İşlədiklərinin balı görünür."
     ]
   },
   {
@@ -100,8 +101,10 @@ export const GUIDE: GuideItem[] = [
     "id": "02-plan-testleri",
     "title": "Perspektiv plan və plan testləri",
     "steps": [
-      "«Perspektiv plan»da dərslər mövzular üzrə sıralanır.",
-      "Plandakı mövzuya test «Testlər və sınaqlar» bölməsindən təyin olunur."
+      "«Perspektiv plan»da sinfi seç.",
+      "Dərslər mövzular üzrə sıralanır, hər mövzunun testi yanında göstərilir.",
+      "«🧪 Testləri təyin et» – plana görə mövzu testlərini avtomatik təyin edir.",
+      "Əvvəl «Önbaxış» – heç nə yazmır, hansı dərsə hansı test düşəcəyini göstərir. Sonra «Təsdiq et»."
     ]
   },
   {
@@ -109,9 +112,11 @@ export const GUIDE: GuideItem[] = [
     "id": "03-sinif-matrisi",
     "title": "Sinif matrisi: kim nəyi işləyib",
     "steps": [
-      "«Siniflər və qruplar»da sinfi seç.",
-      "Sinfin şagirdləri və hər birinin işlədiyi / işləmədiyi testlər görünür.",
-      "İşlənməyənlər siyahısını çap edə və ya Excel-ə çıxara bilərsən."
+      "«Testlər və sınaqlar» → «Nəticələr və reytinq» → «Sinif və qrup».",
+      "Sinfi seç.",
+      "«Kim nəyi işləyib» – hər şagird üzrə testlər və sınaqlar: bal, ✗ – yazmayıb, ⏳ – hələ açıqdır.",
+      "«Yalnız işlənməyənlər» – hər şagirdin işləmədiyi testlər qısa siyahı ilə.",
+      "«🖨 Sinif üzrə çap» – siyahı PDF kimi hazırlanır; «Hər şagirdə ayrıca» hər şagird üçün ayrı vərəq çıxarır."
     ]
   },
   {
@@ -119,8 +124,9 @@ export const GUIDE: GuideItem[] = [
     "id": "04-kagiz-test",
     "title": "Kağız test (KSQ): vərəqə, skan, nəticə",
     "steps": [
-      "«Testlər və sınaqlar»da kağız test və KSQ bölməsini aç.",
-      "Cavab vərəqəsini çap et, şagirdlər doldursun, sonra skan et – nəticə avtomatik hesablanır."
+      "«Jurnal»da sinfi seç.",
+      "«KSQ / BSQ» bölməsi: imtahanlar, kağız variantlar və nəticələr.",
+      "Cavab vərəqəsini çap et, şagirdlər doldursun, skan et – bal avtomatik hesablanır. «Nəticələri göndər» şagirdə nəticə paketini açır."
     ]
   },
   {
@@ -128,8 +134,10 @@ export const GUIDE: GuideItem[] = [
     "id": "05-meshgele-qruplari",
     "title": "Məşğələ qrupları və proqram",
     "steps": [
-      "«Siniflər və qruplar» → «Məşğələ qrupları».",
-      "Qrup yarat, şagirdləri əlavə et və qrupa proqram təyin et."
+      "«Siniflər və qruplar» → «Məşğələ qrupları»: inkişaf (Zəif) və tərəqqi (Güclü) qrupları.",
+      "«📚 Proqramları təyin et» – bütün qruplar üçün önbaxış cədvəli: tip, sinif, proqram, neçə məşğələ doldurulur.",
+      "«Tətbiq et» – yalnız gələcək, mövzusuz məşğələlər doldurulur.",
+      "Qrupu aç: «Proqram» bölməsində proqram seçilir, «Önbaxış» və «Yenidən hesabla» var; məşğələlərdə mövzular görünür."
     ]
   },
   {
@@ -137,7 +145,8 @@ export const GUIDE: GuideItem[] = [
     "id": "06-jurnal-hesabat",
     "title": "Jurnal və hesabatlar",
     "steps": [
-      "«Jurnal»da davamiyyət və qiymətlər yazılır.",
+      "«Jurnal»da sinfi seç.",
+      "«Jurnal səhifəsi» – davamiyyət və qiymətlər tarix üzrə sütunlarda.",
       "«Analitika və hesabat» – sinif və şagird üzrə statistika."
     ]
   }

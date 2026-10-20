@@ -113,9 +113,12 @@ SCENARIOS: list[dict] = [
          {'act': 'nav', 'sel': '/plan', 'wait': 3500, 'sel_check': 'main, .top',
           'cap': L('«Plan» bölməsində yaxınlaşan summativ və sınaqları gör.', 'In «Plan» see the upcoming summatives and mock exams.',
                    'В разделе «План» видны ближайшие суммативы и пробные экзамены.')},
-         {'act': 'nav', 'sel': '/tasks', 'wait': 3000,
+         {'act': 'nav', 'sel': '/tasks', 'wait': 1500,
           'cap': L('Sınaq vaxtı gələndə o, «Tapşırıqlar»da açılır.', 'When the exam time comes, it opens in «Tasks».',
                    'Когда наступает время экзамена, он открывается в «Заданиях».')},
+         {'act': 'click', 'sel': 'button:has-text("Sınaqlar")', 'wait': 3500,
+          'cap': L('«Sınaqlar» bölməsində sınaq imtahanları ayrıca göstərilir.', 'Mock exams are shown separately in the «Mock exams» tab.',
+                   'Пробные экзамены показаны отдельно во вкладке «Пробники».')},
      ]},
     {'role': 'student', 'id': '05-netice',
      'title': L('Nəticələr və səhvlər üzərində iş', 'Results and working on mistakes', 'Результаты и работа над ошибками'),
@@ -123,12 +126,14 @@ SCENARIOS: list[dict] = [
          {'act': 'nav', 'sel': '/results', 'wait': 3500, 'sel_check': '.top',
           'cap': L('«Nəticələrim»də bütün nəticələr tarix üzrə sıralanır.', '«My results» lists all results by date.',
                    'В «Моих результатах» все итоги по датам.')},
-         {'act': 'click', 'sel': '.panel tbody tr >> nth=0', 'wait': 3500, 'optional': True,
-          'cap': L('Nəticəni aç: səhv suallar, düzgün cavab və izah burada görünür.', 'Open a result: wrong questions, correct answers and explanations are here.',
-                   'Открой результат: здесь неверные вопросы, правильные ответы и пояснения.')},
-         {'act': 'wait', 'wait': 2500,
-          'cap': L('Səhvlərə baxıb təkrar et. Razı deyilsənsə – apelyasiya yaza bilərsən.', 'Review your mistakes. If you disagree, you can send an appeal.',
-                   'Разбери ошибки. Если не согласен – можно подать апелляцию.')},
+         {'act': 'click', 'sel': 'button:has-text("Nəticə paketi")', 'wait': 3500,
+          'cap': L('«Nəticə paketi»ni aç: öz cavabın, düzgün cavab və hər sualın mövzusu burada görünür.',
+                   'Open the «Result package»: your answers, the correct ones and each question\'s topic.',
+                   'Открой «Пакет результата»: твои ответы, правильные ответы и тема каждого вопроса.')},
+         {'act': 'scroll', 'sel': '400', 'wait': 3000,
+          'cap': L('Səhv suallara baxıb izahı oxu və təkrar et. Razı deyilsənsə – apelyasiya yaza bilərsən.',
+                   'Look at the questions you missed, read the explanation and revise. If you disagree you can send an appeal.',
+                   'Посмотри на неверные вопросы, прочитай пояснение и повтори. Если не согласен – можно подать апелляцию.')},
      ]},
     {'role': 'student', 'id': '06-islemeli-testler',
      'title': L('İşləməli olduğun testlər', 'Tests you still have to take', 'Тесты, которые нужно пройти'),
@@ -136,9 +141,10 @@ SCENARIOS: list[dict] = [
          {'act': 'nav', 'sel': '/tasks', 'wait': 3500, 'sel_check': '.top',
           'cap': L('«Tapşırıqlar»da hələ işləmədiyin testlər siyahıda görünür.', 'Tests you have not taken yet are listed in «Tasks».',
                    'Непройденные тесты показаны списком в «Заданиях».')},
-         {'act': 'scroll', 'sel': '200', 'wait': 2500,
-          'cap': L('Hər testin müddəti və bağlanma vaxtı yanında yazılıb.', 'Each test shows its duration and closing time.',
-                   'Рядом с каждым тестом указаны длительность и время закрытия.')},
+         {'act': 'scroll', 'sel': '250', 'wait': 3000,
+          'cap': L('Hər testin müddəti və bağlanma vaxtı yanında yazılıb. İşlədiklərinin balı görünür.',
+                   'Each test shows its duration and closing time. Finished tests show your score.',
+                   'Рядом с каждым тестом указаны длительность и время закрытия. У пройденных виден балл.')},
      ]},
     {'role': 'student', 'id': '07-material-meshgele',
      'title': L('Materiallar və əlavə məşğələlər', 'Materials and extra classes', 'Материалы и дополнительные занятия'),
@@ -178,54 +184,83 @@ SCENARIOS: list[dict] = [
     {'role': 'teacher', 'id': '02-plan-testleri',
      'title': L('Perspektiv plan və plan testləri', 'Long-term plan and plan tests', 'Перспективный план и тесты по плану'),
      'steps': [
-         {'act': 'nav', 'sel': '/plan', 'wait': 3500, 'sel_check': '.top',
-          'cap': L('«Perspektiv plan»da dərslər mövzular üzrə sıralanır.', '«Long-term plan» lists lessons by topic.',
-                   'В «Перспективном плане» уроки идут по темам.')},
-         {'act': 'nav', 'sel': '/tests', 'wait': 3500,
-          'cap': L('Plandakı mövzuya test «Testlər və sınaqlar» bölməsindən təyin olunur.', 'A test for a plan topic is assigned from «Tests and exams».',
-                   'Тест по теме плана назначается в «Тестах и экзаменах».')},
+         {'act': 'goto', 'sel': '/plan', 'wait': 1500, 'sel_check': '.top',
+          'cap': L('«Perspektiv plan»da sinfi seç.', 'In «Long-term plan» choose a class.', 'В «Перспективном плане» выбери класс.')},
+         {'act': 'click', 'sel': 'button:has-text("X e")', 'wait': 3500,
+          'cap': L('Dərslər mövzular üzrə sıralanır, hər mövzunun testi yanında göstərilir.', 'Lessons are listed by topic, with each topic\'s test next to it.',
+                   'Уроки идут по темам, рядом показан тест каждой темы.')},
+         {'act': 'click', 'sel': 'button:has-text("Testləri təyin et")', 'wait': 2500,
+          'cap': L('«🧪 Testləri təyin et» – plana görə mövzu testlərini avtomatik təyin edir.', '«🧪 Assign tests» assigns topic tests from the plan automatically.',
+                   '«🧪 Назначить тесты» автоматически назначает тесты по темам плана.')},
+         {'act': 'click', 'sel': 'button:has-text("Önbaxış")', 'wait': 4000,
+          'cap': L('Əvvəl «Önbaxış» – heç nə yazmır, hansı dərsə hansı test düşəcəyini göstərir. Sonra «Təsdiq et».',
+                   'First «Preview» – it writes nothing and shows which test goes to which lesson. Then «Confirm».',
+                   'Сначала «Предпросмотр» – ничего не записывает, показывает, какой тест к какому уроку. Затем «Подтвердить».')},
      ]},
     {'role': 'teacher', 'id': '03-sinif-matrisi',
      'title': L('Sinif matrisi: kim nəyi işləyib', 'Class matrix: who did what', 'Матрица класса: кто что выполнил'),
      'steps': [
-         {'act': 'nav', 'sel': '/classes', 'wait': 3500, 'sel_check': '.top',
-          'cap': L('«Siniflər və qruplar»da sinfi seç.', 'Choose a class in «Classes and groups».', 'Выбери класс в «Классах и группах».')},
-         {'act': 'click', 'sel': '.panel a[href*="/classes"], .panel tbody tr >> nth=0', 'wait': 3500, 'optional': True,
-          'cap': L('Sinfin şagirdləri və hər birinin işlədiyi / işləmədiyi testlər görünür.', 'See the class students and which tests each has or has not done.',
-                   'Видны ученики класса и какие тесты каждый выполнил или нет.')},
-         {'act': 'wait', 'wait': 2500,
-          'cap': L('İşlənməyənlər siyahısını çap edə və ya Excel-ə çıxara bilərsən.', 'You can print the list of undone tests or export it to Excel.',
-                   'Список невыполненных можно распечатать или выгрузить в Excel.')},
+         {'act': 'goto', 'sel': '/tests?s=netice&v=class', 'wait': 2500, 'sel_check': '.top',
+          'cap': L('«Testlər və sınaqlar» → «Nəticələr və reytinq» → «Sinif və qrup».', '«Tests and exams» → «Results and rating» → «Class and group».',
+                   '«Тесты и экзамены» → «Результаты и рейтинг» → «Класс и группа».')},
+         {'act': 'select', 'sel': '.hub-pick:has-text("Sinif") select', 'value': 'X e', 'wait': 2500,
+          'cap': L('Sinfi seç.', 'Choose the class.', 'Выбери класс.')},
+         {'act': 'click', 'sel': 'button:has-text("Kim nəyi işləyib")', 'wait': 4500,
+          'cap': L('«Kim nəyi işləyib» – hər şagird üzrə testlər və sınaqlar: bal, ✗ – yazmayıb, ⏳ – hələ açıqdır.',
+                   '«Who did what» – tests and exams per student: score, ✗ – not taken, ⏳ – still open.',
+                   '«Кто что выполнил» – тесты и экзамены по каждому ученику: балл, ✗ – не писал, ⏳ – ещё открыт.')},
+         {'act': 'click', 'sel': 'button:has-text("Yalnız işlənməyənlər")', 'wait': 4500,
+          'cap': L('«Yalnız işlənməyənlər» – hər şagirdin işləmədiyi testlər qısa siyahı ilə.', '«Missing only» – a short list of the tests each student has not done.',
+                   '«Только невыполненные» – короткий список тестов, которые ученик не выполнил.')},
+         {'act': 'click', 'sel': 'button:has-text("Sinif üzrə çap")', 'wait': 3500,
+          'cap': L('«🖨 Sinif üzrə çap» – siyahı PDF kimi hazırlanır; «Hər şagirdə ayrıca» hər şagird üçün ayrı vərəq çıxarır.',
+                   '«🖨 Print for the class» prepares the list as a PDF; «One sheet per student» prints a separate sheet for each student.',
+                   '«🖨 Печать по классу» готовит список в PDF; «Отдельно каждому ученику» печатает отдельный лист на каждого.')},
      ]},
     {'role': 'teacher', 'id': '04-kagiz-test',
      'title': L('Kağız test (KSQ): vərəqə, skan, nəticə', 'Paper test (KSQ): sheet, scan, result', 'Бумажный тест (KSQ): бланк, скан, результат'),
      'steps': [
-         {'act': 'nav', 'sel': '/tests', 'wait': 3500, 'sel_check': '.top',
-          'cap': L('«Testlər və sınaqlar»da kağız test və KSQ bölməsini aç.', 'Open the paper test and KSQ section in «Tests and exams».',
-                   'Открой раздел бумажных тестов и KSQ в «Тестах и экзаменах».')},
-         {'act': 'wait', 'wait': 3500,
-          'cap': L('Cavab vərəqəsini çap et, şagirdlər doldursun, sonra skan et – nəticə avtomatik hesablanır.',
-                   'Print the answer sheet, let students fill it in, then scan it – the result is calculated automatically.',
-                   'Распечатай бланк ответов, ученики заполнят его, затем отсканируй – итог посчитается автоматически.')},
+         {'act': 'goto', 'sel': '/journal', 'wait': 1500, 'sel_check': '.top',
+          'cap': L('«Jurnal»da sinfi seç.', 'Choose the class in the «Journal».', 'В «Журнале» выбери класс.')},
+         {'act': 'click', 'sel': 'button:has-text("X e")', 'wait': 1500},
+         {'act': 'select', 'sel': 'label:has-text("Bölmə") select', 'value': 'KSQ / BSQ', 'wait': 3500,
+          'cap': L('«KSQ / BSQ» bölməsi: imtahanlar, kağız variantlar və nəticələr.', 'The «KSQ / BSQ» section: exams, paper variants and results.',
+                   'Раздел «KSQ / BSQ»: экзамены, бумажные варианты и результаты.')},
+         {'act': 'click', 'sel': 'button:has-text("Nəticələr")', 'wait': 4500,
+          'cap': L('Cavab vərəqəsini çap et, şagirdlər doldursun, skan et – bal avtomatik hesablanır. «Nəticələri göndər» şagirdə nəticə paketini açır.',
+                   'Print the answer sheet, let students fill it in, scan it – the score is calculated automatically. «Send results» opens the result package for students.',
+                   'Распечатай бланк ответов, ученики заполнят его, отсканируй – балл посчитается автоматически. «Отправить результаты» открывает ученику пакет результата.')},
      ]},
     {'role': 'teacher', 'id': '05-meshgele-qruplari',
      'title': L('Məşğələ qrupları və proqram', 'Extra-class groups and programme', 'Группы занятий и программа'),
      'steps': [
          {'act': 'goto', 'sel': '/classes?tab=extra', 'wait': 3500, 'sel_check': '.top',
-          'cap': L('«Siniflər və qruplar» → «Məşğələ qrupları».', '«Classes and groups» → «Extra-class groups».',
-                   '«Классы и группы» → «Группы занятий».')},
-         {'act': 'click', 'sel': 'button:has-text("Proqramları təyin et")', 'wait': 1500, 'optional': True},
-         {'act': 'wait', 'wait': 3500,
-          'cap': L('Qrup yarat, şagirdləri əlavə et və qrupa proqram təyin et.', 'Create a group, add students and assign a programme to the group.',
-                   'Создай группу, добавь учеников и назначь группе программу.')},
+          'cap': L('«Siniflər və qruplar» → «Məşğələ qrupları»: inkişaf (Zəif) və tərəqqi (Güclü) qrupları.',
+                   '«Classes and groups» → «Extra-class groups»: development (Weak) and progress (Strong) groups.',
+                   '«Классы и группы» → «Группы занятий»: группы развития (слабые) и прогресса (сильные).')},
+         {'act': 'click', 'sel': 'button:has-text("Proqramları təyin et")', 'wait': 5000,
+          'cap': L('«📚 Proqramları təyin et» – bütün qruplar üçün önbaxış cədvəli: tip, sinif, proqram, neçə məşğələ doldurulur.',
+                   '«📚 Assign programmes» – a preview table for all groups: type, class, programme, how many sessions get filled.',
+                   '«📚 Назначить программы» – таблица предпросмотра для всех групп: тип, класс, программа, сколько занятий заполнится.')},
+         {'act': 'click', 'sel': 'button:has-text("Tətbiq et")', 'wait': 3000,
+          'cap': L('«Tətbiq et» – yalnız gələcək, mövzusuz məşğələlər doldurulur.', '«Apply» fills only future sessions that have no topic.',
+                   '«Применить» заполняет только будущие занятия без темы.')},
+         {'act': 'click', 'sel': 'button:has-text("Bağla")', 'wait': 1000},
+         {'act': 'click', 'sel': 'text=inkişaf qrupu', 'wait': 5000,
+          'cap': L('Qrupu aç: «Proqram» bölməsində proqram seçilir, «Önbaxış» və «Yenidən hesabla» var; məşğələlərdə mövzular görünür.',
+                   'Open a group: choose the programme in «Programme», use «Preview» and «Recalculate»; the sessions show their topics.',
+                   'Открой группу: в «Программе» выбирается программа, есть «Предпросмотр» и «Пересчитать»; в занятиях видны темы.')},
      ]},
     {'role': 'teacher', 'id': '06-jurnal-hesabat',
      'title': L('Jurnal və hesabatlar', 'Journal and reports', 'Журнал и отчёты'),
      'steps': [
-         {'act': 'nav', 'sel': '/journal', 'wait': 3500, 'sel_check': '.top',
-          'cap': L('«Jurnal»da davamiyyət və qiymətlər yazılır.', 'Attendance and grades are entered in the «Journal».',
-                   'В «Журнале» отмечаются посещаемость и оценки.')},
-         {'act': 'nav', 'sel': '/reports', 'wait': 3500,
+         {'act': 'goto', 'sel': '/journal', 'wait': 1500, 'sel_check': '.top',
+          'cap': L('«Jurnal»da sinfi seç.', 'Choose the class in the «Journal».', 'В «Журнале» выбери класс.')},
+         {'act': 'click', 'sel': 'button:has-text("X e")', 'wait': 1500},
+         {'act': 'select', 'sel': 'label:has-text("Bölmə") select', 'value': 'Jurnal səhifəsi', 'wait': 4500,
+          'cap': L('«Jurnal səhifəsi» – davamiyyət və qiymətlər tarix üzrə sütunlarda.', 'The «Journal page» – attendance and grades in date columns.',
+                   '«Страница журнала» – посещаемость и оценки по датам.')},
+         {'act': 'nav', 'sel': '/reports', 'wait': 4000,
           'cap': L('«Analitika və hesabat» – sinif və şagird üzrə statistika.', '«Analytics and reports» – statistics by class and student.',
                    '«Аналитика и отчёты» – статистика по классам и ученикам.')},
      ]},
@@ -351,40 +386,8 @@ class Demo:
         self.seed_via_api()
 
     def seed_via_api(self):
-        import httpx
-        c = httpx.Client(base_url=self.base, timeout=30)
-        r = c.post('/api/auth/login', json={'login': TEACHER['login'], 'password': TEACHER['password']})
-        r.raise_for_status()
-        cid = c.post('/api/classes', json={'name': 'X e'}).json()['id']
-        ta = c.post(f'/api/classes/{cid}/join', json={'subject': 'Riyaziyyat', 'weekly_hours': 3, 'slots': {'0': [2], '2': [3], '4': [1]}})
-        ta.raise_for_status()
-        for n in STUDENT_NAMES:
-            r = c.post('/api/students', json={'full_name': n, 'class_id': cid, 'force': True})
-            r.raise_for_status()
-            j = r.json()
-            self.student_pins[j['portal_code']] = j['initial_pin']
-        self.first_student = sorted(self.student_pins)[0]
-        # sınaq tapşırığı (öz sualları): şagirdin «Tapşırıqlar»ında görünsün
-        ta_id = (ta.json().get('mine') or {}).get('ta_id')
-        if not ta_id:
-            raise RuntimeError(f'join cavabında assignment id yoxdur: {ta.text[:200]}')
-        now = dt.datetime.now(dt.timezone.utc)
-        body = {'title': 'Kvadrat tənliklər – mövzu testi', 'opens_at': (now - dt.timedelta(hours=1)).isoformat(),
-                'shuffle': False,                       # müddətsiz test: closes_at və duration_min yoxdur
-                'custom': [
-                    {'kind': 'mcq', 'text': 'x² − 9 = 0 tənliyinin kökləri hansılardır?', 'options': ['3', '±3', '9', '−3'], 'correct': 1,
-                     'explanation': 'x² = 9, deməli x = 3 və ya x = −3.'},
-                    {'kind': 'mcq', 'text': '2 + 2 · 2 = ?', 'options': ['8', '6', '4', '10'], 'correct': 1,
-                     'explanation': 'Əvvəl vurma: 2 · 2 = 4, sonra 2 + 4 = 6.'},
-                    {'kind': 'open', 'text': 'x + 5 = 12 tənliyində x = ?', 'answer': '7'}]}
-        timed = {**body, 'title': 'Tənliklər – vaxtlı test', 'closes_at': (now + dt.timedelta(days=7)).isoformat(), 'duration_min': 40}
-        for b in (body, timed):
-            r = c.post(f'/api/tasks/{ta_id}', json=b)
-            if r.status_code >= 400:
-                print('  XƏBƏRDARLIQ: demo tapşırıq yaradılmadı:', r.status_code, r.text[:200])
-        import sqlite3                                                    # tapşırıq → «Mövzu testləri» bölməsində görünsün
-        with sqlite3.connect(self.tmp / 'demo.db') as cx:
-            cx.execute("UPDATE online_tasks SET kind='movzu'")
+        from guide_seed import seed                                           # zəngin demo məlumat (guide_seed.py)
+        seed(self)
 
     def stop(self):
         if self.proc:
@@ -457,6 +460,12 @@ def do_step(page, st: dict, check: bool) -> str | None:
             move_to(page, loc)
             if act == 'click':
                 loc.click(timeout=tmo)
+        elif act == 'select':
+            loc = page.locator(sel).first
+            loc.wait_for(state='visible', timeout=tmo)
+            move_to(page, loc)
+            loc.select_option(label=val)
+            settle(page)
         elif act == 'fill':
             loc = page.locator(sel).first
             loc.wait_for(state='visible', timeout=tmo)
@@ -498,6 +507,9 @@ def run_scenario(browser, demo: Demo, scn: dict, check: bool) -> tuple[Path | No
         page.goto('/')
         settle(page)
         page.wait_for_timeout(600 if check else 1200)
+        if scn.get('login', True) and page.locator('.scrim').count():           # «yeni sertifikat» pəncərəsi – videoya düşməsin
+            page.keyboard.press('Escape')
+            page.wait_for_timeout(500)
         t_start = time.monotonic() - t0
         for st in scn['steps']:
             a = time.monotonic() - t0
@@ -560,6 +572,7 @@ def main():
     ap.add_argument('--export-ts', action='store_true', help='frontend/src/guideData.ts yaz')
     ap.add_argument('--print-i18n', action='store_true', help='i18n.ts üçün sətirləri çap et')
     ap.add_argument('--headed', action='store_true')
+    ap.add_argument('--serve', type=int, help='yalnız demo serveri saniyə qədər saxla (baxış/sazlama)')
     a = ap.parse_args()
     if a.export_ts:
         export_ts()
@@ -576,6 +589,10 @@ def main():
     bad = 0
     try:
         demo.start()
+        if a.serve:
+            print('DEMO', demo.base, TEACHER, demo.first_student, demo.student_pins, flush=True)
+            time.sleep(a.serve)
+            return
         with sync_playwright() as p:
             browser = p.chromium.launch(channel='chrome', headless=not a.headed)
             for s in todo:

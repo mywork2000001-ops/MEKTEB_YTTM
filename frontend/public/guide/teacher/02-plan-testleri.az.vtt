@@ -1,9 +1,17 @@
 WEBVTT
 
 1
-00:00:00.000 --> 00:00:07.750
-«Perspektiv plan»da dərslər mövzular üzrə sıralanır.
+00:00:00.000 --> 00:00:02.453
+«Perspektiv plan»da sinfi seç.
 
 2
-00:00:07.750 --> 00:00:15.532
-Plandakı mövzuya test «Testlər və sınaqlar» bölməsindən təyin olunur.
+00:00:02.453 --> 00:00:06.359
+Dərslər mövzular üzrə sıralanır, hər mövzunun testi yanında göstərilir.
+
+3
+00:00:06.359 --> 00:00:09.219
+«🧪 Testləri təyin et» – plana görə mövzu testlərini avtomatik təyin edir.
+
+4
+00:00:09.219 --> 00:00:13.547
+Əvvəl «Önbaxış» – heç nə yazmır, hansı dərsə hansı test düşəcəyini göstərir. Sonra «Təsdiq et».
