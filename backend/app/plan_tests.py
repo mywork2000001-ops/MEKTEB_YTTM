@@ -59,6 +59,7 @@ class Opts:
     missing_close_days: int = 3           # çatışan test: açılmadan N gün sonra 22:00
     close_days: int = 1                   # adi test: dərsdən N gün sonra 22:00 (defolt ertəsi gün)
     include_weak: bool = False            # şübhəli uyğunluqda da yarat
+    variants: str | None = None           # məşğələ qrupu: «A+B» (inkişaf), «B+C» (tərəqqi) – başlığa yazılır
 
     def norm(self) -> 'Opts':
         from .api.tasks import MIN_TEST_MIN
@@ -79,6 +80,7 @@ class Item:
     date: dt.date | None = None
     period: int | None = None
     no: str | None = None
+    grade: int | None = None               # məşğələ qrupu mövzusu (r_extra_program): proqramın sinfi; plan dərsi yoxdur (pl – müvəqqəti)
 
     @property
     def pl(self) -> PlanLesson:
@@ -193,8 +195,10 @@ def _src_label(key: str | None) -> str:
 
 def _file_choice(db: Session, f: BankFile, status: str, reason: str, opts: Opts, item: Item, cover=None) -> Choice:
     base = base_topic(item.pl.topic) or item.pl.topic
+    mark = f'№{item.no}' if item.grade and item.no else f'№{item.pl.seq}'
+    var = f' (variant {opts.variants})' if opts.variants else ''
     return Choice(status, reason, f.source_key, f, min(opts.n_questions, f.question_count or 0), cover=cover,
-                  title=f'№{item.pl.seq} {base} – {_src_label(f.source_key)} testi'[:200])
+                  title=f'{mark} {base} – {_src_label(f.source_key)} testi{var}'[:200])
 
 
 def r_manual(c: TaCtx, item: Item, opts: Opts) -> Choice | None:
@@ -229,11 +233,9 @@ def r_toplu(c: TaCtx, item: Item, opts: Opts) -> Choice | None:
                   questions=qs)
 
 
-def r_grade_matcher(c: TaCtx, item: Item, opts: Opts) -> Choice | None:
-    """Dərsin öz sinfi → sinfin sıralı mənbələri → mövzu nömrəsi + ad uyğunluğu (bank/match.py GradeMatcher)."""
+def _grade_choice(c: TaCtx, item: Item, opts: Opts, g: int | None) -> Choice:
     if c.ta.bank_source == 'none':
         return Choice('none', R_OFF)
-    g = c.grade_of(item.pl)
     if not c.gm.sources(g):
         return Choice('none', R_NOFILE)
     q = lesson_query(item.pl.topic, item.pl.section)
@@ -250,7 +252,30 @@ def r_grade_matcher(c: TaCtx, item: Item, opts: Opts) -> Choice | None:
     return _file_choice(c.db, f, r.status, R_AUTO if r.status == 'ok' else R_WEAK, opts, item, r.cover)
 
 
-RESOLVERS: list[Callable[[TaCtx, Item, Opts], Choice | None]] = [r_manual, r_toplu, r_grade_matcher]
+def r_extra_program(c: TaCtx, item: Item, opts: Opts) -> Choice | None:
+    """Məşğələ qrupunun proqram mövzusu (extra_programs.py): sinif plan dərsindən yox, proqramın sinfindən (item.grade) götürülür;
+    seçim məntiqi r_grade_matcher ilə eynidir (V–VIII – «gözlənilir»)."""
+    if item.grade is None:
+        return None
+    return _grade_choice(c, item, opts, item.grade)
+
+
+def r_grade_matcher(c: TaCtx, item: Item, opts: Opts) -> Choice | None:
+    """Dərsin öz sinfi → sinfin sıralı mənbələri → mövzu nömrəsi + ad uyğunluğu (bank/match.py GradeMatcher)."""
+    return _grade_choice(c, item, opts, c.grade_of(item.pl))
+
+
+RESOLVERS: list[Callable[[TaCtx, Item, Opts], Choice | None]] = [r_extra_program, r_manual, r_toplu, r_grade_matcher]
+
+
+def extra_choice(db: Session, ta: TeachingAssignment, grade: int, topic: str, section: str | None, no: str | None,
+                 opts: Opts | None = None, c: TaCtx | None = None) -> Choice:
+    """Məşğələ qrupunun bir proqram mövzusu üçün test faylı (əvvəl yalnız seçim; yaratma session_test-dədir).
+    ta – qrupun dərs bağlılıqlarından biri (bank mənbəyi ayarı üçün)."""
+    c = c or TaCtx(db, ta)
+    cls = db.get(SchoolClass, ta.class_id)
+    item = Item(ta, cls, [PlanLesson(seq=0, topic=topic, section=section, assessment_type='formativ')], 'topic', no=no, grade=grade)
+    return resolve(db, ta, item, opts, c)
 
 
 def resolve(db: Session, ta: TeachingAssignment, item: Item, opts: Opts | None = None, _c: TaCtx | None = None) -> Choice:

@@ -931,3 +931,32 @@ def dated(db: Session, program: PlanProgram, ta: TeachingAssignment, sections: l
                     'topic': l['topic'], 'assessment_type': l['assessment_type'], 'resources': l.get('resources'),
                     'assessment': l.get('assessment'), 'standards': l.get('standards') or []})
     return {**rep, 'program': program.title, 'lessons_list': out}
+
+
+_SEC_NUM = re.compile(r'^\s*(\d+)\.')
+
+
+def topic_sequence(program: PlanProgram, sections: list[str] | None = None) -> list[dict]:
+    """Proqramın mövzu ardıcıllığı (sinif cədvəlindən asılı olmayaraq) – məşğələ qrupları üçün (extra_programs.py).
+    Hər mövzu: {section, topic, no}; no – «bölmə.sıra» («2.3», bank/match.py::topic_numbers ilə eyni qayda) və ya None.
+    Adaptiv proqramda – şablonun bölmələri ardıcıl, sabit proqramda – dərslərin mövzuları (ardıcıl təkrarsız)."""
+    keep = set(sections) if sections else None
+    out: list[dict] = []
+    if program.kind == 'adaptive':
+        for s in tpl_sections(program.data['template']):
+            if keep and s['section'] not in keep:
+                continue
+            m = _SEC_NUM.match(s['section'])
+            for i, t in enumerate(s['topics']):
+                out.append({'section': s['section'], 'topic': t, 'no': f'{int(m.group(1))}.{i + 1}' if m else None})
+        return out
+    last = None
+    for l in program.data.get('lessons', []):
+        sec = l.get('section') or 'Bölməsiz'
+        if keep and sec not in keep:
+            continue
+        t = (l.get('topic') or '').strip()
+        if t and t != last:
+            out.append({'section': l.get('section'), 'topic': t, 'no': None})
+        last = t
+    return out

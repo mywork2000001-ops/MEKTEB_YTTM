@@ -20,11 +20,12 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import extra_programs as XP
 from ..db import get_db
 from ..deps import staff
 from ..models import (ExtraAttendance, ExtraCourse, ExtraSession, Holiday, LevelOverride, Material, OnlineTask,
-                      PlanLesson, SchoolClass, Student, TaskAttempt, TeachingAssignment, TestBatch, TopicProgress, User,
-                      now)
+                      PlanLesson, PlanProgram, Role, SchoolClass, Student, TaskAttempt, TeachingAssignment, TestBatch,
+                      TopicProgress, User, now)
 from ..services import SCHOOL_TZ, own_assignment, roster
 from .common import audit, current_year, need_school
 from .plan import bell
@@ -69,6 +70,7 @@ class CourseIn(BaseModel):
     starts_on: dt.date
     ends_on: dt.date
     goal: str | None = Field(None, max_length=2000)
+    kind: Literal['inkisaf', 'tereqqi', 'diger'] | None = None        # None – ad və səviyyədən avtomatik tanınır
 
     @model_validator(mode='after')
     def _v(self):
@@ -200,7 +202,10 @@ def course_out(db: Session, c: ExtraCourse, full: bool = False) -> dict:
            'classes': classes, 'schedule': c.schedule, 'starts_on': c.starts_on, 'ends_on': c.ends_on, 'goal': c.goal,
            'students': len(ms), 'sessions': len(ss), 'held': sum(s.status == 'held' for s in ss),
            'cancelled': sum(s.status == 'cancelled' for s in ss), 'archived': c.archived_at is not None,
-           'next': nxt and session_out(db, nxt)}
+           'next': nxt and session_out(db, nxt),
+           'kind': XP.course_kind(c), 'kind_set': c.kind is not None, 'program_id': c.program_id,
+           'program': (lambda p: p and {'id': p.id, 'key': p.key, 'title': p.title})(db.get(PlanProgram, c.program_id) if c.program_id else None),
+           'program_applied': any(s.topic_ref for s in ss)}
     if full:
         out['session_list'] = [session_out(db, s, len(ms)) for s in ss]
         out['members'] = [{'student_id': s.id, 'full_name': s.full_name, 'ta_id': ta_id,
@@ -237,7 +242,9 @@ def create_course(body: CourseIn, user: User = Depends(staff), db: Session = Dep
     c = ExtraCourse(owner_id=user.id, school_id=need_school(user), title=body.title, subject=tas[0].subject,
                     format=body.format, audience={'ta_ids': [t.id for t in tas], 'levels': body.levels,
                                                   'student_ids': body.student_ids},
-                    schedule=sched, starts_on=body.starts_on, ends_on=body.ends_on, goal=body.goal)
+                    schedule=sched, starts_on=body.starts_on, ends_on=body.ends_on, goal=body.goal, kind=body.kind)
+    if c.kind is None:
+        XP.remember_kind(c)                                            # «Zəif» səviyyə / «inkişaf» adı → tip yadda qalır
     db.add(c)
     db.flush()
     if not members(db, c):
@@ -262,17 +269,44 @@ class CoursePatch(BaseModel):
     levels: list[Literal['Zəif', 'Orta', 'Güclü']] | None = None
     student_ids: list[int] | None = None
     all_students: bool = False
+    kind: Literal['inkisaf', 'tereqqi', 'diger'] | None = None
+    schedule: list[Slot] | None = Field(None, min_length=1, max_length=14)
+
+
+def _today() -> dt.date:
+    return now().astimezone(TZ).date()
+
+
+def _auto_topics(s: ExtraSession) -> bool:
+    return bool(s.topics) and all(t.get('ref') for t in s.topics)
 
 
 @router.patch('/{cid}')
 def patch_course(cid: int, body: CoursePatch, user: User = Depends(staff), db: Session = Depends(get_db)):
-    """Ad, məqsəd, kimə; bitmə tarixi uzadılanda yeni məşğələlər qurulur."""
+    """Ad, məqsəd, tip, kimə, cədvəl; bitmə tarixi uzadılanda yeni məşğələlər qurulur. Cədvəl dəyişəndə gələcək planlaşdırılmış məşğələlər
+    (keçirilmişlər, testi olanlar və əl ilə mövzu yazılanlar qalır) yenidən qurulur, proqram varsa mövzular yenidən paylanır."""
     c = _course(db, user, cid)
     data = body.model_dump(exclude_unset=True)
     if 'title' in data and body.title:
         c.title = body.title
     if 'goal' in data:
         c.goal = body.goal
+    if 'kind' in data:
+        c.kind = body.kind
+    rebuilt = kept = 0
+    if body.schedule is not None:
+        c.schedule = [s.model_dump() for s in body.schedule]
+        today = _today()
+        for s in _sessions(db, c):
+            if s.status != 'planned' or s.date < today or s.batch_id:
+                continue
+            if not s.topics or _auto_topics(s):
+                db.delete(s)
+                rebuilt += 1
+            else:
+                kept += 1
+        db.flush()
+        generate(db, c, today)
     aud = dict(c.audience)
     if body.all_students:
         aud['levels'], aud['student_ids'] = None, None
@@ -296,9 +330,13 @@ def patch_course(cid: int, body: CoursePatch, user: User = Depends(staff), db: S
             for s in db.scalars(select(ExtraSession).where(ExtraSession.course_id == c.id, ExtraSession.date > body.ends_on,
                                                            ExtraSession.status != 'held')):
                 db.delete(s)
+    db.flush()
+    refilled = None
+    if (body.schedule is not None or body.ends_on) and XP.has_program(db, c):
+        refilled = XP.fill_from_program(db, c, _today())['to_fill']
     audit(db, user, 'update', 'extra_course', c.id, fields=sorted(data))
     db.commit()
-    return {**course_out(db, c), 'added': added}
+    return {**course_out(db, c), 'added': added, 'rebuilt': rebuilt, 'kept_manual': kept, 'refilled': refilled}
 
 
 @router.post('/{cid}/archive')
@@ -317,6 +355,65 @@ def restore_course(cid: int, user: User = Depends(staff), db: Session = Depends(
     audit(db, user, 'restore', 'extra_course', c.id)
     db.commit()
     return {'ok': True}
+
+
+# ---------------------------------------------------------------- proqram təyini (docs/meshgele-proqram-ve-video-beledci-promtu.md §A)
+class ProgramIn(BaseModel):
+    kind: Literal['inkisaf', 'tereqqi', 'diger'] | None = None
+    program_id: int | None = None          # None – tipə görə avtomatik
+    sections: list[str] | None = None
+    overwrite: bool = False                # True – əl ilə yazılmış (keçirilməmiş) mövzuların da üstündən yaz
+    dry: bool = False
+
+
+@router.post('/assign-programs')
+def assign_programs(dry: int = 1, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Kütləvi təyinat: müəllim – öz qrupları, admin – məktəbin hamısı. dry=1 (defolt) heç nə yazmır – önbaxış hesabatı."""
+    st = select(ExtraCourse).where(ExtraCourse.school_id == user.school_id, ExtraCourse.archived_at.is_(None))
+    if user.role != Role.admin:
+        st = st.where(ExtraCourse.owner_id == user.id)
+    courses = list(db.scalars(st.order_by(ExtraCourse.title)))
+    rows = XP.assign_programs(db, courses, _today(), apply=not dry)
+    if not dry:
+        audit(db, user, 'update', 'extra_course', 0, assign_programs=sum(1 for r in rows if r['applicable']), courses=len(rows))
+        db.commit()
+    return {'applied': not dry, 'rows': rows, 'applicable': sum(1 for r in rows if r['applicable']),
+            'to_fill': sum(r['to_fill'] for r in rows)}
+
+
+@router.post('/{cid}/program')
+def set_program(cid: int, body: ProgramIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Qrupa proqram təyin et / yenidən hesabla (keçirilmiş və əl ilə yazılmış mövzulara toxunmur)."""
+    c = _open_course(db, user, cid)
+    if body.kind:
+        c.kind = body.kind
+    c.program_sections = body.sections or None
+    if body.program_id is not None:
+        p = db.get(PlanProgram, body.program_id)
+        if not p or p.archived_at or (p.school_id and p.school_id != c.school_id):
+            raise HTTPException(404, 'Proqram tapılmadı')
+        c.program_id = p.id
+    else:
+        c.program_id = None
+    rep = XP.plan_fill(db, c, _today(), overwrite=body.overwrite, dry=body.dry)
+    if not rep['applicable'] and not body.dry:
+        db.rollback()
+        raise HTTPException(400, rep['skip'] or 'Proqram təyin olunmadı')
+    if body.dry:
+        db.rollback()
+    else:
+        audit(db, user, 'update', 'extra_course', c.id, program=rep['program'] and rep['program']['key'], filled=rep['to_fill'])
+        db.commit()
+    return rep
+
+
+@router.delete('/{cid}/program')
+def remove_program(cid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    c = _open_course(db, user, cid)
+    n = XP.detach(db, c, _today())
+    audit(db, user, 'update', 'extra_course', c.id, program=None, cleared=n)
+    db.commit()
+    return {'cleared': n}
 
 
 # ---------------------------------------------------------------- qrup üzvləri (Siniflər → Məşğələ qrupları, şagird kartı)
@@ -362,6 +459,7 @@ def add_members(cid: int, body: MembersIn, user: User = Depends(staff), db: Sess
     bad = [i for i in body.student_ids if i not in where]
     if bad:
         raise HTTPException(400, 'Şagird sizin bu fəndən dərs dediyiniz siniflərdən olmalıdır')
+    XP.remember_kind(c)                       # səviyyə süzgəci sıfırlanır – qrupun tipi qalır
     aud = dict(c.audience or {})
     ids = [s.id for s, _ in members(db, c)]
     new = [i for i in dict.fromkeys(body.student_ids) if i not in ids]
@@ -383,6 +481,7 @@ def remove_member(cid: int, sid: int, user: User = Depends(staff), db: Session =
     left = [(s, ta) for s, ta in ms if s.id != sid]
     if not left:
         raise HTTPException(400, 'Qrupda ən azı bir şagird qalmalıdır – qrupu silmək üçün «Arxivə»')
+    XP.remember_kind(c)
     aud = dict(c.audience or {})
     aud['student_ids'], aud['levels'] = [s.id for s, _ in left], None
     aud['ta_ids'] = [i for i in aud.get('ta_ids') or [] if any(ta == i for _, ta in left)]
@@ -442,12 +541,20 @@ def _apply_session(db: Session, c: ExtraCourse, s: ExtraSession, body: SessionIn
     for k in ('start', 'end'):
         if k in data and (not data[k] or not HM.match(data[k])):
             raise HTTPException(400, 'Vaxt SS:DD formatında olmalıdır')
+    if data.get('status') == 'held' and s.status != 'held':
+        raise HTTPException(400, '«Keçirildi» yalnız davamiyyət qeyd olunanda qoyulur (məşğələdə «Keçirildi» düyməsi)')
     if 'topics' in data and body.topics is not None:
         ok = _plan_ids(db, c)
         if any(t.plan_lesson_id and t.plan_lesson_id not in ok for t in body.topics):
             raise HTTPException(400, 'Mövzu kursun siniflərinin perspektiv planından olmalıdır')
-        data['topics'] = [{'plan_lesson_id': t.plan_lesson_id, 'text': (t.text or '').strip() or None}
-                          for t in body.topics if t.plan_lesson_id or (t.text or '').strip()]
+        new = [{'plan_lesson_id': t.plan_lesson_id, 'text': (t.text or '').strip() or None}
+               for t in body.topics if t.plan_lesson_id or (t.text or '').strip()]
+        old = [{'plan_lesson_id': t.get('plan_lesson_id'), 'text': t.get('text')} for t in s.topics or []]
+        if new == old or [(x['plan_lesson_id'], x['text']) for x in new] == [(x['plan_lesson_id'], x['text']) for x in old]:
+            data.pop('topics')                                   # dəyişməyib – proqram işarəsi (ref) qalır
+        else:
+            data['topics'] = new
+            s.topic_ref = None                                   # əl ilə dəyişdirilən mövzu artıq proqramdan gəlmir
     if 'material_ids' in data and body.material_ids is not None:
         ok_m = set(db.scalars(select(Material.id).where(Material.assignment_id.in_(c.audience['ta_ids']),
                                                          Material.archived_at.is_(None))))
@@ -591,9 +698,12 @@ def suggest_topics(cid: int, user: User = Depends(staff), db: Session = Depends(
         if x['plan_lesson_id'] not in seen:
             seen.add(x['plan_lesson_id'])
             uniq.append(x)
-    plan = [{'id': pl.id, 'seq': pl.seq, 'topic': pl.topic, 'section': pl.section}
-            for pl in db.scalars(select(PlanLesson).where(PlanLesson.assignment_id == c.audience['ta_ids'][0])
-                                 .order_by(PlanLesson.seq))]
+    plan = []
+    for ta_id in c.audience['ta_ids']:                       # bütün siniflərin planı (əvvəl yalnız birincisi)
+        ta = db.get(TeachingAssignment, ta_id)
+        cname = db.get(SchoolClass, ta.class_id).name if ta else None
+        plan += [{'id': pl.id, 'seq': pl.seq, 'topic': pl.topic, 'section': pl.section, 'class_name': cname}
+                 for pl in db.scalars(select(PlanLesson).where(PlanLesson.assignment_id == ta_id).order_by(PlanLesson.seq))]
     return {'suggested': uniq, 'plan': plan}
 
 
@@ -604,6 +714,7 @@ class SessionTestIn(BaseModel):
     closes_at: dt.datetime
     bank_ids: list[int] = Field(default_factory=list)
     custom: list[CustomQ] = Field(default_factory=list)
+    replace: bool = False                  # məşğələdə artıq test varsa: köhnəni arxivə göndər və yenisini yarat
 
     @model_validator(mode='after')
     def _v(self):
@@ -624,6 +735,11 @@ def session_test(cid: int, sid: int, body: SessionTestIn, user: User = Depends(s
         raise HTTPException(404, 'Məşğələ tapılmadı')
     if aware(body.closes_at) <= now():
         raise HTTPException(400, 'Bitmə vaxtı keçmişdədir')
+    if s.batch_id:
+        if not body.replace:
+            raise HTTPException(409, 'Bu məşğələdə test artıq var – əvəz etmək üçün «yenilə» seçin')
+        for old in db.scalars(select(OnlineTask).where(OnlineTask.batch_id == s.batch_id)):
+            old.archived_at = now()
     qs = _snapshot(db, body.bank_ids) + [custom_snapshot(q) for q in body.custom]
     b = TestBatch(kind='extra', title=body.title, subject=c.subject, created_by=user.id)
     db.add(b)
@@ -697,6 +813,20 @@ def stats(cid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
                          'extra_test_avg': _avg([p for _, p in extra.get(m.id, [])]),
                          'before_pct': before, 'after_pct': after,
                          'delta': round(after - before, 1) if before is not None and after is not None else None})
+    # giriş / çıxış testi (kursa bağlı, proqramdan: topic_ref diag-in / diag-out) – effektin dürüst göstəricisi
+    def _diag(ref):
+        tids = [t for t, k in extra_tasks.items() if any(s.batch_id == k.batch_id and s.topic_ref == ref for s in ss)]
+        return {sid: _avg([p for _, p in lst]) for sid, lst in _pcts(db, tids).items()} if tids else {}
+    d_in, d_out = _diag('diag-in'), _diag('diag-out')
+    kind = XP.course_kind(c)
+    transitions = []
+    for x in students:
+        x['entry_pct'], x['exit_pct'] = d_in.get(x['student_id']), d_out.get(x['student_id'])
+        x['effect'] = round(x['exit_pct'] - x['entry_pct'], 1) if x['entry_pct'] is not None and x['exit_pct'] is not None else None
+        e = x['exit_pct']
+        if e is not None and ((kind == 'inkisaf' and e >= 80) or (kind == 'tereqqi' and e < 50)):     # yalnız təklif – qərar müəllimindir
+            transitions.append({'student_id': x['student_id'], 'full_name': x['full_name'], 'pct': e,
+                                'to': 'tereqqi' if kind == 'inkisaf' else 'inkisaf'})
     # iştirakçı (≥50 % iştirak) ↔ eyni siniflərdə qalan şagirdlər. Əsas göstərici – İRƏLİLƏYİŞ (kursdan sonra − əvvəl):
     # zəif qrupu güclü şagirdlərlə mütləq nəticəyə görə müqayisə etmək həmişə mənfi fərq verir və yanıldır.
     active = {s['student_id'] for s in students if (s['attendance_pct'] or 0) >= 50}
@@ -723,7 +853,9 @@ def stats(cid: int, user: User = Depends(staff), db: Session = Depends(get_db)):
                     'at_risk': sum(s['risk'] for s in students)},
         'compare': {'participants': len(active), 'participants_pct': after_of(active), 'participants_delta': delta_of(active),
                     'others': len(others), 'others_pct': after_of(others), 'others_delta': delta_of(others)},
-        'by_format': by_format, 'sessions': sessions, 'students': students,
+        'by_format': by_format, 'sessions': sessions, 'students': students, 'kind': kind, 'transitions': transitions,
+        'entry_exit': {'entry_avg': _avg(list(d_in.values())), 'exit_avg': _avg(list(d_out.values())),
+                       'effect': _avg([x['effect'] for x in students])},
     }
 
 
@@ -763,8 +895,9 @@ def student_courses(db: Session, s: Student) -> list[dict]:
                          'recording_url': x.recording_url if x.status == 'held' else None,
                          'link': x.link if live and x.format == 'onlayn' else None, 'live': live,
                          'my_status': a.status if a else None, 'joined': bool(a and a.joined_at), 'test': test})
-        out.append({'id': c.id, 'title': c.title, 'subject': c.subject, 'format': c.format, 'teacher': teacher.full_name,
-                    'goal': c.goal, 'starts_on': c.starts_on, 'ends_on': c.ends_on, 'present': present, 'held': held,
+        neutral = XP.leaks(c.title)                    # «Zəif qrup» kimi ad şagirdə görünmür: frontend «{fənn} – əlavə məşğələ» yazır
+        out.append({'id': c.id, 'title': '' if neutral else c.title, 'neutral': neutral, 'subject': c.subject, 'format': c.format,
+                    'teacher': teacher.full_name, 'goal': None if XP.leaks(c.goal) else c.goal, 'starts_on': c.starts_on, 'ends_on': c.ends_on, 'present': present, 'held': held,
                     'sessions': rows,
                     'next': next((r for r in rows if r['status'] == 'planned' and
                                   dt.datetime.combine(r['date'], dt.time.fromisoformat(r['end']), tzinfo=TZ) >= t), None)})
@@ -779,9 +912,11 @@ def join(db: Session, s: Student, sid: int) -> dict:
     beg, end = _when(x)
     t = now().astimezone(TZ)
     if x.format != 'onlayn' or not x.link:
-        raise HTTPException(400, 'Bu məşğələ əyanidir – otaq: ' + (x.room or 'müəllimdən soruşun'))
+        key, params = 'Bu məşğələ əyanidir – otaq: {room}', {'room': x.room or 'müəllimdən soruşun'}
+        raise HTTPException(400, {'key': key, 'params': params, 'message': key.format(**params)})
     if x.status != 'planned' or not (beg - JOIN_BEFORE <= t <= end):
-        raise HTTPException(409, f'Keçid {beg - JOIN_BEFORE:%H:%M}-dan {end:%H:%M}-dək açıqdır')
+        key, params = 'Keçid {a}–{b} arasında açıqdır', {'a': f'{beg - JOIN_BEFORE:%H:%M}', 'b': f'{end:%H:%M}'}
+        raise HTTPException(409, {'key': key, 'params': params, 'message': key.format(**params)})
     a = db.get(ExtraAttendance, (x.id, s.id)) or ExtraAttendance(session_id=x.id, student_id=s.id)
     a.joined_at = a.joined_at or now()
     db.merge(a)
