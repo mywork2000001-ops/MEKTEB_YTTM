@@ -5,13 +5,15 @@ import { get } from '../../api'
 import { AsyncBtn, ErrorBox, fmt, Loading, Seg, useLoad } from '../../ui'
 import { fmtD } from '../../print'
 import { download } from './StudentReport'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type Cell = { status: 'yazıb' | 'yazmayıb' | 'təyin olunmayıb' | 'gözlənilir' | 'nəşr olunmayıb'; pct: number | null; grade: number | null; published: boolean }
 type Col = { key: string; kind: 'movzu' | 'sinaq' | 'ksq' | 'bsq'; no: string | null; title: string; date: string | null; assigned_count: number; wrote_count: number; avg_pct: number | null }
 type Row = { student_id: number; full_name: string; cells: Record<string, Cell>; wrote: number; given: number; avg_pct: number | null }
 type MData = { class_name: string; subject: string; columns: Col[]; rows: Row[] }
-type MK = 'all' | 'movzu' | 'sinaq'
+type MissItem = { key: string; kind: 'movzu' | 'sinaq' | 'ksq' | 'bsq'; no: string | null; title: string; date: string | null; status: string }
+type MissData = { class_name: string; subject: string; students: number; total: number; rows: { student_id: number; full_name: string; lang: string; items: MissItem[] }[] }
+type MK ='all' | 'movzu' | 'sinaq'
 
 const tone = (p: number | null) => (p == null ? undefined : p >= 80 ? 'var(--ok)' : p >= 50 ? 'var(--warn)' : 'var(--bad)')
 const shade = (c?: string) => (c ? `color-mix(in srgb, ${c} 22%, transparent)` : undefined)
@@ -32,18 +34,44 @@ export default function ClassMatrix({ ta, params, label, onStudent, onResend }: 
   const t = useT()
   const [kind, setKind] = useState<MK>('all')
   const q = { kind, ...(params.date_from ? { from: params.date_from } : {}), ...(params.date_to ? { to: params.date_to } : {}) }
-  const [d, err, loading] = useLoad<MData>(() => get(`/api/results-center/class/${ta}/matrix`, q), [ta, kind, label])
+  const [mode, setMode] = useState<'all' | 'missing'>(() => { try { return sessionStorage.getItem('mk-matrix-missing') === '1' ? 'missing' : 'all' } catch { return 'all' } })
+  useEffect(() => { try { sessionStorage.removeItem('mk-matrix-missing') } catch { /* noop */ } }, [])
+  const [d, err, loading] = useLoad<MData | null>(() => mode === 'all' ? get(`/api/results-center/class/${ta}/matrix`, q) : Promise.resolve(null), [ta, kind, label, mode])
+  const [ml_, err2, loading2] = useLoad<MissData | null>(() => mode === 'missing' ? get(`/api/results-center/class/${ta}/missing-list`, q) : Promise.resolve(null), [ta, kind, label, mode])
   const file = (fmtName: 'xlsx' | 'pdf') => download(`/api/results-center/class/${ta}/matrix?` + new URLSearchParams({ ...q, format: fmtName }).toString(), `matris-${d?.class_name || ta}.${fmtName}`)
+  const mfile = (fmtName: 'xlsx' | 'pdf', per: boolean) => download(`/api/results-center/class/${ta}/missing-list?` + new URLSearchParams({ ...q, format: fmtName, per_student: per ? '1' : '0' }).toString(),
+    `islenmeyenler-${ml_?.class_name || ta}${per ? '-sagird' : ''}.${fmtName}`)
   return (
     <>
       <div className="toolbar no-print">
         <Seg label={t('Növ')} value={kind} onChange={setKind} options={[['all', 'Hamısı'], ['movzu', 'Mövzu testləri'], ['sinaq', 'Sınaqlar']]} />
-        <AsyncBtn className="btn sm right" ok={t('PDF hazırdır')} onClick={() => file('pdf')}>🖨 {t('Çap')}</AsyncBtn>
-        <AsyncBtn className="btn sm" ok={t('Fayl hazırdır')} onClick={() => file('xlsx')}>⬇ Excel</AsyncBtn>
+        <Seg label={t('Görünüş')} value={mode} onChange={setMode} options={[['all', 'Hamısı'], ['missing', 'Yalnız işlənməyənlər']]} />
+        {mode === 'all' ? <>
+          <AsyncBtn className="btn sm right" ok={t('PDF hazırdır')} onClick={() => file('pdf')}>🖨 {t('Çap')}</AsyncBtn>
+          <AsyncBtn className="btn sm" ok={t('Fayl hazırdır')} onClick={() => file('xlsx')}>⬇ Excel</AsyncBtn></> : <>
+          <AsyncBtn className="btn sm right" ok={t('PDF hazırdır')} onClick={() => mfile('pdf', false)}>🖨 {t('Sinif üzrə çap')}</AsyncBtn>
+          <AsyncBtn className="btn sm" ok={t('PDF hazırdır')} onClick={() => mfile('pdf', true)}>🖨 {t('Hər şagirdə ayrıca')}</AsyncBtn>
+          <AsyncBtn className="btn sm" ok={t('Fayl hazırdır')} onClick={() => mfile('xlsx', false)}>⬇ Excel</AsyncBtn></>}
         <button className="btn sm" onClick={onResend}>{t('Yazmayanlara yenidən göndər')}</button>
       </div>
-      <ErrorBox error={err} />
-      {loading && !d ? <Loading /> : d && (d.columns.length === 0 ? <div className="empty">{t('Bu dövrdə test və sınaq yoxdur.')}</div> : (
+      <ErrorBox error={mode === 'all' ? err : err2} />
+      {mode === 'missing' && (loading2 && !ml_ ? <Loading /> : ml_ && (ml_.rows.length === 0 ? <div className="empty">{t('İşlənməyən test və sınaq yoxdur.')}</div> : (
+        <section className="panel">
+          <h2>{t('Yalnız işlənməyənlər')} <small>{ml_.class_name} · {ml_.subject}</small>{' '}
+            <span className="pill warn">{t('{n} şagird · {m} işlənməmiş test', { n: ml_.students, m: ml_.total })}</span></h2>
+          <div className="stack" style={{ gap: 8 }}>
+            {ml_.rows.map(r => (
+              <div key={r.student_id} className="row" style={{ alignItems: 'flex-start', gap: 10, borderBottom: '1px solid var(--line)', paddingBottom: 8 }}>
+                <b className="click" style={{ minWidth: 190 }} onClick={() => onStudent(r.student_id)}>{r.full_name}</b>
+                <span className="row grow" style={{ gap: 6, flexWrap: 'wrap' }}>
+                  {r.items.map(i => <span key={i.key} className="pill" title={fmtD(i.date)}>
+                    {i.kind === 'movzu' ? `${i.no ? '№' + i.no + ' ' : ''}${i.title}` : i.kind === 'sinaq' ? t('Sınaq: {name}', { name: i.title }) : i.title}{i.status === 'gözlənilir' ? ' ⏳' : ''}</span>)}
+                </span>
+                <span className="pill bad">{t('{n} işlənməmiş', { n: r.items.length })}</span>
+              </div>))}
+          </div>
+        </section>)))}
+      {mode === 'all' && (loading && !d ? <Loading /> : d && (d.columns.length === 0 ? <div className="empty">{t('Bu dövrdə test və sınaq yoxdur.')}</div> : (
         <section className="panel">
           <h2>{t('Kim nəyi işləyib')} <small>{d.class_name} · {d.subject}</small></h2>
           <p className="small muted">{t('✗ – yazmayıb · ⏳ – hələ açıqdır · — – təyin olunmayıb · (xx) – nəticə şagirdə hələ nəşr olunmayıb')}</p>
@@ -75,7 +103,7 @@ export default function ClassMatrix({ ta, params, label, onStudent, onResend }: 
               </tbody>
             </table>
           </div>
-        </section>))}
+        </section>)))}
     </>
   )
 }

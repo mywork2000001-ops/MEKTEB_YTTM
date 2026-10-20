@@ -114,7 +114,8 @@ export default function StudentReport({ id, params, label }: { id: number; param
           <button className="btn sm" onClick={() => printReport(d, label === 'bütün dövr' ? 'bütün dövr' : label)}>{t('Çap / PDF')}</button>
           <button className="btn sm" onClick={() => dl('pdf', true, 'az')}>{t('Valideyn nüsxəsi (AZ)')}</button>
           <button className="btn sm" onClick={() => dl('pdf', true, 'ru')}>{t('Valideyn nüsxəsi (RU)')}</button>
-          <button className="btn sm" onClick={() => dl('docx', false, 'az')}>Word</button></span>
+          <button className="btn sm" onClick={() => dl('docx', false, 'az')}>Word</button>
+          <button className="btn sm" onClick={() => download(`/api/results-center/student/${id}/missing-list?` + new URLSearchParams(q).toString(), `islenmeyenler-${d.student.full_name}.pdf`).catch(e => toast((e as Error).message))}>🖨 {t('İşləməli olduğu testlər')}</button></span>
       </div>
       {empty ? <div className="empty">{t('Bu dövrdə nəticə yoxdur.')}</div> : (
         <>
