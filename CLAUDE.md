@@ -30,5 +30,6 @@ Sessiyanı bitirməzdən əvvəl `docs/audit/icra-YYYY-MM-DD.md`: hər istifadə
 (commit, test sayı, build, deploy, miqrasiya); tam pytest + build; açıq qalanlar P1/P2/P3. Növbəti sessiya əvvəlcə son auditin
 «Açıq qalanlar» bölməsini oxuyur. Ətraflı: `docs/icra-auditi-promtu.md`.
 
-## Bulud sessiyası (ikinci hesab, claude.ai/code) – testlər üzrə
-Yalnız öz budağında, `main`-ə PR ilə; deploy / canlı DB / miqrasiya – yalnız əsas sessiya. Ətraflı: `docs/bulud-sessiyasi-promtu.md`.
+## Bulud sessiyası (ikinci hesab, claude.ai/code) – yalnız PDF-dən testlər
+Bu repoda İŞLƏMİR: o `HUB_EDUCAT-ON` (Documents\Claude\Projects) repoda `cloud/<slug>` budağında PR açır, PDF – `test-sources`.
+Promt: `HUB_EDUCAT-ON/docs/cloud/PROMPT.md`. PR review, katalog, yoxlamalar, merge, deploy – əsas sessiya (bu).
