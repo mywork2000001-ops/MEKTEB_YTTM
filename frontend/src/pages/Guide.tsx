@@ -1,9 +1,9 @@
 // «Bələdçi»: hər ssenari = qısa video (alt yazı tətbiqin dilində, WebVTT) + addım-addım mətn.
 // Video faylı yoxdursa (və ya brauzer aça bilmirsə) bölmə yalnız addımlarla göstərilir – səhv deyil.
-// Videolar: backend/scripts/guide_videos.py ilə yazılır -> frontend/public/guide/{student|teacher}/NN-ad.webm (+ .az/.en/.ru.vtt)
+// Videolar: backend/scripts/guide_videos.py ilə yazılır -> frontend/public/guide/{student|teacher}/NN-ad.az.mp4 / NN-ad.ru.mp4 (+ .az/.en/.ru.vtt)
 import { useContext, useRef, useState } from 'react'
 import { useAuth } from '../auth'
-import { GUIDE, type GuideItem } from '../guideData'
+import { GUIDE, guideSubLangs, guideVideoSrc, type GuideItem } from '../guideData'
 import { I18nCtx, LANGS, useT } from '../i18n'
 import { Top } from '../ui'
 
@@ -20,9 +20,9 @@ function Scenario({ g }: { g: GuideItem }) {
       {!noVideo && (
         <div style={{ marginBottom: 12 }}>
           {/* Fayl yoxdursa server interfeys səhifəsini qaytarır -> video xətası -> yalnız mətn */}
-          <video ref={ref} controls preload="metadata" playsInline src={`${base}.webm`} onError={() => setNoVideo(true)}
+          <video key={lang} ref={ref} controls preload="metadata" playsInline src={guideVideoSrc(g.role, g.id, lang)} onError={() => setNoVideo(true)}
             style={{ width: '100%', maxWidth: 720, borderRadius: 8, background: '#000', display: 'block' }}>
-            {LANGS.map(([k, n]) => <track key={k} kind="subtitles" src={`${base}.${k}.vtt`} srcLang={k} label={n} default={k === lang} />)}
+            {LANGS.filter(([k]) => guideSubLangs(lang).includes(k)).map(([k, n]) => <track key={k} kind="subtitles" src={`${base}.${k}.vtt`} srcLang={k} label={n} default={k === lang} />)}
           </video>
           <button type="button" className="btn" style={{ marginTop: 8 }} onClick={full}>{t('Videonu tam ekran aç')}</button>
         </div>)}

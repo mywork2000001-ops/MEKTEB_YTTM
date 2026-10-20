@@ -2,24 +2,33 @@
 
 İş qaydası (docs/meshgele-proqram-ve-video-beledci-promtu.md, B):
   1. müvəqqəti SQLite bazası yaradılır (real ad YOX: «Test Müəllim», «Şagird Bir» …), lokal server qalxır (frontend/dist-dən);
-  2. ssenari addımları (SCENARIOS) 1280x720 yazılır -> frontend/public/guide/{student|teacher}/NN-ad.webm;
-  3. alt yazılar ssenaridəki mətnlərdən və addım vaxtlarından .az.vtt / .en.vtt / .ru.vtt kimi yazılır;
-  4. video ffmpeg ilə ≤ 3 MB-a sıxılır.
+  2. ssenari addımları (SCENARIOS) CDP screencast ilə yazılır (viewport 1280x720, device_scale_factor 1.5 -> 1920x1080;
+     telefon 390x780 x2) -> frontend/public/guide/{student|teacher}/NN-ad.mp4 (H.264 30 fps);
+  3. hər addımın AZ mətni edge-tts ilə səsləndirilir (keş: backend/data/guide_tts), səs videoya AAC kimi qoşulur;
+     addım müddəti = max(wait, səs + 0.5 s);
+  4. alt yazılar ssenaridəki mətnlərdən və addım vaxtlarından .az.vtt / .en.vtt / .ru.vtt kimi yazılır.
 
 İstifadə (backend qovluğunda, .venv python ilə):
   python scripts/guide_videos.py --check            # selektorlar mövcuddur? (yazı yoxdur)
   python scripts/guide_videos.py                    # hamısını yaz
   python scripts/guide_videos.py --only student/03-movzu-testi    # və ya --only 03-movzu-testi
+  python scripts/guide_videos.py --langs az,ru      # default hər ikisi: NN-ad.az.mp4 (AZ interfeys+səs), NN-ad.ru.mp4 (RU)
+  python scripts/guide_videos.py --voice-az babek --voice-ru dmitry   # kişi səsləri; --no-voice – səssiz
+  python scripts/guide_videos.py --probe [DIR]      # fayl cədvəli (ölçü, müddət, MB, səs); DIR verilsə orta kadr PNG
   python scripts/guide_videos.py --export-ts        # frontend/src/guideData.ts (səhifə üçün ssenari siyahısı)
-Tələb: Google Chrome (Playwright channel='chrome'), frontend/dist (yoxdursa `npm run build` işlədilir).
+Tələb: Google Chrome (Playwright channel='chrome'), edge-tts + imageio-ffmpeg (requirements-dev.txt), frontend/dist (yoxdursa `npm run build` işlədilir).
 Yeni ssenari / addım əlavə etmək: yalnız SCENARIOS-a; sonra --export-ts və i18n.ts-də yeni mətnlər (AZ/EN/RU).
 """
 from __future__ import annotations
 
 import argparse
+import asyncio
+import base64
 import datetime as dt
+import hashlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -32,7 +41,14 @@ ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / 'backend'
 FRONT = ROOT / 'frontend'
 OUT = FRONT / 'public' / 'guide'
-MAX_MB = 3.0
+MAX_MB = 15.0
+TTS_DIR = BACKEND / 'data' / 'guide_tts'
+FPS = 30
+VOICES = {'az': {'banu': 'az-AZ-BanuNeural', 'babek': 'az-AZ-BabekNeural'},
+          'ru': {'svetlana': 'ru-RU-SvetlanaNeural', 'dmitry': 'ru-RU-DmitryNeural'},
+          'en': {'aria': 'en-US-AriaNeural', 'guy': 'en-US-GuyNeural'}}
+LANG_LOCALE = {'az': 'az-AZ', 'ru': 'ru-RU', 'en': 'en-US'}
+TTS_RATE = '-5%'
 
 # ----------------------------------------------------------------------------------------- demo hesablar
 TEACHER = {'login': 'M-901', 'password': 'demo-parol-1', 'name': 'Test Müəllim'}
@@ -60,11 +76,13 @@ SCENARIOS: list[dict] = [
          {'act': 'click', 'sel': 'button.chip:has-text("Русский")', 'wait': 1800,
           'cap': L('İstədiyin dili seç: Azərbaycanca, English və ya Русский.', 'Pick your language: Azərbaycanca, English or Русский.',
                    'Выбери язык: Azərbaycanca, English или Русский.')},
-         {'act': 'click', 'sel': 'button.chip:has-text("Azərbaycanca")', 'wait': 1200},
+         {'act': 'click', 'sel': 'button.chip:has-text("Azərbaycanca")', 'sel_ru': 'button.chip:has-text("Русский")', 'wait': 1200},
          {'act': 'fill', 'sel': 'input[autocomplete="username"]', 'value': 'XE-001', 'wait': 1800,
+          'say': L('Müəllimin verdiyi giriş kodunu yaz, məsələn iks e sıfır sıfır bir.', '', ''),
           'cap': L('Müəllimin verdiyi giriş kodunu yaz (məsələn: XE-001).', 'Type the sign-in code your teacher gave you (e.g. XE-001).',
                    'Введи код входа, который дал учитель (например: XE-001).')},
          {'act': 'fill', 'sel': 'input[inputmode="numeric"]', 'value': '1234', 'wait': 1800,
+          'say': L('Dörd rəqəmli pin kodunu yaz. Pin kodunu heç kimə vermə.', '', ''),
           'cap': L('4 rəqəmli PIN-i yaz. PIN-i heç kimə vermə.', 'Type your 4-digit PIN. Never share it.',
                    'Введи 4-значный PIN. Никому его не сообщай.')},
          {'act': 'wait', 'wait': 1500, 'cap': L('«Daxil ol» düyməsinə bas – hazırsan!', 'Press «Sign in» – you are in!',
@@ -206,6 +224,7 @@ SCENARIOS: list[dict] = [
          {'act': 'select', 'sel': '.hub-pick:has-text("Sinif") select', 'value': 'X e', 'wait': 2500,
           'cap': L('Sinfi seç.', 'Choose the class.', 'Выбери класс.')},
          {'act': 'click', 'sel': 'button:has-text("Kim nəyi işləyib")', 'wait': 4500,
+          'say': L('Kim nəyi işləyib: hər şagird üzrə testlər və sınaqlar. Bal, işləməyibsə xaç işarəsi, hələ açıqdırsa qum saatı.', '', ''),
           'cap': L('«Kim nəyi işləyib» – hər şagird üzrə testlər və sınaqlar: bal, ✗ – yazmayıb, ⏳ – hələ açıqdır.',
                    '«Who did what» – tests and exams per student: score, ✗ – not taken, ⏳ – still open.',
                    '«Кто что выполнил» – тесты и экзамены по каждому ученику: балл, ✗ – не писал, ⏳ – ещё открыт.')},
@@ -318,6 +337,11 @@ def write_vtt(path: Path, cues: list[tuple[float, float, str]]):
 
 
 def find_ffmpeg() -> str | None:
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:                                                          # noqa: BLE001
+        pass
     p = shutil.which('ffmpeg')
     if p:
         return p
@@ -328,18 +352,139 @@ def find_ffmpeg() -> str | None:
     return None
 
 
-def compress(src: Path, dst: Path, ss: float = 0.0) -> float:
-    """webm -> ≤ MAX_MB (VP8, 15 fps); crf artırılır."""
+def media_info(path: Path) -> dict:
+    """ffmpeg -i çıxışından: müddət (san), video ölçüsü, səs var/yox."""
     ff = find_ffmpeg()
-    if not ff:
-        shutil.copy(src, dst)
-        return dst.stat().st_size / 1e6
-    for crf in (34, 38, 42, 46, 51):
-        subprocess.run([ff, '-y', '-loglevel', 'error', '-ss', f'{ss:.2f}', '-i', str(src), '-an', '-r', '15', '-c:v', 'libvpx', '-b:v', '0',
-                        '-crf', str(crf), '-cpu-used', '4', '-deadline', 'good', str(dst)], check=True)
+    r = subprocess.run([ff, '-hide_banner', '-i', str(path)], capture_output=True, text=True, encoding='utf-8', errors='replace')
+    txt = r.stderr
+    m = re.search(r'Duration: (\d+):(\d+):(\d+\.\d+)', txt)
+    dur = int(m[1]) * 3600 + int(m[2]) * 60 + float(m[3]) if m else 0.0
+    v = re.search(r'Video: .*?, (\d{2,5})x(\d{2,5})', txt)
+    return {'dur': dur, 'size': (int(v[1]), int(v[2])) if v else None, 'audio': 'Audio:' in txt}
+
+
+# ----------------------------------------------------------------------------------------- RU interfeys: selektor mətni
+_I18N: dict | None = None
+
+
+def i18n_ru() -> dict:
+    """frontend/src/i18n.ts -> {AZ: RU} (yalnız selektor mətnlərini tərcümə etmək üçün)."""
+    global _I18N
+    if _I18N is None:
+        _I18N = {}
+        rx = re.compile(r"""^\s*(['"])(.+?)\1:\s*\[\s*(['"])(.*?)\3\s*,\s*(['"])(.*?)\5\s*\]""")
+        for line in (FRONT / 'src' / 'i18n.ts').read_text(encoding='utf-8').splitlines():
+            m = rx.match(line)
+            if m:
+                _I18N[m[2]] = m[6]
+    return _I18N
+
+
+def tr_text(txt: str, lang: str) -> str:
+    if lang == 'az':
+        return txt
+    return i18n_ru().get(txt, txt)
+
+
+def tr_sel(sel: str, lang: str) -> str:
+    """has-text("AZ") / text=AZ -> RU qarşılığı (lüğətdə yoxdursa olduğu kimi)."""
+    if lang == 'az' or not sel:
+        return sel
+    return re.sub(r'has-text\("([^"]+)"\)', lambda m: f'has-text("{tr_text(m[1], lang)}")', sel)
+
+
+# ----------------------------------------------------------------------------------------- səs (edge-tts)
+EMOJI_RE = re.compile('[\U0001F000-\U0001FFFF\u2600-\u27BF\u2B00-\u2BFF\u2190-\u21FF\uFE0F\u2713\u2717\u23F3]')
+SAY_FIX = [('KSQ / BSQ', 'ka es qu, be es qu'), ('KSQ', 'ka es qu'), ('PDF', 'pe de ef'), ('PIN', 'pin'), ('XE-001', 'iks e sıfır sıfır bir')]
+
+
+def say_text(st: dict, lang: str = 'az') -> str:
+    """Səsə gedən mətn: `say` sahəsi, yoxdursa `cap` (dırnaq, emoji, ox təmizlənir)."""
+    cap = st.get('cap')
+    if not cap:
+        return ''
+    txt = (st.get('say') or {}).get(lang) or cap[lang]
+    txt = txt.replace('«', '').replace('»', '').replace('"', '')
+    txt = EMOJI_RE.sub('', txt).replace('→', ',').replace(' – ', ', ').replace('–', ',')
+    if lang == 'az':
+        for a, b in SAY_FIX:
+            txt = txt.replace(a, b)
+    return re.sub(r'\s+', ' ', txt).strip()
+
+
+async def _tts_save(text: str, voice: str, rate: str, out: Path):
+    import edge_tts
+    await edge_tts.Communicate(text, voice, rate=rate).save(str(out))
+
+
+def tts_clip(text: str, voice: str, rate: str = TTS_RATE) -> tuple[Path, float]:
+    """mp3 (keşdən və ya edge-tts) + müddət. Xətada istisna atır."""
+    TTS_DIR.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha1(f'{voice}|{rate}|{text}'.encode('utf-8')).hexdigest()
+    f = TTS_DIR / f'{key}.mp3'
+    if not f.exists() or f.stat().st_size < 500:
+        tmp = f.with_suffix('.part')
+        asyncio.run(_tts_save(text, voice, rate, tmp))
+        tmp.replace(f)
+    return f, media_info(f)['dur']
+
+
+def prepare_audio(todo: list[dict], voice: str, lang: str = 'az') -> dict:
+    """{(ssenari id, addım indeksi, dil): (mp3, san)}; edge-tts xətası -> həmin video səssiz."""
+    out: dict = {}
+    vname = VOICES[lang][voice]
+    for s in todo:
+        try:
+            for i, st in enumerate(s['steps']):
+                t = say_text(st, lang)
+                if t:
+                    out[(pick(s), i, lang)] = tts_clip(t, vname)
+        except Exception as e:                                                 # noqa: BLE001
+            for k in [k for k in out if k[0] == pick(s) and k[2] == lang]:
+                del out[k]
+            print(f'  DİQQƏT {pick(s)}: səs alınmadı ({type(e).__name__}: {str(e)[:100]}) – video səssiz yazılacaq')
+    return out
+
+
+# ----------------------------------------------------------------------------------------- video (screencast -> mp4)
+def encode_mp4(frames: list[tuple[float, Path]], t0: float, t_end: float, size: tuple[int, int],
+               clips: list[tuple[float, Path]], dst: Path, work: Path) -> float:
+    """frames: (vaxt, jpeg); clips: (başlama san, mp3). H.264 + AAC; MAX_MB aşarsa crf artır."""
+    ff = find_ffmpeg()
+    fr = sorted(frames, key=lambda x: x[0])
+    before = [f for f in fr if f[0] <= t0]
+    keep = [(t0, before[-1][1])] if before else []
+    keep += [f for f in fr if t0 < f[0] < t_end]
+    if not keep:
+        raise RuntimeError('kadr yoxdur')
+    lines = []
+    for k, (ts, p) in enumerate(keep):
+        nxt = keep[k + 1][0] if k + 1 < len(keep) else t_end
+        lines.append(f"file '{p.name}'\nduration {max(nxt - ts, 1 / 120):.4f}")
+    lines.append(f"file '{keep[-1][1].name}'")                                 # concat demuxer: son kadr təkrarlanır
+    (work / 'list.txt').write_text('\n'.join(lines), encoding='utf-8')
+    W, H = size
+    vf = f'[0:v]fps={FPS},scale={W}:{H}:flags=lanczos,format=yuv420p[v]'
+    cmd = [ff, '-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'list.txt']
+    for _, mp3 in clips:
+        cmd += ['-i', str(mp3)]
+    if clips:
+        fc = [vf]
+        for n, (st, _) in enumerate(clips, 1):
+            ms = int(round(st * 1000))
+            fc.append(f'[{n}:a]adelay={ms}|{ms}[a{n}]')
+        ins = ''.join(f'[a{n}]' for n in range(1, len(clips) + 1))
+        fc.append(f'{ins}amix=inputs={len(clips)}:normalize=0:duration=longest,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=44100[a]')
+        cmd += ['-filter_complex', ';'.join(fc), '-map', '[v]', '-map', '[a]', '-c:a', 'aac', '-b:a', '128k', '-ac', '1']
+    else:
+        cmd += ['-filter_complex', vf, '-map', '[v]', '-an']
+    mb = 0.0
+    for crf in (20, 23, 26):
+        subprocess.run(cmd + ['-c:v', 'libx264', '-preset', 'slow', '-crf', str(crf), '-tune', 'stillimage', '-r', str(FPS),
+                              '-movflags', '+faststart', str(dst)], cwd=work, check=True)
         mb = dst.stat().st_size / 1e6
         if mb <= MAX_MB:
-            return mb
+            break
     return mb
 
 
@@ -431,9 +576,12 @@ def move_to(page, loc):
         page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2, steps=18)
 
 
-def do_step(page, st: dict, check: bool) -> str | None:
+def do_step(page, st: dict, check: bool, lang: str = 'az') -> str | None:
     """Addımı icra edir. Selektor tapılmazsa xəta mətni qaytarır."""
-    act, sel, val = st['act'], st.get('sel'), st.get('value')
+    act, val = st['act'], st.get('value')
+    sel = st.get(f'sel_{lang}') or (tr_sel(st.get('sel'), lang) if act not in ('goto', 'nav', 'scroll') else st.get('sel'))
+    if act == 'select' and lang != 'az':
+        val = st.get(f'value_{lang}') or tr_text(val, lang)
     tmo = 6000 if check else 8000
     try:
         if act == 'goto':
@@ -486,56 +634,110 @@ def do_step(page, st: dict, check: bool) -> str | None:
     return None
 
 
-def run_scenario(browser, demo: Demo, scn: dict, check: bool) -> tuple[Path | None, list[str]]:
+def run_scenario(browser, demo: Demo, scn: dict, check: bool, audio: dict | None = None, lang: str = 'az') -> tuple[Path | None, list[str]]:
+    audio = audio or {}
     vw, vh = scn.get('viewport', (1280, 720))
-    tmpv = demo.tmp / 'video' / scn['id']
-    kw = dict(viewport={'width': vw, 'height': vh}, base_url=demo.base, locale='az-AZ')
+    dsf = 2 if vw < 600 else 1.5
+    kw = dict(viewport={'width': vw, 'height': vh}, base_url=demo.base, locale=LANG_LOCALE[lang])
     if not check:
-        kw.update(record_video_dir=str(tmpv), record_video_size={'width': vw, 'height': vh})
+        kw.update(device_scale_factor=dsf)
     if vw < 600:
-        kw.update(is_mobile=True, has_touch=False, device_scale_factor=1)
+        kw.update(is_mobile=True, has_touch=False)
     ctx = browser.new_context(**kw)
     ctx.add_init_script(HIGHLIGHT_JS)
-    ctx.add_init_script("try{localStorage.setItem('mk-welcome-guide','1')}catch(e){}")      # yeni giriş kartı videoya düşməsin
+    ctx.add_init_script("try{localStorage.setItem('mk-welcome-guide','1');localStorage.setItem('mk-lang','%s')}catch(e){}" % lang)      # yeni giriş kartı videoya düşməsin
     page = ctx.new_page()
-    t0 = time.monotonic()
     errs: list[str] = []
     cues = {'az': [], 'en': [], 'ru': []}
+    clips: list[tuple[float, Path]] = []
+    frames: list[tuple[float, Path]] = []
+    work = demo.tmp / 'frames' / f"{scn['id']}-{lang}"
+    t0 = t_end = 0.0
+    cdp = None
     try:
         if scn.get('login', True):
             login_api(page, demo, scn['role'])
+            page.request.patch(demo.base + '/api/auth/prefs', data={'language': lang})       # istifadəçi dili (interfeys)
         page.goto('/')
         settle(page)
         page.wait_for_timeout(600 if check else 1200)
         if scn.get('login', True) and page.locator('.scrim').count():           # «yeni sertifikat» pəncərəsi – videoya düşməsin
             page.keyboard.press('Escape')
             page.wait_for_timeout(500)
-        t_start = time.monotonic() - t0
-        for st in scn['steps']:
-            a = time.monotonic() - t0
-            e = do_step(page, st, check)
+        if not check:
+            work.mkdir(parents=True, exist_ok=True)
+            cdp = ctx.new_cdp_session(page)
+
+            def on_frame(p):
+                try:
+                    f = work / f'f{len(frames):05d}.jpg'
+                    f.write_bytes(base64.b64decode(p['data']))
+                    frames.append((float(p.get('metadata', {}).get('timestamp') or time.time()), f))
+                    cdp.send('Page.screencastFrameAck', {'sessionId': p['sessionId']})
+                except Exception:                                              # noqa: BLE001
+                    pass
+            cdp.on('Page.screencastFrame', on_frame)
+            cdp.send('Page.startScreencast', {'format': 'jpeg', 'quality': 92, 'maxWidth': int(vw * dsf), 'maxHeight': int(vh * dsf),
+                                              'everyNthFrame': 1})
+            t0 = time.time()
+            page.wait_for_timeout(400)
+            if not frames:                                                      # statik səhifə: başlanğıc kadrı əl ilə
+                f = work / 'f_init.jpg'
+                f.write_bytes(page.screenshot(type='jpeg', quality=92))
+                frames.append((t0 - 0.01, f))
+        for i, st in enumerate(scn['steps']):
+            a = time.time()
+            e = do_step(page, st, check, lang)
             if e:
                 errs.append(e)
             if not check:
-                page.wait_for_timeout(st.get('wait', 1500))
-            b = time.monotonic() - t0
+                wait = st.get('wait', 1500)
+                clip = audio.get((pick(scn), i, lang))
+                if clip:
+                    wait = max(wait, int((clip[1] + 0.5) * 1000))
+                    clips.append((a - t0, clip[0]))
+                page.wait_for_timeout(wait)
+            b = time.time()
             if st.get('cap') and not check:
                 for lg in cues:
-                    cues[lg].append((max(a - t_start, 0.0), b - t_start, st['cap'][lg]))
+                    cues[lg].append((max(a - t0, 0.0), b - t0, st['cap'][lg]))
+        t_end = time.time()
     finally:
-        vid = page.video
+        if cdp:
+            try:
+                cdp.send('Page.stopScreencast')
+            except Exception:                                                  # noqa: BLE001
+                pass
         ctx.close()
     if check:
         return None, errs
-    raw = Path(vid.path())
     d = OUT / scn['role']
     d.mkdir(parents=True, exist_ok=True)
-    dst = d / f"{scn['id']}.webm"
-    mb = compress(raw, dst, t_start)
-    for lg in cues:
+    dst = d / f"{scn['id']}.{lang}.mp4"
+    mb = encode_mp4(frames, t0, t_end, (int(vw * dsf), int(vh * dsf)), clips, dst, work)
+    for lg in (['az', 'en'] if lang == 'az' else [lang]):          # EN alt yazı AZ videonun vaxtı ilə
         write_vtt(d / f"{scn['id']}.{lg}.vtt", cues[lg])
-    print(f'  {pick(scn)}: {mb:.2f} MB')
+    for old in (d / f"{scn['id']}.webm", d / f"{scn['id']}.mp4"):
+        if old.exists():
+            old.unlink()
+    shutil.rmtree(work, ignore_errors=True)
+    print(f'  {pick(scn)} [{lang}]: {mb:.2f} MB, {len(frames)} kadr, {len(clips)} səs')
     return dst, errs
+
+
+def probe(frames_dir: str | None):
+    """OUT-dakı .mp4 cədvəli; frames_dir verilsə hər videodan orta kadr PNG."""
+    ff = find_ffmpeg()
+    print('ad | dil | ölçü | müddət | MB | səs var')
+    for f in sorted(OUT.rglob('*.mp4')):
+        m = media_info(f)
+        sz = f'{m["size"][0]}x{m["size"][1]}' if m['size'] else '?'
+        print(f'{f.parent.name}/{f.stem.rsplit(".", 1)[0]} | {f.stem.rsplit(".", 1)[-1]} | {sz} | {m["dur"]:.1f} s | {f.stat().st_size / 1e6:.2f} | {"hə" if m["audio"] else "YOX"}')
+        if frames_dir:
+            out = Path(frames_dir)
+            out.mkdir(parents=True, exist_ok=True)
+            subprocess.run([ff, '-y', '-loglevel', 'error', '-ss', f'{m["dur"] / 2:.2f}', '-i', str(f), '-frames:v', '1',
+                            str(out / f'{f.parent.name}-{f.stem}.png')], check=True)
 
 
 def export_ts():
@@ -546,7 +748,11 @@ def export_ts():
                       'steps': [x['cap']['az'] for x in s['steps'] if x.get('cap')]})
     txt = ('// AVTOMATİK: backend/scripts/guide_videos.py --export-ts (əl ilə dəyişmə). Mətnlər t() ilə tərcümə olunur.\n'
            'export type GuideItem = { role: \'student\' | \'teacher\'; id: string; title: string; steps: string[] }\n'
-           'export const GUIDE: GuideItem[] = ' + json.dumps(items, ensure_ascii=False, indent=2) + '\n')
+           'export const GUIDE: GuideItem[] = ' + json.dumps(items, ensure_ascii=False, indent=2) + '\n'
+           '// Video yolu: ru -> NN-ad.ru.mp4 (RU interfeys + səs); az və en -> NN-ad.az.mp4 (en: EN alt yazı)\n'
+           'export const guideVideoSrc = (role: string, id: string, lang: string) => `/guide/${role}/${id}.${lang === \'ru\' ? \'ru\' : \'az\'}.mp4`\n'
+           '// Alt yazılar videonun öz vaxtı ilə: RU video – yalnız ru.vtt; AZ video – az.vtt və en.vtt\n'
+           'export const guideSubLangs = (lang: string): string[] => (lang === \'ru\' ? [\'ru\'] : [\'az\', \'en\'])\n')
     (FRONT / 'src' / 'guideData.ts').write_text(txt, encoding='utf-8')
     print('yazıldı: frontend/src/guideData.ts')
 
@@ -566,16 +772,29 @@ def i18n_block() -> str:
 
 
 def main():
+    for st in (sys.stdout, sys.stderr):
+        try:
+            st.reconfigure(encoding='utf-8')
+        except Exception:                                                      # noqa: BLE001
+            pass
     ap = argparse.ArgumentParser()
     ap.add_argument('--check', action='store_true', help='selektorları yoxla, yazma')
     ap.add_argument('--only', help='yalnız bu ssenari (məs. student/03-movzu-testi və ya 03-movzu-testi)')
     ap.add_argument('--export-ts', action='store_true', help='frontend/src/guideData.ts yaz')
     ap.add_argument('--print-i18n', action='store_true', help='i18n.ts üçün sətirləri çap et')
     ap.add_argument('--headed', action='store_true')
+    ap.add_argument('--langs', default='az,ru', help='yazılacaq dillər (default az,ru)')
+    ap.add_argument('--voice-az', choices=['banu', 'babek'], default='banu', help='AZ səs (default banu – qadın)')
+    ap.add_argument('--voice-ru', choices=['svetlana', 'dmitry'], default='svetlana', help='RU səs (default svetlana)')
+    ap.add_argument('--no-voice', action='store_true', help='səssiz yaz (köhnə kimi)')
+    ap.add_argument('--probe', nargs='?', const='', metavar='DIR', help='mp4 cədvəli; DIR verilsə orta kadr PNG-ləri')
     ap.add_argument('--serve', type=int, help='yalnız demo serveri saniyə qədər saxla (baxış/sazlama)')
     a = ap.parse_args()
     if a.export_ts:
         export_ts()
+        return
+    if a.probe is not None:
+        probe(a.probe or None)
         return
     if a.print_i18n:
         print(i18n_block())
@@ -584,6 +803,11 @@ def main():
     if not todo:
         sys.exit('belə ssenari yoxdur')
     ensure_dist()
+    langs = [x for x in a.langs.split(',') if x in ('az', 'ru')]
+    audio: dict = {}
+    if not (a.check or a.no_voice):
+        for lg in langs:
+            audio.update(prepare_audio(todo, a.voice_az if lg == 'az' else a.voice_ru, lg))
     from playwright.sync_api import sync_playwright
     demo = Demo()
     bad = 0
@@ -596,17 +820,18 @@ def main():
         with sync_playwright() as p:
             browser = p.chromium.launch(channel='chrome', headless=not a.headed)
             for s in todo:
-                _, errs = run_scenario(browser, demo, s, a.check)
-                for e in errs:
-                    bad += 1
-                    print(f'  XƏTA {pick(s)}: {e}')
-                if a.check and not errs:
-                    print(f'  ok {pick(s)}')
+                for lg in langs:
+                    _, errs = run_scenario(browser, demo, s, a.check, audio, lg)
+                    for e in errs:
+                        bad += 1
+                        print(f'  XƏTA {pick(s)} [{lg}]: {e}')
+                    if a.check and not errs:
+                        print(f'  ok {pick(s)} [{lg}]')
             browser.close()
     finally:
         demo.stop()
     if not a.check:
-        total = sum(f.stat().st_size for f in OUT.rglob('*.webm')) / 1e6 if OUT.exists() else 0
+        total = sum(f.stat().st_size for f in OUT.rglob('*.mp4')) / 1e6 if OUT.exists() else 0
         print(f'cəmi video: {total:.1f} MB')
     sys.exit(1 if bad else 0)
 

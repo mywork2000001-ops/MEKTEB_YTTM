@@ -151,3 +151,7 @@ export const GUIDE: GuideItem[] = [
     ]
   }
 ]
+// Video yolu: ru -> NN-ad.ru.mp4 (RU interfeys + səs); az və en -> NN-ad.az.mp4 (en: EN alt yazı)
+export const guideVideoSrc = (role: string, id: string, lang: string) => `/guide/${role}/${id}.${lang === 'ru' ? 'ru' : 'az'}.mp4`
+// Alt yazılar videonun öz vaxtı ilə: RU video – yalnız ru.vtt; AZ video – az.vtt və en.vtt
+export const guideSubLangs = (lang: string): string[] => (lang === 'ru' ? ['ru'] : ['az', 'en'])
