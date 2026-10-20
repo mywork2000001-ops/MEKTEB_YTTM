@@ -48,8 +48,8 @@ def _items_mark(r: dict) -> tuple[str, str]:
     def one(i):
         t = item_text(i)
         return t + (f' (gec. {i["late_days"]} g.)' if i.get('late_days') else ' (gözl.)' if i['status'] != 'yazmayıb' else '')
-    mv = '; '.join(one(i) for i in r['items'] if i['kind'] == 'movzu')
-    other = '; '.join(one(i) for i in r['items'] if i['kind'] != 'movzu')
+    mv = '\n'.join(one(i) for i in r['items'] if i['kind'] == 'movzu')       # hər alt mövzu öz nömrəsi ilə ayrıca sətirdə
+    other = '\n'.join(one(i) for i in r['items'] if i['kind'] != 'movzu')
     return mv, other
 
 
@@ -84,7 +84,7 @@ def class_section(m: dict, school: str, teacher: str, brk: bool = False) -> str:
         body.append(
             f"<tr><td class=\"c\">{n}</td><td>{_e(r['full_name'])}</td><td class=\"c\">{r['assigned']}</td><td class=\"c\">{r['done']}</td>"
             f"<td class=\"c\">{r['missed']}</td><td class=\"c\">{r['pending']}</td><td class=\"c\">{_n(r['rate'])}</td>"
-            f"<td class=\"c\">{r['late_days'] or '—'}</td><td>{_risk_cell(r['risk'])}</td><td>{_e(mv) or '—'}</td><td>{_e(other) or '—'}</td>"
+            f"<td class=\"c\">{r['late_days'] or '—'}</td><td>{_risk_cell(r['risk'])}</td><td>{_e(mv).replace(chr(10), '<br>') or '—'}</td><td>{_e(other).replace(chr(10), '<br>') or '—'}</td>"
             f"<td>{_e(_reason_text(r)) or '—'}</td><td>{_e(r['advice'] or '')}</td></tr>")
     if not body:
         body.append('<tr><td colspan="13" class="c">Bu dövrdə bütün şagirdlər testləri işləyib.</td></tr>')
@@ -167,7 +167,7 @@ def class_xlsx(m: dict, school: str, teacher: str, deputy: str = '') -> bytes:
     for n, r in enumerate(m['rows'], 1):
         mv, other = _items_mark(r)
         put(ws, [n, r['full_name'], r['assigned'], r['done'], r['missed'], r['pending'], r['rate'], r['late_days'] or None,
-                 RISK_AZ[r['risk']], '\n'.join(mv.split('; ')) if mv else '', '\n'.join(other.split('; ')) if other else '',
+                 RISK_AZ[r['risk']], mv, other,
                  _reason_text(r), r['advice'] or ''], centered=(1, 3, 4, 5, 6, 7, 8))
     put(ws, ['', f'Cəmi: {m["students"]} şagird'] + [''] * 10 + [m['total']], centered=(1,))
     last = ws.max_row + 2

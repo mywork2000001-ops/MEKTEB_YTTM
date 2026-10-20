@@ -151,7 +151,7 @@ export default function MissingReport({ ta, params, label, kind, onStudent }: {
                     <td className="c"><RiskBadge r={r.risk} />{r.streak >= 3 && <div className="small muted">{t('ardıcıl {n}', { n: r.streak })}</div>}</td>
                     <td className="c"><RateBar v={r.rate} />{r.rate_on_time != null && r.rate_on_time !== r.rate && <div className="small muted">{t('plan üzrə {n}%', { n: fmt(r.rate_on_time) })}</div>}</td>
                     <td className="c">{r.late_days || '—'}</td>
-                    <td><span className="row" style={{ gap: 4, flexWrap: 'wrap' }}>{r.items.map(i => (
+                    <td><span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>{r.items.map(i => (
                       <span key={i.key} className={'pill' + (i.status === 'yazmayıb' ? ' bad' : i.state === 'late_open' ? ' warn' : '')} title={`${fmtD(i.date)}${i.late_days ? ' · ' + t('{n} gün gecikmə', { n: i.late_days }) : ''}${i.reason ? ' · ' + reasonLabel(t, i.reason) : ''}`}>
                         {itemLabel(i)}{i.status !== 'yazmayıb' ? ' ⏳' : ''}{i.reason ? ` (${reasonLabel(t, i.reason)})` : ''}{' '}
                         <small>· {i.status === 'yazmayıb' ? t('yazmayıb') : i.state === 'late_open' ? t('gecikir') : t('açıq')}</small></span>))}
