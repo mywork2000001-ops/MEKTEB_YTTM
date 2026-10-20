@@ -16,6 +16,8 @@
   python scripts/guide_videos.py --voice-az babek --voice-ru dmitry   # kişi səsləri; --no-voice – səssiz
   python scripts/guide_videos.py --probe [DIR]      # fayl cədvəli (ölçü, müddət, MB, səs); DIR verilsə orta kadr PNG
   python scripts/guide_videos.py --export-ts        # frontend/src/guideData.ts (səhifə üçün ssenari siyahısı)
+Üslub (20.10.2026b): hər videoda giriş titri, fəsil lövhəsi (act 'chapter'), hədəf işıqlandırma (spot), son titr; poster NN-ad[.ru].jpg (960 px, ≤120 KB);
+  fəsilli videolar (00-tanitim) üçün NN-ad.chapters.json; --export-ts bunları guideData.ts-ə (chapters, duration, guidePoster) yazır.
 Tələb: Google Chrome (Playwright channel='chrome'), edge-tts + imageio-ffmpeg (requirements-dev.txt), frontend/dist (yoxdursa `npm run build` işlədilir).
 Yeni ssenari / addım əlavə etmək: yalnız SCENARIOS-a; sonra --export-ts və i18n.ts-də yeni mətnlər (AZ/EN/RU).
 """
@@ -49,6 +51,10 @@ VOICES = {'az': {'banu': 'az-AZ-BanuNeural', 'babek': 'az-AZ-BabekNeural'},
           'en': {'aria': 'en-US-AriaNeural', 'guy': 'en-US-GuyNeural'}}
 LANG_LOCALE = {'az': 'az-AZ', 'ru': 'ru-RU', 'en': 'en-US'}
 TTS_RATE = '-5%'
+APP_NAME = 'Müəllim köməkçisi'
+INTRO_MS, INTRO_LONG_MS, OUTRO_MS = 1200, 2500, 1200          # titr (adi / tanıtım), son titr
+MIN_STEP, MUTE_STEP = 1.2, 1.2                                  # addım = max(səs + 0.35, MIN_STEP) san.; səssiz addım ≤ MUTE_STEP
+POSTER_MAX_KB = 120
 
 # ----------------------------------------------------------------------------------------- demo hesablar
 TEACHER = {'login': 'M-901', 'password': 'demo-parol-1', 'name': 'Test Müəllim'}
@@ -59,12 +65,51 @@ def L(az: str, en: str, ru: str) -> dict:
     return {'az': az, 'en': en, 'ru': ru}
 
 
+# Son titr (şagird – «sən», müəllim – «siz»)
+OUTRO = {'student': (L('Hazırsan!', 'You are ready!', 'Всё готово!'),
+                     L('Videolar: menyuda «Bələdçi»', 'Videos: «Guide» in the menu', 'Видео: «Гид» в меню')),
+         'teacher': (L('Hazırsınız!', 'You are ready!', 'Всё готово!'),
+                     L('Videolar: menyuda «Bələdçi»', 'Videos: «Guide» in the menu', 'Видео: «Гид» в меню'))}
+
+
 # ----------------------------------------------------------------------------------------- ssenarilər
 # Addım: act = goto | nav | click | fill | scroll | hover | wait; sel = CSS selektor (nav-da – yol); value = mətn;
 #        wait = hərəkətdən sonra gözləmə (ms, alt yazının oxunma vaxtı); cap = alt yazı (AZ/EN/RU, boş – yazısız addım).
 # Ssenari: role, id (NN-ad), title, login=False (girişsiz başlayır), viewport (default 1280x720).
 SCENARIOS: list[dict] = [
     # ============================================================ ŞAGİRD
+    # Yığcam tanıtım (≤ 75 san.): addım 'chapter' – fəsil lövhəsi (səssiz), qalanı mövcud addımlardan.
+    {'role': 'student', 'id': '00-tanitim', 'intro': True, 'fresh': True,
+     'title': L('Qısa tanıtım', 'Quick tour', 'Краткий обзор'),
+     'slogan': L('Hər şey bir dəqiqəyə', 'Everything in one minute', 'Всё за одну минуту'),
+     'steps': [
+         {'act': 'chapter', 'n': 1, 'total': 4, 'cap': L('Ana səhifə və menyu', 'Home and menu', 'Главная и меню')},
+         {'act': 'goto', 'sel': '/', 'wait': 2500, 'sel_check': '.hero',
+          'cap': L('Bu, ana səhifədir: bu günün dərsləri və xatırlatmalar burada.', 'This is the home page: today\'s lessons and reminders.',
+                   'Это главная страница: уроки и напоминания на сегодня.')},
+         {'act': 'nav', 'sel': '/lesson', 'wait': 2000,
+          'cap': L('Menyuda «Dərs» bölməsi də var.', 'The menu also has a «Lesson» section.', 'В меню есть и раздел «Урок».')},
+         {'act': 'chapter', 'n': 2, 'total': 4, 'cap': L('Tapşırıq və test', 'Tasks and tests', 'Задания и тесты')},
+         {'act': 'nav', 'sel': '/tasks', 'wait': 2000, 'sel_check': '.top',
+          'cap': L('«Tapşırıqlar»da müəllimin verdiyi testləri tapırsan.', 'In «Tasks» you find the tests your teacher gave you.',
+                   'В «Заданиях» ты найдёшь тесты от учителя.')},
+         {'act': 'click', 'sel': 'button:has-text("Başla")', 'wait': 1500,
+          'cap': L('«Başla» ilə testi başlat.', 'Press «Start» to begin.', 'Нажми «Начать», чтобы приступить.')},
+         {'act': 'click', 'sel': 'button:has-text("Tam ekrana keç")', 'wait': 1000, 'optional': True},
+         {'act': 'click', 'sel': '.q-opt >> nth=1', 'wait': 2000, 'optional': True,
+          'cap': L('Variantı seç – cavab avtomatik saxlanır.', 'Pick an option – your answer is saved automatically.',
+                   'Выбери вариант – ответ сохраняется автоматически.')},
+         {'act': 'chapter', 'n': 3, 'total': 4, 'cap': L('Nəticələrim', 'My results', 'Мои результаты')},
+         {'act': 'goto', 'sel': '/results', 'wait': 2500, 'sel_check': '.top',          # test ekranında menyu yoxdur – birbaşa keçid
+          'cap': L('«Nəticələrim»də bütün nəticələrin görünür.', '«My results» shows all your results.', 'В «Моих результатах» все твои итоги.')},
+         {'act': 'click', 'sel': 'button:has-text("Nəticə paketi")', 'wait': 2500,
+          'cap': L('«Nəticə paketi»: cavabların, düzgün cavablar və izahlar.', 'The «Result package»: your answers, the correct ones and explanations.',
+                   '«Пакет результата»: твои ответы, верные ответы и пояснения.')},
+         {'act': 'chapter', 'n': 4, 'total': 4, 'cap': L('Bələdçi və kömək', 'Guide and help', 'Гид и помощь')},
+         {'act': 'nav', 'sel': '/guide', 'wait': 2500,
+          'cap': L('Çətin olanda «Bələdçi»yə qayıt – bütün videolar orada.', 'If you get stuck, go back to the «Guide» – all videos are there.',
+                   'Если что-то непонятно, загляни в «Гид» – там все видео.')},
+     ]},
     {'role': 'student', 'id': '01-giris', 'login': False,
      'title': L('Tətbiqə giriş', 'Signing in', 'Вход в приложение'),
      'steps': [
@@ -105,7 +150,7 @@ SCENARIOS: list[dict] = [
           'cap': L('«Bələdçi» – bu videolara istənilən vaxt qayıda bilərsən.', '«Guide» – come back to these videos any time.',
                    '«Гид» – к этим видео можно вернуться в любой момент.')},
      ]},
-    {'role': 'student', 'id': '03-movzu-testi',
+    {'role': 'student', 'id': '03-movzu-testi', 'fresh': True,
      'title': L('Mövzu testini işləmək', 'Taking a topic test', 'Как пройти тест по теме'),
      'steps': [
          {'act': 'nav', 'sel': '/tasks', 'wait': 3000, 'sel_check': '.panel',
@@ -186,6 +231,55 @@ SCENARIOS: list[dict] = [
           'cap': L('Əlavə bölmələr «Daha çox» düyməsindədir.', 'More sections are under the «More» button.', 'Остальные разделы – под кнопкой «Ещё».')},
      ]},
     # ============================================================ MÜƏLLİM
+    {'role': 'teacher', 'id': '00-tanitim', 'intro': True,
+     'title': L('Qısa tanıtım', 'Quick tour', 'Краткий обзор'),
+     'slogan': L('Planlaşdırma, testlər və jurnal bir yerdə', 'Planning, tests and journal in one place', 'Планирование, тесты и журнал в одном месте'),
+     'steps': [
+         {'act': 'chapter', 'n': 1, 'total': 5, 'cap': L('Menyu', 'Menu', 'Меню')},
+         {'act': 'goto', 'sel': '/', 'wait': 2500, 'sel_check': 'h1',
+          'cap': L('Əsas səhifədə «Bu həftə diqqət» və günün işləri görünür.', 'The home page shows «Needs attention this week» and today\'s work.',
+                   'На главной видно «Внимание на этой неделе» и дела дня.')},
+         {'act': 'nav', 'sel': '/journal', 'wait': 2000,
+          'cap': L('Sol menyu qruplara bölünüb: Dərs, Planlaşdırma, Qiymətləndirmə, Siniflər, Ünsiyyət.',
+                   'The side menu is grouped: Lessons, Planning, Assessment, Classes, Communication.',
+                   'Меню слева разбито на группы: Урок, Планирование, Оценивание, Классы, Общение.')},
+         {'act': 'chapter', 'n': 2, 'total': 5, 'cap': L('Plan və mövzu testləri', 'Plan and topic tests', 'План и тесты по темам')},
+         {'act': 'goto', 'sel': '/plan', 'wait': 1500, 'sel_check': '.top',
+          'cap': L('«Perspektiv plan»da sinfi seçirsiniz.', 'In «Long-term plan» you choose a class.', 'В «Перспективном плане» вы выбираете класс.')},
+         {'act': 'click', 'sel': 'button:has-text("X e")', 'wait': 2500, 'optional': True,          # sinif əvvəlki səhifədən seçilmiş ola bilər
+          'cap': L('Dərslər mövzular üzrə sıralanır, hər mövzunun testi yanındadır.', 'Lessons are listed by topic, each topic\'s test beside it.',
+                   'Уроки идут по темам, тест каждой темы рядом.')},
+         {'act': 'click', 'sel': 'button:has-text("Testləri təyin et")', 'wait': 1500,
+          'cap': L('«Testləri təyin et» – testlər plana görə avtomatik təyin olunur.', '«Assign tests» assigns tests from the plan automatically.',
+                   '«Назначить тесты» автоматически назначает тесты по плану.')},
+         {'act': 'click', 'sel': 'button:has-text("Önbaxış")', 'wait': 2500,
+          'cap': L('Əvvəl «Önbaxış» – heç nə yazmır, sonra «Təsdiq et».', 'First «Preview» – it writes nothing, then «Confirm».',
+                   'Сначала «Предпросмотр» – ничего не записывает, затем «Подтвердить».')},
+         {'act': 'chapter', 'n': 3, 'total': 5, 'cap': L('Sinif matrisi', 'Class matrix', 'Матрица класса')},
+         {'act': 'goto', 'sel': '/tests?s=netice&v=class', 'wait': 2000, 'sel_check': '.top'},
+         {'act': 'select', 'sel': '.hub-pick:has-text("Sinif") select', 'value': 'X e', 'wait': 1500},
+         {'act': 'click', 'sel': 'button:has-text("Kim nəyi işləyib")', 'wait': 3000,
+          'say': L('Kim nəyi işləyib: hər şagird üzrə bal, işləməyibsə xaç işarəsi.', '', ''),
+          'cap': L('«Kim nəyi işləyib» – hər şagird üzrə bal, ✗ – yazmayıb.', '«Who did what» – score per student, ✗ – not taken.',
+                   '«Кто что выполнил» – балл по каждому ученику, ✗ – не писал.')},
+         {'act': 'chapter', 'n': 4, 'total': 5, 'cap': L('Kağız test və skan', 'Paper test and scan', 'Бумажный тест и скан')},
+         {'act': 'goto', 'sel': '/journal', 'wait': 1500, 'sel_check': '.top'},
+         {'act': 'click', 'sel': 'button:has-text("X e")', 'wait': 1000, 'optional': True},
+         {'act': 'select', 'sel': 'label:has-text("Bölmə") select', 'value': 'KSQ / BSQ', 'wait': 2000,
+          'cap': L('«KSQ / BSQ» bölməsi: imtahanlar, kağız variantlar və nəticələr.', 'The «KSQ / BSQ» section: exams, paper variants and results.',
+                   'Раздел «KSQ / BSQ»: экзамены, бумажные варианты и результаты.')},
+         {'act': 'click', 'sel': 'button:has-text("Nəticələr")', 'wait': 3000,
+          'say': L('Vərəqəni çap edin, şagirdlər doldursun, skan edin – bal avtomatik hesablanır.', '', ''),
+          'cap': L('Vərəqəni çap edin, skan edin – bal avtomatik hesablanır.', 'Print the sheet, scan it – the score is calculated automatically.',
+                   'Распечатайте бланк, отсканируйте – балл посчитается автоматически.')},
+         {'act': 'chapter', 'n': 5, 'total': 5, 'cap': L('Jurnal və hesabat', 'Journal and reports', 'Журнал и отчёты')},
+         {'act': 'select', 'sel': 'label:has-text("Bölmə") select', 'value': 'Jurnal səhifəsi', 'wait': 2500,
+          'cap': L('«Jurnal səhifəsi» – davamiyyət və qiymətlər tarix üzrə.', 'The «Journal page» – attendance and grades by date.',
+                   '«Страница журнала» – посещаемость и оценки по датам.')},
+         {'act': 'nav', 'sel': '/reports', 'wait': 2500,
+          'cap': L('«Analitika və hesabat» – sinif və şagird üzrə statistika.', '«Analytics and reports» – statistics by class and student.',
+                   '«Аналитика и отчёты» – статистика по классам и ученикам.')},
+     ]},
     {'role': 'teacher', 'id': '01-menyu',
      'title': L('Menyu və əsas səhifə', 'Menu and home page', 'Меню и главная страница'),
      'steps': [
@@ -290,12 +384,27 @@ HIGHLIGHT_JS = """
 (() => {
   const css = `
   #__cur{position:fixed;z-index:2147483647;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;
-    background:rgba(255,193,7,.55);border:2px solid #e65100;pointer-events:none;left:-50px;top:-50px;transition:left .05s,top .05s}
+    background:rgba(255,193,7,.55);border:2px solid #e65100;pointer-events:none;left:-50px;top:-50px;transition:left .3s ease-out,top .3s ease-out}
+  .__ov{position:fixed;inset:0;z-index:2147483646;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,#0b1f4d 0%,#16409a 55%,#2b6cd8 100%);color:#fff;font-family:system-ui,'Segoe UI',Arial,sans-serif;
+    text-align:center;opacity:0;transition:opacity .45s ease;pointer-events:none}
+  .__ov.on{opacity:1}
+  .__ov .__a{font-size:clamp(11px,1.6vw,20px);letter-spacing:.18em;text-transform:uppercase;opacity:.75;margin-bottom:22px}
+  .__ov .__m{font-size:clamp(24px,4.2vw,54px);font-weight:700;line-height:1.15;max-width:82%}
+  .__ov .__b{width:90px;height:4px;border-radius:2px;background:#ffc107;margin:22px 0 0}
+  .__ov .__s{font-size:clamp(14px,1.9vw,24px);margin-top:18px;opacity:.9;max-width:78%;line-height:1.35}
+  .__chap{position:fixed;left:28px;bottom:34px;z-index:2147483645;background:rgba(11,31,77,.93);color:#fff;
+    font:600 clamp(14px,1.9vw,24px)/1.2 system-ui,'Segoe UI',Arial,sans-serif;padding:14px 22px 14px 18px;border-radius:10px;
+    border-left:6px solid #ffc107;box-shadow:0 8px 24px rgba(0,0,0,.35);transform:translateX(-130%);
+    transition:transform .5s cubic-bezier(.2,.8,.2,1);pointer-events:none}
+  .__chap.on{transform:none} .__chap b{color:#ffc107;margin-right:10px}
+  #__spot{position:fixed;z-index:2147483644;border-radius:10px;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,.45);
+    outline:3px solid rgba(255,255,255,.92);transition:all .3s ease-out;opacity:0}
   .__ring{position:fixed;z-index:2147483647;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;
     border:4px solid #e65100;pointer-events:none;animation:__r .7s ease-out forwards}
   @keyframes __r{from{transform:scale(.6);opacity:1}to{transform:scale(3.2);opacity:0}}`;
   const add = () => {
-    if (document.getElementById('__cur')) return;
+    if (!document.documentElement || document.getElementById('__cur')) return;
     const s = document.createElement('style'); s.textContent = css; document.documentElement.appendChild(s);
     const c = document.createElement('div'); c.id = '__cur'; document.documentElement.appendChild(c);
   };
@@ -306,6 +415,38 @@ HIGHLIGHT_JS = """
     r.style.left = e.clientX + 'px'; r.style.top = e.clientY + 'px'; document.documentElement.appendChild(r);
     setTimeout(() => r.remove(), 800);
   }, true);
+  // ---- overlay API (video üslubu): titr, fəsil lövhəsi, hədəf işıqlandırma, son titr
+  const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
+  const root = () => document.documentElement;
+  const card = (app, main, sub, instant) => {
+    document.querySelectorAll('.__ov').forEach(d => d.remove());
+    const d = document.createElement('div'); d.className = '__ov';
+    d.innerHTML = '<div class="__a">' + esc(app) + '</div><div class="__m">' + esc(main) + '</div><div class="__b"></div>'
+      + (sub ? '<div class="__s">' + esc(sub) + '</div>' : '');
+    if (instant) { d.style.transition = 'none'; d.classList.add('on'); root().appendChild(d); void d.offsetWidth; d.style.transition = ''; }
+    else { root().appendChild(d); requestAnimationFrame(() => requestAnimationFrame(() => d.classList.add('on'))); }
+  };
+  window.__guide = {
+    title: (app, main, sub, instant) => card(app, main, sub, instant),
+    outro: (app, main, sub) => card(app, main, sub, false),
+    hide: () => document.querySelectorAll('.__ov').forEach(d => { d.classList.remove('on'); setTimeout(() => d.remove(), 650); }),
+    chapter: (n, total, text, ms) => {
+      document.querySelectorAll('.__chap').forEach(d => d.remove());
+      const d = document.createElement('div'); d.className = '__chap';
+      d.innerHTML = '<b>' + n + '/' + total + '</b>' + esc(text); root().appendChild(d);
+      requestAnimationFrame(() => requestAnimationFrame(() => d.classList.add('on')));
+      setTimeout(() => { d.classList.remove('on'); setTimeout(() => d.remove(), 650); }, ms || 2500);
+    },
+    spotEl: el => {
+      let s = document.getElementById('__spot');
+      if (!el) { if (s) { s.style.opacity = 0; setTimeout(() => { if (s.style.opacity === '0') s.remove(); }, 400); } return; }
+      if (!s) { s = document.createElement('div'); s.id = '__spot'; root().appendChild(s); }
+      const r = el.getBoundingClientRect(), p = 6;
+      s.style.left = (r.left - p) + 'px'; s.style.top = (r.top - p) + 'px';
+      s.style.width = (r.width + 2 * p) + 'px'; s.style.height = (r.height + 2 * p) + 'px'; s.style.opacity = 1;
+    },
+    spot: sel => window.__guide.spotEl(sel ? document.querySelector(sel) : null),
+  };
 })();
 """
 
@@ -401,7 +542,7 @@ SAY_FIX = [('KSQ / BSQ', 'ka es qu, be es qu'), ('KSQ', 'ka es qu'), ('PDF', 'pe
 def say_text(st: dict, lang: str = 'az') -> str:
     """Səsə gedən mətn: `say` sahəsi, yoxdursa `cap` (dırnaq, emoji, ox təmizlənir)."""
     cap = st.get('cap')
-    if not cap:
+    if not cap or st.get('act') == 'chapter':          # fəsil lövhəsi – səssiz
         return ''
     txt = (st.get('say') or {}).get(lang) or cap[lang]
     txt = txt.replace('«', '').replace('»', '').replace('"', '')
@@ -448,7 +589,7 @@ def prepare_audio(todo: list[dict], voice: str, lang: str = 'az') -> dict:
 
 # ----------------------------------------------------------------------------------------- video (screencast -> mp4)
 def encode_mp4(frames: list[tuple[float, Path]], t0: float, t_end: float, size: tuple[int, int],
-               clips: list[tuple[float, Path]], dst: Path, work: Path) -> float:
+               clips: list[tuple[float, Path]], dst: Path, work: Path, target_mb: float = MAX_MB) -> float:
     """frames: (vaxt, jpeg); clips: (başlama san, mp3). H.264 + AAC; MAX_MB aşarsa crf artır."""
     ff = find_ffmpeg()
     fr = sorted(frames, key=lambda x: x[0])
@@ -475,15 +616,15 @@ def encode_mp4(frames: list[tuple[float, Path]], t0: float, t_end: float, size: 
             fc.append(f'[{n}:a]adelay={ms}|{ms}[a{n}]')
         ins = ''.join(f'[a{n}]' for n in range(1, len(clips) + 1))
         fc.append(f'{ins}amix=inputs={len(clips)}:normalize=0:duration=longest,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=44100[a]')
-        cmd += ['-filter_complex', ';'.join(fc), '-map', '[v]', '-map', '[a]', '-c:a', 'aac', '-b:a', '128k', '-ac', '1']
+        cmd += ['-filter_complex', ';'.join(fc), '-map', '[v]', '-map', '[a]', '-c:a', 'aac', '-b:a', '64k', '-ac', '1']
     else:
         cmd += ['-filter_complex', vf, '-map', '[v]', '-an']
     mb = 0.0
-    for crf in (20, 23, 26):
+    for crf in (27, 30, 33, 36):
         subprocess.run(cmd + ['-c:v', 'libx264', '-preset', 'slow', '-crf', str(crf), '-tune', 'stillimage', '-r', str(FPS),
                               '-movflags', '+faststart', str(dst)], cwd=work, check=True)
         mb = dst.stat().st_size / 1e6
-        if mb <= MAX_MB:
+        if mb <= min(target_mb, MAX_MB):
             break
     return mb
 
@@ -570,10 +711,45 @@ def settle(page):
         pass
 
 
-def move_to(page, loc):
+def dismiss_scrim(page, wait_ms: int = 0):
+    """Açılmış sürüşən pəncərəni (məs. «yeni sertifikat», `.scrim`) Escape ilə bağlayır; wait_ms – gec gəlsə gözlə."""
+    try:
+        closed = 0
+        for _ in range(max(wait_ms // 250, 0) + 1 + 4):
+            if page.locator('.scrim').count():
+                page.keyboard.press('Escape')                                   # bir neçə sertifikat ardıcıl gələ bilər
+                page.wait_for_timeout(500)
+                closed += 1
+                if closed >= 4:
+                    return
+            elif closed or not wait_ms:
+                return
+            else:
+                page.wait_for_timeout(250)
+    except Exception:                                                          # noqa: BLE001
+        pass
+
+
+def move_to(page, loc, check: bool = False):
+    """Kursor hamar gedir (CSS transition .3 san.) – hərəkət bitənə qədər gözlənir."""
     box = loc.bounding_box()
     if box:
-        page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2, steps=18)
+        page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2, steps=8)
+        if not check:
+            page.wait_for_timeout(340)
+
+
+def spot(page, loc, check: bool = False):
+    """Hədəf elementin ətrafı tündləşir, üstündə nazik parlaq çərçivə (loc=None – götürür)."""
+    try:
+        if loc is None:
+            page.evaluate('window.__guide && window.__guide.spotEl(null)')
+        else:
+            loc.evaluate('el => window.__guide && window.__guide.spotEl(el)')
+            if not check:
+                page.wait_for_timeout(320)
+    except Exception:                                                          # noqa: BLE001
+        pass
 
 
 def do_step(page, st: dict, check: bool, lang: str = 'az') -> str | None:
@@ -587,42 +763,54 @@ def do_step(page, st: dict, check: bool, lang: str = 'az') -> str | None:
         if act == 'goto':
             page.goto(sel)
             settle(page)
+            dismiss_scrim(page)
         elif act == 'nav':
             link = page.locator(f'.nav-sec a[href="{sel}"], aside a[href="{sel}"]').first
             if link.count() == 0:
                 base = page.url.split('/', 3)[:3]
                 page.goto('/'.join(base) + sel)
             else:
+                dismiss_scrim(page)
                 if not link.is_visible():
                     page.locator(f'.nav-sec:has(a[href="{sel}"]) .nav-ghead').first.click()
                     page.wait_for_timeout(500)
                 try:
-                    move_to(page, link)
+                    spot(page, link, check)
+                    move_to(page, link, check)
                     link.click(timeout=3000)
+                    spot(page, None)
                 except Exception:                                              # noqa: BLE001 – menyu bağlıdır/örtülüdür: birbaşa keç
                     page.goto(sel)
             settle(page)
+        elif act == 'chapter':
+            page.evaluate('([n, t, x]) => window.__guide && window.__guide.chapter(n, t, x, 2800)', [st['n'], st['total'], st['cap'][lang]])
         elif act in ('click', 'hover'):
             loc = page.locator(sel).first
             loc.wait_for(state='visible', timeout=tmo)
-            move_to(page, loc)
+            spot(page, loc, check)
+            move_to(page, loc, check)
             if act == 'click':
                 loc.click(timeout=tmo)
+            spot(page, None)
         elif act == 'select':
             loc = page.locator(sel).first
             loc.wait_for(state='visible', timeout=tmo)
-            move_to(page, loc)
+            spot(page, loc, check)
+            move_to(page, loc, check)
             loc.select_option(label=val)
+            spot(page, None)
             settle(page)
         elif act == 'fill':
             loc = page.locator(sel).first
             loc.wait_for(state='visible', timeout=tmo)
-            move_to(page, loc)
+            spot(page, loc, check)
+            move_to(page, loc, check)
             loc.click()
             if not check:
                 loc.press_sequentially(val, delay=120)
             else:
                 loc.fill(val)
+            spot(page, None)
         elif act == 'scroll':
             page.mouse.wheel(0, int(sel))
         if st.get('sel_check') and check:
@@ -653,17 +841,25 @@ def run_scenario(browser, demo: Demo, scn: dict, check: bool, audio: dict | None
     frames: list[tuple[float, Path]] = []
     work = demo.tmp / 'frames' / f"{scn['id']}-{lang}"
     t0 = t_end = 0.0
+    chapters: list[dict] = []
+    poster_jpg: bytes | None = None
     cdp = None
     try:
         if scn.get('login', True):
             login_api(page, demo, scn['role'])
             page.request.patch(demo.base + '/api/auth/prefs', data={'language': lang})       # istifadəçi dili (interfeys)
+            page.request.post(demo.base + '/api/auth/guide-seen')                           # xoş gəldin pəncərəsi videoya düşməsin
+            if scn['role'] == 'student':
+                page.request.post(demo.base + '/api/portal/certificates/seen')              # «yeni sertifikat» pəncərəsi də
         page.goto('/')
         settle(page)
         page.wait_for_timeout(600 if check else 1200)
-        if scn.get('login', True) and page.locator('.scrim').count():           # «yeni sertifikat» pəncərəsi – videoya düşməsin
-            page.keyboard.press('Escape')
-            page.wait_for_timeout(500)
+        if scn.get('login', True):                                              # «yeni sertifikat» pəncərəsi – videoya düşməsin
+            dismiss_scrim(page, wait_ms=2500)
+        intro_ms = INTRO_LONG_MS if scn.get('intro') else INTRO_MS
+        if not check:                                                           # giriş titri: yazı başlamazdan əvvəl örtük hazırdır
+            page.evaluate('([a, m, s]) => window.__guide.title(a, m, s, true)',
+                          [APP_NAME, scn['title'][lang], (scn.get('slogan') or {}).get(lang, '')])
         if not check:
             work.mkdir(parents=True, exist_ok=True)
             cdp = ctx.new_cdp_session(page)
@@ -685,22 +881,39 @@ def run_scenario(browser, demo: Demo, scn: dict, check: bool, audio: dict | None
                 f = work / 'f_init.jpg'
                 f.write_bytes(page.screenshot(type='jpeg', quality=92))
                 frames.append((t0 - 0.01, f))
+            page.wait_for_timeout(intro_ms)
+            page.evaluate('window.__guide.hide()')
+            page.wait_for_timeout(650)
+        poster_i = next((i for i, x in enumerate(scn['steps']) if x['act'] != 'chapter'), 0)
         for i, st in enumerate(scn['steps']):
             a = time.time()
+            if st['act'] == 'chapter':
+                chapters.append({'t': round(max(a - t0, 0.0), 1), 'title': st['cap']})
             e = do_step(page, st, check, lang)
             if e:
                 errs.append(e)
             if not check:
-                wait = st.get('wait', 1500)
                 clip = audio.get((pick(scn), i, lang))
-                if clip:
-                    wait = max(wait, int((clip[1] + 0.5) * 1000))
+                if st['act'] == 'chapter':
+                    target = 0.4
+                elif clip:
+                    target = max(clip[1] + 0.35, MIN_STEP)
                     clips.append((a - t0, clip[0]))
-                page.wait_for_timeout(wait)
+                elif st.get('cap'):
+                    target = st.get('wait', 1500) / 1000
+                else:
+                    target = min(st.get('wait', 1500) / 1000, MUTE_STEP)
+                page.wait_for_timeout(max(int((target - (time.time() - a)) * 1000), 250))
+                if i == poster_i:
+                    poster_jpg = page.screenshot(type='jpeg', quality=90)
             b = time.time()
-            if st.get('cap') and not check:
+            if st.get('cap') and st['act'] != 'chapter' and not check:
                 for lg in cues:
                     cues[lg].append((max(a - t0, 0.0), b - t0, st['cap'][lg]))
+        if not check:                                                           # son titr
+            main, sub = OUTRO[scn['role']]
+            page.evaluate('([a, m, s]) => window.__guide.outro(a, m, s)', [APP_NAME, main[lang], sub[lang]])
+            page.wait_for_timeout(OUTRO_MS + 450)
         t_end = time.time()
     finally:
         if cdp:
@@ -714,15 +927,40 @@ def run_scenario(browser, demo: Demo, scn: dict, check: bool, audio: dict | None
     d = OUT / scn['role']
     d.mkdir(parents=True, exist_ok=True)
     dst = d / f"{scn['id']}.{lang}.mp4"
-    mb = encode_mp4(frames, t0, t_end, (int(vw * dsf), int(vh * dsf)), clips, dst, work)
+    mb = encode_mp4(frames, t0, t_end, (int(vw * dsf), int(vh * dsf)), clips, dst, work, scn.get('max_mb', 1.2 if not scn.get('intro') else 2.4))
     for lg in (['az', 'en'] if lang == 'az' else [lang]):          # EN alt yazı AZ videonun vaxtı ilə
         write_vtt(d / f"{scn['id']}.{lg}.vtt", cues[lg])
+    if poster_jpg:
+        write_poster(poster_jpg, d / (f"{scn['id']}.jpg" if lang == 'az' else f"{scn['id']}.{lang}.jpg"), work)
+    if chapters:
+        cf = d / f"{scn['id']}.chapters.json"
+        cur = json.loads(cf.read_text(encoding='utf-8')) if cf.exists() else []
+        if len(cur) != len(chapters):
+            cur = [{'t': {}, 'title': c['title']} for c in chapters]
+        for c, x in zip(cur, chapters):
+            c['title'] = x['title']
+            c['t'][lang] = x['t']
+            if lang == 'az':
+                c['t']['en'] = x['t']                                           # EN – AZ videonun vaxtı ilə
+        cf.write_text(json.dumps(cur, ensure_ascii=False, indent=1), encoding='utf-8')
     for old in (d / f"{scn['id']}.webm", d / f"{scn['id']}.mp4"):
         if old.exists():
             old.unlink()
     shutil.rmtree(work, ignore_errors=True)
     print(f'  {pick(scn)} [{lang}]: {mb:.2f} MB, {len(frames)} kadr, {len(clips)} səs')
     return dst, errs
+
+
+def write_poster(jpg: bytes, dst: Path, work: Path):
+    """960 px en, ≤ POSTER_MAX_KB (ffmpeg keyfiyyət pilləsi)."""
+    work.mkdir(parents=True, exist_ok=True)
+    src = work / 'poster_src.jpg'
+    src.write_bytes(jpg)
+    for q in (3, 5, 7, 10, 14, 20):
+        subprocess.run([find_ffmpeg(), '-y', '-loglevel', 'error', '-i', str(src), '-vf', 'scale=960:-2:flags=lanczos',
+                        '-frames:v', '1', '-q:v', str(q), str(dst)], check=True)
+        if dst.stat().st_size <= POSTER_MAX_KB * 1000:
+            break
 
 
 def probe(frames_dir: str | None):
@@ -744,11 +982,28 @@ def export_ts():
     """frontend/src/guideData.ts – səhifə üçün ssenari siyahısı (AZ mətnləri; tərcümə t() ilə i18n.ts-dən)."""
     items = []
     for s in SCENARIOS:
-        items.append({'role': s['role'], 'id': s['id'], 'title': s['title']['az'],
-                      'steps': [x['cap']['az'] for x in s['steps'] if x.get('cap')]})
+        it = {'role': s['role'], 'id': s['id'], 'title': s['title']['az'],
+              'steps': [x['cap']['az'] for x in s['steps'] if x.get('cap') and x['act'] != 'chapter']}
+        d = OUT / s['role']
+        cf = d / f"{s['id']}.chapters.json"
+        if cf.exists():                                                        # fəsillər: vaxt (san., dilə görə) + AZ başlıq
+            it['chapters'] = [{'t': {k: v for k, v in c['t'].items()}, 'title': c['title']['az']}
+                              for c in json.loads(cf.read_text(encoding='utf-8'))]
+        dur = {}
+        for lg in ('az', 'ru'):
+            f = d / f"{s['id']}.{lg}.mp4"
+            if f.exists():
+                dur[lg] = round(media_info(f)['dur'], 1)
+        if dur:
+            dur['en'] = dur.get('az', dur.get('ru'))
+            it['duration'] = dur
+        items.append(it)
     txt = ('// AVTOMATİK: backend/scripts/guide_videos.py --export-ts (əl ilə dəyişmə). Mətnlər t() ilə tərcümə olunur.\n'
-           'export type GuideItem = { role: \'student\' | \'teacher\'; id: string; title: string; steps: string[] }\n'
+           'export type GuideChapter = { t: Record<string, number>; title: string }      // t: dil -> başlanğıc (san.)\n'
+           'export type GuideItem = { role: \'student\' | \'teacher\'; id: string; title: string; steps: string[]; chapters?: GuideChapter[]; duration?: Record<string, number> }\n'
            'export const GUIDE: GuideItem[] = ' + json.dumps(items, ensure_ascii=False, indent=2) + '\n'
+           '// Poster (960 px JPG): az/en -> NN-ad.jpg, ru -> NN-ad.ru.jpg\n'
+           'export const guidePoster = (role: string, id: string, lang = \'az\') => `/guide/${role}/${id}${lang === \'ru\' ? \'.ru\' : \'\'}.jpg`\n'
            '// Video yolu: ru -> NN-ad.ru.mp4 (RU interfeys + səs); az və en -> NN-ad.az.mp4 (en: EN alt yazı)\n'
            'export const guideVideoSrc = (role: string, id: string, lang: string) => `/guide/${role}/${id}.${lang === \'ru\' ? \'ru\' : \'az\'}.mp4`\n'
            '// Alt yazılar videonun öz vaxtı ilə: RU video – yalnız ru.vtt; AZ video – az.vtt və en.vtt\n'
@@ -821,7 +1076,15 @@ def main():
             browser = p.chromium.launch(channel='chrome', headless=not a.headed)
             for s in todo:
                 for lg in langs:
-                    _, errs = run_scenario(browser, demo, s, a.check, audio, lg)
+                    d = demo
+                    if s.get('fresh') and not a.check:          # testi başladan ssenari: hər dil üçün təmiz demo (başlanmış test «Başla»nı aparır)
+                        d = Demo()
+                        d.start()
+                    try:
+                        _, errs = run_scenario(browser, d, s, a.check, audio, lg)
+                    finally:
+                        if d is not demo:
+                            d.stop()
                     for e in errs:
                         bad += 1
                         print(f'  XƏTA {pick(s)} [{lg}]: {e}')

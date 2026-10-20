@@ -97,7 +97,7 @@ export default function App() {
         <Login lang={lang} setLang={changeGuestLang} />
       ) : (
         <Layout>
-          {me.role === 'student' && <GuideGate />}
+          <GuideGate />
           <Boundary><Suspense fallback={<Loading />}>
             {me.role === 'student' ? (
               <Routes>

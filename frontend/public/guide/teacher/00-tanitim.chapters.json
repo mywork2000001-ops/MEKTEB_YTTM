@@ -1,0 +1,62 @@
+[
+ {
+  "t": {
+   "az": 3.6,
+   "en": 3.6,
+   "ru": 3.6
+  },
+  "title": {
+   "az": "Menyu",
+   "en": "Menu",
+   "ru": "Меню"
+  }
+ },
+ {
+  "t": {
+   "az": 15.4,
+   "en": 15.4,
+   "ru": 16.6
+  },
+  "title": {
+   "az": "Plan və mövzu testləri",
+   "en": "Plan and topic tests",
+   "ru": "План и тесты по темам"
+  }
+ },
+ {
+  "t": {
+   "az": 34.8,
+   "en": 34.8,
+   "ru": 36.3
+  },
+  "title": {
+   "az": "Sinif matrisi",
+   "en": "Class matrix",
+   "ru": "Матрица класса"
+  }
+ },
+ {
+  "t": {
+   "az": 43.2,
+   "en": 43.2,
+   "ru": 44.2
+  },
+  "title": {
+   "az": "Kağız test və skan",
+   "en": "Paper test and scan",
+   "ru": "Бумажный тест и скан"
+  }
+ },
+ {
+  "t": {
+   "az": 65.6,
+   "en": 65.6,
+   "ru": 66.6
+  },
+  "title": {
+   "az": "Jurnal və hesabat",
+   "en": "Journal and reports",
+   "ru": "Журнал и отчёты"
+  }
+ }
+]

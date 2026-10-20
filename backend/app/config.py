@@ -43,4 +43,4 @@ def settings() -> Settings:
     return Settings()
 
 
-GUIDE_VERSION = 1      # şagirdin giriş videosu; video yenilənəndə artırılır – şagirdlər yenisini bir dəfə görür
+GUIDE_VERSION = 2      # giriş tanıtım videosu (şagird və müəllim); yenilənəndə artırılır – hamı yenisini bir dəfə görür

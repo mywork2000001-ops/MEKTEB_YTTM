@@ -38,7 +38,7 @@ class MeOut(BaseModel):
     workspace: str = 'school'            # aktiv məkan: school | private (fərdi hazırlıq)
     has_private: bool = False
     school_doc: dict | None = None        # imza verənlər: deputy, director
-    guide_due: bool = False               # şagird: giriş videosu hələ göstərilməlidir (GUIDE_VERSION)
+    guide_due: bool = False               # şagird və müəllim: giriş tanıtım videosu hələ göstərilməlidir (GUIDE_VERSION)
 
 
 def _has_private(db, u: User) -> bool:
@@ -55,7 +55,7 @@ def _me(u: User) -> MeOut:
                  language=u.language, theme=u.theme, school_name=sc.name if sc else None,
                  school_doc=(sc.doc_settings or {}) if sc else None, workspace=(sc.kind if sc else 'school') or 'school',
                  has_private=bool(db is not None and u.role != Role.student and _has_private(db, u)),
-                 guide_due=u.role == Role.student and (u.guide_seen_version or 0) < GUIDE_VERSION)
+                 guide_due=(u.guide_seen_version or 0) < GUIDE_VERSION)
 
 
 def _set_cookie(response: Response, u: User):
@@ -92,6 +92,14 @@ def login(body: LoginIn, request: Request, response: Response, db: Session = Dep
     out = _me(u)
     out.weak_password = u.role != Role.student and len(body.password) < 8   # müəllim/admin üçün xəbərdarlıq
     return out
+
+
+@router.post('/guide-seen')
+def guide_seen(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Giriş tanıtım videosu görüldü/bağlandı (şagird və müəllim) – bir daha çıxmasın (GUIDE_VERSION artırılana qədər)."""
+    user.guide_seen_version = GUIDE_VERSION
+    db.commit()
+    return {'ok': True, 'guide_due': False}
 
 
 @router.post('/logout')

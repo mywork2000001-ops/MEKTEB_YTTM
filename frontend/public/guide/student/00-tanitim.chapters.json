@@ -1,0 +1,50 @@
+[
+ {
+  "t": {
+   "az": 3.6,
+   "en": 3.6,
+   "ru": 3.6
+  },
+  "title": {
+   "az": "Ana səhifə və menyu",
+   "en": "Home and menu",
+   "ru": "Главная и меню"
+  }
+ },
+ {
+  "t": {
+   "az": 12.7,
+   "en": 12.7,
+   "ru": 12.7
+  },
+  "title": {
+   "az": "Tapşırıq və test",
+   "en": "Tasks and tests",
+   "ru": "Задания и тесты"
+  }
+ },
+ {
+  "t": {
+   "az": 33.0,
+   "en": 33.0,
+   "ru": 34.5
+  },
+  "title": {
+   "az": "Nəticələrim",
+   "en": "My results",
+   "ru": "Мои результаты"
+  }
+ },
+ {
+  "t": {
+   "az": 42.3,
+   "en": 42.3,
+   "ru": 44.5
+  },
+  "title": {
+   "az": "Bələdçi və kömək",
+   "en": "Guide and help",
+   "ru": "Гид и помощь"
+  }
+ }
+]
