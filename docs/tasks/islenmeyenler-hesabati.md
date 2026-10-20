@@ -52,3 +52,8 @@ Hesabat: budaq, commit, fayllar, test sayı, build, PDF yolları, edilməyənlə
   (reason: excused|technical|no_device|forgot|refused|other). `excused` – məxrəcdən çıxır. Hesabatda səbəb sütunu + səbəblər xülasəsi.
 - **Miqrasiya:** alembic – yalnız yeni cədvəllər `missing_notes`, `missing_requests` (mövcud cədvəllərə toxunma); testlərdə yaradılır.
 - Frontend: sətirdə «📩 Tələb et», «🔍 Araşdır» (pəncərə: faktlar + səbəb seçimi + qeyd), toplu seçim checkbox-ları və «Tələb göndər».
+
+## Əlavə 2 – çap süzgəcləri (istifadəçi, 20.10.2026)
+Bütün çap/eksport: **sinif** (ta) + **şagird(lər)** (`sids`) + **test(lər)** (`task_keys`, birləşmiş surət açarı) seçimi.
+Yeni forma «Test üzrə yazmayanlar» (PDF/Excel, AZ): hər seçilmiş test ayrıca blok – ad, tarix, plan günü, verilib/işləyib/icra %,
+yazmayanlar (№, ad, status, gecikmə, səbəb), imza. Panel: şagird və test çoxlu seçimi → «🖨 Seçilmişləri çap et».
