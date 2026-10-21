@@ -73,7 +73,7 @@ function NewCourse({ onClose, onDone }: { onClose: () => void; onDone: (id: numb
   const [f, setF] = useState(() => {
     const t = localParts(new Date().toISOString())[0]
     const end = new Date(); end.setDate(end.getDate() + 84)
-    return { title: '', format: 'əyani', goal: '', starts_on: t, ends_on: localParts(end.toISOString())[0], audience: 'all' as 'all' | 'levels', levels: ['Zəif'] as string[], kind: '' as '' | Kind }
+    return { title: '', format: 'əyani', goal: '', starts_on: t, ends_on: localParts(end.toISOString())[0], audience: 'all' as 'all' | 'levels', levels: ['Zəif'] as string[], kind: '' as '' | Kind, min_score: '50' }
   })
   const [tas, setTas] = useState<number[]>([])
   const [slots, setSlots] = useState([{ weekday: 5, start: '10:00', end: '11:00', room: '', link: '' }])
@@ -85,7 +85,7 @@ function NewCourse({ onClose, onDone }: { onClose: () => void; onDone: (id: numb
     try {
       const r = await post<Course>('/api/extra', {
         title: f.title.trim(), format: f.format, goal: f.goal || null, ta_ids: tas, starts_on: f.starts_on, ends_on: f.ends_on,
-        levels: f.audience === 'levels' ? f.levels : null, kind: f.kind || null,
+        levels: f.audience === 'levels' ? f.levels : null, kind: f.kind || null, min_score: f.kind === 'tereqqi' && f.min_score !== '' ? Number(f.min_score) : null,
         schedule: slots.map(s => ({ weekday: s.weekday, start: s.start, end: s.end, room: s.room || null, link: s.link || null })),
       })
       toast(t('Kurs yaradıldı – {sessions} məşğələ planlaşdırıldı', { sessions: r.sessions }))
@@ -102,9 +102,10 @@ function NewCourse({ onClose, onDone }: { onClose: () => void; onDone: (id: numb
           <Field label={t('Ad')} full><input value={f.title} maxLength={200} placeholder={t('məs. IX – buraxılışa hazırlıq')} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
           <Field label={t('Format')}><select value={f.format} onChange={e => setF({ ...f, format: e.target.value })}>
             <option value="əyani">{t('əyani (məktəbdə)')}</option><option value="onlayn">{t('onlayn')}</option><option value="qarışıq">{t('qarışıq')}</option></select></Field>
-          <Field label={t('Qrupun tipi')}><select value={f.kind} onChange={e => setF({ ...f, kind: e.target.value as '' | Kind })}>
+          <Field label={t('Qrupun tipi')}><select value={f.kind} onChange={e => { const k = e.target.value as '' | Kind; setF({ ...f, kind: k }); if (k === 'tereqqi' && slots.length < 2) setSlots(s => [...s, { ...s[0], weekday: (s[0].weekday + 2) % 7 }]) }}>
             <option value="">{t('avtomatik (ad və səviyyədən)')}</option>
             {(Object.keys(KIND_LABEL) as Kind[]).map(k => <option key={k} value={k}>{t(KIND_LABEL[k])}</option>)}</select></Field>
+          {f.kind === 'tereqqi' && <Field label={t('Minimum bal')}><input type="number" min={0} max={100} value={f.min_score} onChange={e => setF({ ...f, min_score: e.target.value })} /></Field>}
           <Field label={t('Başlama')}><input type="date" value={f.starts_on} onChange={e => setF({ ...f, starts_on: e.target.value })} /></Field>
           <Field label={t('Bitmə')}><input type="date" value={f.ends_on} onChange={e => setF({ ...f, ends_on: e.target.value })} /></Field>
           <Field label={t('Məqsəd')} full><textarea value={f.goal} placeholder={t('məs. kəsrlər və faiz mövzularında boşluqları bağlamaq')} onChange={e => setF({ ...f, goal: e.target.value })} /></Field>

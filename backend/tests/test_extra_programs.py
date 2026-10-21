@@ -3,7 +3,7 @@ idempotentlik, keçirilmiş/əl ilə mövzulara toxunmama, dry-run, şagird port
 import datetime as dt
 
 from app import programs
-from app.extra_programs import course_kind, detect_kind
+from app.extra_programs import course_kind, detect_kind, leaks
 from app.models import ExtraCourse, ExtraSession, PlanLesson, PlanProgram, TeachingAssignment
 
 from .test_api_portal import UTC, clock, setup, student_client  # noqa: F401 – clock fixture
@@ -146,8 +146,11 @@ def test_tereqqi_follows_class_plan(world, clock, monkeypatch):
     clock.t = dt.datetime(2026, 10, 2, 8, 0, tzinfo=UTC)
     admin = as_('admin')
     setup_programs(S)
+    with S() as db:                                                   # «Güclü» proqram yoxdur -> sinfin planı
+        db.query(PlanProgram).filter(PlanProgram.key.like('tereqqi-%')).delete(synchronize_session=False)
+        db.commit()
     ta, _, _ = mk_class(admin, S, 'VIII a', plan=20)
-    c = mk_course(admin, ta, 'Tərəqqi qrupu')
+    c = mk_course(admin, ta, 'Tərəqqi qrupu', min_score=0)
     assert c['kind'] == 'tereqqi'
     r = admin.post(f"/api/extra/{c['id']}/program", json={})
     assert r.status_code == 200, r.text
@@ -208,3 +211,73 @@ def test_kind_survives_member_changes_and_student_sees_no_level(world, clock, mo
     mine = me.get('/api/portal/extra').json()
     assert len(mine) == 1 and mine[0]['neutral'] is True and mine[0]['title'] == '' and mine[0]['goal'] is None
     assert 'kind' not in mine[0] and 'levels' not in mine[0] and 'audience' not in mine[0]
+
+
+def test_builtin_tereqqi_programs_idempotent(world):
+    as_, S = world
+    setup_programs(S)
+    with S() as db:
+        ps = db.query(PlanProgram).filter(PlanProgram.key.like('tereqqi-%')).all()
+        assert {p.key for p in ps} == {f'tereqqi-{g}' for g in range(5, 12)}
+        assert all(p.level == 'Güclü' and p.school_id is None for p in ps)
+        p9 = next(p for p in ps if p.grade == 9)
+        assert p9.data['template']['mock_every'] == 8 and p9.data['template']['final_mock']
+        assert 'mock_every' not in next(p for p in ps if p.grade == 7).data['template']
+        topics = [t for s in p9.data['template']['sections'] for t in s['topics']]
+        assert not any(s['section'].startswith('Təkrar') for s in p9.data['template']['sections'])
+        assert topics.count(programs.EXTRA_TOPIC) == len(p9.data['template']['sections'])
+        assert not any(leaks(t) for t in topics) and not leaks(programs.EXTRA_TOPIC)
+        before = db.query(PlanProgram).count()
+        assert programs.ensure_builtin(db) is False
+        assert db.query(PlanProgram).count() == before
+
+
+def test_tereqqi_uses_builtin_program_and_scheduler_idempotent(world, clock, monkeypatch):
+    as_, S = world
+    monkeypatch.setattr('app.api.extra.now', clock)
+    clock.t = dt.datetime(2026, 10, 2, 8, 0, tzinfo=UTC)
+    monkeypatch.setattr('app.models.now', clock)
+    monkeypatch.setattr('app.scheduler.SessionLocal', S)
+    admin = as_('admin')
+    setup_programs(S)
+    ta, _, _ = mk_class(admin, S, 'IX a', plan=20)
+    c = mk_course(admin, ta, 'Tərəqqi qrupu', min_score=0)
+    assert c['kind'] == 'tereqqi'
+    r = admin.post(f"/api/extra/{c['id']}/program", json={})
+    assert r.status_code == 200, r.text
+    r = r.json()
+    assert r['mode'] == 'program' and r['to_fill'] > 0
+    shown = [x['text'] for x in r['rows'] if x.get('text')]
+    assert not any(leaks(t) for t in shown if programs.EXTRA_TOPIC in t)
+    admin.delete(f"/api/extra/{c['id']}/program")
+    from app import scheduler
+    scheduler._extra_programs_job()
+    with S() as db:
+        snap = sorted((s.id, s.topic_ref, str(s.topics)) for s in db.query(ExtraSession).filter_by(course_id=c['id']))
+    assert any(x[1] for x in snap)
+    scheduler._extra_programs_job()
+    with S() as db:
+        assert sorted((s.id, s.topic_ref, str(s.topics)) for s in db.query(ExtraSession).filter_by(course_id=c['id'])) == snap
+
+
+def test_tereqqi_members_by_math_score(world, clock, monkeypatch):
+    """Tərəqqi qrupu: Riyaziyyat balı >= 50 (default); inkişaf/digər qrupda bal süzgəci yoxdur."""
+    as_, S = world
+    monkeypatch.setattr('app.api.extra.now', clock)
+    clock.t = dt.datetime(2026, 10, 2, 8, 0, tzinfo=UTC)
+    admin = as_('admin')
+    setup_programs(S)
+    ta, _, st = mk_class(admin, S, 'IX b', n=3)
+    # a: riyaziyyat 55 (digər fənlər aşağı olsa da hesaba girmir), b: 45, c: bal yoxdur
+    marks = {st[0]['id']: {'reytinq': 55.0}, st[1]['id']: {'reytinq': 45.0}, st[2]['id']: {}}
+    monkeypatch.setattr('app.levels.components', lambda db, ctx: {i: {'buraxilis': None, 'sinaq': None, 'diaqnostik': None,
+                                                                    'reytinq': None, **m} for i, m in marks.items()})
+    c = mk_course(admin, ta, 'Tərəqqi qrupu')
+    assert c['kind'] == 'tereqqi' and c['audience']['min_score'] == 50 and c['students'] == 1
+    with S() as db:
+        from app.api.extra import members
+        assert [s.id for s, _ in members(db, db.get(ExtraCourse, c['id']))] == [st[0]['id']]
+    c2 = mk_course(admin, ta, 'Tərəqqi 2', kind='tereqqi', min_score=40)
+    assert c2['students'] == 2
+    c3 = mk_course(admin, ta, 'Zəif qrup', kind='inkisaf')                     # inkişaf – davranış əvvəlki kimi, min_score yoxdur
+    assert 'min_score' not in c3['audience'] or c3['audience']['min_score'] is None

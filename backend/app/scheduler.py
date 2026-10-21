@@ -64,6 +64,26 @@ def _certificates_job():
             log.info('sertifikat: %s', n)
 
 
+def _extra_programs_job():
+    """Məşğələ qruplarına proqram mövzularının avtomatik təyini (arxivlənməmiş hamısı; keçirilmiş/əl ilə yazılmış mövzulara toxunmur)."""
+    from sqlalchemy import select
+    from .api.common import audit
+    from .extra_programs import assign_programs
+    from .models import ExtraCourse, now
+    with SessionLocal() as db:
+        courses = list(db.scalars(select(ExtraCourse).where(ExtraCourse.archived_at.is_(None))))
+        if not courses:
+            return
+        rows = assign_programs(db, courses, now().astimezone(ZoneInfo('Asia/Baku')).date(), apply=True)
+        n = sum(r['to_fill'] for r in rows if r['applicable'])
+        if n:
+            audit(db, None, 'update', 'extra_course', 0, assign_programs=sum(1 for r in rows if r['applicable']),
+                  courses=len(rows), filled=n, auto=True)
+        db.commit()
+        if n:
+            log.info('məşğələ proqramı: %s mövzu', n)
+
+
 def _difficulty_job():
     """Bank suallarının faktiki çətinliyi (100 ballıq sistem – app/difficulty.py), gecə bir dəfə."""
     from .difficulty import update_difficulty
@@ -221,6 +241,8 @@ def start():
                    next_run_time=dt.datetime.now() + dt.timedelta(minutes=3))
     _sched.add_job(_quiet(_auto_tests_job), 'interval', minutes=15, id='auto_tests', max_instances=1, coalesce=True,
                    next_run_time=dt.datetime.now() + dt.timedelta(minutes=2))
+    _sched.add_job(_quiet(_extra_programs_job), 'cron', hour=6, minute=10, id='extra_programs', max_instances=1, coalesce=True)
+    _sched.add_job(_quiet(_extra_programs_job), 'date', run_date=dt.datetime.now() + dt.timedelta(minutes=2), id='extra_programs_boot')
     _sched.add_job(_ksq_scan_job, 'interval', minutes=10, id='ksq_scans', max_instances=1, coalesce=True)
     _sched.add_job(_quiet(_ksq_stale_job), 'interval', minutes=10, id='ksq_stale', max_instances=1, coalesce=True,
                    next_run_time=dt.datetime.now())

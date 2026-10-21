@@ -74,9 +74,9 @@ def test_level_fit_and_extra_programs(world):
     c, ta, good, weak, new = setup(world)
     lib = c.get('/api/programs', params={'ta_id': ta}).json()
     fits = [p['grade'] for p in lib if p['builtin'] and p['fits']]
-    assert fits == [10] and lib[0]['fits']                                   # X sinif – uyğun olanlar öndə
-    x10 = next(p for p in lib if p['builtin'] and p['grade'] == 10)
-    x9 = next(p for p in lib if p['builtin'] and p['grade'] == 9)
+    assert set(fits) == {10} and lib[0]['fits']                              # X sinif – uyğun olanlar öndə (sinif + tərəqqi)
+    x10 = next(p for p in lib if p['builtin'] and p['grade'] == 10 and 'tərəqqi' not in p['title'])
+    x9 = next(p for p in lib if p['builtin'] and p['grade'] == 9 and 'tərəqqi' not in p['title'])
     with S() as db:
         before = db.query(PlanLesson).filter_by(assignment_id=ta).count()
     # əlavə proqram: zəif qrup üçün IX sinif proqramı (təkrar) – jurnala qarışmır
@@ -96,7 +96,7 @@ def test_level_fit_and_extra_programs(world):
     # öz proqramına səviyyə və sinif yazmaq
     mine = next(p for p in c.get('/api/programs').json() if p['mine'])
     r = c.patch(f"/api/programs/{mine['id']}", json={'title': 'X c – güclü qrup proqramı', 'level': 'Güclü', 'grade': 10}).json()
-    assert r['level'] == 'Güclü' and [p['id'] for p in c.get('/api/programs', params={'level': 'Güclü'}).json()] == [mine['id']]
+    assert r['level'] == 'Güclü' and [p['id'] for p in c.get('/api/programs', params={'level': 'Güclü'}).json() if not p['builtin']] == [mine['id']]
 
 
 def test_choose_main_program_when_joining(world):

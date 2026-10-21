@@ -103,7 +103,28 @@ def _prep_template(src: dict, upto: int) -> dict:
 def _builtin_keys() -> set[str]:
     src = json.loads((DATA / 'sinif_testleri.json').read_text(encoding='utf-8'))
     toplu = json.loads((DATA / 'dim_toplu_9_2025.json').read_text(encoding='utf-8'))
-    return {k for k, *_ in PREP} | {f"{src['key']}-{g}" for g in src['grades']} | {toplu['key']}
+    return ({k for k, *_ in PREP} | {f"{src['key']}-{g}" for g in src['grades']} | {toplu['key']}
+            | {f'tereqqi-{g}' for g in src['grades']})
+
+
+EXTRA_TOPIC = 'Bölmə üzrə mürəkkəb məsələlər'      # tərəqqi: hər bölmənin sonunda dərinləşdirmə (adda «güclü/tərəqqi» yoxdur)
+
+
+def _tereqqi_template(tpl: dict, g: int) -> dict:
+    """Tərəqqi qrupu: sinfin «Sinif testləri» mövzuları eyni adla (bank ad üzrə tapır), «Təkrar…» bölmələri çıxır,
+    hər bölmənin sonunda mürəkkəb məsələlər; IX və XI – hər 8 dərsdən bir sınaq + yekun, qalanı – yalnız yekun."""
+    sections = []
+    for sem in tpl['semesters']:
+        for sec in sem:
+            if sec['section'].startswith('Təkrar'):
+                continue
+            sections.append({'section': sec['section'], 'part': sec.get('part'), 'grade': g, 'variants': 'B+C',
+                             'topics': [*sec['topics'], EXTRA_TOPIC]})
+    out = {'format': 'course', 'sections': sections, 'mock_after_section': False, 'final_mock': True,
+           'resource': 'DİM «Riyaziyyat. Sinif testləri»'}
+    if g in (9, 11):
+        out['mock_every'] = 8
+    return out
 
 
 def ensure_builtin(db: Session) -> bool:
@@ -137,6 +158,18 @@ def ensure_builtin(db: Session) -> bool:
             description=(f'{n_topics} mövzu, hər mövzuya sinif testi (variant {tpl["variants"]}); yarımil üzrə yekunlaşdırıcı testlər. '
                          'Sinfin həftəlik cədvəlinə görə dərslərə açılır.'),
             data={'template': tpl, 'source_short': 'DİM Sinif testləri'}))
+    for g, tpl in src['grades'].items():
+        key = f'tereqqi-{g}'
+        if key in have:
+            continue
+        ttpl = _tereqqi_template(tpl, int(g))
+        n = sum(len(x['topics']) for x in ttpl['sections'])
+        db.add(PlanProgram(
+            key=key, school_id=None, owner_id=None, subject='Riyaziyyat', grade=int(g), level='Güclü', kind='adaptive',
+            title=f'Riyaziyyat – {ROMAN[int(g)]} sinif: tərəqqi qrupu (dərinləşdirmə)', source=src['source'],
+            description=(f'{n} mövzu (sinfin mövzuları və hər bölmənin sonunda mürəkkəb məsələlər); sinifdən təxminən 1 həftə irəli, '
+                         'B+C variantları, sonda yekun sınaq.'),
+            data={'template': ttpl, 'purposes': ['tereqqi'], 'source_short': 'DİM Sinif testləri'}))
     toplu = json.loads((DATA / 'dim_toplu_9_2025.json').read_text(encoding='utf-8'))
     if toplu['key'] not in have:
         tpl = toplu_template(toplu)

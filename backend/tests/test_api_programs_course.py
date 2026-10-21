@@ -72,7 +72,7 @@ def test_prep_builtins_and_custom_course(world):
     as_, _ = world
     t = as_('ilqar')
     lib = t.get('/api/programs').json()
-    prep = {p['grade']: p for p in lib if p['builtin'] and p['course']}
+    prep = {p['grade']: p for p in lib if p['builtin'] and p['course'] and 'tereqqi' not in p['purposes']}
     assert set(prep) == {9, 11} and 'buraxilis9' in prep[9]['purposes'] and 'qebul' in prep[11]['purposes']
     d = t.get(f"/api/programs/{prep[9]['id']}").json()
     secs = d['outline'][0]['sections']
@@ -169,7 +169,7 @@ def test_section_selection(world):
     f = t.get(f'/api/programs/for/{ta}').json()
     assert f['main_sections'] == geo
     # əlavə proqram – kursdan yalnız bir bölmə
-    prep = next(p for p in t.get('/api/programs').json() if p['builtin'] and p['course'] and p['grade'] == 9)
+    prep = next(p for p in t.get('/api/programs').json() if p['builtin'] and p['course'] and 'tereqqi' not in p['purposes'] and p['grade'] == 9)
     one = [t.get(f"/api/programs/{prep['id']}").json()['sections'][0]['name']]
     f2 = t.post(f"/api/programs/{prep['id']}/attach/{ta}", json={'sections': one}).json()
     aid = f2['extra'][0]['id']

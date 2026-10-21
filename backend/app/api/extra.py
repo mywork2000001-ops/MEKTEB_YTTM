@@ -72,6 +72,7 @@ class CourseIn(BaseModel):
     ends_on: dt.date
     goal: str | None = Field(None, max_length=2000)
     kind: Literal['inkisaf', 'tereqqi', 'diger'] | None = None        # None – ad və səviyyədən avtomatik tanınır
+    min_score: float | None = Field(None, ge=0, le=100)               # tərəqqi: fənn balı ≥ min_score (defolt 50); inkişaf – istifadə olunmur
 
     @model_validator(mode='after')
     def _v(self):
@@ -90,18 +91,41 @@ def _course(db: Session, user: User, cid: int) -> ExtraCourse:
     return c
 
 
+TEREQQI_MIN_SCORE = 50.0                      # tərəqqi qrupu: qrupun fənni (Riyaziyyat) üzrə bal ≥ 50 (LEVEL_HIGH=70 dəyişmir)
+
+
+def subject_scores(db: Session, ta: TeachingAssignment) -> dict[int, float | None]:
+    """Şagirdin dərs (fənn) üzrə balı 0–100 – levels.py ilə eyni hesab (komponentlərin çəkili ortası)."""
+    from .. import levels as LV
+    from ..services import plan_ctx
+    try:
+        return {sid: LV.blend(c, LV.WEIGHTS) for sid, c in LV.components(db, plan_ctx(db, ta)).items()}
+    except Exception:                          # noqa: BLE001 – plan/il yoxdursa bal yoxdur
+        return {}
+
+
 def members(db: Session, c: ExtraCourse) -> list[tuple[Student, int]]:
-    """Kursun şagirdləri: (şagird, dərs bağlılığı) – sinif/qrup siyahısı, səviyyə və ya seçilmiş şagirdlər üzrə."""
+    """Kursun şagirdləri: (şagird, dərs bağlılığı) – sinif/qrup siyahısı, səviyyə və ya seçilmiş şagirdlər üzrə.
+    audience.min_score (tərəqqi) verilibsə – səviyyə süzgəci əvəzinə fənn balı ≥ min_score (balı olmayan düşür);
+    şagirdlər əl ilə seçilibsə (student_ids) bal süzgəci tətbiq olunmur."""
     a = c.audience or {}
     levels, picked = a.get('levels'), set(a.get('student_ids') or [])
+    min_score = a.get('min_score')
+    if min_score is None and XP.course_kind(c) == 'tereqqi':      # köhnə tərəqqi qrupları da riyaziyyat balı ≥ 50 qaydası ilə
+        min_score = TEREQQI_MIN_SCORE
+    if min_score and not picked:
+        levels = None
     out, seen = [], set()
     for ta_id in a.get('ta_ids') or []:
         ta = db.get(TeachingAssignment, ta_id)
         if not ta or ta.archived_at:
             continue
         lv = {o.student_id: o.level for o in db.scalars(select(LevelOverride).where(LevelOverride.assignment_id == ta.id))}
+        sc = subject_scores(db, ta) if min_score and not picked else {}
         for s in roster(db, ta):
             if s.id in seen or (levels and lv.get(s.id) not in levels) or (picked and s.id not in picked):
+                continue
+            if min_score and not picked and (sc.get(s.id) is None or sc[s.id] < min_score):
                 continue
             seen.add(s.id)
             out.append((s, ta.id))
@@ -248,6 +272,8 @@ def create_course(body: CourseIn, user: User = Depends(staff), db: Session = Dep
                     schedule=sched, starts_on=body.starts_on, ends_on=body.ends_on, goal=body.goal, kind=body.kind)
     if c.kind is None:
         XP.remember_kind(c)                                            # «Zəif» səviyyə / «inkişaf» adı → tip yadda qalır
+    if XP.course_kind(c) == 'tereqqi' and not body.student_ids:
+        c.audience = {**c.audience, 'min_score': TEREQQI_MIN_SCORE if body.min_score is None else body.min_score}
     db.add(c)
     db.flush()
     if not members(db, c):

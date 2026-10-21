@@ -3243,6 +3243,7 @@ const D: Record<string, [string, string]> = {
   // məşğələ qruplarına proqram (docs/meshgele-proqram-ve-video-beledci-promtu.md §A)
   "📚 Proqramları təyin et": ["📚 Assign programs", "📚 Назначить программы"],
   "Qrupun tipi": ["Group type", "Тип группы"],
+  "Minimum bal": ["Minimum score", "Минимальный балл"],
   "avtomatik (ad və səviyyədən)": ["automatic (from name and level)", "автоматически (по названию и уровню)"],
   "İnkişaf": ["Development", "Развитие"],
   "Tərəqqi": ["Progress", "Продвинутый"],
