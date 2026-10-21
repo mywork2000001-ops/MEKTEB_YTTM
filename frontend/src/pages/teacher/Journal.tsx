@@ -31,7 +31,12 @@ export default function Journal() {
   const t = useT()
   const [lessons, err] = useMyLessons()
   const [ta, setTa] = usePick('journal')
-  const [tab, setTab] = useState<(typeof TABS)[number][0]>('day')
+  const [sp] = useSearchParams()
+  // keçid: /journal?ta=…&tab=exams&exam=…&appeals=1 (ana səhifədəki «⚖ Apelyasiyalar» – birbaşa apelyasiya pəncərəsi)
+  const urlTab = TABS.find(([k]) => k === sp.get('tab'))?.[0]
+  const [tab, setTab] = useState<(typeof TABS)[number][0]>(urlTab || 'day')
+  const goExam = Number(sp.get('exam')) || null
+  useEffect(() => { const n = Number(sp.get('ta')); if (n && n !== ta) setTa(n) }, [sp])          // eslint-disable-line react-hooks/exhaustive-deps
   const [date, setDate] = useState(isoDate(new Date()))
   const [print, setPrint] = useState(false)
   const cur = lessons?.find(l => l.id === ta)
@@ -57,7 +62,7 @@ export default function Journal() {
           {tab === 'grid' && <Grid ta={cur} />}
           {tab === 'students' && <StudentsLevels ta={cur} />}
           {tab === 'levels' && <LevelGroups ta={cur} />}
-          {tab === 'exams' && <Exams ta={cur} />}
+          {tab === 'exams' && <Exams ta={cur} initExam={goExam} initAppeals={sp.get('appeals') === '1'} />}
           {tab === 'semester' && <Semester ta={cur} />}
           {tab === 'topics' && <Topics ta={cur} />}
           {tab === 'summary' && <Summary ta={cur} />}

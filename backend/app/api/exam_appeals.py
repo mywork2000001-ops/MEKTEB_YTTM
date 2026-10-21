@@ -24,10 +24,14 @@ router = APIRouter(prefix='/api/exam-appeals', tags=['exam-appeals'])
 @router.get('/open-count')
 def open_count(user: User = Depends(staff), db: Session = Depends(get_db)):
     """Ana səhifə nişanı: müəllimin sinifləri üzrə cavabsız apelyasiyalar."""
+    where = (ExamAppeal.status == 'open', TeachingAssignment.teacher_id == user.id)
     n = db.scalar(select(func.count()).select_from(ExamAppeal).join(Exam, Exam.id == ExamAppeal.exam_id)
-                  .join(TeachingAssignment, TeachingAssignment.id == Exam.assignment_id)
-                  .where(ExamAppeal.status == 'open', TeachingAssignment.teacher_id == user.id)) or 0
-    return {'open': n}
+                  .join(TeachingAssignment, TeachingAssignment.id == Exam.assignment_id).where(*where)) or 0
+    # ən köhnə cavabsız apelyasiya – nişana toxunanda birbaşa onun imtahanının apelyasiya pəncərəsi açılır
+    first = db.execute(select(Exam.assignment_id, Exam.id).join(ExamAppeal, ExamAppeal.exam_id == Exam.id)
+                       .join(TeachingAssignment, TeachingAssignment.id == Exam.assignment_id).where(*where)
+                       .order_by(ExamAppeal.id).limit(1)).first()
+    return {'open': n, 'first': {'ta_id': first[0], 'exam_id': first[1]} if first else None}
 
 
 def _exam(db: Session, user: User, ta_id: int, exam_id: int):

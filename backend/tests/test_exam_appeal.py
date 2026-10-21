@@ -100,7 +100,7 @@ def test_appeal_rules(world, monkeypatch):
     assert [(x['slot'], x['status']) for x in card['appeals']] == [(1, 'open')]
     # müəllim: başqa müəllim 404; açıq sayı; geri götürmə
     assert world[0]('yad').get(f'/api/exam-appeals/{ta}/{e["id"]}').status_code == 404
-    assert admin.get('/api/exam-appeals/open-count').json() == {'open': 1}
+    assert admin.get('/api/exam-appeals/open-count').json() == {'open': 1, 'first': {'ta_id': ta, 'exam_id': e['id']}}   # nişan birbaşa apelyasiyaya aparır
     lst = admin.get(f'/api/exam-appeals/{ta}/{e["id"]}').json()
     ap = lst['appeals'][0]
     assert ap['bank_ref']['text'].count('№') == 1 and ap['question']['text'] and ap['scan_id'] and ap['bank']['needs_review'] is False

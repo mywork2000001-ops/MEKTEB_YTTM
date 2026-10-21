@@ -26,7 +26,7 @@ export default function Home() {
   const [tt, err1] = useLoad<TT>(() => get('/api/timetable', { date: today }), [today])
   const [ov, err2] = useLoad<any[]>(() => get('/api/overview'), [])
   const [prog] = useLoad<any[]>(() => get('/api/my/progress'), [])
-  const [ap] = useLoad<{ open: number }>(() => get('/api/exam-appeals/open-count'), [])      // cavabsız KSQ/BSQ apelyasiyaları
+  const [ap] = useLoad<{ open: number; first: { ta_id: number; exam_id: number } | null }>(() => get('/api/exam-appeals/open-count'), [])      // cavabsız KSQ/BSQ apelyasiyaları
 
   const lessons = useMemo(() => {
     const d = tt?.days.find(x => x.date === today)
@@ -76,7 +76,7 @@ export default function Home() {
           <div className="hero-chips">
             <button className="hchip solid" onClick={() => nav('/journal')}>{t('Jurnal')}</button>
             <button className="hchip" onClick={() => nav('/timetable')}>{t('Həftəlik cədvəl')}</button>
-            {(ap?.open || 0) > 0 && <button className="hchip solid" onClick={() => nav('/journal')} title={t('KSQ/BSQ üzrə cavabsız apelyasiyalar')}>⚖ {t('Apelyasiyalar')}: {ap!.open}</button>}
+            {(ap?.open || 0) > 0 && <button className="hchip solid" onClick={() => nav(ap!.first ? `/journal?ta=${ap!.first.ta_id}&tab=exams&exam=${ap!.first.exam_id}&appeals=1` : '/journal')} title={t('KSQ/BSQ üzrə cavabsız apelyasiyalar')}>⚖ {t('Apelyasiyalar')}: {ap!.open}</button>}
           </div>
         </div>
         <div className="clock" aria-live="off">

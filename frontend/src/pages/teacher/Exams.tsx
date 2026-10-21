@@ -17,11 +17,12 @@ type Planned = { kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string
 /** KSQ-2 · əlavə 1 – əlavə imtahanın adı (dil: istifadəçinin dili) */
 export const exLabel = (e: { kind: string; no: number; extra_seq?: number }) => `${e.kind}-${e.no}` + (e.extra_seq ? ` · ${tt('əlavə {n}', { n: e.extra_seq })}` : '')
 
-export default function Exams({ ta }: { ta: MyLesson }) {
+export default function Exams({ ta, initExam = null, initAppeals = false }: { ta: MyLesson; initExam?: number | null; initAppeals?: boolean }) {
   const t = useT()
   const [d, err, , reload] = useLoad<{ has_summative: boolean; exams: Exam[]; planned: Planned[] }>(() => get(`/api/exams/${ta.id}`), [ta.id])
   const [create, setCreate] = useState<Planned | null>(null)
-  const [open, setOpen] = useState<number | null>(null)
+  const [open, setOpen] = useState<number | null>(initExam)
+  const [appealsFirst, setAppealsFirst] = useState(initAppeals)     // keçidlə gəlibsə – nəticələrlə yanaşı apelyasiyalar da açılır (bir dəfə)
   const [vars, setVars] = useState<Exam | null>(null)
   const [edit, setEdit] = useState<Exam | null>(null)
   const [delAsk, setDelAsk] = useState<Exam | null>(null)
@@ -81,7 +82,7 @@ export default function Exams({ ta }: { ta: MyLesson }) {
         {d && !d.planned.length && !d.exams.length && <div className="empty">{t('Planda KSQ/BSQ yoxdur (plan yüklənməyib?).')}</div>}
       </div>
       {create && <CreateExam ta={ta} p={create} prev={(d?.planned || []).filter(x => x.semester === create.semester && x.date < create.date).map(x => x.date).sort().pop() || null} onClose={() => setCreate(null)} onDone={id => { setCreate(null); reload(); setOpen(id) }} />}
-      {open && <Scores ta={ta} examId={open} onClose={() => { setOpen(null); reload() }} />}
+      {open && <Scores ta={ta} examId={open} initAppeals={appealsFirst} onClose={() => { setOpen(null); setAppealsFirst(false); reload() }} />}
       {vars && <Variants ta={ta} e={vars} onClose={() => { setVars(null); reload() }} />}
       {edit && <EditExam ta={ta} e={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
       {extra && <ExtraExam ta={ta} base={extra} onClose={() => setExtra(null)} onDone={id => { setExtra(null); reload(); setOpen(id) }} />}
@@ -182,12 +183,12 @@ function CreateExam({ ta, p, prev, onClose, onDone }: { ta: MyLesson; p: Planned
   )
 }
 
-function Scores({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose: () => void }) {
+function Scores({ ta, examId, initAppeals = false, onClose }: { ta: MyLesson; examId: number; initAppeals?: boolean; onClose: () => void }) {
   const t = useT()
   const [d, err, , reload] = useLoad<any>(() => get(`/api/exams/${ta.id}/${examId}`), [ta.id, examId])
   const [rows, setRows] = useState<Record<number, { points: string; marks: number[] | null; absent: boolean; later: boolean; taken_on: string }>>({})
   const [days, setDays] = useState(3)                     // apelyasiya müddəti (gün)
-  const [appeals, setAppeals] = useState(false)
+  const [appeals, setAppeals] = useState(initAppeals)
   const [dv] = useLoad<Record<string, { status: string; sent_at: string | null }>>(() => get(`/api/exams/${ta.id}/${examId}/delivery`), [ta.id, examId, d])     // göndəriş statusu
   useEffect(() => {
     if (!d) return
