@@ -195,8 +195,14 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
     clearTimeout(debounce.current)
     debounce.current = window.setTimeout(flush, 800)          // son cavablar vaxt bitməzdən əvvəl serverə çatsın
   }
+  // yoxlama pəncərəsi: «Bəli, təhvil ver» 1 san. sonra aktiv olur (təsadüfi ikiqat toxunuş təhvil verməsin)
+  const [review, setReview] = useState(false)
+  const [armed, setArmed] = useState(false)
+  useEffect(() => { if (!review) { setArmed(false); return } const tm = window.setTimeout(() => setArmed(true), 1000); return () => clearTimeout(tm) }, [review])
+  const openReview = () => { flush(); setReview(true) }
   if (err) return <><ErrorBox error={err} /><button className="btn" onClick={onDone}>‹ {t('Geri')}</button></>
   if (!d) return <Loading />
+  const unanswered: number[] = d.questions.map((x: any, k: number) => (ans[x.index] == null || ans[x.index] === '' ? k : -1)).filter((k: number) => k >= 0)
   const q = d.questions[i]
   const noLimit = !!d.unlimited && !!d.no_timer                        // müddətsiz test – taymer göstərilmir
   const mm = String(Math.floor(left / 60)).padStart(2, '0'), ss = String(left % 60).padStart(2, '0')
@@ -214,7 +220,25 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
       <div className="row" style={{ marginBottom: 12, position: 'sticky', top: 0, background: 'var(--bg)', padding: '8px 0', zIndex: 5 }}>
         <b className="grow">{d.title}</b>{noLimit ? <span className="small muted" title={t('Müddətsiz test: cavablar avtomatik saxlanır, istədiyiniz vaxt «Təhvil ver» edə bilərsiniz.')}>{t('Vaxt məhdudiyyəti yoxdur')}</span>
           : <><span className="small muted">{t('Qalan vaxt')}</span><span className={'timer' + (left < 60 ? ' low' : '')}>{mm}:{ss}</span></>}
+        {/* təhvil – barmaq zonasından uzaqda, yalnız yoxlama pəncərəsi ilə (docs/tasks/tehvil-ver-2026-10-21.md) */}
+        <button className="btn sm danger" onClick={openReview}>{t('Testi bitir')}</button>
       </div>
+      {review && (
+        <div className="fs-guard" role="alertdialog" aria-modal="true" aria-labelledby="rv-t">
+          <div className="panel" style={{ maxWidth: 440 }}>
+            <h2 id="rv-t">{t('Testi təhvil verirsiniz?')}</h2>
+            <p>{t('Cavablanıb: {a} / {n}', { a: d.questions.length - unanswered.length, n: d.questions.length })}</p>
+            {unanswered.length > 0 && <>
+              <p className="small" style={{ color: 'var(--bad)' }}>{t('Cavabsız suallar (toxunun – suala keçin):')}</p>
+              <div className="row" style={{ gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
+                {unanswered.map(k => <button key={k} className="chip" style={{ minWidth: 38 }} onClick={() => { setReview(false); setI(k) }}>{k + 1}</button>)}</div></>}
+            <p className="small muted">{t('Təhvil verdikdən sonra cavabları dəyişmək olmaz.')}</p>
+            <div className="row" style={{ gap: 8 }}>
+              <button className="btn primary grow" onClick={() => setReview(false)}>‹ {t('Testə qayıt')}</button>
+              <AsyncBtn className="btn danger" disabled={!armed} onClick={() => finish(false)}>{t('Bəli, təhvil ver')}</AsyncBtn>
+            </div>
+          </div>
+        </div>)}
       <div className="row" style={{ marginBottom: 12, gap: 4 }}>
         {d.questions.map((x: any, k: number) => (
           <button key={k} className="chip" style={{ minWidth: 38, padding: 0 }} aria-pressed={k === i} onClick={() => setI(k)}
@@ -233,8 +257,8 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
         )}
         <div className="row exam-nav" style={{ marginTop: 16 }}>
           <button className="btn" disabled={i === 0} onClick={() => setI(i - 1)}>‹ {t('Əvvəlki')}</button>
-          {i < d.questions.length - 1 ? <button className="btn primary" onClick={() => { flush(); setI(i + 1) }}>{t('Növbəti')} ›</button> : null}
-          <AsyncBtn className="btn primary right" onClick={() => finish(false)}>{t('Təhvil ver')}</AsyncBtn>
+          {i < d.questions.length - 1 ? <button className="btn primary" onClick={() => { flush(); setI(i + 1) }}>{t('Növbəti')} ›</button>
+            : <button className="btn primary" onClick={openReview}>{t('Yoxla və bitir')} ›</button>}
         </div>
       </section>
     </>
