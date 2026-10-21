@@ -8,7 +8,7 @@ import { MathText } from '../../MathText'
 import { AsyncBtn, Chips, ConfirmName, Drawer, ErrorBox, Field, fmt, Loading, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
 import { Link } from 'react-router-dom'
 import { esc, head, printDoc, table } from '../../print'
-import TaskEditor, { BankPicker, iso, localParts, OwnQuestion, toCustom, type Given, type Q } from './TaskEditor'
+import TaskEditor, { BankPicker, iso, localParts, OwnQuestion, toCustom, type Given, type Q, fromSnapshot } from './TaskEditor'
 import { ResendToStudents, TaskActions } from './Tasks'
 import { PeriodBar, usePeriod } from '../../periods'
 import ExamSeriesPanel from './ExamSeries'
@@ -194,21 +194,27 @@ function EditExam({ x, onClose, onChange }: { x: Exam; onClose: () => void; onCh
 // ---------------------------------------------------------------- yeni sınaq
 type TRow = { on: boolean; d1: string; t1: string; d2: string; t2: string; ids?: number[] | null }   // ids: null – bütün sinif
 
-function NewExam({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+export type SinaqPrefill = { title: string; questions: any[]; ta_id: number }
+export function NewExam({ onClose, onDone, prefill }: { onClose: () => void; onDone: () => void; prefill?: SinaqPrefill }) {
   const t = useT()
   const [targets, setTargets] = useState<Target[] | null>(null)
   const [subject, setSubject] = useState('')
   const [common, setCommon] = useState(() => { const t = localParts(new Date().toISOString())[0]; return { d1: t, t1: '10:00', d2: t, t2: '12:00' } })
   const [rows, setRows] = useState<Record<number, TRow>>({})
-  const [f, setF] = useState({ title: '', duration: 60, penalty: '0', shuffle: true, show: 'after_close', unl: true })
-  const [qs, setQs] = useState<Q[]>([])
+  const [f, setF] = useState({ title: prefill?.title || '', duration: 60, penalty: '0', shuffle: true, show: 'after_close', unl: true })
+  const [qs, setQs] = useState<Q[]>(() => (prefill?.questions || []).map(s => fromSnapshot(s, 'b' + s.bank_id)))
   const [err, setErr] = useState<unknown>()
   const [busy, setBusy] = useState(false)
   const [given, setGiven] = useState<Record<string, Given>>({})
   const [ask, setAsk] = useState<{ message: string; repeat: boolean; grade: boolean } | null>(null)
   const [confirm, setConfirm] = useState(false)
   useEffect(() => {
-    get<Target[]>('/api/exams-online/targets').then(t => { setTargets(t); setSubject(t[0]?.subject || '') }, setErr)
+    get<Target[]>('/api/exams-online/targets').then(t => {
+      setTargets(t)
+      const pre = prefill && t.find(x => x.ta_id === prefill.ta_id)       // KSQ əsasında sınaq: həmin sinif seçilmiş açılır
+      setSubject((pre || t[0])?.subject || '')
+      if (pre) setRows({ [pre.ta_id]: { on: true, ...common } })
+    }, setErr)
   }, [])
   const subjects = useMemo(() => [...new Set((targets || []).map(t => t.subject))], [targets])
   const shown = (targets || []).filter(t => t.subject === subject)

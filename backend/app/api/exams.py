@@ -400,6 +400,26 @@ def set_choice_all(ta_id: int, exam_id: int, body: ChoiceAllIn, user: User = Dep
     return {**exam_result(ta_id, exam_id, user, db), 'changed': changed, 'skipped_manual': skipped}
 
 
+@router.get('/{ta_id}/{exam_id}/as-sinaq')
+def as_sinaq(ta_id: int, exam_id: int, mode: Literal['analog', 'same'] = 'analog', user: User = Depends(staff),
+             db: Session = Depends(get_db)):
+    """«Bu KSQ əsasında sınaq»: onlayn sınaq pəncərəsini dolduran məlumat (göndərmə YOXDUR). Seçim məntiqi – plan_tests.analog_pick."""
+    from .. import plan_tests
+    ta = own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    r = plan_tests.analog_pick(db, ta, e.id, mode)
+    from .tasks import _snapshot
+    snaps = []
+    for i in r['bank_ids']:                          # söndürülmüş mənbədən sual düşməsin – tək-tək, səhv olan atılır
+        try:
+            snaps += _snapshot(db, [i])
+        except HTTPException:
+            r['missing'].append(None)
+    ok = {s['bank_id'] for s in snaps}
+    return {'title': f'{exam_label(e)} – sınaq', 'mode': mode, 'bank_ids': [i for i in r['bank_ids'] if i in ok], 'missing': r['missing'],
+            'fallback': r['fallback'], 'total': r['total'], 'questions': snaps, 'targets': [{'ta_id': ta.id}]}
+
+
 @router.get('/{ta_id}/{exam_id}')
 def exam_result(ta_id: int, exam_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)

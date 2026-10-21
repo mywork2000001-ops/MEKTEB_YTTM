@@ -10,6 +10,7 @@ import ScanCamera, { aiErrorText } from '../../scanCamera'
 import { printCards } from '../../examCardPrint'
 import { printPackages } from '../../packagePrint'
 import OwnNumbersReport, { type OwnReport } from '../../OwnNumbersReport'
+import { NewExam, type SinaqPrefill } from './OnlineExams'
 
 type Exam = { id: number; kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; max_points: number; items: { n: number; points: number; standard?: string }[] | null; extra_of?: number | null; extra_seq?: number; extra_students?: number[] | null }
 type Planned = { kind: 'KSQ' | 'BSQ'; no: number; semester: number; date: string; topic: string; created: boolean }
@@ -27,6 +28,7 @@ export default function Exams({ ta, initExam = null, initAppeals = false }: { ta
   const [edit, setEdit] = useState<Exam | null>(null)
   const [delAsk, setDelAsk] = useState<Exam | null>(null)
   const [extra, setExtra] = useState<Exam | null>(null)
+  const [asS, setAs] = useState<Exam | null>(null)
   if (d && !d.has_summative) return <div className="empty">{t('Bu qrupda KSQ/BSQ keçirilmir – bütöv sinifdə keçirilir.')}</div>
   const byKey = new Map((d?.exams || []).filter(e => !e.extra_seq).map(e => [`${e.kind}-${e.semester}-${e.no}`, e]))
   const extrasOf = (id: number) => (d?.exams || []).filter(x => x.extra_of === id).sort((a, b) => (a.extra_seq || 0) - (b.extra_seq || 0))
@@ -38,6 +40,7 @@ export default function Exams({ ta, initExam = null, initAppeals = false }: { ta
       <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}><button className="btn sm ghost" onClick={() => setEdit(x)} title={tt('Tarixi və başlığı dəyiş')}>✏</button>
         <button className="btn sm ghost" onClick={() => setDelAsk(x)} title={tt('Sil')}>🗑</button>
         <button className="btn sm" onClick={() => setVars(x)}>🖨 {tt('Kağız variantlar')}</button>
+        <button className="btn sm" onClick={() => setAs(x)}>🎯 {tt('Bu KSQ əsasında sınaq')}</button>
         <button className="btn sm primary" onClick={() => setOpen(x.id)}>{t('Nəticələr')}</button></span>
     </div>))
   return (
@@ -62,6 +65,7 @@ export default function Exams({ ta, initExam = null, initAppeals = false }: { ta
               {e ? <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}><button className="btn sm ghost" onClick={() => setEdit(e)} title={tt('Tarixi və başlığı dəyiş')}>✏</button>
                 <button className="btn sm ghost" onClick={() => setDelAsk(e)} title={tt('Sil')}>🗑</button>
                 <button className="btn sm" onClick={() => setVars(e)} title={tt('Hər şagirdə fərqli 30 sual · bir A4 + cavab kartı')}>🖨 {tt('Kağız variantlar')}</button>
+                <button className="btn sm" onClick={() => setAs(e)}>🎯 {tt('Bu KSQ əsasında sınaq')}</button>
                 <button className="btn sm ghost" onClick={() => setExtra(e)} title={tt('Buraxan, zəif yazan və ya qiymətini yaxşılaşdırmaq istəyən şagirdlər üçün')}>➕ {tt('Əlavə {kind}', { kind: e.kind })}</button>
                 <button className="btn sm primary" onClick={() => setOpen(e.id)}>{t('Nəticələr')}</button></span> : <button className="btn sm" onClick={() => setCreate(p)}>{t('Hazırla')}</button>}
               </div>
@@ -76,13 +80,15 @@ export default function Exams({ ta, initExam = null, initAppeals = false }: { ta
             <span className="row" style={{ gap: 4, flexWrap: 'wrap' }}><button className="btn sm ghost" onClick={() => setEdit(e)} title={tt('Tarixi və başlığı dəyiş')}>✏</button>
               <button className="btn sm ghost" onClick={() => setDelAsk(e)} title={tt('Sil')}>🗑</button>
               <button className="btn sm" onClick={() => setVars(e)}>🖨 {tt('Kağız variantlar')}</button>
+              <button className="btn sm" onClick={() => setAs(e)}>🎯 {tt('Bu KSQ əsasında sınaq')}</button>
               <button className="btn sm ghost" onClick={() => setExtra(e)}>➕ {tt('Əlavə {kind}', { kind: e.kind })}</button>
               <button className="btn sm primary" onClick={() => setOpen(e.id)}>{t('Nəticələr')}</button></span>
           </div>{extraRows(e)}</Fragment>))}
         {d && !d.planned.length && !d.exams.length && <div className="empty">{t('Planda KSQ/BSQ yoxdur (plan yüklənməyib?).')}</div>}
       </div>
       {create && <CreateExam ta={ta} p={create} prev={(d?.planned || []).filter(x => x.semester === create.semester && x.date < create.date).map(x => x.date).sort().pop() || null} onClose={() => setCreate(null)} onDone={id => { setCreate(null); reload(); setOpen(id) }} />}
-      {open && <Scores ta={ta} examId={open} initAppeals={appealsFirst} onClose={() => { setOpen(null); setAppealsFirst(false); reload() }} />}
+      {asS && <AsSinaq ta={ta} e={asS} onClose={() => setAs(null)} />}
+      {open && <Scores ta={ta} examId={open} initAppeals={appealsFirst} onSinaq={() => { const x = (d?.exams || []).find(z => z.id === open); if (x) { setOpen(null); setAs(x) } }} onClose={() => { setOpen(null); setAppealsFirst(false); reload() }} />}
       {vars && <Variants ta={ta} e={vars} onClose={() => { setVars(null); reload() }} />}
       {edit && <EditExam ta={ta} e={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
       {extra && <ExtraExam ta={ta} base={extra} onClose={() => setExtra(null)} onDone={id => { setExtra(null); reload(); setOpen(id) }} />}
@@ -93,6 +99,33 @@ export default function Exams({ ta, initExam = null, initAppeals = false }: { ta
 }
 
 /** Əlavə KSQ/BSQ: yalnız seçilən şagirdlər üçün (buraxanlar, 2 alanlar, qiymətini yaxşılaşdırmaq istəyənlər); tarix əsasdan sonra. */
+/** «Bu KSQ əsasında sınaq»: rejim seçimi → onlayn sınaq pəncərəsi doldurulmuş açılır (göndərmə müəllimdədir). Seçim – plan_tests.analog_pick. */
+function AsSinaq({ ta, e, onClose }: { ta: MyLesson; e: Exam; onClose: () => void }) {
+  const t = useT()
+  const [mode, setMode] = useState<'analog' | 'same'>('analog')
+  const [r, err] = useLoad<any>(() => get(`/api/exams/${ta.id}/${e.id}/as-sinaq`, { mode }), [ta.id, e.id, mode])
+  const [go, setGo] = useState<SinaqPrefill | null>(null)
+  if (go) return <NewExam prefill={go} onClose={onClose} onDone={onClose} />
+  const n = r?.questions?.length ?? 0
+  const miss = (r?.missing || []).length
+  return (
+    <Drawer title={`🎯 ${exLabel(e)} – ${t('sınaq')}`} onClose={onClose}
+      footer={<><button className="btn" onClick={onClose}>{t('Ləğv et')}</button>
+        <button className="btn primary" disabled={!n} onClick={() => setGo({ title: r.title, questions: r.questions, ta_id: ta.id })}>{t('Davam et')}</button></>}>
+      <ErrorBox error={err} />
+      <div className="stack">
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <button className={'btn' + (mode === 'analog' ? ' primary' : '')} onClick={() => setMode('analog')}>{t('Analoji suallar')}</button>
+          <button className={'btn' + (mode === 'same' ? ' primary' : '')} onClick={() => setMode('same')}>{t('Eyni suallar')}</button></div>
+        <p className="small muted">{mode === 'analog' ? t('Hər sualın alt mövzusundan başqa bank sualı seçilir; KSQ-dəki və bu sinfə əvvəl verilmiş suallar çıxılır.') : t('KSQ-nin (A variantının) bank sualları olduğu kimi götürülür.')}</p>
+        {!r && !err && <Loading />}
+        {r && <p>{t('{n} sual seçildi ({total} sualdan)', { n, total: r.total })}</p>}
+        {miss > 0 && <p className="small" style={{ color: 'var(--bad, #b00020)' }}>{t('Diqqət: {n} sual üçün bank sualı tapılmadı – sınaqda onlar olmayacaq.', { n: miss })}</p>}
+        {r?.fallback?.length > 0 && <p className="small muted">{t('{n} sual üçün alt mövzu tükənib – eyni mövzudan başqa fayldan götürüldü.', { n: r.fallback.length })}</p>}
+      </div>
+    </Drawer>)
+}
+
 function ExtraExam({ ta, base, onClose, onDone }: { ta: MyLesson; base: Exam; onClose: () => void; onDone: (id: number) => void }) {
   const [d, err] = useLoad<any>(() => get(`/api/exams/${ta.id}/${base.id}`), [ta.id, base.id])
   const [date, setDate] = useState('')
@@ -183,7 +216,7 @@ function CreateExam({ ta, p, prev, onClose, onDone }: { ta: MyLesson; p: Planned
   )
 }
 
-function Scores({ ta, examId, initAppeals = false, onClose }: { ta: MyLesson; examId: number; initAppeals?: boolean; onClose: () => void }) {
+function Scores({ ta, examId, initAppeals = false, onSinaq, onClose }: { ta: MyLesson; examId: number; initAppeals?: boolean; onSinaq: () => void; onClose: () => void }) {
   const t = useT()
   const [d, err, , reload] = useLoad<any>(() => get(`/api/exams/${ta.id}/${examId}`), [ta.id, examId])
   const [rows, setRows] = useState<Record<number, { points: string; marks: number[] | null; absent: boolean; later: boolean; taken_on: string }>>({})
@@ -223,6 +256,7 @@ function Scores({ ta, examId, initAppeals = false, onClose }: { ta: MyLesson; ex
               : <AsyncBtn className="btn sm primary" onClick={async () => { if (!window.confirm(tt('Şagirdlər öz cavab kartını (sual, cavab, düz cavab, bal) görəcək. Göndərilsin?'))) return; await put(`/api/exams/${ta.id}/${examId}/publish`, { published: true, appeal_days: days }); reload() }}>📤 {tt('Nəticələri şagirdlərə göndər')}</AsyncBtn>}
             <label className="small" title={tt('Apelyasiya müddəti')}>⚖ <select className="sel" value={days} onChange={e => setDays(Number(e.target.value))} aria-label={tt('Apelyasiya müddəti')}>{[1, 3, 5, 7, 14].map(n => <option key={n} value={n}>{tt('{n} gün', { n })}</option>)}</select></label>
             <button className="btn sm" onClick={() => setAppeals(true)}>⚖ {tt('Apelyasiyalar')} ({d.appeals_open || 0})</button>
+            <button className="btn sm" onClick={onSinaq}>🎯 {tt('Bu KSQ əsasında sınaq')}</button>
             {d.exam.results_published_at && <Pill tone="ok">{tt('Şagirdlər görür')}</Pill>}
             <AsyncBtn className="btn sm" onClick={async () => { const r = await get<any>(`/api/exams/${ta.id}/${examId}/cards`); if (!r.cards.length) { toast(tt('Cavab kartı olan şagird yoxdur')); return } printCards(exLabel(r.exam), r.class_name, r.cards) }}>🖨 {tt('Cavab kartlarını çap et')}</AsyncBtn>
             <AsyncBtn className="btn sm" onClick={async () => { const r = await get<any>(`/api/exams/${ta.id}/${examId}/packages`); if (!r.packages.length) { toast(tt('Paketi olan şagird yoxdur')); return } await printPackages(`${r.class_name} ${exLabel(r.exam)}`, r.subject, r.packages, '/api/exam-scans/image') }}

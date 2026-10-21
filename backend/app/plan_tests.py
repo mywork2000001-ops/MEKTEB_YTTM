@@ -61,6 +61,8 @@ class Opts:
     close_days: int = 0                   # adi test: dərsdən N gün sonra 22:00; 0 – son tarix yoxdur (defolt)
     include_weak: bool = False            # şübhəli uyğunluqda da yarat
     variants: str | None = None           # məşğələ qrupu: «A+B» (inkişaf), «B+C» (tərəqqi) – başlığa yazılır
+    analog_of: int | None = None          # KSQ/BSQ (Exam.id) əsasında sınaq: onun alt mövzularından BAŞQA bank sualları (r_analog)
+    analog_mode: str = 'analog'           # analog | same (KSQ-nin özünün bank sualları)
 
     def norm(self) -> 'Opts':
         from .api.tasks import MIN_TEST_MIN
@@ -266,7 +268,94 @@ def r_grade_matcher(c: TaCtx, item: Item, opts: Opts) -> Choice | None:
     return _grade_choice(c, item, opts, c.grade_of(item.pl))
 
 
-RESOLVERS: list[Callable[[TaCtx, Item, Opts], Choice | None]] = [r_extra_program, r_manual, r_toplu, r_grade_matcher]
+R_ANALOG = 'KSQ/BSQ əsasında sınaq'
+
+
+def analog_pick(db: Session, ta: TeachingAssignment, exam_id: int, mode: str = 'analog', rng: random.Random | None = None) -> dict:
+    """KSQ/BSQ əsasında sınaq sualları: {'bank_ids': [...], 'missing': [slot,…], 'total': n, 'fallback': [slot,…]}.
+    same – A variantının (ilk variantın) bank sualları; analog – hər sualın bank faylından (alt mövzu) BAŞQA sual: KSQ-nin
+    istifadə etdiyi (bütün variantlar) və bu dərsə əvvəl verilmişlər (onlayn test/sınaq, digər KSQ/BSQ variantları) çıxılır,
+    mümkünsə eyni tip və çətinlik; fayl tükənibsə eyni mənbənin eyni sinif mövzu fayllarından (fallback), yoxsa missing."""
+    from .models import Exam, ExamVariant
+    rng = rng or random.Random()
+    e = db.get(Exam, exam_id)
+    if e is None or e.assignment_id != ta.id:
+        return {'bank_ids': [], 'missing': [], 'total': 0, 'fallback': []}
+    vs = list(db.scalars(select(ExamVariant).where(ExamVariant.exam_id == exam_id).order_by(ExamVariant.code)))
+    base = sorted(vs[0].questions, key=lambda q: q['slot']) if vs else []
+    total = len(base)
+    if mode == 'same':
+        ids, seen, miss = [], set(), []
+        for q in base:
+            b = q.get('bank_id')
+            if b and b not in seen:
+                seen.add(b); ids.append(b)
+            elif not b:
+                miss.append(q['slot'])
+        return {'bank_ids': ids, 'missing': miss, 'total': total, 'fallback': []}
+    used_ids = {q.get('bank_id') for v in vs for q in v.questions if q.get('bank_id')}
+    given_ids: set[int] = set()
+    for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, OnlineTask.archived_at.is_(None))):
+        given_ids |= {q.get('bank_id') for q in (t.questions or []) if isinstance(q, dict) and q.get('bank_id')}
+    for v in db.scalars(select(ExamVariant).join(Exam, Exam.id == ExamVariant.exam_id)
+                        .where(Exam.assignment_id == ta.id, ExamVariant.exam_id != exam_id)):
+        given_ids |= {q.get('bank_id') for q in v.questions if q.get('bank_id')}
+    banned = used_ids | given_ids
+    src = {q.id: q for q in db.scalars(select(BankQuestion).where(BankQuestion.id.in_(used_ids)))} if used_ids else {}
+    files = {f.id: f for f in db.scalars(select(BankFile).where(BankFile.id.in_({q.file_id for q in src.values()})))} if src else {}
+    banned_hash = {q.content_hash for q in src.values()}
+    pool_cache: dict[int, list[BankQuestion]] = {}
+
+    def pool(fid: int) -> list[BankQuestion]:
+        if fid not in pool_cache:
+            pool_cache[fid] = list(db.scalars(select(BankQuestion).where(BankQuestion.file_id == fid, BankQuestion.active.is_(True))))
+        return pool_cache[fid]
+
+    taken: set[int] = set()
+    out, miss, fb = [], [], []
+
+    def choose(fids: list[int], o: BankQuestion | None) -> int | None:
+        cands = [q for fid in fids for q in pool(fid)
+                 if q.id not in banned and q.id not in taken and q.content_hash not in banned_hash]
+        if not cands:
+            return None
+        for ok in (lambda q: o and q.kind == o.kind and o.diff_auto and q.diff_auto == o.diff_auto,
+                   lambda q: o and q.kind == o.kind, lambda q: True):
+            g = [q for q in cands if ok(q)]
+            if g:
+                return rng.choice(g).id
+        return None
+
+    for q in base:
+        o = src.get(q.get('bank_id'))
+        f = files.get(o.file_id) if o else None
+        pick = choose([f.id], o) if f else None
+        if pick is None and f is not None:           # alt mövzu tükənib: eyni mənbə, eyni siniflər, eyni növ fayllar
+            sib = [x.id for x in db.scalars(select(BankFile).where(BankFile.source_key == f.source_key, BankFile.kind == f.kind,
+                                                                    BankFile.active.is_(True), BankFile.id != f.id))
+                   if not f.grades or not x.grades or set(f.grades) & set(x.grades)]
+            pick = choose(sib, o)
+            if pick is not None:
+                fb.append(q['slot'])
+        if pick is None:
+            miss.append(q['slot'])
+        else:
+            taken.add(pick); out.append(pick)
+    return {'bank_ids': out, 'missing': miss, 'total': total, 'fallback': fb}
+
+
+def r_analog(c: TaCtx, item: Item, opts: Opts) -> Choice | None:
+    """opts.analog_of verilibsə – KSQ/BSQ əsasında sual siyahısı (analog | same)."""
+    if not opts.analog_of:
+        return None
+    from .api.tasks import _snapshot
+    r = analog_pick(c.db, c.ta, opts.analog_of, opts.analog_mode)
+    if not r['bank_ids']:
+        return Choice('none', R_NOFILE)
+    return Choice('ok', R_ANALOG, questions=_snapshot(c.db, r['bank_ids']), count=len(r['bank_ids']), title=R_ANALOG)
+
+
+RESOLVERS: list[Callable[[TaCtx, Item, Opts], Choice | None]] = [r_analog, r_extra_program, r_manual, r_toplu, r_grade_matcher]
 
 
 def extra_choice(db: Session, ta: TeachingAssignment, grade: int, topic: str, section: str | None, no: str | None,
