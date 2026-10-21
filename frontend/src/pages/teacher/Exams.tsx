@@ -292,6 +292,66 @@ function Scores({ ta, examId, initAppeals = false, onClose }: { ta: MyLesson; ex
   )
 }
 
+/** Apelyasiyanın içindən düzəliş: açar / skanın oxunuşu / sualı ləğv; sonra apelyasiya avtomatik qəbul olunur (server cavab mətnini verir). */
+function AppealFix({ ta, examId, a, onDone, onError }: { ta: MyLesson; examId: number; a: any; onDone: (r: any) => void; onError: (e: unknown) => void }) {
+  const [mode, setMode] = useState<'key' | 'reading' | 'annul' | null>(null)
+  const [correct, setCorrect] = useState<number | null>(null)
+  const [answer, setAnswer] = useState('')
+  const [value, setValue] = useState('')
+  const [allSame, setAllSame] = useState(true)
+  const [bank, setBank] = useState(true)
+  const [reply, setReply] = useState('')
+  const [busy, setBusy] = useState(false)
+  const mcq = a.question?.kind === 'mcq'
+  const opts: any[] = a.question?.options || []
+  const send = async () => {
+    setBusy(true)
+    onError(undefined)
+    try {
+      const body: any = { kind: mode, reply: reply.trim() || null }
+      if (mode === 'key') Object.assign(body, mcq ? { correct } : { answer }, { all_same: allSame, bank: bank && !!a.bank_id })
+      if (mode === 'reading') body.value = value
+      const r = await post<any>(`/api/exam-appeals/${ta.id}/${examId}/${a.id}/fix`, body)
+      setMode(null)
+      onDone(r)
+    } catch (x) { onError(x) } finally { setBusy(false) }
+  }
+  const ready = mode === 'annul' || (mode === 'key' && (mcq ? correct != null : answer.trim() !== '')) || (mode === 'reading' && value.trim() !== '')
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <button className={`btn sm${mode === 'key' ? ' primary' : ''}`} onClick={() => setMode(mode === 'key' ? null : 'key')}>✏️ {tt('Açarı düzəlt')}</button>
+        {a.scan_id && <button className={`btn sm${mode === 'reading' ? ' primary' : ''}`} onClick={() => setMode(mode === 'reading' ? null : 'reading')}>🔍 {tt('Şagirdin cavabını düzəlt')}</button>}
+        <button className={`btn sm${mode === 'annul' ? ' primary' : ''}`} onClick={() => setMode(mode === 'annul' ? null : 'annul')}>⛔ {tt('Sualı ləğv et')}</button>
+      </div>
+      {mode && (
+        <div className="panel" style={{ marginTop: 6 }}>
+          {mode === 'key' && <>
+            <div className="small">{tt('Düzgün cavab')}:</div>
+            {mcq
+              ? <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '4px 0' }}>{opts.map((o, i) =>
+                <button key={i} className={`btn sm${correct === i ? ' primary' : ''}`} onClick={() => setCorrect(i)} title={String(ml(o) ?? '')}>{'ABCDE'[i]}</button>)}</div>
+              : <input className="sel" style={{ maxWidth: 200 }} value={answer} onChange={e => setAnswer(e.target.value)} />}
+            <label className="small" style={{ display: 'block' }}><input type="checkbox" checked={allSame} onChange={e => setAllSame(e.target.checked)} /> {tt('Bu sualı alan hamıda')}</label>
+            {a.bank_id && <label className="small" style={{ display: 'block' }}><input type="checkbox" checked={bank} onChange={e => setBank(e.target.checked)} /> {tt('Bankda da düzəlt')}</label>}
+          </>}
+          {mode === 'reading' && <>
+            <div className="small">{tt('Kartda düzgün oxunuş')}:</div>
+            <input className="sel" style={{ maxWidth: 160 }} maxLength={12} value={value} onChange={e => setValue(e.target.value)} />
+            <div className="small muted">{tt('Yalnız bu şagirdin balı dəyişir')}</div>
+          </>}
+          {mode === 'annul' && <div className="small">{tt('Sual hamı üçün ləğv olunacaq, qalan ballar 100-ə miqyaslanacaq. Əminsiniz?')}</div>}
+          <textarea className="sel" style={{ width: '100%', marginTop: 6 }} rows={2} placeholder={tt('Şagirdə cavab (boşdursa – hazır mətn göndərilir)')} value={reply} onChange={e => setReply(e.target.value)} />
+          {a.fix_replies && <div className="small muted">{tt('Hazır mətn')}: {a.fix_replies[mode]}</div>}
+          <div className="row" style={{ gap: 6, marginTop: 6 }}>
+            <button className="btn sm primary" disabled={!ready || busy} onClick={send}>{mode === 'annul' ? tt('Bəli, ləğv et') : tt('Düzəlt və apelyasiyanı qəbul et')}</button>
+            <button className="btn sm ghost" onClick={() => setMode(null)}>{tt('Ləğv')}</button>
+          </div>
+        </div>)}
+    </div>
+  )
+}
+
 /** ⚖ Apelyasiyalar: sual, şagirdin cavabı, açar, bankdakı ünvan, skan kəsiyi; qərar – qəbul / hamıya tətbiq / rədd. */
 function Appeals({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClose: () => void }) {
   const { me } = useAuth()
@@ -327,6 +387,13 @@ function Appeals({ ta, examId, onClose }: { ta: MyLesson; examId: number; onClos
           <p className="small" style={{ margin: '6px 0' }}>💬 {a.reason}</p>
           {a.crop && <img src={`/api/exam-scans/image/${a.scan_id}`} alt={tt('Skan kəsiyi')} loading="lazy" style={{ width: '100%', maxWidth: 560, border: '1px solid var(--line)', borderRadius: 6 }} />}
           {a.teacher_reply && <p className="small">↪ {a.teacher_reply}</p>}
+          <AppealFix ta={ta} examId={examId} a={a} onDone={(r: any) => {
+            const ch = (r.changes || []).map((c: any) => `${c.full_name}: ${fmt(c.old)} → ${fmt(c.new)}`).join('; ')
+            setMsg([r.still_wrong ? tt('Düzəlişdən sonra da şagirdin cavabı səhvdir – apelyasiya rədd edildi') : tt('Düzəldildi, apelyasiya qəbul edildi'),
+              tt('{n} şagirdin balı yenidən hesablandı', { n: (r.changes || []).length }), ch,
+              r.manual_students?.length ? tt('«Əl ilə» seçilmiş şagirdlərin jurnal balı dəyişmədi: {n}', { n: r.manual_students.join(', ') }) : ''].filter(Boolean).join(' · '))
+            reload()
+          }} onError={setEr2} />
           <textarea className="sel" style={{ width: '100%', marginTop: 6 }} rows={2} placeholder={tt('Şagirdə cavab (rədd üçün məcburi)')} value={reply[a.id] ?? ''} onChange={e => setReply({ ...reply, [a.id]: e.target.value })} />
           <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
             <button className="btn sm primary" onClick={() => decide(a, 'accept')}>✓ {tt('Qəbul')}</button>

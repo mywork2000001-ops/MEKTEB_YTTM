@@ -919,13 +919,8 @@ def _edit_q(q: dict, body: QuestionEditIn, key_only: bool) -> dict:
     return q
 
 
-@router.put('/{ta_id}/{exam_id}/variants/{student_id}/{slot}')
-def edit_question(ta_id: int, exam_id: int, student_id: int, slot: int, body: QuestionEditIn,
-                  user: User = Depends(staff), db: Session = Depends(get_db)):
-    """Sualın mətni / variantları / düzgün cavabı düzəldilir; all_same – eyni bank sualı olan bütün variantlarda açar
-    (docs/skan-sayac-ve-donma-promtu.md). Skanı olanların balı yenidən hesablanır, jurnal yenilənir."""
-    own_assignment(db, user, ta_id)
-    e = _exam(db, ta_id, exam_id)
+def apply_key_edit(db: Session, e: Exam, student_id: int, slot: int, body: QuestionEditIn) -> tuple[dict, list[int], int]:
+    """Sualın düzəlişi (bir yerdə: PUT variants/... və apelyasiyadan düzəliş): variant(lar), baza qeydi, yenidən hesab. Commit/audit – çağıran."""
     v, i = _variant(db, e, student_id, slot)
     base = v.questions[i]
     q = _edit_q(base, body, key_only=False)
@@ -946,7 +941,17 @@ def edit_question(ta_id: int, exam_id: int, student_id: int, slot: int, body: Qu
     ksq_base.note_edit(db, db.get(TeachingAssignment, e.assignment_id), e, q.get('key'),
                        {**({'text': body.text} if body.text is not None else {}),       # yalnız açar – mətn bazada dəyişmir
                         'options': q.get('options') if q['kind'] == 'mcq' else None, 'correct': body.correct, 'answer': body.answer})
-    n = _rescore(db, e, students)
+    return q, students, _rescore(db, e, students)
+
+
+@router.put('/{ta_id}/{exam_id}/variants/{student_id}/{slot}')
+def edit_question(ta_id: int, exam_id: int, student_id: int, slot: int, body: QuestionEditIn,
+                  user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Sualın mətni / variantları / düzgün cavabı düzəldilir; all_same – eyni bank sualı olan bütün variantlarda açar
+    (docs/skan-sayac-ve-donma-promtu.md). Skanı olanların balı yenidən hesablanır, jurnal yenilənir."""
+    own_assignment(db, user, ta_id)
+    e = _exam(db, ta_id, exam_id)
+    q, students, n = apply_key_edit(db, e, student_id, slot, body)
     audit(db, user, 'update', 'exam_variant', e.id, student_id=student_id, slot=slot, op='edit', students=len(students))
     db.commit()
     return {**q, 'rescored': n, 'students': len(students)}
@@ -956,17 +961,22 @@ class AnnulIn(BaseModel):
     annulled: bool = True
 
 
+def apply_annul(db: Session, e: Exam, slot: int, annulled: bool = True) -> int:
+    """Slotu hamı üçün ləğv edir / geri qaytarır və balları yenidən hesablayır. Commit/audit – çağıran."""
+    if not e.items or not any(it['n'] == slot for it in e.items):
+        raise HTTPException(404, 'Slot tapılmadı')
+    if annulled and sum(1 for it in e.items if it.get('annulled') or it['n'] == slot) >= len(e.items):
+        raise HTTPException(400, 'Bütün sualları ləğv etmək olmaz')
+    e.items = [{**it, 'annulled': annulled} if it['n'] == slot else it for it in e.items]
+    return _rescore(db, e)
+
+
 @router.post('/{ta_id}/{exam_id}/slots/{slot}/annul')
 def annul_slot(ta_id: int, exam_id: int, slot: int, body: AnnulIn, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Slotu hamı üçün ləğv edir (səhv sual): bal hesablanmır, qalan ballar 100-ə miqyaslanır; geri qaytarmaq olar."""
     own_assignment(db, user, ta_id)
     e = _exam(db, ta_id, exam_id)
-    if not e.items or not any(it['n'] == slot for it in e.items):
-        raise HTTPException(404, 'Slot tapılmadı')
-    if body.annulled and sum(1 for it in e.items if it.get('annulled') or it['n'] == slot) >= len(e.items):
-        raise HTTPException(400, 'Bütün sualları ləğv etmək olmaz')
-    e.items = [{**it, 'annulled': body.annulled} if it['n'] == slot else it for it in e.items]
-    n = _rescore(db, e)
+    n = apply_annul(db, e, slot, body.annulled)
     audit(db, user, 'update', 'exam', e.id, slot=slot, annulled=body.annulled)
     db.commit()
     return {'ok': True, 'rescored': n, 'items': e.items}

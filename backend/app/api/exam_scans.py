@@ -150,14 +150,19 @@ class FixIn(BaseModel):
     value: str | None = Field(None, max_length=12)
 
 
+def apply_slot_fix(db: Session, e: Exam, sc: ExamScan, slot: int, value: str | None) -> None:
+    """Bir xananı müəllim düzəldir (etibar = 1) və yenidən qiymətləndirir. Commit/audit – çağıran."""
+    rd = [r for r in (sc.reading or []) if r.get('slot') != slot]
+    rd.append({'slot': slot, 'value': value, 'confidence': 1.0, 'by': 'teacher'})
+    sc.reading = sorted(rd, key=lambda r: r['slot'])
+    apply(db, e, sc)
+
+
 @router.put('/{scan_id}/slot')
 def fix_slot(scan_id: int, body: FixIn, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Müəllim bir xananı düzəldir (etibar = 1) → yenidən hesablanır."""
     sc, e = _own_scan(db, user, scan_id)
-    rd = [r for r in (sc.reading or []) if r.get('slot') != body.slot]
-    rd.append({'slot': body.slot, 'value': body.value, 'confidence': 1.0, 'by': 'teacher'})
-    sc.reading = sorted(rd, key=lambda r: r['slot'])
-    apply(db, e, sc)
+    apply_slot_fix(db, e, sc, body.slot, body.value)
     audit(db, user, 'update', 'exam_scan', sc.id, slot=body.slot, value=body.value)
     db.commit()
     return _out(sc, None)

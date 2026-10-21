@@ -14,7 +14,7 @@ from ..appeals import ref_of, topic_of
 from ..db import get_db
 from ..deps import staff
 from ..exam_logic import exam_roster
-from ..models import BankQuestion, Exam, ExamAppeal, ExamScan, ExamScore, ExamVariant, TeachingAssignment, User, now
+from ..models import BankQuestion, Exam, ExamAppeal, ExamScan, ExamScore, ExamVariant, Student, TeachingAssignment, User, now
 from ..services import own_assignment
 from .common import audit, get_or_404
 
@@ -57,7 +57,8 @@ def _out(db: Session, e: Exam, a: ExamAppeal, names: dict, variants: dict, scans
             'bank_ref': a.bank_ref or (ref_of(db, q) if q else None),
             # bankdakı sualın indiki halı: açar sonradan dəyişibsə – müəllim fərqi görür
             'bank': {'text': bq.text, 'answer': bq.answer, 'correct': bq.correct, 'needs_review': bq.needs_review} if bq else None,
-            'scan_id': sc.id if sc else None, 'crop': bool(sc and sc.crop_key)}
+            'scan_id': sc.id if sc else None, 'crop': bool(sc and sc.crop_key),
+            'fix_replies': _fix_replies(db, a.student_id)}
 
 
 @router.get('/{ta_id}/{exam_id}')
@@ -97,23 +98,21 @@ def regrade_for(db: Session, e: Exam, a: ExamAppeal, wide: bool = False) -> list
     return changes
 
 
-@router.put('/{ta_id}/{exam_id}/{appeal_id}')
-def decide(ta_id: int, exam_id: int, appeal_id: int, body: DecisionIn, user: User = Depends(staff), db: Session = Depends(get_db)):
-    ta, e = _exam(db, user, ta_id, exam_id)
-    a = get_or_404(db, ExamAppeal, appeal_id, 'Apelyasiya')
-    if a.exam_id != e.id:
-        raise HTTPException(404, 'Apelyasiya tapılmadı')
-    if body.decision == 'reject' and not (body.reply or '').strip():
-        raise HTTPException(400, 'Rədd edəndə şagirdə cavab yazın')
-    if body.apply_all and body.decision != 'accept':
-        raise HTTPException(400, '«Hamıya tətbiq et» yalnız qəbul zamanı olur')
-    old_status, old_all = a.status, a.apply_all
-    a.status = 'accepted' if body.decision == 'accept' else 'rejected'
-    a.teacher_reply, a.apply_all = (body.reply or '').strip() or None, body.apply_all and body.decision == 'accept'
+def _apply_decision(db: Session, ta: TeachingAssignment, e: Exam, a: ExamAppeal, user: User, decision: str, reply: str | None,
+                    apply_all: bool) -> None:
+    """Qərarın qeydi (decide və fix üçün ortaq)."""
+    a.status = 'accepted' if decision == 'accept' else 'rejected'
+    a.teacher_reply, a.apply_all = (reply or '').strip() or None, apply_all and decision == 'accept'
     a.decided_by, a.decided_at = user.id, now()
+
+
+def _decide_core(db: Session, ta: TeachingAssignment, e: Exam, a: ExamAppeal, user: User, decision: str, reply: str | None,
+                 apply_all: bool, needs_review: bool = True) -> tuple[list[dict], list, dict]:
+    old_all = a.apply_all
+    _apply_decision(db, ta, e, a, user, decision, reply, apply_all)
     db.flush()
     changes = regrade_for(db, e, a, wide=old_all)
-    if a.apply_all and a.bank_id:
+    if a.apply_all and a.bank_id and needs_review:
         bq = db.get(BankQuestion, a.bank_id)
         if bq is not None:
             bq.needs_review = True               # bankı müəllim/admin düzəldir – avtomatik dəyişmə yoxdur
@@ -123,8 +122,119 @@ def decide(ta_id: int, exam_id: int, appeal_id: int, body: DecisionIn, user: Use
         sc = db.get(ExamScore, (e.id, c['student_id']))
         if sc is not None and sc.chosen == 'manual':
             manual.append(names.get(c['student_id']) or c['student_id'])
+    return changes, manual, names
+
+
+@router.put('/{ta_id}/{exam_id}/{appeal_id}')
+def decide(ta_id: int, exam_id: int, appeal_id: int, body: DecisionIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    ta, e = _exam(db, user, ta_id, exam_id)
+    a = _appeal(db, e, appeal_id)
+    if body.decision == 'reject' and not (body.reply or '').strip():
+        raise HTTPException(400, 'Rədd edəndə şagirdə cavab yazın')
+    if body.apply_all and body.decision != 'accept':
+        raise HTTPException(400, '«Hamıya tətbiq et» yalnız qəbul zamanı olur')
+    old_status = a.status
+    changes, manual, names = _decide_core(db, ta, e, a, user, body.decision, body.reply, body.apply_all)
     audit(db, user, 'update', 'exam_appeal', a.id, exam_id=e.id, student_id=a.student_id, slot=a.slot, source=a.source,
           old_status=old_status, new_status=a.status, apply_all=a.apply_all, changes=changes)
     db.commit()
     return {'ok': True, 'status': a.status, 'changes': [{**c, 'full_name': names.get(c['student_id'])} for c in changes],
             'manual_students': sorted(set(manual))}
+
+
+# ---- apelyasiyanın içindən düzəliş: açar / skanın oxunuşu / sualı ləğv et --------------------------------------------
+_FIX_REPLY = {
+    'key': {'az': 'Açar səhv idi, düzəldildi – balınız yenidən hesablandı.',
+            'ru': 'Ключ был неверным, исправлено – ваш балл пересчитан.',
+            'en': 'The answer key was wrong and has been corrected – your score has been recalculated.'},
+    'reading': {'az': 'Kartınız səhv oxunmuşdu, düzəldildi – balınız yenidən hesablandı.',
+                'ru': 'Ваша карточка была прочитана неверно, исправлено – ваш балл пересчитан.',
+                'en': 'Your card was read incorrectly and has been corrected – your score has been recalculated.'},
+    'annul': {'az': 'Sual ləğv edildi, bal yenidən hesablandı.',
+              'ru': 'Вопрос аннулирован, балл пересчитан.',
+              'en': 'The question has been annulled and the score recalculated.'},
+    'wrong': {'az': 'Yoxlandı: düzəlişdən sonra da cavabınız düzgün deyil.',
+              'ru': 'Проверено: и после исправления ваш ответ неверный.',
+              'en': 'Checked: your answer is still incorrect after the correction.'},
+}
+
+
+def _fix_replies(db: Session, student_id: int) -> dict[str, str]:
+    """Şagirdə hazır cavab mətnləri – şagirdin dilində (portal hesabı yoxdursa AZ)."""
+    st = db.get(Student, student_id)
+    u = db.get(User, st.user_id) if st is not None and st.user_id else None
+    lang = u.language if u is not None and u.language in ('ru', 'en') else 'az'
+    return {k: v[lang] for k, v in _FIX_REPLY.items()}
+
+
+def _appeal(db: Session, e: Exam, appeal_id: int) -> ExamAppeal:
+    a = get_or_404(db, ExamAppeal, appeal_id, 'Apelyasiya')
+    if a.exam_id != e.id:
+        raise HTTPException(404, 'Apelyasiya tapılmadı')
+    return a
+
+
+class FixIn(BaseModel):
+    kind: Literal['key', 'reading', 'annul']
+    correct: int | None = Field(None, ge=0, le=4)      # key, test sualı: düzgün variantın indeksi
+    answer: str | None = Field(None, max_length=60)    # key, açıq sual
+    value: str | None = Field(None, max_length=12)     # reading: kartda düzgün oxunuş (hərf / rəqəm)
+    all_same: bool = True                              # key: bu bank sualını alan hamıda
+    bank: bool = True                                  # key: bankdakı sualın açarı da
+    reply: str | None = Field(None, max_length=1000)
+
+
+def _points(db: Session, e: Exam) -> dict[tuple[int, str], float | None]:
+    return {(s.student_id, s.source): s.points for s in db.scalars(select(ExamScan).where(ExamScan.exam_id == e.id))}
+
+
+@router.post('/{ta_id}/{exam_id}/{appeal_id}/fix')
+def fix(ta_id: int, exam_id: int, appeal_id: int, body: FixIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Apelyasiyanın içindən düzəliş (bir tranzaksiya, bir audit): açar / oxunuş / sualı ləğv; sonra apelyasiya avtomatik qəbul
+    olunur və şagirdə hazır cavab yazılır. Düzəlişdən sonra şagirdin cavabı hələ də səhvdirsə – apelyasiya rədd olunur."""
+    from .exam_scans import apply_slot_fix
+    from .exams import QuestionEditIn, apply_annul, apply_key_edit
+    ta, e = _exam(db, user, ta_id, exam_id)
+    a = _appeal(db, e, appeal_id)
+    before = _points(db, e)
+    old_status = a.status
+    extra: dict = {}
+    if body.kind == 'key':
+        q, students, _ = apply_key_edit(db, e, a.student_id, a.slot, QuestionEditIn(
+            correct=body.correct, answer=body.answer, all_same=body.all_same))
+        extra['students'] = len(students)
+        bq = db.get(BankQuestion, a.bank_id) if (body.bank and a.bank_id) else None
+        if bq is not None:                       # bankdakı sualın açarı da (yalnız açar; mətn toxunulmaz)
+            if q['kind'] == 'mcq':
+                bq.correct = body.correct
+            else:
+                bq.answer = body.answer
+            bq.needs_review = False
+            extra['bank_id'] = bq.id
+    elif body.kind == 'reading':
+        sc = db.scalar(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == a.student_id, ExamScan.source == a.source))
+        if sc is None:
+            raise HTTPException(404, 'Bu apelyasiyanın skanı yoxdur')
+        apply_slot_fix(db, e, sc, a.slot, body.value)
+        extra['value'] = body.value
+    else:
+        apply_annul(db, e, a.slot, True)
+    # həmin slot indi düzdürmü (ləğv – hə)? Yox – düzəlişə baxmayaraq cavab səhvdir, apelyasiya rədd olunur
+    ok = True
+    if body.kind != 'annul':
+        sc = db.scalar(select(ExamScan).where(ExamScan.exam_id == e.id, ExamScan.student_id == a.student_id, ExamScan.source == a.source))
+        v = db.get(ExamVariant, (e.id, a.student_id))
+        if sc is not None and sc.marks and v is not None:
+            slots = sorted(x['slot'] for x in v.questions)
+            ok = a.slot in slots and slots.index(a.slot) < len(sc.marks) and bool(sc.marks[slots.index(a.slot)])
+    replies = _fix_replies(db, a.student_id)
+    reply = (body.reply or '').strip() or replies[body.kind if ok else 'wrong']
+    _, manual, names = _decide_core(db, ta, e, a, user, 'accept' if ok else 'reject', reply,
+                                    apply_all=ok and body.kind == 'key' and body.all_same, needs_review=False)
+    after = _points(db, e)
+    diff = [{'student_id': k[0], 'source': k[1], 'full_name': names.get(k[0]), 'old': before.get(k), 'new': after[k]}
+            for k in after if after[k] != before.get(k)]
+    audit(db, user, 'update', 'exam_appeal', a.id, exam_id=e.id, student_id=a.student_id, slot=a.slot, source=a.source, op='fix',
+          kind=body.kind, old_status=old_status, new_status=a.status, apply_all=a.apply_all, changes=diff, **extra)
+    db.commit()
+    return {'ok': True, 'status': a.status, 'changes': diff, 'manual_students': sorted(set(manual)), 'reply': reply, 'still_wrong': not ok}

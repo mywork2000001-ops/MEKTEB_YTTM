@@ -1,9 +1,9 @@
-"""Sualın bank ünvanı və apelyasiya (docs/tasks/ksq-bsq-elave-ve-iki-netice.md, mərhələ 4)."""
+﻿"""Sualın bank ünvanı və apelyasiya (docs/tasks/ksq-bsq-elave-ve-iki-netice.md, mərhələ 4)."""
 import datetime as dt
 import json
 
 from app.api.exam_scans import apply
-from app.models import AuditLog, BankFile, BankQuestion, Exam, ExamAppeal, ExamScan, ExamScore, ExamVariant, now
+from app.models import AuditLog, BankFile, BankQuestion, Exam, ExamAppeal, ExamScan, ExamScore, ExamVariant, User, now
 from .test_api_portal import student_client
 from .test_ksq_scan import _graded
 
@@ -160,3 +160,78 @@ def test_accept_single_and_apply_all(world, monkeypatch):
     # 3) rədd edəndə hamıya tətbiq geri alınır
     admin.put(d, json={'decision': 'reject', 'reply': 'Səhv idi'})
     assert _pts(S, e['id'], a) == 0 and _pts(S, e['id'], b) == 0
+
+
+def _appeal(admin, ta, e, who, a, S, slot=1):
+    admin.put(f'/api/exams/{ta}/{e["id"]}/publish', json={'published': True})
+    ca = student_client(who[a]['portal_code'], who[a]['initial_pin'])
+    ap = ca.post(f'/api/portal/exams/{e["id"]}/appeals', json={'slot': slot, 'source': 'paper', 'reason': 'Düzdür'}).json()['id']
+    return f'/api/exam-appeals/{ta}/{e["id"]}/{ap}/fix', ap
+
+
+def test_fix_key_all_same_bank_and_reply(world, monkeypatch):
+    admin, ta, e, pr, who, a, b, c, bid, S = _setup(world, monkeypatch)
+    with S() as db:
+        q = next(x for x in db.get(ExamVariant, (e['id'], a)).questions if x['slot'] == 1)
+        assert q['kind'] == 'mcq'
+        new = (q['correct'] + 1) % len(q['options'])                 # şagirdlər bu variantı seçib – açar səhv idi
+        for sid in (a, b):
+            sc = db.query(ExamScan).filter_by(exam_id=e['id'], student_id=sid, source='paper').one()
+            sc.reading = [{'slot': 1, 'value': 'ABCDE'[new], 'confidence': 1.0}]
+            apply(db, db.get(Exam, e['id']), sc)
+        db.get(BankQuestion, bid).needs_review = True
+        db.commit()
+    url, ap = _appeal(admin, ta, e, who, a, S)
+    r = admin.post(url, json={'kind': 'key', 'correct': new, 'all_same': True, 'bank': True})
+    assert r.status_code == 200, r.text
+    r = r.json()
+    assert r['status'] == 'accepted' and not r['still_wrong'] and 'Açar səhv' in r['reply']
+    assert sorted(x['student_id'] for x in r['changes']) == [a, b]                # başqa variantdakı b də düzəldi, c yox
+    assert _pts(S, e['id'], a) > 0 and _pts(S, e['id'], b) > 0 and _pts(S, e['id'], c) == 0
+    with S() as db:
+        bq = db.get(BankQuestion, bid)
+        assert bq.correct == new and bq.needs_review is False
+        assert db.query(AuditLog).filter_by(entity='exam_appeal', action='update').count() == 1
+        assert db.get(ExamAppeal, ap).apply_all is True
+
+
+def test_fix_reading_only_that_student(world, monkeypatch):
+    admin, ta, e, pr, who, a, b, c, bid, S = _setup(world, monkeypatch)
+    url, ap = _appeal(admin, ta, e, who, a, S)
+    with S() as db:
+        q = next(x for x in db.get(ExamVariant, (e['id'], a)).questions if x['slot'] == 1)
+        val = 'ABCDE'[q['correct']] if q['kind'] == 'mcq' else str(q['answer']).split('|')[0]
+    r = admin.post(url, json={'kind': 'reading', 'value': val}).json()
+    assert r['status'] == 'accepted' and 'Kartınız' in r['reply'] and [x['student_id'] for x in r['changes']] == [a]
+    assert _pts(S, e['id'], a) > 0 and _pts(S, e['id'], b) == 0
+
+
+def test_fix_reading_still_wrong_rejects(world, monkeypatch):
+    admin, ta, e, pr, who, a, b, c, bid, S = _setup(world, monkeypatch)
+    url, ap = _appeal(admin, ta, e, who, a, S)
+    r = admin.post(url, json={'kind': 'reading', 'value': 'Z'}).json()
+    assert r['still_wrong'] is True and r['status'] == 'rejected' and r['reply']
+
+
+def test_fix_annul_and_other_teacher_404(world, monkeypatch):
+    admin, ta, e, pr, who, a, b, c, bid, S = _setup(world, monkeypatch)
+    url, ap = _appeal(admin, ta, e, who, a, S)
+    assert world[0]('yad').post(url, json={'kind': 'annul'}).status_code == 404
+    r = admin.post(url, json={'kind': 'annul'})
+    assert r.status_code == 200, r.text
+    assert r.json()['status'] == 'accepted' and 'ləğv' in r.json()['reply']
+    with S() as db:
+        assert db.get(Exam, e['id']).items[0].get('annulled') is True
+
+
+def test_fix_reply_language(world, monkeypatch):
+    admin, ta, e, pr, who, a, b, c, bid, S = _setup(world, monkeypatch)
+    url, ap = _appeal(admin, ta, e, who, a, S)
+    with S() as db:
+        from app.models import Student
+        db.get(User, db.get(Student, a).user_id).language = 'ru'
+        db.commit()
+    r = admin.post(url, json={'kind': 'annul'}).json()
+    assert 'аннулирован' in r['reply']
+    lst = admin.get(f'/api/exam-appeals/{ta}/{e["id"]}').json()['appeals'][0]
+    assert 'Ключ' in lst['fix_replies']['key'] and set(lst['fix_replies']) == {'key', 'reading', 'annul', 'wrong'}
