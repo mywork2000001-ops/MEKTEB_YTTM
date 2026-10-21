@@ -5,9 +5,7 @@ HUB-da `docs/cloud/HANDOFF.md` son sətirləri və `docs/cloud/REESTR.md`. Hesab
 2-ci hesab – onun limiti bulud sessiyaları ilə ortaqdır, qənaətlə işlə (aid pytest, `tail`, fayl hissə-hissə).
 
 ## P1 – birinci növbədə
-1. **KSQ → onlayn sınaq** (kart `docs/tasks/ksq-den-sinaq-2026-10-21.md`): işçi budaq `worktree-agent-ae4575456e5660e01` (GitHub-da
-   `wip/ksq-den-sinaq` kimi saxlanıb). Yoxla: `git log`, nə qalıb (agentin son commit mesajında); tamamla (aid pytest + tam pytest + `npm run build`),
-   main-ə birləşdir, deploy (Render), worktree və budağı sil. Müəllimə: Jurnal → KSQ/BSQ → «🎯 Bu KSQ əsasında sınaq».
+1. **KSQ → onlayn sınaq** – ✅ hazırdır (5c64aa3, deploy). Yalnız canlıda gözlə yoxla: Jurnal → KSQ/BSQ → «🎯 Bu KSQ əsasında sınaq» → analoji suallar, NewExam doldurulur.
 2. **Bulud PR-ları HUB #6–9** (standartlar XI, X 1.1/1.2/2.1): bulud TAPSIRIQLAR.md §1 ilə `index.html`-siz yeniləyəcək. Review: seçmə
    sual yoxlaması, `node "sinif testi/tools/build-catalog.cjs" --check`, `node scripts/hub-audit.cjs --live`, merge. Kataloq və IEN kartı özü yenilənir.
 3. **Canlıda gözlə yoxlama (Chrome qoşulubsa):** apelyasiya pəncərəsi düzəlişləri (✏️/🔍/⛔), «Testi bitir» yoxlama pəncərəsi (telefon ölçüsü),
