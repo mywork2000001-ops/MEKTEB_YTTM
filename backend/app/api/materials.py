@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..defter import student_view
 from ..deps import current_user, require, staff
 from ..models import GroupMember, Material, MaterialSubmission, Role, SchoolClass, Student, TeachingAssignment, User, now
 from ..services import own_assignment, roster
@@ -51,6 +52,11 @@ def _file_out(kind: str, obj_id: int, o) -> dict | None:
     if not o.file_key:
         return None
     return {'name': o.file_name, 'type': o.file_type, 'size': o.file_size, 'url': f'/api/files/{kind}/{obj_id}'}
+
+
+def _real(s: MaterialSubmission | None) -> bool:
+    """Şagird həqiqətən cavab göndərib (mətn/fayl); yalnız dəftər işarəsi olan sətir – yox."""
+    return bool(s and (s.text or s.file_key))
 
 
 def material_out(m: Material) -> dict:
@@ -108,7 +114,8 @@ def list_materials(ta_id: int, user: User = Depends(staff), db: Session = Depend
     out = []
     for m in db.scalars(select(Material).where(Material.assignment_id == ta.id, Material.archived_at.is_(None))
                         .order_by(Material.created_at.desc())):
-        subs = db.scalars(select(MaterialSubmission).where(MaterialSubmission.material_id == m.id)).all()
+        subs = [x for x in db.scalars(select(MaterialSubmission).where(MaterialSubmission.material_id == m.id))
+                if _real(x)]                                   # cavabsız dəftər işarəsi «təhvil verib» sayılmır
         out.append({**material_out(m), 'submitted': len(subs), 'graded': sum(s.grade is not None for s in subs),
                     'targets': len(m.student_ids) if m.student_ids else n})
     return out
@@ -126,9 +133,10 @@ def submissions(ta_id: int, mid: int, user: User = Depends(staff), db: Session =
         if m.student_ids and st.id not in m.student_ids:
             continue
         s = subs.get(st.id)
+        s = s if _real(s) else None
         rows.append({'student_id': st.id, 'full_name': st.full_name, 'submission': s and {
             'id': s.id, 'text': s.text, 'submitted_at': aware(s.submitted_at), 'late': s.late, 'grade': s.grade,
-            'comment': s.comment, 'file': _file_out('submission', s.id, s)}})
+            'comment': s.comment, 'file': _file_out('submission', s.id, s), 'ai_check': s.ai_check}})
     return {'material': material_out(m), 'rows': rows}
 
 
@@ -188,9 +196,11 @@ def my_materials(user: User = Depends(student_only), db: Session = Depends(get_d
         sub = db.scalar(select(MaterialSubmission).where(MaterialSubmission.material_id == m.id,
                                                          MaterialSubmission.student_id == s.id))
         out.append({**{k: v for k, v in material_out(m).items() if k != 'student_ids'}, 'subject': ta.subject, 'teacher': db.get(User, ta.teacher_id).full_name,
-                    'submission': sub and {'text': sub.text, 'submitted_at': aware(sub.submitted_at), 'late': sub.late,
-                                           'grade': sub.grade, 'comment': sub.comment,
-                                           'file': _file_out('submission', sub.id, sub)}})
+                    'submission': _real(sub) and {'text': sub.text, 'submitted_at': aware(sub.submitted_at), 'late': sub.late,
+                                                  'grade': sub.grade, 'comment': sub.comment,
+                                                  'file': _file_out('submission', sub.id, sub)} or None,
+                    # dəftər yoxlaması: yalnız ÖZ alt mövzu statusları + şərh öz dilində (səhv siyahısı/qeyd/xülasə yox)
+                    'defter': student_view(sub.ai_check, getattr(user, 'language', None)) if sub else None})
     return out
 
 

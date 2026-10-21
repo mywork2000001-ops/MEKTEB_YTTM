@@ -781,6 +781,8 @@ class MaterialSubmission(Base):
     late: Mapped[bool] = mapped_column(Boolean, default=False)
     grade: Mapped[int | None] = mapped_column(Integer)
     comment: Mapped[str | None] = mapped_column(Text)
+    # dəftər yoxlaması (AI və ya əl ilə): {source, checked_at, model, items[{subtopic,status,wrong,note,source}], student_comment{az,ru,en}}
+    ai_check: Mapped[dict | None] = mapped_column(JSON)
     __table_args__ = (UniqueConstraint('material_id', 'student_id'),)
 
 

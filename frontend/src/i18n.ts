@@ -3511,7 +3511,20 @@ const D: Record<string, [string, string]> = {
   "Sinif rəhbəri: fənlər üzrə müvəffəqiyyət": ["Homeroom: success by subject", "Классный руководитель: успеваемость по предметам"],
   "Əlaçı / zərbəçi kateqoriyaları, fənlər üzrə müvəffəqiyyət.": ["Honor-student categories, success by subject.", "Категории отличников / ударников, успеваемость по предметам."],
   "Sinif rəhbərinin sənədləri (Çap / PDF)": ["Homeroom documents (Print / PDF)", "Документы классного руководителя (печать / PDF)"],
-  "Sinif rəhbərinin rəsmi çap forması.": ["Official print form of the homeroom teacher.", "Официальная печатная форма классного руководителя."],
+  'Dəftər': ['Notebook', 'Тетрадь'],
+  'Dəftər yoxlaması': ['Notebook check', 'Проверка тетрадей'],
+  'Dəftər yoxlaması bitdi': ['Notebook check finished', 'Проверка тетрадей завершена'],
+  'Xanaya toxunun: ✅ → 🟡 → ❌ → boş. Dərhal yazılır; qiymət qoyulmur.': ['Tap a cell: ✅ → 🟡 → ❌ → empty. Saved instantly; no grade is given.', 'Нажмите на ячейку: ✅ → 🟡 → ❌ → пусто. Сохраняется сразу; оценка не ставится.'],
+  'Yeni alt mövzu': ['New subtopic', 'Новая подтема'],
+  'Təklif': ['Suggested', 'Предложения'],
+  'Yoxlanacaq şəkil yoxdur': ['No photos left to check', 'Нет фото для проверки'],
+  'Əvvəlcə alt mövzu əlavə edin.': ['Add a subtopic first.', 'Сначала добавьте подтему.'],
+  'səhv №': ['error #', '№ ошибок'],
+  'Şərh köçürüldü': ['Comment copied', 'Комментарий скопирован'],
+  'Şərhi köçür': ['Copy comment', 'Скопировать комментарий'],
+  'Hamısını yoxla': ['Check all', 'Проверить все'],
+  'CSV yüklə': ['Download CSV', 'Скачать CSV'],
+  "Sinif rəhbərinin rəsmi çap forması.":["Official print form of the homeroom teacher.", "Официальная печатная форма классного руководителя."],
 }
 
 export const I18nCtx = createContext<Lang>('az')

@@ -4,6 +4,7 @@ import { AsyncBtn, Drawer, ErrorBox, Field, fmtDate, gradeTone, PickFirst, Pill,
 import { LessonSelect, TargetPicker, useMyLessons, usePick } from './common'
 import { azDT } from '../../ui'
 import { useT } from '../../i18n'
+import DefterCheck from './DefterCheck'
 
 type Mat = { id: number; kind: 'task' | 'video' | 'link' | 'note'; title: string; body: string | null; url: string | null; due_at: string | null
   file: { name: string; type: string; size: number; url: string } | null; submitted: number; graded: number; targets: number; created_at: string }
@@ -17,6 +18,7 @@ export default function Materials() {
   const [list, err, , reload] = useLoad<Mat[] | null>(() => (ta ? get(`/api/materials/${ta}`) : Promise.resolve(null)), [ta])
   const [creating, setCreating] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
+  const [defter, setDefter] = useState<number | null>(null)
   return (
     <>
       <Top title={t('Materiallar')} sub="Sinfə / qrupa PDF tapşırıq, video dərs, link və ya qeyd göndərin"
@@ -32,12 +34,14 @@ export default function Materials() {
               <span className="row">{m.kind === 'task' && <Pill tone={m.submitted ? 'ok' : undefined}>{m.submitted}/{m.targets} {t('təhvil ·')} {m.graded} {t('qiymət')}</Pill>}</span>
               <span className="row">
                 {m.kind === 'task' && <button className="btn sm" onClick={() => setOpen(m.id)}>{t('Cavablar')}</button>}
+                {m.kind === 'task' && <button className="btn sm" onClick={() => setDefter(m.id)}>📓 {t('Dəftər')}</button>}
                 <AsyncBtn className="btn sm ghost" ok="Arxivə göndərildi" onClick={async () => { await post(`/api/materials/${ta}/${m.id}/archive`); reload() }}>{t('Arxiv')}</AsyncBtn>
               </span>
             </div>))}
         </div>)}
       {creating && ta && <CreateMaterial ta={ta} onClose={() => setCreating(false)} onDone={() => { setCreating(false); reload() }} />}
       {open && ta && <Submissions ta={ta} id={open} onClose={() => { setOpen(null); reload() }} />}
+      {defter && ta && <DefterCheck ta={ta} mid={defter} onClose={() => { setDefter(null); reload() }} />}
     </>
   )
 }

@@ -36,6 +36,12 @@ function Card({ m, onDone }: { m: any; onDone: () => void }) {
       {yt ? <div style={{ position: 'relative', paddingTop: '56.25%', borderRadius: 10, overflow: 'hidden' }}><iframe src={yt} title={m.title} allowFullScreen style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }} /></div>
         : m.url && <a className="btn sm" href={m.url} target="_blank" rel="noreferrer noopener">{tt('Aç')} ↗</a>}
       {m.file && <p style={{ margin: '8px 0' }}><a className="btn sm" href={m.file.url} target="_blank" rel="noreferrer">📄 {m.file.name}</a></p>}
+      {m.defter && (
+        <div className="stack" style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
+          <b className="small">📓 {tt('Dəftər yoxlaması')}</b>
+          {m.defter.items.map((i: any) => <span key={i.subtopic} className="small">{({ done: '✅', partial: '🟡', missing: '❌', illegible: '❔' } as Record<string, string>)[i.status]} {i.subtopic}</span>)}
+          {m.defter.comment && <span className="small">{tt('Müəllim')}: {m.defter.comment}</span>}
+        </div>)}
       {m.needs_submission && (
         <div className="stack" style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
           {m.submission ? (
