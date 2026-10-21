@@ -15,7 +15,7 @@ type Sess = { id: number; date: string; weekday: string; start: string; end: str
   topics: { plan_lesson_id: number | null; seq: number | null; text: string }[]; goals: string | null; resources: string | null; homework: string | null
   status: 'planned' | 'held' | 'cancelled'; note: string | null; recording_url: string | null; batch_id: number | null; present: number; joined: number; students: number | null
   material_ids: number[]; materials: { id: number; title: string; kind: string }[] }
-export type Course = { id: number; title: string; subject: string; format: string; classes: string[]; audience: { ta_ids: number[]; levels: string[] | null; student_ids: number[] | null }
+export type Course = { id: number; title: string; subject: string; format: string; classes: string[]; audience: { ta_ids: number[]; levels: string[] | null; student_ids: number[] | null; chain?: { enabled?: boolean } | null }
   schedule: { weekday: number; start: string; end: string; room?: string | null; link?: string | null }[]; starts_on: string; ends_on: string; goal: string | null
   students: number; sessions: number; held: number; cancelled: number; next: Sess | null; session_list?: Sess[]; members?: { student_id: number; full_name: string; class_name: string }[]; warnings?: string[]; warnings_i18n?: { key: string; params: Record<string, any> }[]
   kind: Kind; kind_set: boolean; program: { id: number; key: string | null; title: string } | null; program_applied: boolean }

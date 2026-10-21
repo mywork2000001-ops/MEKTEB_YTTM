@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import extra_chain as XC
 from .. import extra_programs as XP
 from ..db import get_db
 from ..deps import staff
@@ -198,7 +199,8 @@ def _topics_text(db: Session, s: ExtraSession) -> list[dict]:
     for t in s.topics or []:
         pl = db.get(PlanLesson, t['plan_lesson_id']) if t.get('plan_lesson_id') else None
         out.append({'plan_lesson_id': pl.id if pl else None, 'seq': pl.seq if pl else None,
-                    'text': t.get('text') or (pl.topic if pl else '')})
+                    'text': t.get('text') or (pl.topic if pl else ''), 'sub': t.get('sub'), 'prereq': t.get('prereq'),
+                    'links': t.get('links')})
     return out
 
 
@@ -326,6 +328,7 @@ def patch_course(cid: int, body: CoursePatch, user: User = Depends(staff), db: S
     rebuilt = kept = 0
     if body.schedule is not None:
         c.schedule = [s.model_dump() for s in body.schedule]
+        XC.follow_schedule(c)                    # ardıcıl zəncir qrupunda gün/saat zəncirin konfiqurasiyasına da yazılır
         today = _today()
         for s in _sessions(db, c):
             if s.status != 'planned' or s.date < today or s.batch_id:
@@ -394,6 +397,17 @@ class ProgramIn(BaseModel):
     sections: list[str] | None = None
     overwrite: bool = False                # True – əl ilə yazılmış (keçirilməmiş) mövzuların da üstündən yaz
     dry: bool = False
+    # ardıcıl zəncir (extra_chain.py): mode='chain'; qalan sahələr yoxdursa defolt (V→IX, V sinif 2-ci yarımildən, Ç./C.a./C. 21:00–22:00)
+    mode: Literal['program', 'chain'] | None = None
+    grades: list[int] | None = Field(None, min_length=2, max_length=2)
+    start: dict | None = None              # {grade, semester}
+    end_date: dt.date | None = None
+    weekdays: list[int] | None = Field(None, min_length=1, max_length=7)
+    start_time: str | None = None
+    end_time: str | None = None
+    skip_repeat: bool | None = None
+    annual: bool | None = None
+    p001: bool | None = None
 
 
 @router.post('/assign-programs')
@@ -417,6 +431,27 @@ def set_program(cid: int, body: ProgramIn, user: User = Depends(staff), db: Sess
     c = _open_course(db, user, cid)
     if body.kind:
         c.kind = body.kind
+    if body.mode == 'chain':
+        raw = body.model_dump(include={'grades', 'start', 'end_date', 'weekdays', 'start_time', 'end_time', 'skip_repeat', 'annual', 'p001'},
+                              exclude_none=True)
+        prev = XC.get_cfg(c) or {}
+        try:
+            cfg = XC.normalize({**(prev if prev.get('enabled', True) else {}), **raw, 'enabled': True})
+        except (ValueError, TypeError, KeyError) as e:
+            raise HTTPException(400, str(e))
+        c.kind = c.kind or 'inkisaf'
+        c.program_sections = None
+        rep = XP.plan_fill(db, c, _today(), overwrite=body.overwrite, dry=body.dry, chain=cfg)
+        if not rep['applicable'] and not body.dry:
+            db.rollback()
+            raise HTTPException(400, rep['skip'] or 'Proqram təyin olunmadı')
+        if body.dry:
+            db.rollback()
+        else:
+            audit(db, user, 'update', 'extra_course', c.id, program='chain', filled=rep['to_fill'])
+            db.commit()
+        return rep
+    XC.disable(c)                                  # əl ilə başqa proqram seçildi – gündəlik tapşırıq zənciri üstündən yazmasın
     c.program_sections = body.sections or None
     if body.program_id is not None:
         p = db.get(PlanProgram, body.program_id)

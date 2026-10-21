@@ -1,0 +1,68 @@
+{
+  "note": "İnkişaf qrupu zənciri (docs/inkisaf-qrupu-ardicil-proqram-promtu.md §6). Mənbə: P001_Math_5_DIM/5dim_sinif_testi2025 (Lesson-1…17). Dərs fayllarında h2/h3 alt-bölmə başlıqları yoxdur (yalnız test interfeysi), ona görə «alt mövzu» = uyğun P001 dərsinin başlığıdır. Uyğunluğu olmayan mövzu burada yoxdur – alt mövzu boş qalır (uydurma yoxdur). Müəllim bu faylı düzəldə bilər.",
+  "base_url": "https://mywork2000001-ops.github.io/HUB_EDUCAT-ON/P001_Math_5_DIM/5dim_sinif_testi2025/",
+  "lessons": {
+    "1": {"az": "Natural ədədlərin yazılması və oxunması", "ru": "Запись и чтение натуральных чисел", "en": "Writing and reading natural numbers"},
+    "2": {"az": "Natural ədədlərin toplanması və çıxılması", "ru": "Сложение и вычитание натуральных чисел", "en": "Addition and subtraction of natural numbers"},
+    "3": {"az": "Natural ədədlərin vurulması və bölünməsi", "ru": "Умножение и деление натуральных чисел", "en": "Multiplication and division of natural numbers"},
+    "4": {"az": "Adi kəsrlər", "ru": "Обыкновенные дроби", "en": "Common fractions"},
+    "5": {"az": "Adi kəsrlərin müqayisəsi", "ru": "Сравнение обыкновенных дробей", "en": "Comparing common fractions"},
+    "6": {"az": "Adi kəsrlərin toplanması və çıxılması", "ru": "Сложение и вычитание обыкновенных дробей", "en": "Adding and subtracting common fractions"},
+    "7": {"az": "Adi kəsrlərin vurulması və bölünməsi", "ru": "Умножение и деление обыкновенных дробей", "en": "Multiplying and dividing common fractions"},
+    "8": {"az": "Onluq kəsrlər", "ru": "Десятичные дроби", "en": "Decimal fractions"},
+    "9": {"az": "Adi və onluq kəsrlər (qarışıq əməllər)", "ru": "Обыкновенные и десятичные дроби (смешанные действия)", "en": "Common and decimal fractions (mixed operations)"},
+    "10": {"az": "Faiz", "ru": "Проценты", "en": "Percent"},
+    "11": {"az": "Birinci yarımil yekunlaşdırıcı test", "ru": "Итоговый тест первого полугодия", "en": "First-semester summative test"},
+    "12": {"az": "Tənliklər və bərabərsizliklər", "ru": "Уравнения и неравенства", "en": "Equations and inequalities"},
+    "13": {"az": "Müstəvi fiqurlar", "ru": "Плоские фигуры", "en": "Plane figures"},
+    "14": {"az": "Fəza fiqurları", "ru": "Пространственные фигуры", "en": "Solid figures"},
+    "15": {"az": "Statistika və məlumatların təsviri", "ru": "Статистика и представление данных", "en": "Statistics and data representation"},
+    "16": {"az": "İkinci yarımil – yekunlaşdırıcı test", "ru": "Итоговый тест второго полугодия", "en": "Second-semester summative test"},
+    "17": {"az": "İllik material – yekunlaşdırıcı test", "ru": "Годовой итоговый тест", "en": "Annual summative test"}
+  },
+  "v_topics": {
+    "Natural ədədlərin yazılması və oxunması": [1],
+    "Natural ədədlərin toplanması və çıxılması": [2],
+    "Natural ədədlərin vurulması və bölünməsi": [3],
+    "Adi kəsrlər": [4, 5, 6, 7],
+    "Onluq kəsrlər": [8, 9],
+    "Bucaq. Üçbucaq. Dördbucaqlı": [13],
+    "Düzbucaqlı paralelepiped və kub. Həcm": [14],
+    "Faiz": [10],
+    "Statistika": [15],
+    "Ehtimal": [15]
+  },
+  "v_annual": [17],
+  "prereq": {
+    "6": {
+      "Bölünən və bölən. Bölünmə əlamətləri": [3],
+      "Ən böyük ortaq bölən və ən kiçik ortaq bölünən": [3],
+      "Adi kəsrlərin müqayisəsi": [4, 5],
+      "Adi kəsrlərin toplanması və çıxılması": [6],
+      "Adi kəsrlərin vurulması və bölünməsi": [7],
+      "Adi kəsrlər üzərində qarışıq əməllər": [6, 7],
+      "Tənasüb": [7],
+      "Faizə aid məsələlər": [10],
+      "Tam ədədlər": [2],
+      "Riyazi ifadə. Tənlik. Bərabərsizlik": [12],
+      "Bucaq. Çevrə. Simmetriya": [13],
+      "Ölçmələr. Sahə. Həcm": [13, 14],
+      "Statistika": [15],
+      "Ehtimal": [15]
+    },
+    "7": {
+      "Rasional ədədlər": [4, 8],
+      "Rasional ədədlər üzərində əməllər": [6, 7, 9],
+      "Sadə həndəsi fiqurların əsas xassələri. Qonşu və qarşılıqlı bucaqlar": [13],
+      "Natural üstlü qüvvət. Birhədlilər": [3],
+      "Üçbucaqların konqruyentlik əlamətləri": [13],
+      "İfadələr. Eyniliklər. Tənliklər": [12],
+      "Düz xətlərin paralellik əlamətləri": [13],
+      "Xətti tənliklər sistemi": [12],
+      "Üçbucağın bucaqlarının cəmi. Düzbucaqlı üçbucaq": [13],
+      "Çevrə": [13],
+      "Statistika": [15],
+      "Ehtimal": [15]
+    }
+  }
+}

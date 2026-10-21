@@ -150,8 +150,19 @@ def _sequence(db: Session, c: ExtraCourse, kind: str, grade: int, ta0: TeachingA
 
 
 def plan_fill(db: Session, c: ExtraCourse, today: dt.date, gm: GradeMatcher | None = None, overwrite: bool = False,
-              dry: bool = False) -> dict:
-    """Qrupun gələcək planlaşdırılmış məşğələlərini proqramdan doldurur (dry=True – heç nə yazmır, hesabat). Təkrar çağırış eyni nəticə verir."""
+              dry: bool = False, chain: dict | None = None, auto_default: bool = False) -> dict:
+    """Qrupun gələcək planlaşdırılmış məşğələlərini proqramdan doldurur (dry=True – heç nə yazmır, hesabat). Təkrar çağırış eyni nəticə verir.
+    Rejim `chain` (extra_chain.py): chain verilibsə və ya qrupda saxlanmış aktiv konfiqurasiya varsa; auto_default=True – öz proqramı olmayan
+    inkişaf qrupu defolt zəncirlə (gündəlik tapşırıq)."""
+    from . import extra_chain as XC
+    if chain is None:
+        saved = XC.get_cfg(c)
+        if saved is not None and saved.get('enabled', True):
+            chain = saved
+        elif auto_default and XC.default_eligible(db, c):
+            chain = XC.DEFAULT
+    if chain is not None:
+        return XC.run(db, c, today, chain, gm, overwrite, dry)
     kind = course_kind(c)
     rep: dict = {'course_id': c.id, 'title': c.title, 'kind': kind, 'kind_auto': c.kind not in KINDS, 'grade': None, 'program': None,
                  'mode': None, 'sessions': 0, 'held': 0, 'to_fill': 0, 'kept_manual': 0, 'topics': 0, 'topics_left': 0,
@@ -265,11 +276,14 @@ def detach(db: Session, c: ExtraCourse, today: dt.date) -> int:
             s.topics, s.topic_ref = None, None
             n += 1
     c.program_id, c.program_sections = None, None
+    from . import extra_chain as XC
+    XC.disable(c)                                  # müəllim proqramı ayırdı – gündəlik tapşırıq zənciri özü geri qaytarmasın
     return n
 
 
 def has_program(db: Session, c: ExtraCourse) -> bool:
-    return bool(c.program_id) or db.scalar(select(ExtraSession.id).where(ExtraSession.course_id == c.id,
+    chain = (c.audience or {}).get('chain')
+    return bool(c.program_id) or bool(chain and chain.get('enabled', True)) or db.scalar(select(ExtraSession.id).where(ExtraSession.course_id == c.id,
                                                                          ExtraSession.topic_ref.is_not(None)).limit(1)) is not None
 
 
@@ -278,7 +292,7 @@ def assign_programs(db: Session, courses: list[ExtraCourse], today: dt.date, app
     gm = GradeMatcher(db)
     out = []
     for c in courses:
-        r = plan_fill(db, c, today, gm, overwrite=False, dry=not apply)
+        r = plan_fill(db, c, today, gm, overwrite=False, dry=not apply, auto_default=True)
         r['owner'] = (db.get(User, c.owner_id).full_name if c.owner_id else None)
         r.pop('rows', None)
         out.append(r)
