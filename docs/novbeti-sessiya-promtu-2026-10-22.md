@@ -1,12 +1,30 @@
-# Növbəti sessiya promtu – 22.10.2026
+# Növbəti sessiya – promt (yazıldı 21.10.2026, gecə; kompüter söndürülür)
 
-**Rol:** Rəhbər – Claude (Opus). **İcraçılar:** `kodcu`, `tercumeci`, `yigici`. **Qayda:** ardıcıl işlə – bir addımı bitir, sonra növbəti.
-Əvvəlcə oxu: `docs/audit/icra-2026-10-20c.md` → «Açıq qalanlar»; `git worktree list`; env-də xarici API açarları boş olmalıdır.
-Push – istifadəçi `! git push origin main` (auto-mode push-u bloklayır).
+**Rol:** Claude Code – Rəhbər (CLAUDE.md, `~/.claude/CLAUDE.md`). Əvvəl: `docs/audit/icra-2026-10-21.md` «Açıq qalanlar», `git worktree list`,
+HUB-da `docs/cloud/HANDOFF.md` son sətirləri və `docs/cloud/REESTR.md`. Hesab: əsas hesabın limiti 25.10 21:00 (Bakı) açılır; o vaxta qədər
+2-ci hesab – onun limiti bulud sessiyaları ilə ortaqdır, qənaətlə işlə (aid pytest, `tail`, fayl hissə-hissə).
 
-## Ardıcıllıq
-1. **İşlənməyənlər sürəti < 3 san.** (audit P1-1): ölç (canlı JS `fetch` vaxtı), kart → `kodcu` → `test_missing_perf.py` hədləri → deploy → yenidən ölç.
-2. **Analitika yoxlaması:** Chrome-da 10 qrupun hər tabı açılır (1366 və 390 px), RU rejimində mətnlər (`tercumeci` ~90 açar), Çap mərkəzi düymələri dəqiq keçid (P2-5), vahid dövr qərarı (P2-4).
-3. **Canlı əməliyyatlar** (istifadəçi «копия есть» yazdıqdan sonra): `unlimit-tasks?dry=0`, `POST ferdi-units`, `assign-programs?dry=0` → say yoxlaması.
-4. **İnkişaf qrupu «Ardıcıl proqram»** – `docs/inkisaf-qrupu-ardicil-proqram-promtu.md` → kart → `kodcu`.
-5. Sessiya sonu: tam pytest (`backend` qovluğundan) + build, `docs/audit/icra-2026-10-22.md`, HANDOFF, növbəti promt, istifadəçiyə `/compact` xatırlat.
+## P1 – birinci növbədə
+1. **KSQ → onlayn sınaq** (kart `docs/tasks/ksq-den-sinaq-2026-10-21.md`): işçi budaq `worktree-agent-ae4575456e5660e01` (GitHub-da
+   `wip/ksq-den-sinaq` kimi saxlanıb). Yoxla: `git log`, nə qalıb (agentin son commit mesajında); tamamla (aid pytest + tam pytest + `npm run build`),
+   main-ə birləşdir, deploy (Render), worktree və budağı sil. Müəllimə: Jurnal → KSQ/BSQ → «🎯 Bu KSQ əsasında sınaq».
+2. **Bulud PR-ları HUB #6–9** (standartlar XI, X 1.1/1.2/2.1): bulud TAPSIRIQLAR.md §1 ilə `index.html`-siz yeniləyəcək. Review: seçmə
+   sual yoxlaması, `node "sinif testi/tools/build-catalog.cjs" --check`, `node scripts/hub-audit.cjs --live`, merge. Kataloq və IEN kartı özü yenilənir.
+3. **Canlıda gözlə yoxlama (Chrome qoşulubsa):** apelyasiya pəncərəsi düzəlişləri (✏️/🔍/⛔), «Testi bitir» yoxlama pəncərəsi (telefon ölçüsü),
+   dəftər yoxlaması (📓), inkişaf zənciri və tərəqqi qruplarında mövzular. Problem – ekran şəkli ilə kart.
+
+## P2
+4. Telegram hesabatı (21:00) gəlirmi – `gh run list --workflow tg-hesabat.yml` (HUB). Gəlmirsə – səbəb.
+5. `sort_incoming.py` (test-sources) – GitHub-da ilk işə düşmə: `incoming/_hints.json` yenilənirmi, dublikatlar `_dup`-a gedirmi.
+   İpucu keyfiyyəti zəifdirsə (sinif/növ səhv) – qaydaları düzəlt (mətnli PDF-lər; skanlar onsuz da bulud üçündür).
+6. IEN auditi (`docs/IEN_AUDIT.md`): P002 Lesson-1/9 və V portalı situasiya şəkilləri – bulud `cloud/ien-images` PR-ı; review/merge.
+7. Dəftər yoxlaması: PDF dəstəyi (PyMuPDF backend-də yoxdur – əlavə et və ya şəkil tələb et), real AI çağırışı canlıda.
+
+## P3
+8. Zəncir 26.01.2027-yə VIII əvvəlinə çatır – müəllimlə: tempi artırmaq (həftədə 4) və ya IX-u növbəti dövrə saxlamaq.
+9. P0010 `_sources` qırıq geri-keçidləri; P014 məzmunu; `hub-audit --live`-ı həftəlik workflow-a.
+10. Telegram PDF-ləri layihələrə paylama skriptinin genişləndirilməsi (mövzu topluları → P013/P007 kimi, sınaqlar → Sinaqlar).
+
+## Qaydalar (dəyişməz)
+AZ/EN/RU hər mətn; mövzu testi seçimi yalnız `app/plan_tests.py`; `npm run build` (tsc -b); canlı DB/silmə – istifadəçinin razılığı;
+HUB dəyişikliyi → IEN sinxronizasiyası (yaddaş `ien-sync`); PDF→test – yalnız bulud; sessiya sonunda `docs/audit/icra-YYYY-MM-DD.md`.
