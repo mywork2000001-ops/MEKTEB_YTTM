@@ -1,6 +1,6 @@
 {
   "note": "İnkişaf qrupu zənciri (docs/inkisaf-qrupu-ardicil-proqram-promtu.md §6). Mənbə: P001_Math_5_DIM/5dim_sinif_testi2025 (Lesson-1…17). Dərs fayllarında h2/h3 alt-bölmə başlıqları yoxdur (yalnız test interfeysi), ona görə «alt mövzu» = uyğun P001 dərsinin başlığıdır. Uyğunluğu olmayan mövzu burada yoxdur – alt mövzu boş qalır (uydurma yoxdur). Müəllim bu faylı düzəldə bilər.",
-  "base_url": "https://mywork2000001-ops.github.io/HUB_EDUCAT-ON/P001_Math_5_DIM/5dim_sinif_testi2025/",
+  "base_url": "https://hub-educat-on-6m58.vercel.app/P001_Math_5_DIM/5dim_sinif_testi2025/",
   "lessons": {
     "1": {"az": "Natural ədədlərin yazılması və oxunması", "ru": "Запись и чтение натуральных чисел", "en": "Writing and reading natural numbers"},
     "2": {"az": "Natural ədədlərin toplanması və çıxılması", "ru": "Сложение и вычитание натуральных чисел", "en": "Addition and subtraction of natural numbers"},
