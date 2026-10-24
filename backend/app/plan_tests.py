@@ -433,11 +433,13 @@ def build_task(db: Session, ta: TeachingAssignment, teacher: User, item: Item, c
     pl = item.pl
     title = (choice.title or f'№{pl.seq} {pl.topic} – mövzu testi')[:200]
     o, c = _times(db, item, opts, past)
+    # müddətsiz (bağlanma yoxdur) testdə «bağlandıqdan sonra» heç vaxt gəlməzdi – izah təhvildən dərhal sonra görünür
+    show = 'after_submit' if c >= NO_DEADLINE else 'after_close'
     batch = TestBatch(kind='movzu', title=title, subject=ta.subject, grade=class_grade(db, item.cls), created_by=teacher.id)
     db.add(batch)
     db.flush()
     t = OnlineTask(assignment_id=ta.id, title=title, description='Avtomatik mövzu testi (perspektiv plan)', opens_at=o, closes_at=c,
-                   duration_min=opts.duration, questions=qs, shuffle=True, show_answers='after_close', student_ids=None,
+                   duration_min=opts.duration, questions=qs, shuffle=True, show_answers=show, student_ids=None,
                    created_by=teacher.id, kind='movzu', batch_id=batch.id, plan_lesson_id=pl.id, journal_auto=True)
     db.add(t)
     db.flush()

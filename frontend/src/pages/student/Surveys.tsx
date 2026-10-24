@@ -33,7 +33,7 @@ export default function Surveys() {
             <p className="small muted" style={{ margin: '0 0 10px' }}>{tt('Müəllim')}: {s.teacher}{s.period_label ? ` · ${tt('həftə')}: ${s.period_label}` : ''} · {tt('{n} sual', { n: s.questions })}, ~{tt('{n} dəq', { n: mins(s.questions) })}</p>
             <div className="row" style={{ justifyContent: 'space-between' }}>
               {s.done ? <Pill tone="ok">{s.repeat === 'weekly' ? tt('Bu həftə cavab verdiniz') : tt('Cavab verdiniz')}</Pill> : <Pill tone="warn">{s.repeat === 'weekly' ? tt('Bu həftənin sorğusu') : tt('Gözləyir')}</Pill>}
-              {!s.done && <button className="btn primary sm" onClick={() => setOpen(s.id)}>Cavab ver</button>}
+              {!s.done && <button className="btn primary sm" onClick={() => setOpen(s.id)}>{tt('Cavab ver')}</button>}
             </div>
           </section>))}</div>)}
     </>

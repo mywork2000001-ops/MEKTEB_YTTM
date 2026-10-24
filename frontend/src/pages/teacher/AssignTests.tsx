@@ -2,7 +2,8 @@
 // Bütün məntiq serverdə: app/plan_tests.py (docs/plan-testleri-skripti-promtu.md).
 import { useState } from 'react'
 import { post } from '../../api'
-import { Drawer, ErrorBox, Field, fmtDate, isoDate, Pill, toast } from '../../ui'
+import { TEST_MINUTES } from '../../humanTime'
+import { Drawer, DurationSelect, ErrorBox, Field, fmtDate, isoDate, Pill, toast } from '../../ui'
 import { useT } from '../../i18n'
 import type { MyLesson } from './common'
 
@@ -61,7 +62,7 @@ export default function AssignTests({ ta, lessons, onClose, onDone }: { ta: numb
             <option value="week">{t('Bu həftə (7 gün)')}</option><option value="month">{t('Bu ay (31 gün)')}</option><option value="dates">{t('Tarixlər')}</option></select></Field>
           {period === 'dates' && <><Field label={t('Başlanğıc')}><input type="date" value={d1} onChange={e => { setD1(e.target.value); setRep(null) }} /></Field>
             <Field label={t('Son')}><input type="date" value={d2} onChange={e => { setD2(e.target.value); setRep(null) }} /></Field></>}
-          <Field label={t('Müddət (dəq.)')}><input type="number" min={45} max={300} value={duration} onChange={e => { setDuration(Math.max(45, Number(e.target.value) || 45)); setRep(null) }} /></Field>
+          <Field label={t('Həll müddəti')}><DurationSelect unit="min" options={TEST_MINUTES} value={duration} onChange={v => { setDuration(Math.max(45, v)); setRep(null) }} /></Field>
           <Field label={t('Sual sayı')}><input type="number" min={1} max={100} value={n} onChange={e => { setN(Math.max(1, Number(e.target.value) || 15)); setRep(null) }} /></Field>
         </div>
         <label className="check small"><input type="checkbox" checked={missing} onChange={e => { setMissing(e.target.checked); setRep(null) }} /> {t('Çatışmayanları da (keçilmiş dərslər)')}</label>
