@@ -13,7 +13,7 @@ type BFile = Dated & { id: number; label: string; questions: number; kind: strin
 type Series = {
   id: number; title: string; subject: string; period: 'day' | 'week' | 'month'; every: number; weekday: number | null
   month_day: number | null; open_time: string; window_hours: number; duration_min: number; auto_new: boolean; active: boolean
-  next_at: string; queue: { id: number; label: string | null; given: string[]; other_ok: boolean; skip: boolean }[]; done: { file_id: number; batch_id: number; at: string }[]
+  next_at: string; queue: { id: number; label: string | null; given: string[]; other_ok: boolean; skip: boolean; students_given?: number }[]; done: { file_id: number; batch_id: number; at: string }[]
   per_slot: number; newest_first: boolean; show_answers: string
   preview: { at: string; weekday: string; file_id: number | null; label: string | null; labels?: (string | null)[] }[]; targets: { ta_id: number }[]; sources: string[]
 }
@@ -95,7 +95,7 @@ export default function ExamSeriesPanel() {
                 {s.queue.map((q, i) => (
                   <div key={q.id} className="row small" style={{ gap: 6 }}><span className="grow">{i + 1}. {q.label}
                     {q.skip ? <> <Pill tone="warn">{t('atlanacaq –')} {q.given.length ? t('verilib: {x1}', { x1: q.given.join(', ') }) : t('sinfə uyğun deyil')}</Pill></>
-                      : q.given.length > 0 && <> <Pill>{q.given.join(', ')} {t('– artıq verilib, atlanır')}</Pill></>}
+                      : q.given.length > 0 ? <> <Pill>{q.given.join(', ')} {t('– artıq verilib, atlanır')}</Pill></> : (q.students_given ?? 0) > 0 && <> <Pill>{t('{n} şagird artıq yazıb — onlara getməyəcək', { n: q.students_given })}</Pill></>}
                     {q.other_ok && <> <Pill>{t('başqa sinfin – təsdiqlənib')}</Pill></>}</span>
                     <button className="btn sm ghost" disabled={i === 0} onClick={() => { const x = s.queue.map(y => y.id); [x[i - 1], x[i]] = [x[i], x[i - 1]]; act(() => patch(`/api/exam-series/${s.id}`, { queue: x }), t('Sıra dəyişdi')) }}>↑</button>
                     <button className="btn sm ghost" onClick={() => act(() => patch(`/api/exam-series/${s.id}`, { queue: s.queue.map(y => y.id).filter(y => y !== q.id) }), t('Növbədən çıxarıldı'))}>✕</button>

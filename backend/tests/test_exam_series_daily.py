@@ -16,7 +16,7 @@ def _mk(S, label, held=None, grades=(10,), kind='sinaq', questions=2):
         db.add(f)
         db.flush()
         for n in range(questions):
-            db.add(BankQuestion(file_id=f.id, n=n + 1, kind='mcq', text={'az': f'{n}+1=?'}, options=[{'az': '1'}, {'az': '2'}],
+            db.add(BankQuestion(file_id=f.id, n=n + 1, kind='mcq', text={'az': f'{label}: {n}+1=?'}, options=[{'az': '1'}, {'az': '2'}],
                                 correct=0, content_hash=f'{label}{n}'))
         db.commit()
         return f.id

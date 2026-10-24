@@ -386,6 +386,22 @@ def create_exam(body: ExamIn, user: User = Depends(staff), db: Session = Depends
     names = {p[0].id: p[1].name for p in plan}
     cnt = _task_counts(db, qs, _text_index(db))           # fayl nömrəsi və mətn üzrə (fayl yerini dəyişsə də)
     rep = repeats(db, list(names), cnt)
+    # şagird səviyyəsi: sinif + qrup + fərdi dərslər və eyni məzmunlu bank faylı (domain/given.py)
+    from ..domain.given import given_students
+    seen = {r['ta_id'] for r in rep}
+    full_files = {fid: n for fid, n in cnt.items() if n}
+    if full_files:
+        flabels = {f.id: f for f in db.scalars(select(BankFile).where(BankFile.id.in_(list(full_files))))}
+        for ta, cls, _o, _c, sids in plan:
+            if ta.id in seen:
+                continue
+            pool = set(sids) if sids else {st.id for st in roster(db, ta)}
+            for fid, g in given_students(db, list(full_files), pool).items():
+                f = flabels.get(fid)
+                if g and f and _full(full_files[fid], f.question_count or full_files[fid]):
+                    rep.append({'class_name': cls.name, 'ta_id': ta.id, 'label': f.label, 'title': f.label, 'at': '',
+                                'students': len(g), 'same_content': True})
+                    break
     bad = grade_issues(db, [(cls.name, class_grade(db, cls)) for _, cls, *_ in plan], cnt)
     if bad and not body.allow_other_grade:
         x = bad[0]
@@ -401,7 +417,10 @@ def create_exam(body: ExamIn, user: User = Depends(staff), db: Session = Depends
     if (rep or same) and not body.allow_repeat:
         first = (rep or same)[0]
         what = f'«{first.get("label") or first["title"]}»' if rep else f'«{title}» adlı sınaq'
-        raise HTTPException(409, {'message': f'{what} {first["class_name"]} sinfinə artıq verilib – təkrar sınaq qarışıqlıq '
+        who = f'{first["class_name"]} sinfinin {first["students"]} şagirdinə' if first.get('students') else f'{first["class_name"]} sinfinə'
+        if first.get('same_content'):
+            what += ' (və ya eyni sualları olan sınaq)'
+        raise HTTPException(409, {'message': f'{what} {who} artıq verilib – təkrar sınaq qarışıqlıq '
                                              'yaradır. Başqa sınaq seçin və ya «Bilərəkdən təkrar» qutusunu işarələyin.',
                                   'repeat': rep, 'same_title': same})
     if (rep or same) and 'təkrar' not in title.casefold():
