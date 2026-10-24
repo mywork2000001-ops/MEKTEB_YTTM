@@ -29,7 +29,7 @@ from ..models import (AuditLog, BankFile, BankQuestion, OnlineTask, Role, School
 from ..services import class_grade, roster
 from .common import audit, need_school
 from ..timing import NOT_DONE, closes_or_none, fits_window, is_unlimited
-from .tasks import CustomQ, TestMinutes, _snapshot, aware, custom_snapshot, exam_score, expire_due, is_ok, purge_tasks, score
+from .tasks import CustomQ, ReleaseIn, TestMinutes, _snapshot, aware, custom_snapshot, exam_score, expire_due, is_ok, purge_tasks, score
 
 router = APIRouter(prefix='/api/exams-online', tags=['exams-online'])
 
@@ -215,10 +215,11 @@ def results(db: Session, b: TestBatch) -> dict:
                    'ta_id': ta.id, 'teacher_id': ta.teacher_id, 'status': 'yazmayıb', 'correct': None, 'wrong': None,
                    'blank': None, 'points': None, 'pct': None, 'grade': None,
                    'retake': any((x.id, st.id) in retakes for x in mine), 'late': bool(done) and t.id != ts[0].id,
-                   'submitted_at': None}
+                   'submitted_at': None, 'answers_released_at': None}
             if a:
                 sc = exam_score(t, a, b.penalty)
-                row.update(status='yazıb', **sc, grade=summative_grade(sc['pct']), submitted_at=aware(a.submitted_at))
+                row.update(status='yazıb', **sc, grade=summative_grade(sc['pct']), submitted_at=aware(a.submitted_at),
+                           answers_released_at=aware(a.answers_released_at) if a.answers_released_at else None)
                 if len(t.questions) == len(q_ok):         # sual analizi – eyni suallı siniflər üzrə
                     for i in range(len(q_ok)):
                         q_ok[i] += is_ok(t, a, i)
@@ -336,7 +337,7 @@ class ExamIn(BaseModel):
     bank_ids: list[int] = Field(default_factory=list)
     custom: list[CustomQ] = Field(default_factory=list)
     shuffle: bool = True
-    show_answers: Literal['after_close', 'after_submit', 'never'] = 'after_close'
+    show_answers: Literal['after_close', 'after_submit', 'never', 'teacher'] = 'after_close'
     penalty: Literal[0, 3, 4] = 0
     targets: list[ExamTarget] = Field(min_length=1, max_length=60)
     allow_repeat: bool = False                  # bilərəkdən təkrar – müəllim təsdiqləyib
@@ -719,3 +720,35 @@ def merge_resend_batches(bind) -> int:
         t['batch'] = s['batch']
         merged += 1
     return merged
+
+
+def _release_batch(db: Session, user: User, batch_id: int, body, release: bool) -> dict:
+    from .tasks import release_answers
+    b, access = _batch(db, user, batch_id)
+    n, missing = 0, []
+    for t in _tasks(db, b):
+        if access != 'full' and db.get(TeachingAssignment, t.assignment_id).teacher_id != user.id:
+            continue
+        ids = body.student_ids if body else None
+        if ids:                                        # yalnız bu tapşırığın şagirdləri (başqa sinfinkilər səssiz atlanır)
+            mine = {s.id for s in roster(db, db.get(TeachingAssignment, t.assignment_id))}
+            ids = [i for i in ids if i in mine]
+            if not ids:
+                continue
+        r = release_answers(db, t, ids, release)
+        n += r['released' if release else 'withdrawn']
+        missing += r['not_submitted']
+    audit(db, user, 'update', 'test_batch', batch_id, **{'release_answers' if release else 'withdraw_answers': n})
+    db.commit()
+    return {'released' if release else 'withdrawn': n, 'not_submitted': sorted(missing)}
+
+
+@router.post('/{batch_id}/release-answers')
+def release_batch_answers(batch_id: int, body: ReleaseIn | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Düzgün cavabları paketin öz siniflərimdəki şagirdlərinə göndər (show_answers='teacher'); student_ids yoxdursa – təhvil verənlərin hamısına."""
+    return _release_batch(db, user, batch_id, body, True)
+
+
+@router.delete('/{batch_id}/release-answers')
+def withdraw_batch_answers(batch_id: int, body: ReleaseIn | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+    return _release_batch(db, user, batch_id, body, False)

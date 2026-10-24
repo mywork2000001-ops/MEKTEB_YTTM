@@ -193,7 +193,7 @@ class TaskIn(BaseModel):
     bank_ids: list[int] = Field(default_factory=list)
     custom: list[CustomQ] = Field(default_factory=list)
     shuffle: bool = True
-    show_answers: Literal['after_close', 'after_submit', 'never'] = 'after_close'
+    show_answers: Literal['after_close', 'after_submit', 'never', 'teacher'] = 'after_close'
     student_ids: list[int] | None = None
 
     @model_validator(mode='after')
@@ -421,6 +421,7 @@ def task_results(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
                      if a and a.submitted_at and a.total else None,
                      'level': None if sinaq or not a or not a.submitted_at or not a.total else level(apct(a)),
                      'solution_at': aware(a.solution_at) if a and a.solution_key and a.solution_at else None,
+                     'answers_released_at': aware(a.answers_released_at) if a and a.answers_released_at else None,
                      'mistake_work': mistake_work_of(db, t, s.id, a)})
     done = [a for a in atts.values() if a.submitted_at]
     per_q = []
@@ -752,7 +753,7 @@ class TaskPatch(BaseModel):
     duration_min: TestMinutes | None = None
     unlimited_deadline: bool = False             # True – son tarix yoxdur (closes_at = NO_DEADLINE)
     shuffle: bool | None = None
-    show_answers: Literal['after_close', 'after_submit', 'never'] | None = None
+    show_answers: Literal['after_close', 'after_submit', 'never', 'teacher'] | None = None
     student_ids: list[int] | None = None
     all_students: bool = False                   # True – «hamı» (student_ids = None)
     questions: list[CustomQ] | None = None       # tam siyahı (yalnız heç kim başlamayıbsa)
@@ -903,3 +904,43 @@ def tidy_tasks(bind, at: dt.datetime | None = None) -> dict:
                 bind.execute(sa.text('DELETE FROM test_batches WHERE id = :b'), {'b': bid})
         out['deleted'] = len(drop)
     return out
+
+
+# ---------------------------------------------------------------- «cavabları müəllim göndərir» (show_answers='teacher')
+class ReleaseIn(BaseModel):
+    student_ids: list[int] | None = Field(None, max_length=500)       # boş / yox – təhvil verənlərin hamısı
+
+
+def release_answers(db: Session, t: OnlineTask, student_ids: list[int] | None, release: bool = True) -> dict:
+    """Təhvil vermiş cəhdlərdə düzgün cavabları açır / geri alır. Təhvil verməyənlər `not_submitted` siyahısındadır."""
+    atts = {a.student_id: a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id))}
+    ids = set(student_ids) if student_ids else None
+    n, missing = 0, []
+    if ids is None:
+        ids = {i for i, a in atts.items() if a.submitted_at}
+    for st in db.scalars(select(Student).where(Student.id.in_(ids or [0]))):
+        a = atts.get(st.id)
+        if not a or not a.submitted_at:
+            missing.append(st.full_name)
+            continue
+        a.answers_released_at = now() if release else None
+        n += 1
+    return {'released' if release else 'withdrawn': n, 'not_submitted': sorted(missing)}
+
+
+@router.post('/{ta_id}/{task_id}/release-answers')
+def release_answers_ep(ta_id: int, task_id: int, body: ReleaseIn | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+    t = _own_task(db, user, ta_id, task_id)
+    res = release_answers(db, t, body.student_ids if body else None)
+    audit(db, user, 'update', 'task', t.id, release_answers=res['released'])
+    db.commit()
+    return res
+
+
+@router.delete('/{ta_id}/{task_id}/release-answers')
+def withdraw_answers_ep(ta_id: int, task_id: int, body: ReleaseIn | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
+    t = _own_task(db, user, ta_id, task_id)
+    res = release_answers(db, t, body.student_ids if body else None, release=False)
+    audit(db, user, 'update', 'task', t.id, withdraw_answers=res['withdrawn'])
+    db.commit()
+    return res
