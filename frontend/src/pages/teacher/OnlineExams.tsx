@@ -5,7 +5,8 @@ import { useT, ml, tt } from '../../i18n'
 import { useEffect, useMemo, useState } from 'react'
 import { ApiError, del as apiDel, get, patch, post, put } from '../../api'
 import { MathText } from '../../MathText'
-import { AsyncBtn, Chips, ConfirmName, Drawer, ErrorBox, Field, fmt, Loading, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
+import { TEST_MINUTES } from '../../humanTime'
+import { AsyncBtn, Chips, ConfirmName, DurationSelect, Drawer, ErrorBox, Field, fmt, Loading, Pill, Seg, Stat, toast, Top, useLoad } from '../../ui'
 import { Link } from 'react-router-dom'
 import { esc, head, printDoc, table } from '../../print'
 import TaskEditor, { BankPicker, iso, localParts, OwnQuestion, toCustom, type Given, type Q, fromSnapshot } from './TaskEditor'
@@ -269,7 +270,7 @@ export function NewExam({ onClose, onDone, prefill }: { onClose: () => void; onD
           <div className="fg">
             <Field label={t('Ad')} full><input value={f.title} maxLength={200} placeholder={t('məs. Buraxılış sınağı №1')} onChange={e => setF({ ...f, title: e.target.value })} /></Field>
             <label className="check full"><input type="checkbox" checked={f.unl} onChange={e => setF({ ...f, unl: e.target.checked })} /> {t('Müddətsiz (taymer və son tarix yoxdur)')}</label>
-            {!f.unl && <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>}
+            {!f.unl && <Field label={t('Həll müddəti')}><DurationSelect unit="min" options={TEST_MINUTES} value={f.duration} onChange={v => setF({ ...f, duration: v })} /></Field>}
             <Field label={t('Bal hesabı')}><select value={f.penalty} onChange={e => setF({ ...f, penalty: e.target.value })}>{PENALTY.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}</select></Field>
             <Field label={t('Düzgün cavablar görünsün')} full><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
               <option value="after_close">{t('sınaq bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvil verdikdən dərhal sonra')}</option><option value="never">{t('heç vaxt')}</option></select></Field>

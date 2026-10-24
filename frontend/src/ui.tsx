@@ -5,6 +5,7 @@ import { ICONS } from './icons-data'
 import { ApiError } from './api'
 import { getLang, tt, useT } from './i18n'
 import { docCtx } from './doccontext'
+import { spanHours, spanMinutes } from './humanTime'
 
 export function Icon({ name, className = 'ico' }: { name: string; className?: string }) {
   return <svg className={className} viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: ICONS[name] || '' }} />
@@ -145,6 +146,20 @@ export function Seg<T extends string>({ value, options, onChange, label }: { val
       {options.map(([v, l]) => <button key={v} type="button" aria-pressed={v === value} onClick={() => onChange(v)}>{tt(l)}</button>)}
     </div>
   )
+}
+
+/** Müddət seçimi sözlə (rəqəm sahəsi yox): «bir dərs (45 dəq)», «iki saat», «iki gün». Cari dəyər siyahıda yoxdursa – «N dəq/saat» kimi əlavə olunur. */
+export function DurationSelect({ value, onChange, unit, options, extra }: {
+  value: number; onChange: (v: number) => void; unit: 'min' | 'hours'; options: number[]; extra?: [number, string][]
+}) {
+  useT()   // dil dəyişəndə yenilənsin
+  const lang = getLang()
+  const lab = (v: number) => unit === 'min' ? spanMinutes(v, lang) : spanHours(v, lang)
+  const rows: [number, string][] = options.map(v => [v, lab(v)])
+  for (const [v, l] of extra || []) { const i = rows.findIndex(r => r[0] === v); if (i >= 0) rows[i] = [v, `${l} (${lab(v)})`]; else rows.push([v, `${l} (${lab(v)})`]) }
+  if (value && !rows.some(r => r[0] === value)) rows.push([value, lab(value)])
+  rows.sort((a, b) => a[0] - b[0])
+  return <select value={value} onChange={e => onChange(Number(e.target.value))}>{rows.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
 }
 
 export function Field({ label, hint, error, full, children }: { label: string; hint?: string; error?: string; full?: boolean; children: ReactNode }) {

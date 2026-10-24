@@ -1,8 +1,9 @@
 """Hər plan dərsinə avtomatik mövzu testi (sinif/qrupda «auto_tests» açıqdırsa).
 
 Bütün məntiq tək mühərrikdədir – app/plan_tests.py (docs/plan-testleri-skripti-promtu.md): bu gün mövzusu bitən dərslər üçün
-`assign(..., d, d, apply=True)`. Test: açılır dərsin sonunda, bağlanır ertəsi gün 22:00, 45 dəqiqə, sualların sırası qarışıq,
-cavablar bağlanandan sonra, nəticə formativ jurnala. Mənbə: müəllimin seçimi → «Test toplusu» (P007) → sinfə görə bank
+`assign(..., d, d, apply=True)`. Test: açılır dərsin sonunda, defoltda müddətsiz (son tarix və taymer yoxdur; close_days/duration
+verilsə – dərsdən N gün sonra 22:00 / taymerlə), sualların sırası qarışıq, cavablar müddətsizdə təhvildən dərhal sonra, müddətlidə
+bağlanandan sonra, nəticə formativ jurnala. Mənbə: müəllimin seçimi → «Test toplusu» (P007) → sinfə görə bank
 (GradeMatcher). Bir mövzuya bir test; KSQ/BSQ, şübhəli uyğunluq və artıq testi olan mövzuya yaradılmır."""
 from __future__ import annotations
 

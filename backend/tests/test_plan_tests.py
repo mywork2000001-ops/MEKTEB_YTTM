@@ -90,6 +90,7 @@ def test_apply_twice_no_duplicates_and_times(world, day):
     with S() as db:
         t = db.query(OnlineTask).one()
         assert t.duration_min == 0 and t.closes_at.year == 2100 and t.kind == 'movzu' and t.journal_auto and len(t.questions) == 15 and t.shuffle
+        assert t.show_answers == 'after_submit'                   # müddətsiz mövzu testi: izah təhvildən dərhal sonra
         pl = db.get(PlanLesson, t.plan_lesson_id)
         assert pl.topic == 'Kvadrat tənliklər'
         assert db.query(AuditLog).filter_by(entity='plan_tests').count() == 1
@@ -126,7 +127,7 @@ def test_missing_mode(world, day):
         t = db.query(OnlineTask).filter_by(plan_lesson_id=db.query(PlanLesson).filter_by(assignment_id=ta, seq=1).one().id).one()
         assert t.opens_at.replace(tzinfo=None) == dt.datetime(2026, 10, 19, 9, 0)
         assert t.closes_at.replace(tzinfo=None) == dt.datetime(2026, 10, 22, 18, 0)           # 22:00 Bakı = 18:00 UTC
-        assert t.duration_min == 45
+        assert t.duration_min == 45 and t.show_answers == 'after_close'     # müddətli test: dəyişmir
 
 
 def test_low_grade_uses_own_bank_and_pending(world, day):
