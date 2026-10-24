@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import staff
+from ..domain.exam_lang import default_ui_language
 from ..domain.rules import level
 from ..models import GroupMember, Role, SchoolClass, Student, User
 from ..security import hash_password, make_qr_token, new_pin, pin_decrypt, pin_encrypt
@@ -86,6 +87,11 @@ def _class_for_write(db: Session, user: User, class_id: int) -> SchoolClass:
     return c
 
 
+def _ui_lang(db: Session, s: Student) -> str:
+    """Yeni hesabın interfeys dili: rus sektoru sinfində 'ru' (mövcud hesablara toxunulmur)."""
+    return default_ui_language(db, db.get(SchoolClass, s.class_id))
+
+
 def _dup(db: Session, school_id: int, name: str, birth: dt.date | None, exclude: int | None = None):
     st = select(Student, SchoolClass.name).join(SchoolClass, SchoolClass.id == Student.class_id).where(
         Student.school_id == school_id, func.lower(Student.full_name) == name.lower())
@@ -137,7 +143,8 @@ def create_student(body: StudentIn, user: User = Depends(settings_unlocked), db:
         code = next_portal_code(db, c, attempt)
         try:
             with db.begin_nested():
-                acc = User(role=Role.student, login=code, password_hash=hash_password(pin), full_name=name, school_id=sid)
+                acc = User(role=Role.student, login=code, password_hash=hash_password(pin), full_name=name, school_id=sid,
+                           language=default_ui_language(db, c))
                 db.add(acc)
                 db.flush()
                 s = Student(school_id=sid, created_by=user.id, portal_code=code, user_id=acc.id, initial_pin=pin_encrypt(pin),
@@ -231,7 +238,7 @@ def reset_pin(sid_: int, body: PinIn | None = None, user: User = Depends(setting
     pin = body.pin if body and body.pin else new_pin()
     acc = db.get(User, s.user_id) if s.user_id else None
     if acc is None:
-        acc = User(role=Role.student, login=s.portal_code, full_name=s.full_name, school_id=s.school_id,
+        acc = User(role=Role.student, login=s.portal_code, full_name=s.full_name, school_id=s.school_id, language=_ui_lang(db, s),
                    password_hash='')
         db.add(acc)
         db.flush()
@@ -323,7 +330,7 @@ def reset_class_pins(cid: int, only_missing: bool = False, user: User = Depends(
         pin = new_pin()
         acc = db.get(User, s.user_id) if s.user_id else None
         if acc is None:
-            acc = User(role=Role.student, login=s.portal_code, full_name=s.full_name, school_id=s.school_id,
+            acc = User(role=Role.student, login=s.portal_code, full_name=s.full_name, school_id=s.school_id, language=_ui_lang(db, s),
                        password_hash='')
             db.add(acc)
             db.flush()
@@ -358,7 +365,7 @@ def login_sheets_all(fill_missing: bool = True, user: User = Depends(settings_un
             if fill_missing and pin is None and (acc is None or _pin_unknown(db, s)):
                 pin = new_pin()
                 if acc is None:
-                    acc = User(role=Role.student, login=s.portal_code, full_name=s.full_name, school_id=s.school_id,
+                    acc = User(role=Role.student, login=s.portal_code, full_name=s.full_name, school_id=s.school_id, language=_ui_lang(db, s),
                                password_hash='')
                     db.add(acc)
                     db.flush()

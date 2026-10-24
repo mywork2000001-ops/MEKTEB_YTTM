@@ -264,6 +264,9 @@ function Scores({ ta, examId, initAppeals = false, onSinaq, onClose }: { ta: MyL
             <AsyncBtn className={`btn sm${d.exam.send_on_scan ? ' primary' : ''}`} title={tt('Kart skan olunub qiymətləndirilən kimi həmin şagirdə nəticə paketi açılır. Eyni imtahan başqa sinifdə hələ keçirilməyibsə bloklanır.')}
               onClick={async () => { const x = d.exam; await patch(`/api/exams/${ta.id}/${examId}`, { kind: x.kind, no: x.no, semester: x.semester, date: x.date, max_points: x.max_points, items: x.items, title: x.title, send_on_scan: !x.send_on_scan }); reload() }}>
               {d.exam.send_on_scan ? '☑' : '☐'} {tt('Skan olunan kimi şagirdə göndər')}</AsyncBtn>
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }} title={tt('Şagirdlərin interfeys dili vərəqə təsir etmir')}>{tt('Yazılı dil')}
+              <select value={d.exam.language || ''} onChange={async e => { const x = d.exam; await patch(`/api/exams/${ta.id}/${examId}`, { kind: x.kind, no: x.no, semester: x.semester, date: x.date, max_points: x.max_points, items: x.items, title: x.title, language: e.target.value || null }); reload() }}>
+                <option value="">{tt('Sinfin qaydası')}</option><option value="az">{tt('Azərbaycan dili')}</option><option value="ru">{tt('Rus dili')}</option><option value="az_ru">{tt('İkidilli (AZ + RU)')}</option></select></label>
           </div>
           {d.rows.some((r: any) => r.online || r.paper) && <div className="row" style={{ marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
             <AsyncBtn className="btn sm" onClick={async () => { await put(`/api/exams/${ta.id}/${examId}/choice`, { chosen: 'max' }); reload() }}

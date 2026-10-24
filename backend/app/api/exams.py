@@ -40,6 +40,7 @@ class ExamIn(BaseModel):
     extra_of: int | None = None                    # əlavə KSQ/BSQ: əsas imtahanın id-si
     extra_students: list[int] | None = None        # əlavə imtahan: yalnız bu şagirdlər (None – bütün sinif)
     send_on_scan: bool | None = None               # «skan olunan kimi şagirdə göndər» (None – dəyişmir / yeni imtahanda söndürülü)
+    language: Literal['az', 'ru', 'az_ru'] | None = None   # imtahanın öz yazılı dili (istisna); None – sinfin qaydası
 
     @model_validator(mode='after')
     def _max(self):
@@ -59,7 +60,7 @@ def exam_out(e: Exam) -> dict:
             'extra_of': e.extra_of, 'extra_seq': e.extra_seq or 0, 'extra_students': e.extra_students, 'label': exam_label(e),
             'results_published_at': e.results_published_at, 'appeal_until': e.appeal_until,
             'online_task_id': e.online_task_id, 'batch_id': e.batch_id, 'to_journal': e.to_journal, 'variant_mode': e.variant_mode,
-            'send_on_scan': bool(e.send_on_scan)}
+            'send_on_scan': bool(e.send_on_scan), 'language': e.language}
 
 
 def _exam(db: Session, ta_id: int, exam_id: int) -> Exam:
@@ -148,7 +149,7 @@ def create_exam(ta_id: int, body: ExamIn, user: User = Depends(staff), db: Sessi
     e = Exam(extra_of=body.extra_of, extra_seq=seq, extra_students=sorted(set(body.extra_students)) if body.extra_students is not None else None,
              assignment_id=ta.id, kind=body.kind, no=body.no, semester=body.semester, date=body.date,
              max_points=body.max_points, items=[i.model_dump() for i in body.items] if body.items else None,
-             title=body.title, send_on_scan=bool(body.send_on_scan))
+             title=body.title, send_on_scan=bool(body.send_on_scan), language=body.language)
     db.add(e)
     db.flush()
     audit(db, user, 'create', 'exam', e.id, kind=e.kind, no=e.no, extra_seq=seq)
@@ -180,6 +181,8 @@ def update_exam(ta_id: int, exam_id: int, body: ExamIn, user: User = Depends(sta
         e.extra_students = sorted(set(body.extra_students)) if body.extra_students is not None else None
     if body.send_on_scan is not None:
         e.send_on_scan = body.send_on_scan
+    if 'language' in body.model_fields_set:                # göndərilməyibsə – dəyişmir; null – «sinfin qaydası»
+        e.language = body.language
     audit(db, user, 'update', 'exam', e.id)
     db.commit()
     return exam_out(e)
@@ -1007,7 +1010,8 @@ def print_variants(ta_id: int, exam_id: int, students: str | None = None, blank:
                    db: Session = Depends(get_db)):
     """Çap üçün: hər şagirdə bir A4 (iki üz) – suallar şagirdin dilində (yoxdursa AZ), cavab kartı üçün imzalı QR; müəllim açarı.
     Düzgün cavablar yalnız açarda (vərəqdə yox). students="5,7" – yalnız bu şagirdlərin vərəqi (məs. köçürmə şübhəsindən sonra)."""
-    from ..domain.ksq_card import key_value, pick_lang, qr_payload, variant_rev
+    from ..domain.exam_lang import exam_lang, missing_translations, render_question
+    from ..domain.ksq_card import key_value, qr_payload, variant_rev
     from ..models import now as _now
     from ..models import SchoolClass, Student
     from .lessonplans import header_school
@@ -1027,27 +1031,28 @@ def print_variants(ta_id: int, exam_id: int, students: str | None = None, blank:
         if len(sig) != 1:
             raise HTTPException(409, 'Boş forma yalnız «hamıya eyni suallar» olan işdə mümkündür')
         from ..domain.ksq_card import BLANK_CODE, blank_qr
+        mode = exam_lang(db, e, db.get(SchoolClass, ta.class_id))
         ex = {**exam_out(e), 'class_name': (db.get(SchoolClass, ta.class_id).name if db.get(SchoolClass, ta.class_id) else ''),
-              'subject': ta.subject, 'school': header_school(user), 'teacher': user.full_name, 'label': exam_label(e)}
+              'subject': ta.subject, 'school': header_school(user), 'teacher': user.full_name, 'label': exam_label(e), 'lang': mode}
         qs = sorted(vs[0].questions, key=lambda q: q['slot'])
+        miss = missing_translations(qs, mode)
+        ex.update(missing_translations=len(miss), missing_detail=[{'full_name': '', 'code': BLANK_CODE, 'slots': miss}] if miss else [])
         return {'exam': ex, 'key': [], 'sheets': [{
-            'student_id': 0, 'full_name': '', 'code': BLANK_CODE, 'lang': 'az', 'qr': blank_qr(e.id),
-            'questions': [{'slot': q['slot'], 'kind': q['kind'], 'points': q['points'], 'text': pick_lang(q.get('text'), 'az'),
-                           'options': [pick_lang(o, 'az') for o in q.get('options') or []] if q['kind'] == 'mcq' else None,
-                           'image': q.get('image')} for q in qs]}]}
+            'student_id': 0, 'full_name': '', 'code': BLANK_CODE, 'lang': mode, 'qr': blank_qr(e.id),
+            'questions': [_sheet_q(q, mode) for q in qs]}]}
     studs = {s.id: s for s in db.scalars(select(Student).where(Student.id.in_([v.student_id for v in vs])))}
-    langs = {u.id: u.language for u in db.scalars(select(User).where(User.id.in_([s.user_id for s in studs.values() if s.user_id] or [0])))}
     cls = db.get(SchoolClass, ta.class_id)
-    sheets, key = [], []
+    mode = exam_lang(db, e, cls)           # dil sinfin/imtahanın qaydasından – şagirdin interfeys dili vərəqə təsir etmir
+    sheets, key, miss_detail = [], [], []
     for v in vs:
         st = studs.get(v.student_id)
-        lang = langs.get(st.user_id, 'az') if st and st.user_id else 'az'
         qs = sorted(v.questions, key=lambda q: q['slot'])
-        sheets.append({'student_id': v.student_id, 'full_name': st.full_name if st else '—', 'code': v.code, 'lang': lang,
+        miss = missing_translations(qs, mode)
+        if miss:
+            miss_detail.append({'full_name': st.full_name if st else '—', 'code': v.code, 'slots': miss})
+        sheets.append({'student_id': v.student_id, 'full_name': st.full_name if st else '—', 'code': v.code, 'lang': mode,
                        'qr': qr_payload(e.id, v.student_id, f'{v.code}~{variant_rev(v.questions)}'),   # kart variantın versiyasına bağlı
-                       'questions': [{'slot': q['slot'], 'kind': q['kind'], 'points': q['points'], 'text': pick_lang(q.get('text'), lang),
-                                      'options': [pick_lang(o, lang) for o in q.get('options') or []] if q['kind'] == 'mcq' else None,
-                                      'image': q.get('image')} for q in qs]})   # altmövzu şagird vərəqində yoxdur (açarda var)
+                       'questions': [_sheet_q(q, mode) for q in qs]})   # altmövzu şagird vərəqində yoxdur (açarda var)
         key.append({'code': v.code, 'full_name': st.full_name if st else '—',      # bank ünvanı (ref) yalnız müəllim açarında – şagird vərəqində yox
                     'answers': [{'slot': q['slot'], 'value': key_value(q), 'points': q['points'], 'topic': q.get('topic_actual') or q.get('topic'),
                                  'ref': (ref_of(db, q) or {}).get('text')} for q in qs]})
@@ -1055,8 +1060,17 @@ def print_variants(ta_id: int, exam_id: int, students: str | None = None, blank:
         v.printed_at = v.printed_at or _now()                 # çap olunub – fon işi bu variantlara toxunmur
     db.commit()
     return {'exam': {**exam_out(e), 'class_name': cls.name if cls else '', 'subject': ta.subject, 'school': header_school(user),
-                     'teacher': user.full_name, 'label': exam_label(e)},
+                     'teacher': user.full_name, 'label': exam_label(e), 'lang': mode,
+                     'missing_translations': sum(len(m['slots']) for m in miss_detail), 'missing_detail': miss_detail},
             'sheets': sheets, 'key': key}
+
+
+def _sheet_q(q: dict, mode: str) -> dict:
+    """Vərəqdə sual: mətn/variantlar imtahan dilində (az_ru – text_sub/options_sub altda RU)."""
+    from ..domain.exam_lang import render_question
+    r = render_question(q, mode)
+    return {'slot': q['slot'], 'kind': q['kind'], 'points': q['points'], 'text': r['text'], 'options': r['options'],
+            'text_sub': r['text_sub'], 'options_sub': r['options_sub'], 'image': q.get('image')}
 
 
 class VariantsIn(BaseModel):

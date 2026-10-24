@@ -112,6 +112,9 @@ class SchoolClass(Base, Archivable):
     exam_date: Mapped[dt.date | None] = mapped_column(Date)              # buraxılış/qəbul imtahanı (sayğac)
     bells: Mapped[dict | None] = mapped_column(JSON)                     # sinfin öz zəngi (XI peşə)
     homeroom_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'))   # sinif rəhbəri (yalnız bütöv sinif)
+    # sektor (sinif hansı dildə oxuyur): az | ru (NULL = az); yazılı imtahanın dili: sector | az | ru | az_ru (NULL = sector) – domain/exam_lang.py
+    sector: Mapped[str | None] = mapped_column(String(4))
+    exam_language: Mapped[str | None] = mapped_column(String(8))
     created_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
     __table_args__ = (UniqueConstraint('school_id', 'year_id', 'name'),)
     students: Mapped[list[Student]] = relationship(back_populates='cls', foreign_keys='Student.class_id')
@@ -460,6 +463,8 @@ class Exam(Base):
     variant_mode: Mapped[str | None] = mapped_column(String(10))
     # «Skan olunan kimi şagirdə göndər»: kart qiymətləndirilən kimi həmin şagirdə nəticə paketi açılır (docs/ksq-kagiz-netice-paketi-promtu.md §2.2)
     send_on_scan: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # imtahanın öz yazılı dili (istisna): az | ru | az_ru; NULL – sinfin qaydası (domain/exam_lang.py)
+    language: Mapped[str | None] = mapped_column(String(8))
     __table_args__ = (UniqueConstraint('assignment_id', 'kind', 'semester', 'no', 'extra_seq'),)
 
 

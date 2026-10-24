@@ -18,9 +18,13 @@ def exam_card(db: Session, e: Exam, sid: int) -> dict | None:
     if v is None:
         return None
     from .appeals import ref_of, topic_of
+    from .domain.exam_lang import exam_lang, flatten_question
+    mode = exam_lang(db, e)                  # sual/variant mətni imtahanın dilində (interfeys sözləri şagirdin dilində – frontend)
     qs = sorted(v.questions, key=lambda q: q['slot'])
-    expl = {b.id: b.explanation for b in db.scalars(select(BankQuestion).where(BankQuestion.id.in_([q['bank_id'] for q in qs if q.get('bank_id')] or [0])))}
-    questions = [{'slot': q['slot'], 'kind': q['kind'], 'text': q.get('text'), 'options': q.get('options') if q['kind'] == 'mcq' else None,
+    flat = {q['slot']: flatten_question(q, mode) for q in qs}
+    expl ={b.id: b.explanation for b in db.scalars(select(BankQuestion).where(BankQuestion.id.in_([q['bank_id'] for q in qs if q.get('bank_id')] or [0])))}
+    questions = [{'slot': q['slot'], 'kind': q['kind'], 'text': flat[q['slot']].get('text'),
+                  'options': flat[q['slot']].get('options') if q['kind'] == 'mcq' else None,
                   'image': q.get('image'), 'key': key_value(q), 'points': q['points'], 'explanation': expl.get(q.get('bank_id')),
                   'topic': topic_of(db, q), 'ref': (ref_of(db, q) or {}).get('text'), 'topic_no': (ref_of(db, q) or {}).get('n')} for q in qs]
     annulled = {it['n'] for it in (e.items or []) if it.get('annulled')}
@@ -37,7 +41,7 @@ def exam_card(db: Session, e: Exam, sid: int) -> dict | None:
     final = {'points': score.points if score and not score.absent else None, 'chosen': score.chosen if score else None,
              'grade': grade_from_points(score.points, e.max_points) if score and score.points is not None and not score.absent else None}
     return {'exam': {'id': e.id, 'kind': e.kind, 'no': e.no, 'extra_seq': e.extra_seq or 0, 'semester': e.semester, 'date': e.date,
-                     'max_points': e.max_points}, 'code': v.code, 'questions': questions, 'sources': sources, 'final': final}
+                     'max_points': e.max_points, 'lang': mode}, 'code': v.code, 'questions': questions, 'sources': sources, 'final': final}
 
 
 # ---------------------------------------------------------------- nəticə paketi (docs/ksq-kagiz-netice-paketi-promtu.md)
@@ -98,7 +102,7 @@ def student_package(db: Session, e: Exam, sid: int, lang: str | None, published:
     total = {'points': pts, 'max': e.max_points, 'pct': round(pts * 100 / e.max_points, 1) if pts is not None and e.max_points else None,
              'grade': src['grade']} if published else None
     return {'exam': {'id': e.id, 'kind': e.kind, 'no': e.no, 'extra_seq': e.extra_seq or 0, 'semester': e.semester, 'date': e.date,
-                     'title': e.title, 'subject': ta.subject if ta else None},
+                     'title': e.title, 'subject': ta.subject if ta else None, 'lang': base['exam'].get('lang')},
             'code': base['code'],
             'scan': {'scan_id': info['scan_id'], 'image': info['image'], 'online': info['online'], 'read_by': info['source'],
                      'source': info['source'], 'at': info['at']},

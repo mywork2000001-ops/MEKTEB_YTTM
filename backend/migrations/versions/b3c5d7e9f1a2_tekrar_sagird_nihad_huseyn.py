@@ -18,8 +18,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    import sqlalchemy as sa
     from sqlalchemy.orm import Session
     from app.api.students import merge_named
+    if op.get_bind().execute(sa.text('SELECT 1 FROM students LIMIT 1')).first() is None:
+        return        # boş baza (yeni quraşdırma/test): birləşdiriləsi şagird yoxdur; ORM sorğusu sonrakı miqrasiyaların sütunlarını (classes.sector…) görmür
     db = Session(bind=op.get_bind())
     log = merge_named(db, [({'Nihad'}, {11: True, 9: False}), ({'Hüseyn', 'Əhmədov'}, {10: True, 11: False})])
     db.flush()

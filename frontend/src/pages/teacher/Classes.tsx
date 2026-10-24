@@ -12,7 +12,8 @@ import ClassListPrint from './ClassListPrint'
 import { useT } from '../../i18n'
 
 type Cls = { id: number; name: string; code: string; kind: string; parent_id: number | null; students: number; can_open: boolean; split_with: string | null
-  teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number } | null; exam_date: string | null; homeroom?: { id: number; name: string } | null }
+  teachers: { id: number; name: string; subject: string }[]; mine: { subject: string; weekly_hours: number } | null; exam_date: string | null; homeroom?: { id: number; name: string } | null
+  sector_eff?: 'az' | 'ru'; exam_lang_eff?: 'az' | 'ru' | 'az_ru' }
 type Stud = { id: number; full_name: string; birth_date: string | null; gender: string | null; portal_code: string; class_name: string
   score_language: number | null; score_math: number | null; score_foreign: number | null; score_total: number | null; level: string | null; guide_seen?: boolean }
 const LV: Record<string, string> = { 'Yüksək': 'Güclü', 'Orta': 'Orta', 'Zəif': 'Zəif' }
@@ -44,7 +45,10 @@ export default function Classes() {
         <div className="grid g3" style={{ marginBottom: 20 }}>
           {mine.filter(c => c.kind !== 'qrup').concat(mine.filter(c => c.kind === 'qrup')).map(c => (
             <button key={c.id} className="panel cls" style={{ textAlign: 'left', cursor: 'pointer', outline: c.id === sel ? '2px solid var(--accent)' : undefined }} onClick={() => setSel(c.id === sel ? null : c.id)}>
-              <div className="cls-head"><div className="cls-title"><span className="badge" title={t('Sinif ID-si')}>{c.code}</span><div><b>{c.name}</b><div className="small muted">{kindLabel(c)}{c.split_with ? ' · ' + t('paralel:') + ' ' + c.split_with : ''}</div></div></div></div>
+              <div className="cls-head"><div className="cls-title"><span className="badge" title={t('Sinif ID-si')}>{c.code}</span><div><b>{c.name}</b><div className="small muted">{kindLabel(c)}{c.split_with ? ' · ' + t('paralel:') + ' ' + c.split_with : ''}</div>
+                {(c.sector_eff === 'ru' || (c.exam_lang_eff && c.exam_lang_eff !== (c.sector_eff || 'az'))) && <div style={{ marginTop: 3 }}>
+                  {c.sector_eff === 'ru' && <span className="badge">{t('RU sektoru')}</span>}
+                  {c.exam_lang_eff && c.exam_lang_eff !== (c.sector_eff || 'az') && <span className="badge" style={{ marginLeft: 4 }}>{t('yazılı: {lang}', { lang: c.exam_lang_eff === 'az_ru' ? 'AZ+RU' : c.exam_lang_eff.toUpperCase() })}</span>}</div>}</div></div></div>
               <dl className="cls-meta">
                 <dt>{t('Şagird')}</dt><dd>{c.students}</dd>
                 {c.homeroom && <><dt>{t('Rəhbər')}</dt><dd>{c.homeroom.name}</dd></>}

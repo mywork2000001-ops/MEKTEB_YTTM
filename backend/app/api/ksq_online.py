@@ -33,8 +33,10 @@ def _exam(db: Session, user: User, ta_id: int, exam_id: int) -> tuple:
     return ta, e
 
 
-def _questions(v: ExamVariant) -> list[dict]:
-    return [{k: q[k] for k in Q_FIELDS if k in q} for q in sorted(v.questions, key=lambda q: q['slot'])]
+def _questions(v: ExamVariant, mode: str = 'az') -> list[dict]:
+    """Onlayn tapşırığın sualları: mətn imtahan dilində (şagirdin interfeys dili təsir etmir) – domain/exam_lang.py."""
+    from ..domain.exam_lang import flatten_question
+    return [{k: q[k] for k in Q_FIELDS if k in q} for q in (flatten_question(x, mode) for x in sorted(v.questions, key=lambda q: q['slot']))]
 
 
 def _tasks(db: Session, e: Exam) -> dict[int, OnlineTask]:
@@ -152,6 +154,8 @@ def send(ta_id: int, exam_id: int, body: SendIn, user: User = Depends(staff), db
     if closes <= now():
         raise HTTPException(400, 'Bağlanma vaxtı keçib')
     tasks, at = _tasks(db, e), now()
+    from ..domain.exam_lang import exam_lang
+    mode = exam_lang(db, e)
     title = f'{e.kind}-{e.no}' + (f' · {e.title}' if e.title else '')
     sent, updated, skipped = 0, 0, []
     for sid in picked:
@@ -165,7 +169,7 @@ def send(ta_id: int, exam_id: int, body: SendIn, user: User = Depends(staff), db
             continue
         if t is not None and a is None:              # hələ başlamayıb – vaxt və suallar yenilənir
             t.opens_at, t.closes_at, t.duration_min, t.shuffle = opens, closes, body.duration_min, body.shuffle
-            t.questions, t.title = _questions(variants[sid]), title
+            t.questions, t.title = _questions(variants[sid], mode), title
             updated += 1
             continue
         if t is not None:                            # yenidən göndər: köhnə onlayn cəhd silinir (nəticə skanın tarixçəsində qalır)
@@ -173,7 +177,7 @@ def send(ta_id: int, exam_id: int, body: SendIn, user: User = Depends(staff), db
             db.delete(t)
             db.flush()
         db.add(OnlineTask(assignment_id=ta.id, title=title, description=None, opens_at=opens, closes_at=closes,
-                          duration_min=body.duration_min, questions=_questions(variants[sid]), shuffle=body.shuffle,
+                          duration_min=body.duration_min, questions=_questions(variants[sid], mode), shuffle=body.shuffle,
                           show_answers='never', student_ids=[sid], created_by=user.id, kind='ksq', exam_id=e.id))
         sent += 1
     audit(db, user, 'create', 'ksq_online', e.id, sent=sent, updated=updated, skipped=len(skipped))
