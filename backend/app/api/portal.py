@@ -311,7 +311,7 @@ def _can_review(db: Session, t: OnlineTask, a: TaskAttempt | None, at: dt.dateti
 
 
 def _shown_grade(t: OnlineTask, a: TaskAttempt) -> int | None:
-    return None if t.kind in ('sinaq', 'ksq') else a.grade   # sınaq formativ qiymətə təsir etmir; KSQ – nəticəni müəllim açır
+    return None if t.kind in ('sinaq', 'ksq', 'tekrar') else a.grade   # təkrar testi qiymətsizdir; sınaq formativ qiymətə təsir etmir; KSQ – nəticəni müəllim açır
 
 
 @router.get('/tasks')

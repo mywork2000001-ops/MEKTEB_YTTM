@@ -30,4 +30,21 @@ def run(db: Session, day: dt.date | None = None) -> int:
         except Exception:                                  # bir sinifdəki xəta digərlərini saxlamasın
             log.exception('auto_tests: ta=%s', ta.id)
             db.rollback()
+    made += run_review(db, d)
+    return made
+
+
+def run_review(db: Session, day: dt.date | None = None) -> int:
+    """«Təkrar testləri» açarı açıq siniflərdə interval təkrar (14 / 42 gün, sinif ortası < 60%) – plan_tests.review_assign."""
+    from .plan_tests import review_assign, review_on
+    d = day or today()
+    made = 0
+    for ta in db.scalars(select(TeachingAssignment).where(TeachingAssignment.archived_at.is_(None))).all():
+        if not review_on(ta):
+            continue
+        try:
+            made += sum(1 for r in review_assign(db, [ta], d, apply=True).rows if r['created'])
+        except Exception:
+            log.exception('auto_tests review: ta=%s', ta.id)
+            db.rollback()
     return made

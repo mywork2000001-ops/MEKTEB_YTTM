@@ -8,7 +8,7 @@ import { useT } from '../../i18n'
 import type { MyLesson } from './common'
 
 type Row = { ta_id: number; class_name: string; date: string | null; seq: number; topic_no: string | null; topic: string; file: string | null
-  source: string | null; questions: number; status: string; reason: string; will_create: boolean; created: boolean }
+  source: string | null; questions: number; status: string; reason: string; will_create: boolean; created: boolean; warn?: string | null }
 type Report = { rows: Row[]; will_create: number; created: number; applied: boolean }
 
 export const STATUS_LABEL: Record<string, string> = { ok: 'Uyğun', weak: 'Şübhəli', none: 'Tapılmadı', pending: 'Gözlənilir', manual: 'Seçilib',
@@ -77,7 +77,8 @@ export default function AssignTests({ ta, lessons, onClose, onDone }: { ta: numb
             <thead><tr><th>{t('Sinif')}</th><th>{t('Tarix')}</th><th>№</th><th>{t('Mövzu')}</th><th>{t('Fayl')}</th><th>{t('Sual')}</th><th>{t('Status')}</th></tr></thead>
             <tbody>{rep.rows.map((r, i) => <tr key={i} title={t(r.reason)}>
               <td>{r.class_name}</td><td>{r.date ? fmtDate(r.date) : '—'}</td><td>{r.topic_no || r.seq}</td><td>{r.topic}</td><td>{r.file || '—'}</td><td>{r.questions || ''}</td>
-              <td><Pill tone={TONE[r.status]}>{r.created ? '✓ ' : ''}{t(STATUS_LABEL[r.status] || r.status)}</Pill> <span className="muted small">{t(r.reason)}</span></td></tr>)}</tbody>
+              <td><Pill tone={TONE[r.status]}>{r.created ? '✓ ' : ''}{t(STATUS_LABEL[r.status] || r.status)}</Pill> <span className="muted small">{t(r.reason)}</span>
+                {r.warn && <> <Pill tone="warn">⚠ {t('təkrar suallar: {n}', { n: r.warn.match(/\d+/)?.[0] ?? '' })}</Pill></>}</td></tr>)}</tbody>
           </table></div></>}
       </div>
     </Drawer>
