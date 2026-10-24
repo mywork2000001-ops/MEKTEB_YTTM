@@ -16,12 +16,13 @@ export default function Appeals() {
   // imtahan üzrə qrup (sıra serverdən: əvvəl gözləyənlər)
   const groups: { key: string; ex: any; list: any[] }[] = []
   for (const a of d?.appeals || []) {
-    const key = `${a.ta_id}-${a.exam.id}`
+    const key = `${a.kind === 'sinaq' ? 's' : 'e'}${a.ta_id}-${a.exam.id}`
     const g = groups.find(x => x.key === key)
     if (g) g.list.push(a); else groups.push({ key, ex: a.exam, list: [a] })
   }
   const title = (g: { ex: any; list: any[] }) => {
     const e = g.ex
+    if (g.list[0].kind === 'sinaq') return [e.class_name, t('Sınaq'), e.title].filter(Boolean).join(' · ')
     const name = e.kind === 'KSQ' || e.kind === 'BSQ' ? `${e.kind}-${e.no}` : (e.title || `${e.kind}-${e.no}`)
     const until = g.list[0].appeal_until
     return [e.class_name, name, e.date ? fmtDate(e.date) : '', until ? t('apelyasiya {d}-dək', { d: fmtDate(until) }) : ''].filter(Boolean).join(' · ')

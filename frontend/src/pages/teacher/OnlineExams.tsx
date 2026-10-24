@@ -10,7 +10,7 @@ import { AsyncBtn, Chips, ConfirmName, DurationSelect, Drawer, ErrorBox, Field, 
 import { Link } from 'react-router-dom'
 import { esc, head, printDoc, table } from '../../print'
 import TaskEditor, { BankPicker, iso, localParts, OwnQuestion, toCustom, type Given, type Q, fromSnapshot } from './TaskEditor'
-import { ResendToStudents, TaskActions } from './Tasks'
+import { FocusBadge, ResendToStudents, TaskActions } from './Tasks'
 import { PeriodBar, usePeriod } from '../../periods'
 import ExamSeriesPanel from './ExamSeries'
 import { azDT, noDeadline } from '../../ui'
@@ -24,7 +24,7 @@ type Exam = { id: number; title: string; subject: string; grade: number | null; 
   questions: number; mine: boolean; wrote: number; avg_pct: number | null; state: 'gözlənilir' | 'açıqdır' | 'bitib' }
 type Row = { student_id: number | null; full_name: string | null; class_name: string; task_id: number; status: 'yazıb' | 'yazmayıb' | 'yazır' | 'gözlənilir'
   correct: number | null; wrong: number | null; blank: number | null; points: number | null; pct: number | null; grade: number | null
-  place_all: number | null; place_class: number | null; retake: boolean; late?: boolean; answers_released_at?: string | null }
+  place_all: number | null; place_class: number | null; retake: boolean; late?: boolean; answers_released_at?: string | null; focus?: { n: number; ms: number } | null }
 type Res = { batch: { id: number; title: string; subject: string; grade: number | null; penalty: number; questions: number }
   summary: { students: number; wrote: number; avg_pct: number | null; max_pct: number | null; min_pct: number | null }
   classes: { task_id: number; ta_id: number; own: boolean; class_name: string; students: number; wrote: number; avg_pct: number | null; max_pct: number | null; place: number | null; state: string; opens_at: string; closes_at: string }[]
@@ -202,7 +202,7 @@ export function NewExam({ onClose, onDone, prefill }: { onClose: () => void; onD
   const [subject, setSubject] = useState('')
   const [common, setCommon] = useState(() => { const t = localParts(new Date().toISOString())[0]; return { d1: t, t1: '10:00', d2: t, t2: '12:00' } })
   const [rows, setRows] = useState<Record<number, TRow>>({})
-  const [f, setF] = useState({ title: prefill?.title || '', duration: 60, penalty: '0', shuffle: true, show: 'after_close', unl: true })
+  const [f, setF] = useState({ title: prefill?.title || '', duration: 90, penalty: '0', shuffle: true, show: 'after_close', unl: false })   // sınaq: defolt 90 dəqiqə (doxsan dəqiqə)
   const [qs, setQs] = useState<Q[]>(() => (prefill?.questions || []).map(s => fromSnapshot(s, 'b' + s.bank_id)))
   const [err, setErr] = useState<unknown>()
   const [busy, setBusy] = useState(false)
@@ -395,6 +395,13 @@ function Results({ id, onClose, onChange }: { id: number; onClose: () => void; o
               <button className="btn sm" disabled={!sel.length} onClick={() => release(sel)}>{t('Düzgün cavabları göndər (seçilənlərə)')}</button>
               <button className="btn sm" onClick={() => release(null)}>{t('Hamısına göndər')}</button>
               <button className="btn sm ghost" disabled={!sel.length} onClick={() => release(sel, true)}>{t('Göndərməyi geri al')}</button>
+              <button className="btn sm" disabled={!sel.length} title={t('Seçilmiş şagirdlərə sınağı yenidən göndər')} onClick={() => {
+                const picked = rows.filter(r => r.student_id && sel.includes(r.student_id))
+                const groups = [...new Set(picked.map(r => r.task_id))]
+                const c = groups.length === 1 ? d!.classes.find(k => k.task_id === groups[0]) || d!.classes.find(k => k.class_name === picked[0].class_name) : undefined
+                if (!c) { toast(t('Yenidən göndərmək üçün eyni sinifdən şagirdlər seçin')); return }
+                setRs({ ta: c.ta_id, task: c.task_id, ids: picked.map(r => r.student_id!) })
+              }}>{t('↻ Yenidən göndər')} ({sel.length})</button>
               <span className="small muted">{t('Hər şagird öz balını görür; sual-sual düzgün cavabları yalnız «müəllim göndərəndə» rejimində siz göndərirsiniz.')}</span>
             </div>)}
           {tab === 'rows' && (
@@ -407,6 +414,7 @@ function Results({ id, onClose, onChange }: { id: number; onClose: () => void; o
                     onChange={e => setSel(x => e.target.checked ? [...x, r.student_id!] : x.filter(y => y !== r.student_id))} />}</td>
                   <td className="r num"><b>{r.place_all ?? '—'}</b></td><td className="r num">{r.place_class ?? '—'}</td>
                   <td>{r.full_name ? <b>{r.full_name}</b> : <span className="muted">{name(r)}</span>}<span className="sub">{r.class_name}{r.retake ? (' · ' + t('təkrar cəhd')) : ''}{r.late ? (' · ' + t('sonradan yazıb')) : ''}{r.answers_released_at ? (' · ' + t('cavablar göndərilib · {d}', { d: dt(r.answers_released_at) })) : ''}</span>
+                    <FocusBadge f={r.focus} />
                     {r.student_id && (() => { const c = d.classes.find(k => k.task_id === r.task_id) || d.classes.find(k => k.class_name === r.class_name)
                       return c?.own ? <button className="btn sm ghost" style={{ padding: '0 6px', minHeight: 24 }} title={t('Bu şagirdə sınağı yenidən göndər')}
                         onClick={e => { e.stopPropagation(); setRs({ ta: c.ta_id, task: c.task_id, ids: [r.student_id!] }) }}>{t('↻ Yenidən göndər')}</button> : null })()}

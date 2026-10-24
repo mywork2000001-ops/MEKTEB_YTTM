@@ -19,7 +19,7 @@ from ..deps import require
 from ..domain.plan import view_range
 from ..domain.rules import grade_from_points, semester_grade, year_grade
 from ..models import (Attendance, Exam, ExamAppeal, ExamScore, GroupMember, HomeworkCheck, JournalEntry, Mark, OnlineTask, PlanLesson,
-                      Role, SchoolClass, Student, TaskAttempt, TeachingAssignment, User, now)
+                      Role, SchoolClass, Student, TaskAppeal, TaskAttempt, TeachingAssignment, User, now)
 from ..services import SCHOOL_TZ, journal_entries, plan_ctx, roster, taught_lesson, today
 from .plan import WEEKDAYS, bell
 from ..timing import attempt_deadline, is_unlimited, no_timer
@@ -494,12 +494,93 @@ def review(task_id: int, user: User = Depends(student_only), db: Session = Depen
     if not _can_review(db, t, a, now()):
         raise HTTPException(403, _L(user, 'Cavablar hələ açılmayıb', 'Ответы ещё не открыты', 'Answers are not open yet') if a and a.submitted_at else _L(user, 'Tapşırıq təhvil verilməyib', 'Задание не сдано', 'The task has not been submitted'))
     out = []
+    aps = {x.q_index: x for x in db.scalars(select(TaskAppeal).where(TaskAppeal.task_id == t.id, TaskAppeal.student_id == s.id))}
     for i in a.order:
         q = t.questions[i]
         given = (a.answers or {}).get(str(i))
+        ap = aps.get(i)
         out.append({**_public_q(q, i), 'given': given, 'ok': is_ok(t, a, i), 'correct': q.get('correct'),
-                    'answer': q.get('answer'), 'explanation': q.get('explanation')})
-    return {'title': t.title, 'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a), 'questions': out}
+                    'answer': q.get('answer'), 'explanation': q.get('explanation'),
+                    'appeal': {'id': ap.id, 'status': ap.status, 'reason': ap.reason, 'teacher_reply': ap.teacher_reply} if ap else None})
+    can_appeal = t.kind == 'sinaq' and now() <= _appeal_until(db, t, a)
+    return {'title': t.title, 'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a), 'questions': out,
+            'can_appeal': can_appeal, 'appeal_until': _appeal_until(db, t, a) if t.kind == 'sinaq' else None}
+
+
+# ---------------------------------------------------------------- imtahandan çıxma qeydi və sınaq apelyasiyası
+class FocusIn(BaseModel):
+    n: int = Field(ge=0, le=10000)                 # cəmi çıxma sayı (şagirdin brauzerindən)
+    ms: int = Field(0, ge=0, le=86_400_000)        # cəmi kənarda keçən müddət (ms)
+
+
+@router.post('/tasks/{task_id}/focus')
+def focus(task_id: int, body: FocusIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Test zamanı ekrandan/tətbiqdən çıxma sayğacı (başqa tətbiq, Gemini, «Circle to Search», tam ekrandan çıxış).
+    Sayğac yalnız artır; təhvildən sonra dəyişmir."""
+    s = me_student(db, user)
+    t = _task_for(db, s, task_id, user)
+    a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
+    if a is None:
+        raise HTTPException(404, _L(user, 'Cəhd tapılmadı', 'Попытка не найдена', 'Attempt not found'))
+    old = a.focus_log or {}
+    if a.submitted_at:
+        return {'n': old.get('n', 0), 'ms': old.get('ms', 0), 'closed': True}
+    a.focus_log = {'n': max(int(old.get('n', 0)), body.n), 'ms': max(int(old.get('ms', 0)), body.ms)}
+    db.commit()
+    return {**a.focus_log, 'closed': False}
+
+
+APPEAL_DAYS = 7
+
+
+def _appeal_from(db: Session, t: OnlineTask, a: TaskAttempt) -> dt.datetime:
+    """Apelyasiya müddəti cavablar açılandan başlayır: müddətsiz/«təhvildən sonra» – təhvil, əks halda paketin bağlanması."""
+    if t.show_answers == 'teacher' and a.answers_released_at:        # müəllim cavabları göndərib – müddət həmin andan
+        return aware(a.answers_released_at)
+    if t.show_answers == 'after_submit' or is_unlimited(t):
+        return aware(a.submitted_at)
+    return review_opens_at(db, t)
+
+
+def _appeal_until(db: Session, t: OnlineTask, a: TaskAttempt) -> dt.datetime:
+    return _appeal_from(db, t, a) + dt.timedelta(days=APPEAL_DAYS)
+
+
+class TaskAppealIn(BaseModel):
+    q_index: int = Field(ge=0)
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=1000)]
+
+
+@router.post('/tasks/{task_id}/appeals')
+def create_task_appeal(task_id: int, body: TaskAppealIn, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Sınaqda sual üzrə apelyasiya: təhvil verilib, cavablar açılıb (`_can_review`), 7 gün ərzində; bir sual – bir apelyasiya."""
+    s = me_student(db, user)
+    t = _task_for(db, s, task_id, user)
+    if t.kind != 'sinaq':
+        raise HTTPException(400, _L(user, 'Apelyasiya yalnız sınaqda olur', 'Апелляция возможна только в пробном экзамене', 'Appeals are only available for mock exams'))
+    a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
+    at = now()
+    if not a or not a.submitted_at or not _can_review(db, t, a, at):
+        raise HTTPException(403, _L(user, 'Cavablar hələ açılmayıb', 'Ответы ещё не открыты', 'Answers are not open yet'))
+    if at > _appeal_until(db, t, a):
+        raise HTTPException(400, _L(user, 'Apelyasiya müddəti bitib', 'Срок подачи апелляции истёк', 'The appeal period has ended'))
+    if body.q_index >= len(t.questions) or body.q_index not in a.order:
+        raise HTTPException(404, _L(user, 'Sual tapılmadı', 'Вопрос не найден', 'Question not found'))
+    if db.scalar(select(TaskAppeal.id).where(TaskAppeal.task_id == t.id, TaskAppeal.student_id == s.id, TaskAppeal.q_index == body.q_index)):
+        raise HTTPException(409, _L(user, 'Bu sual üzrə apelyasiya artıq verilib', 'Апелляция по этому вопросу уже подана', 'An appeal for this question has already been submitted'))
+    q = t.questions[body.q_index]
+    given = (a.answers or {}).get(str(body.q_index))
+    key = q.get('correct') if q.get('kind') == 'mcq' else q.get('answer')
+    snap = {'text': q.get('text'), 'options': q.get('options'), 'image': q.get('image'), 'kind': q.get('kind'),
+            'answer': q.get('answer'), 'correct': q.get('correct'), 'explanation': q.get('explanation')}
+    ap = TaskAppeal(task_id=t.id, student_id=s.id, q_index=body.q_index, bank_id=q.get('bank_id'), q=snap,
+                    my_answer='' if given is None else str(given), correct_at_time='' if key is None else str(key), reason=body.reason)
+    db.add(ap)
+    db.flush()
+    from .common import audit
+    audit(db, user, 'create', 'task_appeal', ap.id, task_id=t.id, q_index=body.q_index)
+    db.commit()
+    return {'id': ap.id, 'status': ap.status}
 
 
 # ---------------------------------------------------------------- nəticələr və analitika
@@ -647,6 +728,13 @@ def notifications(user: User = Depends(student_only), db: Session = Depends(get_
             out.append({'key': f'extra-{n["id"]}', 'kind': 'məşğələ', 'title': f'{c["title"]} – {when} {n["start"]}',
                         'text': ' · '.join(n['topics']) or n['format'], 'link': '/extra',
                         'at': dt.datetime.combine(n['date'], dt.time.fromisoformat(n['start']), tzinfo=ZoneInfo(SCHOOL_TZ))})
+    for ap in db.scalars(select(TaskAppeal).where(TaskAppeal.student_id == s.id, TaskAppeal.status != 'open')):   # sınaq apelyasiyasına qərar
+        if ap.decided_at and at - aware(ap.decided_at) <= dt.timedelta(days=7):
+            ok = ap.status == 'accepted'
+            out.append({'key': f'tap-{ap.id}', 'kind': 'nəticə',
+                        'title': L('Apelyasiya qəbul edildi', 'Апелляция принята', 'Appeal accepted') if ok
+                        else L('Apelyasiya rədd edildi', 'Апелляция отклонена', 'Appeal rejected'),
+                        'text': ap.teacher_reply or '', 'link': '/tasks', 'at': aware(ap.decided_at)})
     db.commit()
     return sorted(out, key=lambda x: x['at'])
 

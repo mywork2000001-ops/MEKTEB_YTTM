@@ -405,3 +405,10 @@ body.exam-guard main{max-width:860px;margin:0 auto}
 .tab-grp{display:flex;flex-direction:column;flex:none}
 .tab-grp-lbl{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:0 14px 2px;opacity:.8}
 .tab-grp-row{display:flex;gap:4px}
+
+/* test rejimi: KaTeX, şəkil və variantlar da seçilmir; toxunuş işarəsi yoxdur (kopyalama / «Gemini» / «Circle to Search» çətinləşir) */
+body.exam-guard,body.exam-guard *{-webkit-tap-highlight-color:transparent}
+body.exam-guard .katex,body.exam-guard .katex *,body.exam-guard .q-opt,body.exam-guard .q-opt *,body.exam-guard .exam-q,body.exam-guard .exam-q *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+body.exam-guard .exam-q input,body.exam-guard .exam-q textarea{-webkit-user-select:text;user-select:text}
+body.exam-guard .exam-q ::selection{background:transparent}
+.exam-submit{margin-top:16px;padding-top:16px;border-top:1px dashed var(--line)}

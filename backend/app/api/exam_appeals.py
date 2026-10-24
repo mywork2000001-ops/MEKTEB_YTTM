@@ -31,7 +31,8 @@ def open_count(user: User = Depends(staff), db: Session = Depends(get_db)):
     first = db.execute(select(Exam.assignment_id, Exam.id).join(ExamAppeal, ExamAppeal.exam_id == Exam.id)
                        .join(TeachingAssignment, TeachingAssignment.id == Exam.assignment_id).where(*where)
                        .order_by(ExamAppeal.id).limit(1)).first()
-    return {'open': n, 'first': {'ta_id': first[0], 'exam_id': first[1]} if first else None}
+    from .task_appeals import open_count as task_open
+    return {'open': n + task_open(db, user), 'first': {'ta_id': first[0], 'exam_id': first[1]} if first else None}
 
 
 def _exam(db: Session, user: User, ta_id: int, exam_id: int):
@@ -92,6 +93,9 @@ def inbox(status: Literal['open', 'all'] = 'open', user: User = Depends(staff), 
     out = [{**_out(db, e, a, names, variants.get(e.id, {}), scans.get(e.id, {})), 'ta_id': t.id, 'appeal_until': e.appeal_until,
             'exam': {'id': e.id, 'title': e.title, 'kind': e.kind, 'no': e.no, 'date': e.date, 'ta_id': t.id, 'class_name': classes.get(t.class_id)}}
            for a, e, t in rows]
+    from .task_appeals import inbox_cards
+    out += inbox_cards(db, user, status == 'open')                 # onlayn sınaq apelyasiyaları (kind='sinaq')
+    out.sort(key=lambda x: x['status'] != 'open')
     return {'open': sum(x['status'] == 'open' for x in out), 'appeals': out}
 
 

@@ -420,6 +420,7 @@ def task_results(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
                      'pct': (exam_score(t, a, pen)['pct'] if sinaq else round(apct(a), 1))
                      if a and a.submitted_at and a.total else None,
                      'level': None if sinaq or not a or not a.submitted_at or not a.total else level(apct(a)),
+                     'focus': (a.focus_log or None) if a else None,
                      'solution_at': aware(a.solution_at) if a and a.solution_key and a.solution_at else None,
                      'answers_released_at': aware(a.answers_released_at) if a and a.answers_released_at else None,
                      'mistake_work': mistake_work_of(db, t, s.id, a)})
@@ -566,6 +567,44 @@ def copy_task(ta_id: int, task_id: int, body: CopyIn, user: User = Depends(staff
     db.add(t)
     db.flush()
     audit(db, user, 'create', 'task', t.id, copied_from=src.id, target_ta=target.id)
+    db.commit()
+    return task_out(t)
+
+
+class ResendIn(BaseModel):
+    student_ids: list[int] = Field(min_length=1, max_length=200)
+    window_hours: int = Field(0, ge=0, le=24 * 60)           # 0 – son tarix yoxdur (yalnız həll müddəti); >0 – bu qədər saat açıq
+
+
+@router.post('/{ta_id}/{task_id}/resend')
+def resend_task(ta_id: int, task_id: int, body: ResendIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Seçilən şagirdlərə sınağı yenidən göndər: eyni suallar (surət), eyni sinif, indi açılır; köhnə cəhd və nəticə qalır.
+    Sınaq – eyni paketdə qalır («(təkrar)» başlıqlı surət; merge_resend_batches ilə eyni qayda: siyahıda təkrar sətir yox)."""
+    ta = own_assignment(db, user, ta_id)
+    src = get_or_404(db, OnlineTask, task_id, 'Tapşırıq')
+    if src.assignment_id != ta.id:
+        raise HTTPException(404, 'Tapşırıq tapılmadı')
+    if src.kind not in ('sinaq', None):
+        raise HTTPException(400, 'Yenidən göndərmə yalnız sınaq və adi testlər üçündür (KSQ/BSQ və mövzu testi üçün yox)')
+    bad = set(body.student_ids) - {x.id for x in roster(db, ta)}
+    if bad:
+        raise HTTPException(400, 'Şagirdlər bu sinifdən/qrupdan olmalıdır')
+    o = now()
+    c = o + dt.timedelta(hours=body.window_hours) if body.window_hours else NO_DEADLINE
+    dur = src.duration_min
+    if not fits_window(dur, o, c):
+        raise HTTPException(400, f'Həll müddəti ({dur} dəq) açıq qalma aralığından uzun ola bilməz')
+    title = src.title if src.title.endswith('(təkrar)') else f'{src.title[:190]} (təkrar)'
+    batch_id = src.batch_id if src.kind == 'sinaq' and src.batch_id and db.get(TestBatch, src.batch_id) else None
+    if src.kind == 'sinaq' and batch_id is None:
+        batch_id = exam_batch(db, ta, title, user).id
+    t = OnlineTask(assignment_id=ta.id, title=title, description=src.description, opens_at=o, closes_at=c, duration_min=dur,
+                   questions=copy.deepcopy(src.questions), shuffle=src.shuffle, show_answers=src.show_answers,
+                   student_ids=sorted(set(body.student_ids)), created_by=user.id, kind=src.kind, batch_id=batch_id)
+    db.add(t)
+    db.flush()
+    _forget(batch_id)
+    audit(db, user, 'create', 'task', t.id, resent_from=src.id, students=len(t.student_ids))
     db.commit()
     return task_out(t)
 
