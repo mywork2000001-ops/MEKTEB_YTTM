@@ -494,7 +494,8 @@ def auto_all(body: AutoAllIn, user: User = Depends(staff), db: Session = Depends
     kinds = {s.id: s.kind for s in db.scalars(select(School).where(School.id.in_(spaces)))}
     rows = db.execute(select(TeachingAssignment, SchoolClass).join(SchoolClass, SchoolClass.id == TeachingAssignment.class_id)
                       .where(TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None),
-                             SchoolClass.archived_at.is_(None), SchoolClass.school_id.in_(spaces))
+                             SchoolClass.archived_at.is_(None), SchoolClass.school_id.in_(spaces),
+                             SchoolClass.parent_id.is_(None))
                       .order_by(SchoolClass.name, TeachingAssignment.id)).all()
     busy = {t['ta_id'] for s in db.scalars(select(ExamSeries).where(ExamSeries.created_by == user.id, ExamSeries.active.is_(True)))
             for t in s.targets}

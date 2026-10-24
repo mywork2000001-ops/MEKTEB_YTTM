@@ -645,38 +645,41 @@ class ResumeIn(BaseModel):
 
 
 def _resume(db: Session, t: OnlineTask, a: TaskAttempt, minutes: int | None = None) -> int:
-    """Cəhdi yenidən açır: cavablar saxlanır, qalan vaxt (və ya verilən dəqiqə), jurnal qiyməti silinir (təhvildə yenidən)."""
+    """Cəhdi yenidən açır: cavablar saxlanır, köhnə nəticə və jurnal qiyməti təhvilə qədər qalır (təhvildə yenilənir).
+    Yeni müddət keçmişdə ola bilməz — açılan cəhd dərhal avtomatik bitməsin (tapşırığın closes_at-ı dəyişmir)."""
     at = now()
     used = ((aware(a.submitted_at) if a.submitted_at else min(at, aware(a.deadline))) - aware(a.started_at)).total_seconds() / 60
     a.submitted_at, a.auto_submitted = None, False
-    a.correct = a.total = a.grade = a.points = None
-    if no_timer(t) and not minutes:                       # müddətsiz test – yenə müddətsiz davam edir
-        a.deadline = aware(t.closes_at)
-        _forget(t.batch_id)
-        for m in db.scalars(select(Mark).where(Mark.task_id == t.id, Mark.student_id == a.student_id)):
-            db.delete(m)
+    _forget(t.batch_id)
+    if no_timer(t):                                       # müddətsiz test – bağlanma tarixi (yoxsa 2100) və ya ən azı 10 dəq
+        floor = at + dt.timedelta(minutes=minutes or 10)
+        a.deadline = floor if minutes else max(aware(t.closes_at), floor)
         return 0
     minutes = minutes or max(10, round(t.duration_min - used))
     a.deadline = at + dt.timedelta(minutes=minutes)
-    _forget(t.batch_id)
-    for m in db.scalars(select(Mark).where(Mark.task_id == t.id, Mark.student_id == a.student_id)):
-        db.delete(m)
     return minutes
 
 
 @router.post('/{ta_id}/{task_id}/resume-all')
 def resume_all(ta_id: int, task_id: int, body: ResumeIn | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
-    """Bütün sinif üçün «Davam etsin»: başlamış hər şagirdin cəhdi açılır (hərəyə öz qalan vaxtı), cavablar saxlanır."""
+    """Bütün sinif üçün «Davam etsin»: yalnız təsadüfən kəsilənlər (vaxt bitib – avtomatik təhvil və ya təhvilsiz vaxtı keçib);
+    özü «Təhvil ver» basanlara toxunulmur."""
     t = _own_task(db, user, ta_id, task_id)
     at = now()
-    n = 0
+    n = skipped = 0
     for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id)):
-        if a.submitted_at or at >= aware(a.deadline):
+        if a.submitted_at:
+            if a.auto_submitted:
+                _resume(db, t, a, body.minutes if body else None)
+                n += 1
+            else:
+                skipped += 1
+        elif at >= aware(a.deadline):
             _resume(db, t, a, body.minutes if body else None)
             n += 1
-    audit(db, user, 'update', 'online_task', t.id, resume_all=n)
+    audit(db, user, 'update', 'online_task', t.id, resume_all=n, skipped_submitted=skipped)
     db.commit()
-    return {'ok': True, 'resumed': n}
+    return {'ok': True, 'resumed': n, 'skipped_submitted': skipped}
 
 
 @router.post('/{ta_id}/{task_id}/attempts/{student_id}/resume')

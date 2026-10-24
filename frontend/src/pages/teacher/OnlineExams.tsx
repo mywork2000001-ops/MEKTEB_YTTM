@@ -152,7 +152,7 @@ function ExamStudents({ id, onChange }: { id: number; onChange?: () => void }) {
 /** Bütün sinif üçün «Davam etsin» — başlamış hər şagirdin cəhdi açılır (hərəyə öz qalan vaxtı). */
 function ResumeClass({ ta, task, onDone }: { ta: number; task: number; onDone: () => void }) {
   return <AsyncBtn className="btn sm ghost" title={tt('Sinifdə başlamış hər şagirdin cəhdi açılır, cavablar saxlanır')}
-    onClick={async () => { try { const r = await post<{ resumed: number }>(`/api/tasks/${ta}/${task}/resume-all`); toast(tt('Davam edə bilən şagird: {n}', { n: r.resumed })); onDone() } catch (e) { toast((e as Error).message); throw e } }}>
+    onClick={async () => { try { const r = await post<{ resumed: number; skipped_submitted?: number }>(`/api/tasks/${ta}/${task}/resume-all`); toast(r.skipped_submitted ? tt('Davam edə bilən şagird: {n} (özü təhvil verən {m} şagird toxunulmadı)', { n: r.resumed, m: r.skipped_submitted }) : tt('Davam edə bilən şagird: {n}', { n: r.resumed })); onDone() } catch (e) { toast((e as Error).message); throw e } }}>
     ▶ {tt('Sinif davam etsin')}</AsyncBtn>
 }
 

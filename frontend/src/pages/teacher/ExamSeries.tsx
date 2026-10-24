@@ -8,7 +8,7 @@ import { heldLabel, useExamDates, type Dated } from './examDates'
 import { useT, tt, getLang, type Lang } from '../../i18n'
 import { azTimeSuffix, coverText, dayMonth, everyText, FREQS, lastDate, numWord, SOLVE_MINUTES, spanHours, spanMinutes, WINDOW_HOURS } from '../../humanTime'
 
-type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; mine: boolean; students: number }
+type Target = { ta_id: number; class_name: string; subject: string; grade: number | null; mine: boolean; students: number; is_group?: boolean }
 type BFile = Dated & { id: number; label: string; questions: number; kind: string; grades: number[]; source: string; given: string[]; grade_ok: boolean }
 type Series = {
   id: number; title: string; subject: string; period: 'day' | 'week' | 'month'; every: number; weekday: number | null
@@ -185,7 +185,7 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
         <fieldset><legend>{t('Siniflər')} {subj ? `(${subj})` : ''}</legend>
           {tl && !targets ? <Loading /> : targets?.filter(t => t.mine).map(t => (
             <label key={t.ta_id} className="check"><input type="checkbox" checked={tas.includes(t.ta_id)} disabled={!!subj && t.subject !== subj}
-              onChange={e => setTas(x => e.target.checked ? [...x, t.ta_id] : x.filter(y => y !== t.ta_id))} /> {t.class_name} <span className="small muted">· {t.subject} · {t.students} {tt('şagird')}</span></label>))}
+              onChange={e => setTas(x => e.target.checked ? [...x, t.ta_id] : x.filter(y => y !== t.ta_id))} /> {t.class_name} <span className="small muted">· {t.subject} · {t.students} {tt('şagird')}</span>{t.is_group && tas.includes(t.ta_id) && <span className="small" style={{ color: 'var(--warn, #b45309)' }}> ⚠ {tt('Qrup üçün seriya tövsiyə olunmur — şagirdlər ana sinifdən alır')}</span>}</label>))}
         </fieldset>
         <fieldset><legend>{t('Sınaqlar (seçilmə sırası = göndərilmə sırası)')}</legend>
           <div className="row" style={{ gap: 6, marginBottom: 6 }}>

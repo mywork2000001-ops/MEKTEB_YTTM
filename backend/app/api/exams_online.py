@@ -304,7 +304,7 @@ def targets(user: User = Depends(staff), db: Session = Depends(get_db)):
     st = st.where(SchoolClass.school_id == need_school(user)) if user.role == Role.admin else \
         st.where(TeachingAssignment.teacher_id == user.id, ws_cond(user))
     return [{'ta_id': ta.id, 'class_name': c.name, 'subject': ta.subject, 'grade': class_grade(db, c),
-             'teacher': u.full_name, 'mine': ta.teacher_id == user.id, 'students': len(roster(db, ta))}
+             'teacher': u.full_name, 'mine': ta.teacher_id == user.id, 'students': len(roster(db, ta)), 'is_group': c.parent_id is not None}
             for ta, c, u in db.execute(st.order_by(TeachingAssignment.subject, SchoolClass.name))]
 
 

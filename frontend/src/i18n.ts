@@ -3684,6 +3684,8 @@ const D: Record<string, [string, string]> = {
   'Göndərməyi geri al': ['Withdraw sent answers', 'Отозвать отправленные ответы'],
   'Hər şagird öz balını görür; sual-sual düzgün cavabları yalnız «müəllim göndərəndə» rejimində siz göndərirsiniz.': ['Each student sees their own score; the question-by-question correct answers are sent by you only in the "teacher sends" mode.', 'Каждый ученик видит свой балл; правильные ответы по вопросам отправляете вы, только в режиме «отправляет учитель».'],
   'cavablar göndərilib · {d}': ['answers sent · {d}', 'ответы отправлены · {d}'],
+  'Qrup üçün seriya tövsiyə olunmur — şagirdlər ana sinifdən alır': ['A series is not recommended for a group — students get it from the parent class', 'Серия для группы не рекомендуется — ученики получают её через основной класс'],
+  'Davam edə bilən şagird: {n} (özü təhvil verən {m} şagird toxunulmadı)': ['Students who can continue: {n} ({m} who submitted themselves were left untouched)', 'Могут продолжить: {n} (сдавшие сами не тронуты: {m})'],
 }
 
 export const I18nCtx = createContext<Lang>('az')

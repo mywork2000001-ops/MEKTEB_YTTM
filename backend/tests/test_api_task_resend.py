@@ -71,8 +71,78 @@ def test_resume_attempt_keeps_answers(world, clock):
     res = s.post(f'/api/portal/tasks/{t["id"]}/submit', json={'answers': {}}).json()
     assert res['total'] == 3
     assert admin.post(f'/api/tasks/{ta}/{t["id"]}/attempts/{st[0]["id"]}/resume', json={'minutes': 15}).json()['minutes'] == 15
-    # bütün sinif: başlamış hər kəs açılır, başlamayan toxunulmur
+    # bütün sinif: özü təhvil verən açılmır (yalnız təsadüfən kəsilənlər)
     s.post(f'/api/portal/tasks/{t["id"]}/submit', json={'answers': {}})
     r = admin.post(f'/api/tasks/{ta}/{t["id"]}/resume-all').json()
-    assert r['resumed'] == 1
-    assert next(x for x in s.get('/api/portal/tasks').json() if x['id'] == t['id'])['status'] == 'həll edilir'
+    assert r['resumed'] == 0 and r['skipped_submitted'] == 1
+    assert next(x for x in s.get('/api/portal/tasks').json() if x['id'] == t['id'])['status'] != 'həll edilir'
+
+
+def test_resume_all_only_accidental(world, clock):
+    """Vaxtı bitən (avto-təhvil) açılır və bağlanmış testdə dərhal yenidən bitmir; özü təhvil verən açılmır."""
+    admin, ta, cid, st, ids = setup(world)
+    t = mk_task(admin, ta, ids).json()                                        # 15:00-16:00, 40 dəq
+    s0 = student_client(st[0]['portal_code'], st[0]['initial_pin'])
+    s1 = student_client(st[1]['portal_code'], st[1]['initial_pin'])
+    clock.t = dt.datetime(2026, 9, 29, 15, 10, tzinfo=UTC)
+    s0.post(f'/api/portal/tasks/{t["id"]}/start')
+    s1.post(f'/api/portal/tasks/{t["id"]}/start')
+    s0.post(f'/api/portal/tasks/{t["id"]}/submit', json={'answers': {}})
+    clock.t = dt.datetime(2026, 9, 29, 15, 55, tzinfo=UTC)                      # s1-in vaxtı bitdi
+    admin.get(f'/api/tasks/{ta}')
+    s1.get('/api/portal/tasks')
+    clock.t = dt.datetime(2026, 9, 29, 17, 0, tzinfo=UTC)                       # test bağlanıb
+    r = admin.post(f'/api/tasks/{ta}/{t["id"]}/resume-all').json()
+    assert r['resumed'] == 1 and r['skipped_submitted'] == 1
+    clock.t = dt.datetime(2026, 9, 29, 17, 1, tzinfo=UTC)
+    admin.get(f'/api/tasks/{ta}')                                               # expire_due: açılan cəhd bitməməlidir
+    assert next(x for x in s1.get('/api/portal/tasks').json() if x['id'] == t['id'])['status'] == 'həll edilir'
+    assert next(x for x in s0.get('/api/portal/tasks').json() if x['id'] == t['id'])['status'] != 'həll edilir'
+
+
+def test_resume_keeps_old_result_until_submit(world, clock):
+    admin, ta, cid, st, ids = setup(world)
+    t = mk_task(admin, ta, ids).json()
+    s = student_client(st[0]['portal_code'], st[0]['initial_pin'])
+    clock.t = dt.datetime(2026, 9, 29, 15, 10, tzinfo=UTC)
+    s.post(f'/api/portal/tasks/{t["id"]}/start')
+    s.post(f'/api/portal/tasks/{t["id"]}/submit', json={'answers': {}})
+    assert admin.post(f'/api/tasks/{ta}/{t["id"]}/attempts/{st[0]["id"]}/resume').status_code == 200
+    with world[1]() as db:
+        from app.models import TaskAttempt
+        a = db.query(TaskAttempt).one()
+        assert a.submitted_at is None and a.total == 3
+
+
+def test_restore_resumed(world, clock):
+    """Admin bərpa: dry_run yazmır; bal > 30 təhvil kimi bərpa, aşağı açıq qalır."""
+    admin, ta, cid, st, ids = setup(world)
+    t = mk_task(admin, ta, ids).json()
+    s0 = student_client(st[0]['portal_code'], st[0]['initial_pin'])
+    s1 = student_client(st[1]['portal_code'], st[1]['initial_pin'])
+    clock.t = dt.datetime(2026, 9, 29, 15, 10, tzinfo=UTC)
+    for s in (s0, s1):
+        q = s.post(f'/api/portal/tasks/{t["id"]}/start').json()
+    from app.models import TaskAttempt
+    with world[1]() as db:                                                      # s0 – bütün cavablar düz, s1 – boş-yaxın
+        for a in db.query(TaskAttempt).order_by(TaskAttempt.student_id):
+            t_ = db.get(__import__('app.models', fromlist=['OnlineTask']).OnlineTask, a.task_id)
+            if a.student_id == st[0]['id']:
+                a.answers = {str(i): (q_['correct'] if 'correct' in q_ else 0) for i, q_ in enumerate(t_.questions)}
+            else:
+                a.answers = {'0': 99}
+        db.commit()
+    assert admin.post(f'/api/tasks/{ta}/{t["id"]}/resume-all').status_code == 200   # audit qeydi (heç kim təhvil verməyib → 0 açılır)
+    with world[1]() as db:
+        from app.api.common import audit
+        audit(db, None, 'update', 'online_task', t['id'], resume_all=2)
+        db.commit()
+    r = admin.post('/api/admin/restore-resumed', json={}).json()
+    assert r['dry_run'] and r['count'] == 2
+    with world[1]() as db:
+        assert db.query(TaskAttempt).filter(TaskAttempt.submitted_at.isnot(None)).count() == 0
+    r = admin.post('/api/admin/restore-resumed', json={'dry_run': False}).json()
+    acts = {x['student']: x['action'] for x in r['items']}
+    assert sorted(acts.values()) == ['keep_open', 'restore']
+    with world[1]() as db:
+        assert db.query(TaskAttempt).filter(TaskAttempt.submitted_at.isnot(None)).count() == 1
