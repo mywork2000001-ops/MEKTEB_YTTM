@@ -54,3 +54,29 @@ def check(q: dict, given) -> bool:
         except (TypeError, ValueError):
             return False
     return check_open(given, q.get('answer') or '')
+
+
+def match_rows(s) -> dict[int, str] | None:
+    """Uyğunluq cavabı -> {sətir: hərflər}; uyğunluq formatı deyilsə None (_match_canon ilə eyni parser)."""
+    c = _match_canon(s)
+    if c is None:
+        return None
+    return {int(k): v for k, v in (x.split(':') for x in c.split('|'))}
+
+
+def part_share(q: dict, given) -> float:
+    """Uyğunluq sualında düz sətirlərin payı (0..1); sətir yalnız tam düz olanda sayılır.
+    Tam düzdürsə 1; uyğunluq formatı deyilsə 0; qəbul edilən variantlardan ən yaxşısı götürülür."""
+    if check(q, given):
+        return 1.0
+    if q.get('kind') == 'mcq' or given is None:
+        return 0.0
+    gr = match_rows(given)
+    if not gr:
+        return 0.0
+    best = 0.0
+    for a in str(q.get('answer') or '').split('|'):
+        ar = match_rows(a)
+        if ar:
+            best = max(best, sum(1 for k, v in ar.items() if gr.get(k) == v) / len(ar))
+    return best

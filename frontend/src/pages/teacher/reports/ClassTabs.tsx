@@ -1,6 +1,7 @@
 // Sinif/fənn hesabatlarının tabları (köhnə Reports.tsx-dən köçürülüb – davranış dəyişməyib).
 import { useMemo, useState } from 'react'
 import CertificatesPanel from '../CertificatesPanel'
+import FormativeScalePanel from '../FormativeScalePanel'
 import { useNavigate } from 'react-router-dom'
 import { get } from '../../../api'
 import { Disclosure, Drawer, ErrorBox, fmt, fmtDate, gradeTone, levelTone, Loading, Pill, riskTone, Seg, Stat, useLoad, useNarrow, hourN } from '../../../ui'
@@ -259,6 +260,7 @@ export function Performance({ ta, sem }: { ta: number; sem: string }) {
         </table></div>
       )}
       <TopluChapters ta={ta} />
+      <FormativeScalePanel ta={ta} />
       <CertificatesPanel ta={ta} />
       <p className="small muted">{t('Qiymət: yarımil qiyməti (KSQ×0,4 + BSQ×0,6) varsa o, yoxdursa formativ qiymətlərin ortası (ən azı {min_marks} qiymət). Müvəffəqiyyət = «2» almayanlar / qiymətləndirilənlər; keyfiyyət = «4» və «5» / qiymətləndirilənlər; SOU = (100·n5 + 64·n4 + 36·n3 + 16·n2) / n.', { min_marks: p.summary.min_marks })}</p>
     </>

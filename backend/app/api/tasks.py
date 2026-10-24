@@ -13,9 +13,9 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import staff
-from ..domain.answers import check
+from ..domain.answers import check, part_share
 from ..distractors import question_distribution
-from ..domain.rules import summative_grade
+from ..domain.rules import FORMATIVE_SCALE, formative_grade, level, normalize_scale, summative_grade, validate_scale
 from ..models import prepare_points
 from ..models import (BankFile, BankQuestion, BankSource, Mark, OnlineTask, PlanLesson, Student, TaskAttempt, TeachingAssignment,
                       TestBatch, User, now)
@@ -41,13 +41,40 @@ def is_ok(task: OnlineTask, a: TaskAttempt, i: int) -> bool:
     return bool(m) if m is not None else check(task.questions[i], (a.answers or {}).get(str(i)))
 
 
+def part_score(task: OnlineTask, a: TaskAttempt, i: int) -> float:
+    """Sualın payı 0..1: müəllimin düzəlişi varsa – 1/0 (qismən balı əvəz edir); yoxsa uyğunluq sualında düz sətirlərin payı."""
+    m = (a.manual or {}).get(str(i))
+    if m is not None:
+        return 1.0 if m else 0.0
+    return part_share(task.questions[i], (a.answers or {}).get(str(i)))
+
+
+def formative_kind(task: OnlineTask) -> bool:
+    """Formativ test (mövzu testi və adi tapşırıq): sinfin formativ şkalası və qismən bal. KSQ və sınaq – dəyişməz."""
+    return task.kind not in ('ksq', 'sinaq')
+
+
+def class_scale(task: OnlineTask) -> dict:
+    """Tapşırığın sinfinin formativ şkalası (TeachingAssignment.cert_rules['formative_scale']; yoxdursa defolt)."""
+    from sqlalchemy.orm import object_session
+    db = object_session(task)
+    ta = db.get(TeachingAssignment, task.assignment_id) if db is not None else None
+    return normalize_scale(((ta.cert_rules or {}).get('formative_scale')) if ta else None)
+
+
 def score(task: OnlineTask, a: TaskAttempt):
-    """Düzgün cavab sayı, 100 ballıq bal (sualın çətinlik balı ilə) və qiymət – düzəlişdən sonra da yenidən."""
+    """Düzgün cavab sayı, 100 ballıq bal (sualın çətinlik balı ilə) və qiymət – düzəlişdən sonra da yenidən.
+    Formativ testdə: uyğunluq sualında qismən bal + sinfin şkalası; `correct` yalnız tam düzləri sayır."""
     from ..domain.scoring import question_points
     ok = [is_ok(task, a, i) for i in range(len(task.questions))]
     a.correct, a.total = sum(ok), len(task.questions)
-    a.points = round(sum(p for p, k in zip(question_points(task.questions), ok) if k), 1) if a.total else None
-    a.grade = summative_grade(a.points) if a.total else None
+    qp = question_points(task.questions)
+    if formative_kind(task):
+        a.points = round(sum(p * part_score(task, a, i) for i, p in enumerate(qp)), 1) if a.total else None
+        a.grade = formative_grade(a.points, class_scale(task)) if a.total else None
+    else:
+        a.points = round(sum(p for p, k in zip(qp, ok) if k), 1) if a.total else None
+        a.grade = summative_grade(a.points) if a.total else None
 
 
 def apct(a: TaskAttempt) -> float | None:
@@ -235,6 +262,45 @@ def exam_batch(db: Session, ta: TeachingAssignment, title: str, user: User) -> T
     return b
 
 
+class ScaleIn(BaseModel):
+    t3: int = Field(ge=1, le=100)
+    t4: int = Field(ge=1, le=100)
+    t5: int = Field(ge=1, le=100)
+
+
+@router.get('/formative-scale/{ta_id}')
+def get_scale(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Sinfin formativ şkalası (mövzu testi): qiymət «3/4/5» üçün alt hədd, %."""
+    ta = own_assignment(db, user, ta_id)
+    sc = normalize_scale((ta.cert_rules or {}).get('formative_scale'))
+    return {'t3': sc[3], 't4': sc[4], 't5': sc[5], 'default': sc == FORMATIVE_SCALE}
+
+
+@router.put('/formative-scale/{ta_id}')
+def set_scale(ta_id: int, body: ScaleIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Şkalanı saxlayır. Köhnə cəhdlər dəyişmir: yalnız yeni təhvil və yenidən qiymətləndirmə."""
+    ta = own_assignment(db, user, ta_id)
+    sc = {3: body.t3, 4: body.t4, 5: body.t5}
+    err = validate_scale(sc)
+    if err:
+        raise HTTPException(422, err)
+    ta.cert_rules = {**(ta.cert_rules or {}), 'formative_scale': {str(k): v for k, v in sc.items()}}
+    audit(db, user, 'update', 'teaching_assignment', ta.id, formative_scale=ta.cert_rules['formative_scale'])
+    db.commit()
+    return get_scale(ta_id, user, db)
+
+
+@router.delete('/formative-scale/{ta_id}')
+def reset_scale(ta_id: int, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«Defolta qaytar» (KSQ şkalası 31/61/81)."""
+    ta = own_assignment(db, user, ta_id)
+    rules = {k: v for k, v in (ta.cert_rules or {}).items() if k != 'formative_scale'}
+    ta.cert_rules = rules or None
+    audit(db, user, 'update', 'teaching_assignment', ta.id, formative_scale=None)
+    db.commit()
+    return get_scale(ta_id, user, db)
+
+
 @router.post('/{ta_id}')
 def create_task(ta_id: int, body: TaskIn, user: User = Depends(staff), db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)
@@ -353,6 +419,7 @@ def task_results(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
                      'total': a.total if a else None, 'grade': None if sinaq or not a else a.grade,
                      'pct': (exam_score(t, a, pen)['pct'] if sinaq else round(apct(a), 1))
                      if a and a.submitted_at and a.total else None,
+                     'level': None if sinaq or not a or not a.submitted_at or not a.total else level(apct(a)),
                      'solution_at': aware(a.solution_at) if a and a.solution_key and a.solution_at else None,
                      'mistake_work': mistake_work_of(db, t, s.id, a)})
     done = [a for a in atts.values() if a.submitted_at]
@@ -661,7 +728,7 @@ def to_journal(ta_id: int, task_id: int, body: ToJournalIn, user: User = Depends
             db.add(m)
             copied += 1
         m.test_correct, m.test_total = a.correct, a.total
-        m.grade = summative_grade(apct(a))
+        m.grade = formative_grade(apct(a), class_scale(t)) if formative_kind(t) else summative_grade(apct(a))
         m.comment, m.task_id = f'Onlayn test: {t.title}'[:300], t.id
     audit(db, user, 'update', 'journal', e.id, from_task=t.id, copied=copied, updated=updated, **({'unlock_reason': unlock} if unlock else {}))
     db.commit()

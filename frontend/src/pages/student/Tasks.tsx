@@ -66,7 +66,7 @@ export default function Tasks() {
           {shown.map(x => (
             <div key={x.id} className="jrow">
               <span><b>{x.title}</b><span className="sub small muted"><br />{x.subject}{x.topic_seq ? ` · ${t('mövzu №{n}', { n: x.topic_seq })}` : ''} · {x.teacher} · {azRange(x.opens_at, x.closes_at)} · {x.no_timer ? t('Vaxt məhdudiyyəti yoxdur') : t('{n} dəq', { n: x.duration_min })} · {t('{n} sual', { n: x.questions })}</span></span>
-              <span className="row">{x.result ? <Pill tone={x.result.grade ? gradeTone(x.result.grade) : x.result.pct >= 70 ? 'ok' : x.result.pct >= 40 ? 'warn' : 'bad'}>{fmt(x.result.pct)} {t('bal')}{x.result.grade ? ` → ${x.result.grade}` : ''}</Pill> : <Pill tone={x.status === 'açıq' || x.status === 'həll edilir' ? 'ok' : x.status === 'buraxılıb' ? 'bad' : undefined}>{t(x.status)}</Pill>}</span>
+              <span className="row">{x.result ? <Pill tone={x.result.grade ? gradeTone(x.result.grade) : x.result.pct >= 70 ? 'ok' : x.result.pct >= 40 ? 'warn' : 'bad'}>{fmt(x.result.pct)} {t('bal')}{x.result.grade ? ` → ${x.result.grade}${x.result.level ? ` (${t(x.result.level)})` : ''}` : ''}</Pill> : <Pill tone={x.status === 'açıq' || x.status === 'həll edilir' ? 'ok' : x.status === 'buraxılıb' ? 'bad' : undefined}>{t(x.status)}</Pill>}</span>
               <span>{(x.status === 'açıq' || x.status === 'həll edilir') && <button className="btn primary sm" onClick={() => { enterFs(); setSolving(x.id) }}>{x.status === 'açıq' ? t('Başla') : t('Davam et')}</button>}
                 {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>{t('Cavablara bax')}</button>}
                 {x.mistake_work?.allowed && <AsyncBtn className="btn sm" onClick={async () => {
@@ -188,7 +188,7 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
       // vaxt bitəndə də son cavablar göndərilir (server 10 san. gecikməni qəbul edir)
       const r = await post(`/api/portal/tasks/${id}/submit`, { answers: { ...ansRef.current } })
       if (r.ksq) toast((auto ? tt('Vaxt bitdi – təhvil verildi') + ' · ' : '') + tt('Təhvil verildi – nəticəni müəllim yoxlayıb açacaq'))   // KSQ/BSQ onlayn – bal göstərilmir
-      else toast(`${auto ? tt('Vaxt bitdi – təhvil verildi') : tt('Təhvil verildi')}: ${r.pct != null ? `${fmt(r.pct)} ${tt('bal')} / 100` : `${r.correct}/${r.total}`}${r.grade ? ` → ${r.grade}` : ''}`)
+      else toast(`${auto ? tt('Vaxt bitdi – təhvil verildi') : tt('Təhvil verildi')}: ${r.pct != null ? `${fmt(r.pct)} ${tt('bal')} / 100` : `${r.correct}/${r.total}`}${r.grade ? ` → ${r.grade}${r.level ? ` (${tt(r.level)})` : ''}` : ''}`)
       if (r.certificate || (r.pct ?? 0) >= 80) confetti()                           // təbrik
       if (r.certificate) toast(tt('🏆 Yeni sertifikat: {t} – «Uğurlarım»da', { t: r.certificate.title }))
     } catch (e) { if (!(e instanceof ApiError && e.status === 409)) toast(tt('Xəta') + ': ' + (e as Error).message) }

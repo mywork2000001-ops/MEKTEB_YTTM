@@ -59,6 +59,38 @@ def summative_grade(pct: float, bands: list[tuple[float, int]] = GRADE_BANDS) ->
     return bands[-1][1]
 
 
+# Formativ (mövzu testi) şkalası: qiymət -> alt hədd (%). Defolt = KSQ şkalası (GRADE_BANDS: 31/61/81), sinif dəyişə bilər.
+FORMATIVE_SCALE: dict[int, int] = {3: 31, 4: 61, 5: 81}
+
+
+def validate_scale(scale: dict[int, int]) -> str | None:
+    """Xəta mətni və ya None: hədlər 1–100 və ciddi artan (3 < 4 < 5)."""
+    t3, t4, t5 = scale[3], scale[4], scale[5]
+    if not all(1 <= x <= 100 for x in (t3, t4, t5)):
+        return 'Hədlər 1 ilə 100 arasında olmalıdır'
+    if not t3 < t4 < t5:
+        return 'Hədlər ciddi artan olmalıdır: «3» < «4» < «5»'
+    return None
+
+
+def normalize_scale(scale: dict | None) -> dict[int, int]:
+    """Saxlanmış şkala (JSON açarları sətir ola bilər) -> {3,4,5: hədd}; boş/xarab – defolt."""
+    if not scale:
+        return dict(FORMATIVE_SCALE)
+    try:
+        out = {g: int(scale.get(g, scale.get(str(g)))) for g in (3, 4, 5)}
+    except (TypeError, ValueError):
+        return dict(FORMATIVE_SCALE)
+    return out if validate_scale(out) is None else dict(FORMATIVE_SCALE)
+
+
+def formative_grade(points: float, scale: dict | None = None) -> int:
+    """Faiz -> qiymət sinfin formativ şkalası ilə (defolt şkalada summative_grade ilə eynidir)."""
+    sc = normalize_scale(scale)
+    p = round_half_up(points)
+    return 5 if p >= sc[5] else 4 if p >= sc[4] else 3 if p >= sc[3] else 2
+
+
 # ---------------------------------------------------------------- risk
 @dataclass
 class RiskInput:

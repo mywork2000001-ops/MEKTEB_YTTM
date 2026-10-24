@@ -116,7 +116,8 @@ class RulesIn(BaseModel):
 @router.put('/certificates/rules/{ta_id}')
 def set_rules(ta_id: int, body: RulesIn, user: User = Depends(staff), db: Session = Depends(get_db)):
     ta = own_assignment(db, user, ta_id)
-    ta.cert_rules = {**{k: v for k, v in (ta.cert_rules or {}).items() if k == 'review_tests'}, **body.model_dump()}   # «Təkrar testləri» açarı qorunur
+    keep = {k: v for k, v in (ta.cert_rules or {}).items() if k in ('review_tests', 'formative_scale')}   # «Təkrar testləri» və formativ şkala eyni sahədə saxlanır
+    ta.cert_rules = {**body.model_dump(), **keep}
     audit(db, user, 'update', 'teaching_assignment', ta.id, cert_rules=ta.cert_rules)
     db.commit()
     return rules(ta)
