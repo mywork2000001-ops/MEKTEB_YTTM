@@ -46,19 +46,53 @@ def _out(db: Session, e: Exam, a: ExamAppeal, names: dict, variants: dict, scans
     from ..domain.ksq_card import key_value
     v = variants.get(a.student_id)
     q = next((x for x in (v.questions if v else []) if x['slot'] == a.slot), None)
+    ref = dict(a.bank_ref or {})
+    snap = ref.pop('q', None)                    # apelyasiya anında dondurulmuş sual (B.1); köhnə apelyasiyalarda yoxdur
+    # sual: variantdakı, yoxdursa (variant silinib) snapshot; sonradan dəyişibsə – şagirdin gördüyü (snapshot) göstərilir
+    changed = bool(q and snap and (q.get('text') != snap.get('text') or q.get('options') != snap.get('options')))
+    shown = snap if changed else (q or snap)
     bq = db.get(BankQuestion, a.bank_id) if a.bank_id else None
     sc = scans.get((a.student_id, a.source))
+    key_now = key_value(q) if q else (snap.get('key') if snap else None)
     return {'id': a.id, 'student_id': a.student_id, 'full_name': names.get(a.student_id), 'slot': a.slot, 'source': a.source,
             'status': a.status, 'reason': a.reason, 'my_answer': a.my_answer, 'correct_at_time': a.correct_at_time,
-            'key_now': key_value(q) if q else None, 'teacher_reply': a.teacher_reply, 'apply_all': a.apply_all,
+            'key_now': key_now, 'teacher_reply': a.teacher_reply, 'apply_all': a.apply_all,
             'created_at': a.created_at, 'decided_at': a.decided_at,
-            'question': {'text': q.get('text'), 'options': q.get('options'), 'image': q.get('image'), 'kind': q.get('kind')} if q else None,
-            'bank_id': a.bank_id, 'topic': topic_of(db, q) if q else ((a.bank_ref or {}).get('text') or '').split(' · ')[0] or None,
-            'bank_ref': a.bank_ref or (ref_of(db, q) if q else None),
+            'question': {'text': shown.get('text'), 'options': shown.get('options'), 'image': shown.get('image'), 'kind': shown.get('kind')} if shown else None,
+            'question_changed': changed,
+            'bank_id': a.bank_id, 'topic': topic_of(db, q) if q else (ref.get('text') or '').split(' · ')[0] or None,
+            'bank_ref': ref or (ref_of(db, q) if q else None),
             # bankdakı sualın indiki halı: açar sonradan dəyişibsə – müəllim fərqi görür
             'bank': {'text': bq.text, 'answer': bq.answer, 'correct': bq.correct, 'needs_review': bq.needs_review} if bq else None,
             'scan_id': sc.id if sc else None, 'crop': bool(sc and sc.crop_key),
             'fix_replies': _fix_replies(db, a.student_id)}
+
+
+@router.get('/inbox')
+def inbox(status: Literal['open', 'all'] = 'open', user: User = Depends(staff), db: Session = Depends(get_db)):
+    """Müəllimin bütün imtahanları üzrə apelyasiyalar bir yerdə (open-count ilə eyni hüquq: yalnız öz dərs bağlılıqları).
+    Sıralama: əvvəl gözləyənlər, daxildə köhnədən yeniyə."""
+    from ..models import SchoolClass
+    where = [TeachingAssignment.teacher_id == user.id]
+    if status == 'open':
+        where.append(ExamAppeal.status == 'open')
+    rows = db.execute(select(ExamAppeal, Exam, TeachingAssignment).join(Exam, Exam.id == ExamAppeal.exam_id)
+                      .join(TeachingAssignment, TeachingAssignment.id == Exam.assignment_id).where(*where)
+                      .order_by(ExamAppeal.id)).all()
+    rows.sort(key=lambda r: r[0].status != 'open')          # sort sabitdir
+    names = {s.id: s.full_name for s in db.scalars(select(Student).where(Student.id.in_({r[0].student_id for r in rows} or {0})))}
+    classes = {c.id: c.name for c in db.scalars(select(SchoolClass).where(SchoolClass.id.in_({r[2].class_id for r in rows} or {0})))}
+    exam_ids = {r[1].id for r in rows}
+    variants: dict[int, dict] = {}
+    for v in db.scalars(select(ExamVariant).where(ExamVariant.exam_id.in_(exam_ids or {0}))):
+        variants.setdefault(v.exam_id, {})[v.student_id] = v
+    scans: dict[int, dict] = {}
+    for sc in db.scalars(select(ExamScan).where(ExamScan.exam_id.in_(exam_ids or {0}))):
+        scans.setdefault(sc.exam_id, {})[(sc.student_id, sc.source)] = sc
+    out = [{**_out(db, e, a, names, variants.get(e.id, {}), scans.get(e.id, {})), 'ta_id': t.id, 'appeal_until': e.appeal_until,
+            'exam': {'id': e.id, 'title': e.title, 'kind': e.kind, 'no': e.no, 'date': e.date, 'ta_id': t.id, 'class_name': classes.get(t.class_id)}}
+           for a, e, t in rows]
+    return {'open': sum(x['status'] == 'open' for x in out), 'appeals': out}
 
 
 @router.get('/{ta_id}/{exam_id}')

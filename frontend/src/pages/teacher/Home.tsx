@@ -76,7 +76,7 @@ export default function Home() {
           <div className="hero-chips">
             <button className="hchip solid" onClick={() => nav('/journal')}>{t('Jurnal')}</button>
             <button className="hchip" onClick={() => nav('/timetable')}>{t('Həftəlik cədvəl')}</button>
-            {(ap?.open || 0) > 0 && <button className="hchip solid" onClick={() => nav(ap!.first ? `/journal?ta=${ap!.first.ta_id}&tab=exams&exam=${ap!.first.exam_id}&appeals=1` : '/journal')} title={t('KSQ/BSQ üzrə cavabsız apelyasiyalar')}>⚖ {t('Apelyasiyalar')}: {ap!.open}</button>}
+            {(ap?.open || 0) > 0 && <button className="hchip solid" onClick={() => nav('/appeals')} title={t('KSQ/BSQ üzrə cavabsız apelyasiyalar')}>⚖ {t('Apelyasiyalar')}: {ap!.open}</button>}
           </div>
         </div>
         <div className="clock" aria-live="off">

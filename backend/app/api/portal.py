@@ -702,7 +702,10 @@ def create_appeal(exam_id: int, body: AppealIn, user: User = Depends(student_onl
                                              ExamAppeal.source == body.source)):
         raise HTTPException(409, _L(user, 'Bu sual üzrə apelyasiya artıq verilib', 'Апелляция по этому вопросу уже подана', 'An appeal for this question has already been submitted'))
     read = next((r.get('value') for r in sc.reading or [] if r.get('slot') == body.slot), None)
-    a = ExamAppeal(exam_id=e.id, student_id=s.id, slot=body.slot, source=body.source, bank_id=q.get('bank_id'), bank_ref=ref_of(db, q),
+    # sualın o anki surəti (variant sonra dəyişsə/silinsə də müəllim şagirdin gördüyünü görsün) – mövcud JSON-a, miqrasiyasız
+    snap = {'text': q.get('text'), 'options': q.get('options'), 'image': q.get('image'), 'kind': q.get('kind'), 'key': key_value(q)}
+    a = ExamAppeal(exam_id=e.id, student_id=s.id, slot=body.slot, source=body.source, bank_id=q.get('bank_id'),
+                   bank_ref={**(ref_of(db, q) or {}), 'q': snap},
                    my_answer=read or '', correct_at_time=key_value(q), reason=body.reason)
     db.add(a)
     db.flush()
