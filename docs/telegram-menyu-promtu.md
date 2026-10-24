@@ -2,14 +2,14 @@
 
 Bot: @ferid_claude_bot. Menyu (rus dilində) yalnız istifadəçinin çatına yazılıb: `node scripts/tg-menu.cjs`
 (əmr siyahısını dəyişəndə yenidən işə sal; plugin öz `start/help/status` əmrlərini `all_private_chats`-a yazır,
-bizim `chat` scope ondan üstündür). `start/help/status` – plugin özü cavab verir, qalanları sessiyaya mesaj kimi gəlir.
+bizim `chat` scope ondan üstündür). Skript həm də **daimi düymə klaviaturası** göndərir – düymə əmri adi mesaj kimi yollayır, əmr seçmək üçün yazmaq lazım deyil. `start/help/status` – plugin özü cavab verir, qalanları sessiyaya mesaj kimi gəlir.
 
 ## Əmrlər → nə etməli
 Cavab həmişə **rus dilində**, qısa, Telegram `reply` aləti ilə (transkript Telegram-a getmir).
 
 | Əmr | Hərəkət |
 |---|---|
-| `/menu` | Bu cədvəlin qısa rus versiyası (əmr – 1 sətir izah). |
+| `/menu` | Klaviatura yoxa çıxıbsa – `node scripts/tg-menu.cjs` (yenidən göndərir). Bu cədvəlin qısa rus versiyası (əmr – 1 sətir izah). |
 | `/terminals` | `ListAgents` (digər Claude sessiyaları – adları) + `Get-Process claude,node,python,bun` (PID, CPU, başlama vaxtı). VS Code-un inteqrasiya terminallarını birbaşa idarə etmək olmur – yalnız sessiya/proses səviyyəsində. |
 | `/send <ad> <mətn>` | `SendMessage({to: ad, message: mətn})`. Ad dəqiq `ListAgents`-dəki kimi; tapılmasa – siyahını göndər. |
 | `/new_session` | Yeni pəncərə: `Start-Process conhost.exe "powershell -NoExit -Command <CLAUDE* env təmizlə>; cd '<layihə>'; claude"`. Telegram kanalı **ikinci** sessiyada açılmır (token bir poller – 409). |

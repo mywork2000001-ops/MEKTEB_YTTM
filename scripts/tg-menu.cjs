@@ -47,4 +47,26 @@ const call = (method, body) =>
   await call('setChatMenuButton', { chat_id: CHAT_ID, menu_button: { type: 'commands' } });
   const got = await call('getMyCommands', { scope });
   console.log(`OK: ${got.result.length} əmr yazıldı (chat ${CHAT_ID})`);
+
+  // Daimi düymə klaviaturası: düyməyə basmaq əmri adi mesaj kimi göndərir
+  // (plugin inline düymələri yalnız icazələr üçün emal edir).
+  const rows = [
+    ['/terminals', '/now', '/stop'],
+    ['/git', '/build', '/tests'],
+    ['/push', '/deploy', '/screen'],
+    ['/procs', '/open_work', '/new_session'],
+    ['/audit', '/menu'],
+  ];
+  const kb = await call('sendMessage', {
+    chat_id: CHAT_ID,
+    text: 'Меню управления: выберите команду кнопкой ниже или через «/».\n'
+      + '/send имя текст и /kill PID — пишите вручную.',
+    reply_markup: {
+      keyboard: rows.map(r => r.map(text => ({ text }))),
+      resize_keyboard: true,
+      is_persistent: true,
+      input_field_placeholder: 'Команда или задача…',
+    },
+  });
+  console.log(kb.ok ? 'OK: klaviatura göndərildi' : 'Klaviatura xətası: ' + kb.description);
 })();
