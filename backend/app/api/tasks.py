@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import staff
 from ..domain.answers import check
+from ..distractors import question_distribution
 from ..domain.rules import summative_grade
 from ..models import prepare_points
 from ..models import (BankFile, BankQuestion, BankSource, Mark, OnlineTask, PlanLesson, Student, TaskAttempt, TeachingAssignment,
@@ -349,7 +350,8 @@ def task_results(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
     for i, q in enumerate(t.questions):
         ok = sum(is_ok(t, a, i) for a in done)
         per_q.append({'index': i, 'text': q['text'], 'kind': q['kind'], 'correct': ok, 'of': len(done),
-                      'pct': round(ok * 100 / len(done), 1) if done else None})
+                      'pct': round(ok * 100 / len(done), 1) if done else None,
+                      'distribution': question_distribution(q, i, done)})      # M2: variantların paylanması (mcq), açıq sualda None
     summary = {k: sum(r['status'] == k for r in rows) for k in ('başlamayıb', 'həll edir', 'təhvil verib')}
     return {'task': task_out(t), 'rows': rows, 'questions': per_q, 'summary': summary, 'server_time': now()}
 
