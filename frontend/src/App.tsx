@@ -46,6 +46,7 @@ const T = {
   ResultsCenter: lazy(() => import('./pages/teacher/ResultsCenter')),
   TestsHub: lazy(() => import('./pages/teacher/TestsHub')),
   Surveys: lazy(() => import('./pages/teacher/Surveys')),
+  Appeals: lazy(() => import('./pages/teacher/Appeals')),
   ExtraCourses: lazy(() => import('./pages/teacher/ExtraCourses')),
   Materials: lazy(() => import('./pages/teacher/Materials')),
   Reports: lazy(() => import('./pages/teacher/Reports')),
@@ -132,6 +133,7 @@ export default function App() {
                 <Route path="/exams-online" element={<ToTests s="sinaq" />} />
                 <Route path="/results-center" element={<ResultsCenterRedirect />} />
                 <Route path="/surveys" element={<T.Surveys />} />
+                <Route path="/appeals" element={<T.Appeals />} />
                 <Route path="/extra" element={<Navigate to="/classes?tab=extra" replace />} />
                 <Route path="/t/:id" element={<Navigate to="/tests" replace />} />
                 <Route path="/materials" element={<T.Materials />} />

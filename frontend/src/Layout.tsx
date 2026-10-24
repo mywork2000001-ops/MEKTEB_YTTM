@@ -21,6 +21,7 @@ export const TEACHER_NAV: NavItem[] = [
   { to: '/materials', icon: 'clip', label: 'Materiallar', group: 'Planlaşdırma' },
   { to: '/tests', icon: 'online', label: 'Testlər və sınaqlar', short: 'Testlər', group: 'Qiymətləndirmə' },   // mövzu testləri + sınaqlar + nəticələr
   { to: '/reports', icon: 'reports', label: 'Analitika və hesabat', short: 'Hesabat', group: 'Qiymətləndirmə' },
+  { to: '/appeals', icon: 'rating', label: 'Apelyasiyalar', group: 'Qiymətləndirmə' },   // KSQ/BSQ apelyasiyaları – bütün siniflər
   { to: '/classes', icon: 'classes', label: 'Siniflər və qruplar', short: 'Siniflər', group: 'Siniflər' },
   { to: '/homeroom', icon: 'students', label: 'Sinif rəhbəri', short: 'Rəhbər', group: 'Siniflər' },
   { to: '/chat', icon: 'feedback', label: 'Çat', group: 'Ünsiyyət' },
@@ -121,6 +122,13 @@ export function Layout({ children }: { children: ReactNode }) {
     if (!me || me.role !== 'teacher') return
     get<any[]>('/api/homeroom').then(r => setHomeroom(r.length > 0)).catch(() => {})
   }, [me?.id, loc.pathname === '/settings'])
+  // «Apelyasiyalar (N)»: cavabsız apelyasiyaların sayı (müəllim; hər keçiddə yenilənir)
+  const [apOpen, setApOpen] = useState(0)
+  useEffect(() => {
+    if (!me || student) return
+    get<{ open: number }>('/api/exam-appeals/open-count').then(r => setApOpen(r.open || 0)).catch(() => {})
+  }, [me?.id, loc.pathname])
+  const navLabel = (i: NavItem) => t(i.label) + (i.to === '/appeals' && apOpen > 0 ? ` (${apOpen})` : '')
   const items = student ? STUDENT_NAV : TEACHER_NAV.filter(i => i.to !== '/homeroom' || homeroom)
   const tabs = student ? STUDENT_TABS : TEACHER_TABS
   const moreItems = items.filter(i => !tabs.includes(i.to))
@@ -137,7 +145,7 @@ export function Layout({ children }: { children: ReactNode }) {
             {(() => {
               const row = (i: NavItem) => (
                 <NavLink key={i.to} to={i.to} end={i.to === "/"} className="navlink" title={t(i.label)}>
-                  {({ isActive }) => <button tabIndex={-1} aria-current={isActive ? 'page' : undefined}><Icon name={i.icon} /><span className="nav-lbl">{t(i.label)}</span></button>}
+                  {({ isActive }) => <button tabIndex={-1} aria-current={isActive ? 'page' : undefined}><Icon name={i.icon} /><span className="nav-lbl">{navLabel(i)}</span></button>}
                 </NavLink>)
               return items.some(i => i.group)
                 ? <NavGroups items={items} storageKey="mk-nav-open" defaultOpen={g => g === (student ? 'Bu gün' : 'Dərs')} isActive={active} idPrefix="ng-d" renderItem={row} />
@@ -185,7 +193,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="nav nav-more" style={{ gap: 6 }}>
             {(() => {
               const row = (i: NavItem) => (
-                <button key={i.to} className="btn" style={{ justifyContent: 'flex-start' }} onClick={() => { setMore(false); nav(i.to) }}><Icon name={i.icon} />{t(i.label)}</button>)
+                <button key={i.to} className="btn" style={{ justifyContent: 'flex-start' }} onClick={() => { setMore(false); nav(i.to) }}><Icon name={i.icon} />{navLabel(i)}</button>)
               return moreItems.some(i => i.group)
                 ? <NavGroups items={moreItems} storageKey="mk-nav-open-m" defaultOpen={() => true} isActive={active} idPrefix="ng-m" renderItem={row} />
                 : moreItems.map(row)
