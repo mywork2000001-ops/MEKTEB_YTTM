@@ -14,7 +14,8 @@ type Series = {
   id: number; title: string; subject: string; period: 'day' | 'week' | 'month'; every: number; weekday: number | null
   month_day: number | null; open_time: string; window_hours: number; duration_min: number; auto_new: boolean; active: boolean
   next_at: string; queue: { id: number; label: string | null; given: string[]; other_ok: boolean; skip: boolean }[]; done: { file_id: number; batch_id: number; at: string }[]
-  preview: { at: string; weekday: string; file_id: number | null; label: string | null }[]; targets: { ta_id: number }[]; sources: string[]
+  per_slot: number; newest_first: boolean; show_answers: string
+  preview: { at: string; weekday: string; file_id: number | null; label: string | null; labels?: (string | null)[] }[]; targets: { ta_id: number }[]; sources: string[]
 }
 const WD = ['Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə', 'Bazar']
 const SOURCES: [string, string][] = [['sinaqlar', 'Sınaqlar (illər üzrə)'], ['p012', 'P012 · Riyaziyyat 11 Buraxılış'], ['p009', 'P009 · Riyaziyyat 11 DİM']]   // TAİM (P004) – müəllim imtahanı, seriyaya düşmür
@@ -30,7 +31,7 @@ function firstDate(start: string, period: 'day' | 'week' | 'month', weekday: num
 }
 /** Canlı cümlə: forma nə qurduğunu oxunaqlı verir (rəqəm yığını yox). */
 function sentence(t: ReturnType<typeof useT>, lang: Lang, f: { period: 'day' | 'week' | 'month'; every: number; weekday: number; month_day: number
-  open_time: string; window_hours: number; duration_min: number; start: string }, n: number): string {
+  open_time: string; window_hours: number; duration_min: number; start: string; per_slot: number; newest_first: boolean }, n: number): string {
   const every = everyText(f.period, f.every, lang)
   const base = { every, time: f.open_time, sfx: lang === 'az' ? azTimeSuffix(f.open_time) : '' }
   const when = f.period === 'day' ? t('{every}, saat {time}-{sfx} açılır', base)
@@ -39,6 +40,7 @@ function sentence(t: ReturnType<typeof useT>, lang: Lang, f: { period: 'day' | '
   const open = f.window_hours ? t('{x} açıq qalır', { x: spanHours(f.window_hours, lang) }) : t('müddətsiz (son tarix yoxdur)')
   const dur = f.duration_min ? t('həll müddəti {x}', { x: spanMinutes(f.duration_min, lang) }) : t('vaxt məhdudiyyəti yoxdur')
   let out = cap(`${when}, ${open}, ${dur}.`, lang)
+  out += ' ' + t('Hər dəfə göndərilən sınaq sayı: {n}', { n: numWord(f.per_slot, lang) }) + (f.newest_first ? ', ' + t('ən yenisindən başlayaraq') : '') + '.'
   if (n > 0) {
     const last = lastDate(firstDate(f.start, f.period, f.weekday, f.month_day), n, f.period, f.every)
     out += ' ' + t('Növbədə sınaq sayı: {n} – təxminən {cover} (son: {date}).', { n: numWord(n, lang), cover: coverText(n, f.period, f.every, lang), date: dayMonth(last, lang) })
@@ -53,7 +55,7 @@ function summary(t: ReturnType<typeof useT>, lang: Lang, s: Series): string {
   let end = ''
   if (s.auto_new) end = t('yeni sınaqlar gəldikcə davam edir')
   else if (left > 0 && s.next_at) end = t('növbə ~{d} bitir', { d: dayMonth(lastDate(new Date(s.next_at), left, s.period, s.every), lang) })
-  return [`${every}${day} ${s.open_time}`, s.window_hours ? t('{x} açıq', { x: spanHours(s.window_hours, lang) }) : t('Müddətsiz'),
+  return [`${every}${day} ${s.open_time}`, s.per_slot === 2 ? t('hər dəfə iki sınaq') : '', s.newest_first ? t('yenidən köhnəyə') : '', s.window_hours ? t('{x} açıq', { x: spanHours(s.window_hours, lang) }) : t('Müddətsiz'),
     s.duration_min ? spanMinutes(s.duration_min, lang) : t('Vaxt məhdudiyyəti yoxdur'),
     `${t('növbədə {n}', { n: numWord(s.queue.length, lang) })}, ${t('göndərilib {n}', { n: numWord(s.done.length, lang) })}`, end].filter(Boolean).join(' · ')
 }
@@ -62,12 +64,14 @@ export default function ExamSeriesPanel() {
   const t = useT()
   const [list, err, loading, reload] = useLoad<Series[]>(() => get('/api/exam-series'), [])
   const [creating, setCreating] = useState(false)
+  const [autoAll, setAutoAll] = useState(false)
   const act = async (fn: () => Promise<unknown>, msg: string) => { try { await fn(); toast(msg); reload() } catch (e: any) { toast(e?.message || t('Xəta')) } }
   const lang = getLang()
   return (
     <>
       <div className="row" style={{ marginBottom: 12 }}>
         <p className="small muted grow" style={{ margin: 0 }}>{t('Bir dəfə qurun: seçdiyiniz sınaqlar növbə ilə (hər gün / həftə / ay) siniflərə özü gedir. «Yeni sınaqları avtomatik əlavə et» açıqdırsa, viktorina-ya əlavə etdiyiniz yeni sınaqlar da növbəyə düşür.')}</p>
+        <button className="btn" onClick={() => setAutoAll(true)}>{t('Bütün siniflər üçün avtomatik seriya')}</button>
         <button className="btn primary" onClick={() => setCreating(true)}>{t('+ Yeni seriya')}</button>
       </div>
       <ErrorBox error={err} />
@@ -81,7 +85,7 @@ export default function ExamSeriesPanel() {
                 {s.auto_new && <Pill tone="info">{t('yeni sınaqlar avtomatik')}</Pill>}</div>
               <span className="small muted">{s.subject} · {summary(t, lang, s)}</span>
               {s.active && <div className="small">{s.preview.slice(0, 4).map((p, i) => (
-                <div key={i}>{p.weekday} {when(p.at)} – {p.label ? <b>{p.label}</b> : <span className="muted">{t('növbə boşdur – yeni sınaq gözlənilir')}</span>}</div>))}</div>}
+                <div key={i}>{p.weekday} {when(p.at)} – {p.label ? <b>{(p.labels?.length ? p.labels : [p.label]).join(' + ')}</b> : <span className="muted">{t('növbə boşdur – yeni sınaq gözlənilir')}</span>}</div>))}</div>}
               <div className="row" style={{ gap: 6 }}>
                 <button className="btn sm" onClick={() => act(() => patch(`/api/exam-series/${s.id}`, { active: !s.active }), s.active ? t('Dayandırıldı') : t('Davam edir'))}>{s.active ? t('Dayandır') : t('Davam et')}</button>
                 <button className="btn sm" onClick={() => act(() => patch(`/api/exam-series/${s.id}`, { auto_new: !s.auto_new }), t('Saxlandı'))}>{s.auto_new ? t('Yeniləri avtomatik əlavə etmə') : t('Yeniləri avtomatik əlavə et')}</button>
@@ -99,6 +103,7 @@ export default function ExamSeriesPanel() {
               </Disclosure>}
             </div>))}
         </div>)}
+      {autoAll && <AutoAll onClose={() => setAutoAll(false)} onDone={() => { setAutoAll(false); reload() }} />}
       {creating && <NewSeries onClose={() => setCreating(false)} onDone={() => { setCreating(false); reload() }} />}
     </>
   )
@@ -111,7 +116,7 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
   const [targets, , tl] = useLoad<Target[]>(() => get('/api/exams-online/targets'), [])
   const [f, setF] = useState({ title: t('Həftəlik sınaqlar'), sources: ['sinaqlar', 'p012'], grade: '' as string, period: 'week' as 'day' | 'week' | 'month',
     every: 1, weekday: 5, month_day: 1, start: today, open_time: '15:00', window_hours: 0, duration_min: 0, penalty: 0,
-    show_answers: 'after_close', auto_new: true })
+    show_answers: 'after_close', auto_new: true, per_slot: 1, newest_first: true })
   const [tas, setTas] = useState<number[]>([])
   const [files, setFiles] = useState<BFile[] | null>(null)
   const [queue, setQueue] = useState<number[]>([])
@@ -170,10 +175,13 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
           <Field label={t('Açıq qalır')}><DurationSelect unit="hours" options={WINDOW_HOURS} value={f.window_hours} onChange={v => setF({ ...f, window_hours: v })}
             extra={[[({ day: 24, week: 168, month: 720 } as const)[f.period] * f.every, t('növbəti sınağa qədər')]]} /></Field>
           <Field label={t('Həll müddəti')}><DurationSelect unit="min" options={SOLVE_MINUTES} value={f.duration_min} onChange={v => setF({ ...f, duration_min: v })} /></Field></>}
+          <Field label={t('Hər dəfə')}><select value={f.per_slot} onChange={e => setF({ ...f, per_slot: Number(e.target.value) })}><option value={1}>{t('bir sınaq')}</option><option value={2}>{t('iki sınaq')}</option></select></Field>
+          <Field label={t('Sıra')}><select value={f.newest_first ? 'new' : 'mine'} onChange={e => setF({ ...f, newest_first: e.target.value === 'new' })}><option value="new">{t('yenidən köhnəyə')}</option><option value="mine">{t('seçdiyim sıra ilə')}</option></select></Field>
           <Field label={t('Cərimə')}><select value={f.penalty} onChange={e => setF({ ...f, penalty: Number(e.target.value) })}><option value={0}>{t('yoxdur')}</option><option value={3}>{t('3 səhv 1 düzü aparır')}</option><option value={4}>{t('4 səhv 1 düzü aparır')}</option></select></Field>
-          <Field label={t('Düzgün cavablar')}><select value={f.show_answers} onChange={e => setF({ ...f, show_answers: e.target.value })}><option value="after_close">{t('bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvildən dərhal sonra')}</option><option value="never">{t('göstərilməsin')}</option></select></Field>
+          <Field label={t('Düzgün cavablar')}><select value={f.show_answers} onChange={e => setF({ ...f, show_answers: e.target.value })}><option value="after_close">{t('bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvildən dərhal sonra')}</option><option value="never">{t('göstərilməsin')}</option><option value="teacher">{t('yalnız müəllim göndərəndə')}</option></select></Field>
         </div>
         <p className="banner small" style={{ margin: 0 }}>{sentence(t, getLang(), f, queue.length)}</p>
+        {f.newest_first && <p className="small muted" style={{ margin: 0 }}>{t('Yaradılanda növbə sınağın tarixinə görə yenidən köhnəyə sıralanır; sonradan gələn yeni sınaqlar öz yerinə düşür.')}</p>}
         <fieldset><legend>{t('Siniflər')} {subj ? `(${subj})` : ''}</legend>
           {tl && !targets ? <Loading /> : targets?.filter(t => t.mine).map(t => (
             <label key={t.ta_id} className="check"><input type="checkbox" checked={tas.includes(t.ta_id)} disabled={!!subj && t.subject !== subj}
@@ -217,6 +225,59 @@ function NewSeries({ onClose, onDone }: { onClose: () => void; onDone: () => voi
           <p className="small muted" style={{ margin: 0 }}>{t('Artıq verilmiş sınaq sinfə ikinci dəfə göndərilmir; avtomatik əlavə olunanlar yalnız sinfin öz sınaqlarıdır.')}</p>
         </fieldset>
         <ErrorBox error={err} />
+      </div>
+    </Drawer>
+  )
+}
+
+type AutoRow = { ta_id: number; class_name: string; space: 'school' | 'private'; subject: string; queue_n: number; first: string[]; open_now: number; status: 'create' | 'exists' | 'empty' }
+
+/** «Bütün siniflər üçün avtomatik seriya»: əvvəl önbaxış (heç nə yazılmır), sonra «Yarat». */
+function AutoAll({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const t = useT()
+  const today = new Date().toISOString().slice(0, 10)
+  const dflt = (Date.parse(today) - Date.parse('2026-10-23')) / 86400000 <= 14 ? '2026-10-23' : today
+  const [f, setF] = useState({ start: dflt, open_time: '15:00', unl: true, window_hours: 48, show_answers: 'teacher' })
+  const [rows, setRows] = useState<AutoRow[] | null>(null)
+  const [err, setErr] = useState<unknown>()
+  const [busy, setBusy] = useState(false)
+  const body = (dry: boolean) => ({ dry_run: dry, period: 'day', every: 1, per_slot: 2, newest_first: true, auto_new: true, start: f.start, open_time: f.open_time,
+    window_hours: f.unl ? 0 : f.window_hours, duration_min: 0, show_answers: f.show_answers })
+  useEffect(() => {
+    setRows(null); setErr(undefined)
+    post<{ items: AutoRow[] }>('/api/exam-series/auto-all', body(true)).then(r => setRows(r.items), setErr)
+  }, [f.start, f.open_time, f.unl, f.window_hours, f.show_answers])
+  const n = rows?.filter(r => r.status === 'create').length || 0
+  const create = async () => {
+    setBusy(true)
+    try { const r = await post<{ created: number[] }>('/api/exam-series/auto-all', body(false)); toast(t('Yaradıldı: {n}', { n: r.created.length })); onDone() }
+    catch (e) { setErr(e) } finally { setBusy(false) }
+  }
+  const ST = { create: t('yaradılacaq'), exists: t('artıq var'), empty: t('sinif rəqəmi yoxdur') } as const
+  return (
+    <Drawer title={t('Bütün siniflər üçün avtomatik seriya')} onClose={onClose}
+      footer={<><span className="small muted grow">{t('Yaradılacaq: {n}', { n })}</span><button className="btn" onClick={onClose}>{t('Ləğv et')}</button>
+        <button className="btn primary" disabled={busy || !n} onClick={create}>{t('Yarat')}</button></>}>
+      <div className="stack">
+        <p className="small muted" style={{ margin: 0 }}>{t('Hər sinif (məktəb və fərdi) üçün ayrıca seriya: hər gün iki sınaq, ən yenisindən köhnəyə. Sinfə uyğun və hələ verilməmiş sınaqlar növbəyə düşür; aktiv seriyası olan sinif atlanır.')}</p>
+        <div className="fg">
+          <Field label={t('Başlama tarixi')}><input type="date" value={f.start} onChange={e => setF({ ...f, start: e.target.value })} /></Field>
+          <Field label={t('Açılma saatı')}><input type="time" value={f.open_time} onChange={e => setF({ ...f, open_time: e.target.value })} /></Field>
+          <label className="check full"><input type="checkbox" checked={f.unl} onChange={e => setF({ ...f, unl: e.target.checked })} /> {t('Müddətsiz (taymer və son tarix yoxdur)')}</label>
+          {!f.unl && <Field label={t('Açıq qalır')}><DurationSelect unit="hours" options={WINDOW_HOURS} value={f.window_hours} onChange={v => setF({ ...f, window_hours: v })} /></Field>}
+          <Field label={t('Düzgün cavablar')}><select value={f.show_answers} onChange={e => setF({ ...f, show_answers: e.target.value })}>
+            <option value="teacher">{t('yalnız müəllim göndərəndə')}</option><option value="after_close">{t('bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvildən dərhal sonra')}</option><option value="never">{t('göstərilməsin')}</option></select></Field>
+        </div>
+        {f.unl && <p className="small muted" style={{ margin: 0 }}>{t('Keçmiş başlama tarixində qaçırılmış günlərin sınaqları yaradılanda bir dəfə açılır.')}</p>}
+        <ErrorBox error={err} />
+        {!rows && !err ? <Loading /> : rows && (rows.length === 0 ? <div className="empty">{t('Aktiv dərs tapılmadı.')}</div> :
+          <div className="tbl-wrap"><table>
+            <thead><tr><th>{t('Sinif')}</th><th>{t('Məkan')}</th><th className="r">{t('Növbədə')}</th><th className="r">{t('İndi açılacaq')}</th><th>{t('İlk iki')}</th><th>{t('Status')}</th></tr></thead>
+            <tbody>{rows.map(r => (
+              <tr key={r.ta_id}><td><b>{r.class_name}</b><span className="sub">{r.subject}</span></td><td>{r.space === 'private' ? t('fərdi') : t('məktəb')}</td>
+                <td className="r num">{r.queue_n}</td><td className="r num">{r.open_now}</td><td className="small">{r.first.join(' · ') || '—'}</td>
+                <td><Pill tone={r.status === 'create' ? 'ok' : r.status === 'empty' ? 'warn' : undefined}>{ST[r.status]}</Pill>{r.status === 'create' && r.queue_n === 0 && <span className="sub">{t('növbə boşdur – yeni sınaq gözlənilir')}</span>}</td></tr>))}</tbody>
+          </table></div>)}
       </div>
     </Drawer>
   )

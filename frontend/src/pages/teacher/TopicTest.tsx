@@ -151,7 +151,7 @@ export default function TopicTest({ ta, pl, onClose, onDone }: { ta: number; pl:
             <label className="check full"><input type="checkbox" checked={f.unl} onChange={e => setF({ ...f, unl: e.target.checked })} /> {t('Müddətsiz (taymer və son tarix yoxdur)')}</label>
             {!f.unl && <Field label={t('Həll müddəti (dəq)')} hint="ən azı 45"><input type="number" min={45} max={300} value={f.duration} onChange={e => setF({ ...f, duration: Number(e.target.value) })} /></Field>}
             <Field label={t('Düzgün cavablar görünsün')}><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
-              <option value="after_close">{t('test bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvil verdikdən dərhal sonra')}</option><option value="never">{t('heç vaxt')}</option></select></Field>
+              <option value="after_close">{t('test bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvil verdikdən dərhal sonra')}</option><option value="never">{t('heç vaxt')}</option><option value="teacher">{t('yalnız müəllim göndərəndə')}</option></select></Field>
             <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> {t('Sualların sırası hər şagirdə fərqli')}</label>
             <label className="check full"><input type="checkbox" checked={f.journal} onChange={e => setF({ ...f, journal: e.target.checked })} /> {t('Bağlananda formativ jurnala yaz')}</label>
             <label className="check full"><input type="checkbox" checked={variants} onChange={e => setVariants(e.target.checked)} /> {t('Səviyyəyə görə variant (Zəif / Orta / Güclü – hər qrupa öz sualları)')}</label>

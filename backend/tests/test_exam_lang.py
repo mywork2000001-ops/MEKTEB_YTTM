@@ -233,6 +233,9 @@ def test_migration_up_down_up(tmp_path):
         return {c['name'] for c in inspect(create_engine(url)).get_columns(t)}
     run('upgrade', 'head')
     assert {'sector', 'exam_language'} <= cols('classes') and 'language' in cols('exams')
+    assert {'per_slot', 'newest_first'} <= cols('exam_series') and 'answers_released_at' in cols('task_attempts')
+    run('downgrade', '-1')                                         # f7c1e5a9b3d2 (sınaq seriyası) geri
+    assert not ({'per_slot', 'newest_first'} & cols('exam_series')) and 'answers_released_at' not in cols('task_attempts')
     run('downgrade', '-1')
     assert not ({'sector', 'exam_language'} & cols('classes')) and 'language' not in cols('exams')
     assert 'standard' in cols('bank_questions')                   # əvvəlki miqrasiya yerində

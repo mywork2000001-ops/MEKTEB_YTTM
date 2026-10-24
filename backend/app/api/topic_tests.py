@@ -127,7 +127,7 @@ class TopicTestIn(BaseModel):
     bank_ids: list[int] = Field(default_factory=list)
     custom: list[CustomQ] = Field(default_factory=list)
     shuffle: bool = True
-    show_answers: Literal['after_close', 'after_submit', 'never'] = 'after_close'
+    show_answers: Literal['after_close', 'after_submit', 'never', 'teacher'] = 'after_close'
     journal_auto: bool = True
     targets: list[TopicTarget] = Field(min_length=1, max_length=30)
     # səviyyəyə görə variant: hər qrupa öz sualları (səviyyəsi və ya variantı olmayan şagird «Orta» variantı alır)

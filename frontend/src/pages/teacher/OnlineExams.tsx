@@ -24,7 +24,7 @@ type Exam = { id: number; title: string; subject: string; grade: number | null; 
   questions: number; mine: boolean; wrote: number; avg_pct: number | null; state: 'gözlənilir' | 'açıqdır' | 'bitib' }
 type Row = { student_id: number | null; full_name: string | null; class_name: string; task_id: number; status: 'yazıb' | 'yazmayıb' | 'yazır' | 'gözlənilir'
   correct: number | null; wrong: number | null; blank: number | null; points: number | null; pct: number | null; grade: number | null
-  place_all: number | null; place_class: number | null; retake: boolean; late?: boolean }
+  place_all: number | null; place_class: number | null; retake: boolean; late?: boolean; answers_released_at?: string | null }
 type Res = { batch: { id: number; title: string; subject: string; grade: number | null; penalty: number; questions: number }
   summary: { students: number; wrote: number; avg_pct: number | null; max_pct: number | null; min_pct: number | null }
   classes: { task_id: number; ta_id: number; own: boolean; class_name: string; students: number; wrote: number; avg_pct: number | null; max_pct: number | null; place: number | null; state: string; opens_at: string; closes_at: string }[]
@@ -273,7 +273,7 @@ export function NewExam({ onClose, onDone, prefill }: { onClose: () => void; onD
             {!f.unl && <Field label={t('Həll müddəti')}><DurationSelect unit="min" options={TEST_MINUTES} value={f.duration} onChange={v => setF({ ...f, duration: v })} /></Field>}
             <Field label={t('Bal hesabı')}><select value={f.penalty} onChange={e => setF({ ...f, penalty: e.target.value })}>{PENALTY.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}</select></Field>
             <Field label={t('Düzgün cavablar görünsün')} full><select value={f.show} onChange={e => setF({ ...f, show: e.target.value })}>
-              <option value="after_close">{t('sınaq bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvil verdikdən dərhal sonra')}</option><option value="never">{t('heç vaxt')}</option></select></Field>
+              <option value="after_close">{t('sınaq bağlandıqdan sonra')}</option><option value="after_submit">{t('təhvil verdikdən dərhal sonra')}</option><option value="never">{t('heç vaxt')}</option><option value="teacher">{t('yalnız müəllim göndərəndə')}</option></select></Field>
             <label className="check full"><input type="checkbox" checked={f.shuffle} onChange={e => setF({ ...f, shuffle: e.target.checked })} /> {t('Sualların sırası hər şagirdə fərqli (köçürmənin qarşısını alır)')}</label>
           </div>
           <fieldset><legend>{t('Siniflər və vaxt')}</legend>
@@ -348,7 +348,17 @@ function Results({ id, onClose, onChange }: { id: number; onClose: () => void; o
   const [att, setAtt] = useState<Row | null>(null)
   const [delAsk, setDelAsk] = useState(false)
   const [rs, setRs] = useState<{ ta: number; task: number; ids: number[] } | null>(null)
+  const [sel, setSel] = useState<number[]>([])
   const rows = d ? d.rows.filter(r => !cls || r.class_name === cls) : []
+  const ownOf = (r: Row) => !!r.student_id && (d?.classes.find(k => k.task_id === r.task_id) || d?.classes.find(k => k.class_name === r.class_name))?.own
+  const canRelease = (r: Row) => r.status === 'yazıb' && ownOf(r)
+  const release = async (ids: number[] | null, withdraw = false) => {
+    try {
+      const r = await (withdraw ? apiDel(`/api/exams-online/${id}/release-answers`, ids ? { student_ids: ids } : {}) : post(`/api/exams-online/${id}/release-answers`, ids ? { student_ids: ids } : {}))
+      toast(withdraw ? t('Geri alındı: {n}', { n: r.withdrawn }) : t('Göndərildi: {n}', { n: r.released }))
+      setSel([]); reload(); onChange()
+    } catch (e: any) { toast(e?.message || t('Xəta')) }
+  }
   const name = (r: Row) => r.full_name || t('şagird ({class_name})', { class_name: r.class_name })
   const print = () => {
     if (!d) return
@@ -380,13 +390,23 @@ function Results({ id, onClose, onChange }: { id: number; onClose: () => void; o
               <option value="questions">{tt('Suallar üzrə təhlil')}</option></select></label>
             {tab === 'rows' && <label className="lsel"><span>{tt('Sinif')}</span><select className="sel" value={cls} onChange={e => setCls(e.target.value)}><option value="">{tt('Bütün siniflər')}</option>{d.classes.map(c => <option key={c.task_id}>{c.class_name}</option>)}</select></label>}
           </div>
+          {tab === 'rows' && rows.some(canRelease) && (
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+              <button className="btn sm" disabled={!sel.length} onClick={() => release(sel)}>{t('Düzgün cavabları göndər (seçilənlərə)')}</button>
+              <button className="btn sm" onClick={() => release(null)}>{t('Hamısına göndər')}</button>
+              <button className="btn sm ghost" disabled={!sel.length} onClick={() => release(sel, true)}>{t('Göndərməyi geri al')}</button>
+              <span className="small muted">{t('Hər şagird öz balını görür; sual-sual düzgün cavabları yalnız «müəllim göndərəndə» rejimində siz göndərirsiniz.')}</span>
+            </div>)}
           {tab === 'rows' && (
             <div className="tbl-wrap"><table>
-              <thead><tr><th className="r">{t('Yer')}</th><th className="r">{t('Sinifdə')}</th><th>{t('Şagird')}</th><th className="r">{t('Düz')}</th><th className="r">{t('Səhv')}</th><th className="r">{t('Boş')}</th><th className="r">{t('Bal')}</th><th className="r">%</th></tr></thead>
+              <thead><tr><th style={{ width: 28 }}>{rows.some(canRelease) && <input type="checkbox" aria-label={t('Hamısını seç')} checked={sel.length > 0 && rows.filter(canRelease).every(r => sel.includes(r.student_id!))}
+                onChange={e => setSel(e.target.checked ? rows.filter(canRelease).map(r => r.student_id!) : [])} />}</th><th className="r">{t('Yer')}</th><th className="r">{t('Sinifdə')}</th><th>{t('Şagird')}</th><th className="r">{t('Düz')}</th><th className="r">{t('Səhv')}</th><th className="r">{t('Boş')}</th><th className="r">{t('Bal')}</th><th className="r">%</th></tr></thead>
               <tbody>{rows.map((r, i) => (
                 <tr key={i} className={r.student_id && r.status === 'yazıb' ? 'click' : ''} onClick={() => r.student_id && r.status === 'yazıb' && setAtt(r)}>
+                  <td onClick={e => e.stopPropagation()}>{canRelease(r) && <input type="checkbox" checked={sel.includes(r.student_id!)}
+                    onChange={e => setSel(x => e.target.checked ? [...x, r.student_id!] : x.filter(y => y !== r.student_id))} />}</td>
                   <td className="r num"><b>{r.place_all ?? '—'}</b></td><td className="r num">{r.place_class ?? '—'}</td>
-                  <td>{r.full_name ? <b>{r.full_name}</b> : <span className="muted">{name(r)}</span>}<span className="sub">{r.class_name}{r.retake ? (' · ' + t('təkrar cəhd')) : ''}{r.late ? (' · ' + t('sonradan yazıb')) : ''}</span>
+                  <td>{r.full_name ? <b>{r.full_name}</b> : <span className="muted">{name(r)}</span>}<span className="sub">{r.class_name}{r.retake ? (' · ' + t('təkrar cəhd')) : ''}{r.late ? (' · ' + t('sonradan yazıb')) : ''}{r.answers_released_at ? (' · ' + t('cavablar göndərilib · {d}', { d: dt(r.answers_released_at) })) : ''}</span>
                     {r.student_id && (() => { const c = d.classes.find(k => k.task_id === r.task_id) || d.classes.find(k => k.class_name === r.class_name)
                       return c?.own ? <button className="btn sm ghost" style={{ padding: '0 6px', minHeight: 24 }} title={t('Bu şagirdə sınağı yenidən göndər')}
                         onClick={e => { e.stopPropagation(); setRs({ ta: c.ta_id, task: c.task_id, ids: [r.student_id!] }) }}>{t('↻ Yenidən göndər')}</button> : null })()}
