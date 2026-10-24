@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from .domain.scoring import from_stats
@@ -17,7 +17,7 @@ def update_difficulty(db: Session) -> int:
     n: dict[int, int] = defaultdict(int)
     ok: dict[int, int] = defaultdict(int)
     for t, a in db.execute(select(OnlineTask, TaskAttempt).join(TaskAttempt, TaskAttempt.task_id == OnlineTask.id)
-                           .where(TaskAttempt.submitted_at.is_not(None))):
+                           .where(TaskAttempt.submitted_at.is_not(None), or_(OnlineTask.kind.is_(None), OnlineTask.kind != 'sehv'))):   # səhv üzərində iş – təkrar cəhd, statistikanı aşağı salmasın
         if not any(v not in (None, '') for v in (a.answers or {}).values()):
             continue
         for i, q in enumerate(t.questions or []):
