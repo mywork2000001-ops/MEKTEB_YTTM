@@ -4,6 +4,12 @@ Bot: @ferid_claude_bot. Menyu (rus dilində) yalnız istifadəçinin çatına ya
 (əmr siyahısını dəyişəndə yenidən işə sal; plugin öz `start/help/status` əmrlərini `all_private_chats`-a yazır,
 bizim `chat` scope ondan üstündür). Skript həm də **daimi düymə klaviaturası** göndərir – düymə əmri adi mesaj kimi yollayır, əmr seçmək üçün yazmaq lazım deyil. `start/help/status` – plugin özü cavab verir, qalanları sessiyaya mesaj kimi gəlir.
 
+## Rusca düymələr = əmrlər
+Düymə mətni gəlir (emoji ilə və ya onsuz) – əmr kimi qəbul et:
+🖥 Терминалы=`/terminals` · ⏳ Что сейчас=`/now` · ⛔ Стоп=`/stop` · 🌿 Git=`/git` · 🔨 Сборка=`/build` · 🧪 Тесты=`/tests` ·
+⬆️ Отправить=`/push` · 🚀 Деплой=`/deploy` · 📸 Экран=`/screen` · ⚙️ Процессы=`/procs` · 📋 Открытые задачи=`/open_work` ·
+➕ Новая сессия=`/new_session` · 📝 Аудит=`/audit` · ❓ Меню=`/menu`. Əl ilə: «Отправить сессии <ad> <mətn>»=`/send`, «Завершить <PID>»=`/kill`.
+
 ## Əmrlər → nə etməli
 Cavab həmişə **rus dilində**, qısa, Telegram `reply` aləti ilə (transkript Telegram-a getmir).
 

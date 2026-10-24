@@ -50,17 +50,19 @@ const call = (method, body) =>
 
   // Daimi düymə klaviaturası: düyməyə basmaq əmri adi mesaj kimi göndərir
   // (plugin inline düymələri yalnız icazələr üçün emal edir).
+  // Düymə mətni rusca (Telegram əmr adı yalnız latın ola bilər, düymə – istənilən).
+  // Uyğunluq: docs/telegram-menyu-promtu.md cədvəli.
   const rows = [
-    ['/terminals', '/now', '/stop'],
-    ['/git', '/build', '/tests'],
-    ['/push', '/deploy', '/screen'],
-    ['/procs', '/open_work', '/new_session'],
-    ['/audit', '/menu'],
+    ['🖥 Терминалы', '⏳ Что сейчас', '⛔ Стоп'],
+    ['🌿 Git', '🔨 Сборка', '🧪 Тесты'],
+    ['⬆️ Отправить', '🚀 Деплой', '📸 Экран'],
+    ['⚙️ Процессы', '📋 Открытые задачи', '➕ Новая сессия'],
+    ['📝 Аудит', '❓ Меню'],
   ];
   const kb = await call('sendMessage', {
     chat_id: CHAT_ID,
     text: 'Меню управления: выберите команду кнопкой ниже или через «/».\n'
-      + '/send имя текст и /kill PID — пишите вручную.',
+      + 'Вручную: «Отправить сессии имя текст» (/send) и «Завершить PID» (/kill).',
     reply_markup: {
       keyboard: rows.map(r => r.map(text => ({ text }))),
       resize_keyboard: true,
