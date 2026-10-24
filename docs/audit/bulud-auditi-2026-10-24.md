@@ -70,5 +70,5 @@ Sinaqlar (9 готовых + 1 недоделанный): Dəyər XI Sınaq 1, E
 | Перенести готовые ветки в main | ✅ | 27 веток `cloud/p013-*`, `cloud/sinaq-*` слиты (конфликты: списки viktorina.html — объединены, catalog.json — по id, catalog.js/REESTR — пересобраны) → HUB `3bf9d16c`. P013: 740 → 1500 вопросов (205 вариантов), Sinaqlar: 58. `check-sinaqlar` 58/58 и 75 новых P013-страниц — 0 проблем; `check-viktorina-import` OK; `build-catalog --check` 0 предупреждений. Живой сайт hub-educat-on-6m58.vercel.app — 200 на новых страницах. PR #10, #12–19, #21 закрылись как merged автоматически |
 | Починить автоперенос | ✅ | HUB `92c2e61a`: push 5 попыток (fetch + rebase + проверка), `.gitattributes` HANDOFF.md merge=union |
 | Починить Telegram-отчёт | ✅ | HUB `92c2e61a`: деление сообщения по строкам; ручной запуск tg-hesabat — success |
-| Закрыть дубли PR #6–9, #11, #20 и удалить слитые ветки | ✅ | после «да, удаляй»: 6 PR закрыты, 35 веток удалены; 3 старых дубля `claude/trusting-mccarthy-*` ждут подтверждения |
+| Закрыть дубли PR #6–9, #11, #20 и удалить слитые ветки | ✅ | после «да, удаляй»: 6 PR закрыты, 35 веток удалены; затем («удали и эти три») ещё 3 дубля `claude/trusting-mccarthy-*` |
 | Не слиты (нарочно) | ⏳ | `cloud/sinaq-usi-26-11-buraxilis-2026-03-12` (проверка не закончена), `cloud/sinaq-otk-11-sinaq-3-2025-12-28` (только «занят») |
