@@ -311,7 +311,42 @@ def _can_review(db: Session, t: OnlineTask, a: TaskAttempt | None, at: dt.dateti
 
 
 def _shown_grade(t: OnlineTask, a: TaskAttempt) -> int | None:
-    return None if t.kind in ('sinaq', 'ksq') else a.grade   # sınaq formativ qiymətə təsir etmir; KSQ – nəticəni müəllim açır
+    return None if t.kind in ('sinaq', 'ksq', 'sehv') else a.grade   # sınaq formativ qiymətə təsir etmir; KSQ – nəticəni müəllim açır
+
+
+def _mw_info(db: Session, t: OnlineTask, a: TaskAttempt | None, can_review: bool, x: OnlineTask | None) -> dict | None:
+    """«Səhvlər üzərində iş» düyməsinin vəziyyəti (yalnız formativ mövzu testi, təhvil + izahdan sonra)."""
+    from ..mistake_work import eligibility
+    if eligibility(db, t, a, can_review) is not None:
+        return None
+    if x is None:
+        return {'allowed': True, 'task_id': None, 'correct': None, 'total': None, 'done': False}
+    b = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == x.id, TaskAttempt.student_id == a.student_id))
+    done = bool(b and b.submitted_at)
+    return {'allowed': False, 'task_id': x.id, 'correct': b.correct if done else None, 'total': len(x.questions), 'done': done}
+
+
+@router.post('/tasks/{task_id}/mistake-work')
+def mistake_work(task_id: int, user: User = Depends(student_only), db: Session = Depends(get_db)):
+    """Səhv/boş suallardan şəxsi test yaradır (hər cəhd üçün bir dəfə). Sonra adi /tasks/{id}/start axını."""
+    from .. import mistake_work as mw
+    s = me_student(db, user)
+    t = _task_for(db, s, task_id, user)
+    a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
+    why = mw.eligibility(db, t, a, _can_review(db, t, a, now()))
+    if why == 'kind':
+        raise HTTPException(409, _L(user, 'Bu test üçün «Səhvlər üzərində iş» yoxdur', 'Для этого теста «Работа над ошибками» недоступна', 'Mistake work is not available for this test'))
+    if why == 'not_done':
+        raise HTTPException(409, _L(user, 'Əvvəlcə testi təhvil verin', 'Сначала сдайте тест', 'Submit the test first'))
+    if why == 'no_review':
+        raise HTTPException(409, _L(user, 'Cavablar və izahlar hələ açılmayıb', 'Ответы и пояснения ещё не открыты', 'Answers and explanations are not open yet'))
+    if why == 'none_wrong':
+        raise HTTPException(409, _L(user, 'Səhv və ya boş sual yoxdur', 'Ошибок и пропусков нет', 'There are no mistakes or blanks'))
+    if mw.existing(db, t, a):
+        raise HTTPException(409, _L(user, 'Bu test üçün «Səhvlər üzərində iş» artıq başlanıb', 'Работа над ошибками по этому тесту уже начата', 'Mistake work for this test has already been started'))
+    x = mw.create(db, t, a, now())
+    db.commit()
+    return {'task_id': x.id, 'questions': len(x.questions)}
 
 
 @router.get('/tasks')
@@ -319,7 +354,11 @@ def tasks(user: User = Depends(student_only), db: Session = Depends(get_db)):
     s = me_student(db, user)
     at = now()
     out = []
-    for t in _my_tasks(db, s):
+    mine = _my_tasks(db, s)
+    mw = {x.questions[0].get('mw_attempt'): x for x in mine if x.kind == 'sehv' and x.questions}   # «Səhvlər üzərində iş»
+    for t in mine:
+        if t.kind == 'sehv':                                 # ayrıca sətir yox – əsas testin kartında düymə
+            continue
         expire_due(db, t)
         a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
         ta = db.get(TeachingAssignment, t.assignment_id)
@@ -332,6 +371,7 @@ def tasks(user: User = Depends(student_only), db: Session = Depends(get_db)):
                     'result': {'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a),
                                'pct': attempt_pct(db, t, a)} if a and a.submitted_at and t.kind != 'ksq' else None,
                     'can_review': _can_review(db, t, a, at), 'kind': t.kind,
+                    'mistake_work': _mw_info(db, t, a, _can_review(db, t, a, at), mw.get(a.id) if a else None),
                     'solution_at': a.solution_at if a and a.solution_key else None,
                     'topic_seq': pl.seq if pl else None, 'topic': pl.topic if pl else None})
     return out
@@ -554,6 +594,8 @@ def notifications(user: User = Depends(student_only), db: Session = Depends(get_
     out = []
     tasks = _my_tasks(db, s)
     for t in tasks:
+        if t.kind == 'sehv':
+            continue
         a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
         st = _status(t, a, at)
         kind = 'sınaq' if t.kind == 'sinaq' else 'test'
@@ -788,7 +830,7 @@ def results(user: User = Depends(student_only), db: Session = Depends(get_db)):
     done = []
     for t in _my_tasks(db, s):
         a = db.scalar(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.student_id == s.id))
-        if a and a.submitted_at and t.kind != 'ksq':          # onlayn KSQ – «İmtahanlar» sətrində (müəllim açanda)
+        if a and a.submitted_at and t.kind not in ('ksq', 'sehv'):          # onlayn KSQ – «İmtahanlar» sətrində (müəllim açanda)
             done.append((t, a))
     done.sort(key=lambda x: aware(x[1].submitted_at), reverse=True)          # ən yenisi yuxarıda
     for t, a in done:
