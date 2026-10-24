@@ -7,6 +7,7 @@ import json
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -209,3 +210,55 @@ def unlimit_tasks(dry: int = 1, user: User = Depends(admin_only), db: Session = 
         audit(db, user, 'update', 'online_task', 0, unlimit_tasks=[r['id'] for _, r in rows])
         db.commit()
     return {'dry': bool(dry), 'count': len(rows), 'tasks': [r for _, r in rows]}
+
+class RestoreIn(BaseModel):
+    dry_run: bool = True
+    min_points: float = 30
+    since: dt.date | None = None
+
+
+@router.post('/restore-resumed')
+def restore_resumed(body: RestoreIn, user: User = Depends(admin_only), db: Session = Depends(get_db)):
+    """Bir dəfəlik bərpa: «Sinif davam etsin» ilə açılıb nəticəsi silinmiş cəhdlər. Audit jurnalında resume qeydi olan tapşırıqlarda
+    hazırda təhvil verilməmiş, cavabı olan cəhdlərin balı saxlanmış cavablardan hesablanır; bal > min_points – təhvil kimi
+    bərpa olunur (restore), ≤ min_points – açıq qalır (keep_open). dry_run (defolt) – heç nə yazılmır."""
+    from ..models import AuditLog, OnlineTask, SchoolClass, Student, TaskAttempt, TeachingAssignment
+    from .tasks import aware, finalize, score
+    q = select(AuditLog).where(AuditLog.entity.in_(('online_task', 'task_attempt')), AuditLog.action == 'update')
+    if body.since:
+        q = q.where(AuditLog.at >= dt.datetime.combine(body.since, dt.time.min, tzinfo=dt.timezone.utc))
+    resumed_at: dict[int, dt.datetime] = {}          # task_id -> ən son resume vaxtı
+    for lg in db.scalars(q.order_by(AuditLog.at)):
+        d = lg.details or {}
+        if lg.entity == 'online_task' and 'resume_all' not in d:
+            continue
+        if lg.entity == 'task_attempt' and 'resume_minutes' not in d:
+            continue
+        if lg.entity_id and lg.entity_id.isnumeric():
+            resumed_at[int(lg.entity_id)] = aware(lg.at)
+    rows = []
+    for tid, rat in resumed_at.items():
+        t = db.get(OnlineTask, tid)
+        if not t:
+            continue
+        ta = db.get(TeachingAssignment, t.assignment_id)
+        cls = db.get(SchoolClass, ta.class_id) if ta else None
+        for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == tid, TaskAttempt.submitted_at.is_(None))):
+            if not a.answers:
+                continue
+            score(t, a)
+            pts = a.points if a.points is not None else (round(100 * a.correct / a.total, 1) if a.total else 0)
+            action = 'restore' if pts > body.min_points else 'keep_open'
+            st = db.get(Student, a.student_id)
+            rows.append({'task': t.title, 'task_id': tid, 'class': cls.name if cls else None,
+                         'student': st.full_name if st else a.student_id, 'points': pts, 'action': action})
+            if body.dry_run or action != 'restore':
+                continue
+            end = aware(a.started_at) + dt.timedelta(minutes=t.duration_min) if t.duration_min else rat
+            finalize(db, t, a, min(end, rat), auto=False)
+    if body.dry_run:
+        db.rollback()                                # score() cəhdləri dəyişib – önbaxışda heç nə yazılmasın
+    else:
+        audit(db, user, 'update', 'task_attempt', 0, restore_resumed=sum(1 for r in rows if r['action'] == 'restore'))
+        db.commit()
+    return {'dry_run': body.dry_run, 'count': len(rows), 'items': rows}

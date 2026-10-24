@@ -19,7 +19,8 @@ from ..models import (BankFile, BankQuestion, BankSource, ExamSeries, OnlineTask
                       TestBatch, User, now)
 from ..services import SCHOOL_TZ, class_grade, roster
 from .common import audit
-from .exams_online import _can_target, given_files, grade_fits
+from ..domain.given import given_students, received
+from .exams_online import _can_target, grade_fits
 from ..timing import NO_DEADLINE
 from .tasks import MIN_TEST_MIN, TestMinutes, _snapshot, aware
 
@@ -92,9 +93,35 @@ def _grades(db: Session, ta_ids) -> dict[int, int | None]:
 
 
 def _given_to(db: Session, ta_ids: list[int]) -> dict[int, dict[int, str]]:
-    """Fayl → {ta_id: sinif} – sınaq bu dərslərə artıq verilib (təkrar göndərilmir, docs/sinaq-tekrar-qadagasi-promtu.md)."""
-    return {fid: {c['ta_id']: c['class_name'] for c in g['classes'] if c['full']}
-            for fid, g in given_files(db, ta_ids).items() if g['full']}
+    """Fayl → {ta_id: sinif}: sınaq (və ya eyni məzmunlusu) bu dərsin BÜTÜN şagirdlərinə artıq verilib – şagird səviyyəsində,
+    sinif + qrup + fərdi dərslər üzrə (domain/given.py). Belə dərsə təkrar göndərilmir."""
+    if not ta_ids:
+        return {}
+    rost, names = {}, {}
+    for ta_id in ta_ids:
+        ta = db.get(TeachingAssignment, ta_id)
+        if ta:
+            rost[ta_id] = {st.id for st in roster(db, ta)}
+            names[ta_id] = db.get(SchoolClass, ta.class_id).name
+    rec = received(db, set().union(*rost.values()) if rost else set())
+    out: dict[int, dict[int, str]] = {}
+    for ta_id, ids in rost.items():
+        if not ids:
+            continue
+        common = set.intersection(*(rec[x] for x in ids))
+        for fid in common:
+            out.setdefault(fid, {})[ta_id] = names[ta_id]
+    return out
+
+
+def _students_given(db: Session, tas: list[int], fids: list[int]) -> dict[int, int]:
+    """Seriyanın siniflərində hər sınağı artıq almış şagird sayı (önbaxış: «N şagird artıq yazıb»)."""
+    ids = set()
+    for ta_id in tas:
+        ta = db.get(TeachingAssignment, ta_id)
+        if ta:
+            ids |= {st.id for st in roster(db, ta)}
+    return {f: len(v) for f, v in given_students(db, fids, ids).items()}
 
 
 @router.get('/files')
@@ -178,26 +205,28 @@ def _send(db: Session, s: ExamSeries, f: BankFile, o: dt.datetime) -> TestBatch 
     qs = _snapshot(db, ids)
     c = o + dt.timedelta(hours=s.window_hours) if s.window_hours else NO_DEADLINE      # 0 – müddətsiz
     title = f.label[:200]
-    given = _given_to(db, [tg['ta_id'] for tg in s.targets]).get(f.id, {})
     b = None
     for tg in s.targets:
-        if tg['ta_id'] in given:
-            continue                                         # bu sinfə artıq verilib (əl ilə və ya başqa seriya) – təkrar yox
         try:
             ta, cls = _owner_target(db, user, tg['ta_id'])
         except HTTPException:
             continue                                         # sinif arxivləşib / əlçatmazdır – atlanır
         if not grade_fits(f, class_grade(db, cls)) and f.id not in (s.other_ok or []):
             continue                                         # başqa sinfin sınağı – müəllim təsdiqləməyib
+        mine = {st.id for st in roster(db, ta)}
+        sids = tg.get('student_ids')
+        sids = [x for x in sids if x in mine] or None if sids is not None else None
+        pool = set(sids) if sids else mine
+        done = given_students(db, [f.id], pool)[f.id]        # bu sınağı (və ya eyni məzmunlusunu) artıq almış şagirdlər
+        if done:
+            if not pool - done:
+                continue                                     # sinifdə heç kim qalmır – atlanır (qrup + ana sinif də burada)
+            sids = sorted(pool - done)
         if b is None:
             b = TestBatch(kind='sinaq', title=title, subject=ta.subject, grade=class_grade(db, cls), penalty=s.penalty,
                           created_by=user.id)
             db.add(b)
             db.flush()
-        sids = tg.get('student_ids')
-        if sids is not None:
-            mine = {st.id for st in roster(db, ta)}
-            sids = [x for x in sids if x in mine] or None
         t = OnlineTask(assignment_id=ta.id, title=title, description=f'Sınaq seriyası: {s.title}',
                        opens_at=o.astimezone(dt.timezone.utc), closes_at=c.astimezone(dt.timezone.utc),
                        duration_min=max(s.duration_min, MIN_TEST_MIN) if s.duration_min else 0, questions=copy.deepcopy(qs), shuffle=s.shuffle,
@@ -205,7 +234,7 @@ def _send(db: Session, s: ExamSeries, f: BankFile, o: dt.datetime) -> TestBatch 
         db.add(t)
         db.flush()
         audit(db, user, 'create', 'task', t.id, kind='sinaq', batch=b.id, series=s.id, class_name=cls.name,
-              questions=len(qs))
+              questions=len(qs), skipped_students=len(done))
     return b
 
 
@@ -342,6 +371,7 @@ def series_out(db: Session, s: ExamSeries) -> dict:
     given = _given_to(db, list(tas)) if q else {}
     gr = _grades(db, tas) if q else {}
     ok = set(s.other_ok or [])
+    sg = _students_given(db, list(tas), q) if q else {}
     # sınaq alacaq siniflər: verilməyib və sinfi uyğundur (və ya müəllim təsdiqləyib)
     gets = {i: {ta for ta, g in gr.items() if ta not in given.get(i, {}) and (i in ok or grade_fits(files.get(i), g))} for i in q}
     slots, t = [], aware(s.next_at)
@@ -360,7 +390,8 @@ def series_out(db: Session, s: ExamSeries) -> dict:
             'per_slot': s.per_slot or 1, 'newest_first': bool(s.newest_first),
             'next_at': aware(s.next_at),
             'queue': [{'id': i, 'label': labels.get(i), 'given': sorted(given.get(i, {}).values()),
-                       'other_ok': i in ok, 'skip': not gets[i]} for i in q],
+                       'other_ok': i in ok, 'skip': not gets[i], 'students_given': sg.get(i, 0)}
+                      for i in q],
             'done': s.done or [], 'preview': slots}
 
 
@@ -494,7 +525,8 @@ def auto_all(body: AutoAllIn, user: User = Depends(staff), db: Session = Depends
     kinds = {s.id: s.kind for s in db.scalars(select(School).where(School.id.in_(spaces)))}
     rows = db.execute(select(TeachingAssignment, SchoolClass).join(SchoolClass, SchoolClass.id == TeachingAssignment.class_id)
                       .where(TeachingAssignment.teacher_id == user.id, TeachingAssignment.archived_at.is_(None),
-                             SchoolClass.archived_at.is_(None), SchoolClass.school_id.in_(spaces))
+                             SchoolClass.archived_at.is_(None), SchoolClass.school_id.in_(spaces),
+                             SchoolClass.parent_id.is_(None))
                       .order_by(SchoolClass.name, TeachingAssignment.id)).all()
     busy = {t['ta_id'] for s in db.scalars(select(ExamSeries).where(ExamSeries.created_by == user.id, ExamSeries.active.is_(True)))
             for t in s.targets}
