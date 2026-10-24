@@ -33,3 +33,7 @@ Sessiyanı bitirməzdən əvvəl `docs/audit/icra-YYYY-MM-DD.md`: hər istifadə
 ## Bulud sessiyası (ikinci hesab, claude.ai/code) – yalnız PDF-dən testlər
 Bu repoda İŞLƏMİR: o `HUB_EDUCAT-ON` (Documents\Claude\Projects) repoda `cloud/<slug>` budağında PR açır, PDF – `test-sources`.
 Promt: `HUB_EDUCAT-ON/docs/cloud/PROMPT.md`. PR review, katalog, yoxlamalar, merge, deploy – əsas sessiya (bu).
+
+## Telegram menyusu (25.10.2026)
+Bot menyusundan gələn əmrlər (`/terminals`, `/send`, `/git`, `/build` …) – `docs/telegram-menyu-promtu.md` üzrə; cavab rusca, `reply` ilə.
+Menyunu dəyişmək: `scripts/tg-menu.cjs` → `node scripts/tg-menu.cjs`.
