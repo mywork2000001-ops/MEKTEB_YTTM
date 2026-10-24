@@ -628,6 +628,8 @@ class ExamSeries(Base):
     done: Mapped[list] = mapped_column(JSON, default=list)              # [{file_id, batch_id, at}]
     other_ok: Mapped[list | None] = mapped_column(JSON, default=list)   # başqa sinfin / sinifsiz – müəllim təsdiqləyib [file_id]
     since_file_id: Mapped[int] = mapped_column(Integer, default=0)      # auto_new: yalnız bundan sonra bankda görünən fayllar
+    per_slot: Mapped[int | None] = mapped_column(Integer)               # bir yuvada neçə sınaq (1 və ya 2; boş = 1)
+    newest_first: Mapped[bool | None] = mapped_column(Boolean)          # növbə yenidən köhnəyə (boş = yox – köhnə seriyalar)
     next_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -678,6 +680,7 @@ class TaskAttempt(Base):
     solution_size: Mapped[int | None] = mapped_column(Integer)
     solution_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     focus_log: Mapped[dict | None] = mapped_column(JSON)                # imtahandan çıxma sayğacı {"n": say, "ms": cəmi millisaniyə} (portal /focus)
+    answers_released_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))   # show_answers='teacher': müəllim düzgün cavabları göndərib
     __table_args__ = (UniqueConstraint('task_id', 'student_id'),)
 
 

@@ -233,6 +233,12 @@ def test_migration_up_down_up(tmp_path):
         return {c['name'] for c in inspect(create_engine(url)).get_columns(t)}
     run('upgrade', 'head')
     assert {'sector', 'exam_language'} <= cols('classes') and 'language' in cols('exams')
+    assert {'per_slot', 'newest_first'} <= cols('exam_series') and 'answers_released_at' in cols('task_attempts')
+    assert 'focus_log' in cols('task_attempts') and 'task_appeals' in inspect(create_engine(url)).get_table_names()
+    run('downgrade', '-1')                                         # f1c5a9d3e7b4 (focus_log + task_appeals) geri
+    assert 'focus_log' not in cols('task_attempts') and 'task_appeals' not in inspect(create_engine(url)).get_table_names()
+    run('downgrade', '-1')                                         # f7c1e5a9b3d2 (sınaq seriyası) geri
+    assert not ({'per_slot', 'newest_first'} & cols('exam_series')) and 'answers_released_at' not in cols('task_attempts')
     run('downgrade', '-1')
     assert not ({'sector', 'exam_language'} & cols('classes')) and 'language' not in cols('exams')
     assert 'standard' in cols('bank_questions')                   # əvvəlki miqrasiya yerində

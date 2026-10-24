@@ -369,9 +369,21 @@ function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; on
   const left = (s: string | null) => { if (!s) return ''; const m = Math.max(0, Math.round((Date.parse(s) - (Date.now() + skew)) / 60000)); return t('{m} dəq qalıb', { m }) }
   const rows = (d?.rows || []).filter((r: any) => (st === 'all' || r.status === st) && (!q || r.full_name.toLowerCase().includes(q.toLowerCase())))
   const total = d?.task.questions || 0
+  const [sel, setSel] = useState<number[]>([])
+  const doneRows = (d?.rows || []).filter((r: any) => r.status === 'təhvil verib')
+  const [rs, setRs] = useState<number[] | null>(null)        // seçilmiş şagirdlərə yenidən göndər (eyni seçim qutuları)
+  const release = async (ids: number[] | null, withdraw = false) => {
+    try {
+      const body = ids ? { student_ids: ids } : {}
+      const r = await (withdraw ? apiDel(`/api/tasks/${ta}/${id}/release-answers`, body) : post(`/api/tasks/${ta}/${id}/release-answers`, body))
+      toast(withdraw ? t('Geri alındı: {n}', { n: r.withdrawn }) : t('Göndərildi: {n}', { n: r.released }))
+      setSel([]); reload()
+    } catch (e: any) { toast(e?.message || t('Xəta')) }
+  }
   return (
     <Drawer title={d ? d.task.title : 'Nəticələr'} onClose={onClose}>
       <ErrorBox error={err} />
+      {rs && <ResendToStudents ta={ta} taskId={id} ids={rs} onClose={() => setRs(null)} onDone={() => { setRs(null); setSel([]); reload() }} />}
       {d && (
         <div className="stack">
           <div className="kpis">
@@ -390,9 +402,16 @@ function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; on
           <div className="row" style={{ gap: 6 }}>
             {(['all', 'həll edir', 'başlamayıb', 'təhvil verib'] as const).map(k => <button key={k} className="chip" aria-pressed={st === k} onClick={() => setSt(k)}>{k === 'all' ? t('Hamısı') : t(k)}</button>)}
           </div>
+          {doneRows.length > 0 && <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            <button className="btn sm" disabled={!sel.length} onClick={() => release(sel)}>{t('Düzgün cavabları göndər (seçilənlərə)')}</button>
+            <button className="btn sm" onClick={() => release(null)}>{t('Hamısına göndər')}</button>
+            <button className="btn sm ghost" disabled={!sel.length} onClick={() => release(sel, true)}>{t('Göndərməyi geri al')}</button>
+            {d.task.kind !== 'ksq' && d.task.kind !== 'movzu' && <button className="btn sm" disabled={!sel.length} onClick={() => setRs(sel)}>{t('↻ Yenidən göndər')} ({sel.length})</button>}
+            <label className="check small"><input type="checkbox" checked={sel.length > 0 && sel.length === doneRows.length} onChange={e => setSel(e.target.checked ? doneRows.map((r: any) => r.student_id) : [])} /> {t('Hamısını seç')}</label>
+          </div>}
           <div className="jlist">{rows.map((r: any) => (
             <div className="jrow" key={r.student_id} style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}>
-              <span><b>{r.full_name}</b><span className="sub small muted"> {r.portal_code}{r.auto_submitted ? (' · ' + t('vaxt bitdi')) : ''}{r.mistake_work ? (' · ' + t('Səhv üzərində iş: {c}/{n}', { c: r.mistake_work.correct, n: r.mistake_work.total })) : ''}</span>
+              <span>{r.status === 'təhvil verib' && <input type="checkbox" style={{ marginRight: 6 }} checked={sel.includes(r.student_id)} onChange={e => setSel(x => e.target.checked ? [...x, r.student_id] : x.filter(y => y !== r.student_id))} />}<b>{r.full_name}</b>{r.answers_released_at && <> <Pill tone="info">{t('cavablar göndərilib · {d}', { d: azDT(new Date(r.answers_released_at), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) })}</Pill></>}<span className="sub small muted"> {r.portal_code}{r.auto_submitted ? (' · ' + t('vaxt bitdi')) : ''}{r.mistake_work ? (' · ' + t('Səhv üzərində iş: {c}/{n}', { c: r.mistake_work.correct, n: r.mistake_work.total })) : ''}</span>
                 <FocusBadge f={r.focus} />
                 {r.solution_at && <> <a className="small" href={`/api/tasks/${ta}/${id}/solution/${r.student_id}`} target="_blank" rel="noreferrer" title={t('Şagirdin həll şəkilləri (PDF)')}>{t('📄 Həll')}</a></>}
                 {r.status === 'həll edir' && <>

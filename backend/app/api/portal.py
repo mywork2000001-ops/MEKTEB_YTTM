@@ -307,6 +307,8 @@ def _notice_text(t: OnlineTask, L, hm) -> str:
 def _can_review(db: Session, t: OnlineTask, a: TaskAttempt | None, at: dt.datetime) -> bool:
     if not a or not a.submitted_at or t.show_answers == 'never':
         return False
+    if t.show_answers == 'teacher':                      # cavabları yalnız müəllim göndərir (müddətsiz olsa da)
+        return a.answers_released_at is not None
     # müddətsiz testdə «bağlandıqdan sonra» = şagird təhvil verdikdən sonra
     return t.show_answers == 'after_submit' or is_unlimited(t) or at >= review_opens_at(db, t)
 
@@ -533,6 +535,8 @@ APPEAL_DAYS = 7
 
 def _appeal_from(db: Session, t: OnlineTask, a: TaskAttempt) -> dt.datetime:
     """Apelyasiya müddəti cavablar açılandan başlayır: müddətsiz/«təhvildən sonra» – təhvil, əks halda paketin bağlanması."""
+    if t.show_answers == 'teacher' and a.answers_released_at:        # müəllim cavabları göndərib – müddət həmin andan
+        return aware(a.answers_released_at)
     if t.show_answers == 'after_submit' or is_unlimited(t):
         return aware(a.submitted_at)
     return review_opens_at(db, t)

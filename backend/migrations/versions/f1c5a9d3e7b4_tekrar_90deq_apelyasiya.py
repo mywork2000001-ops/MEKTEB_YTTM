@@ -1,7 +1,7 @@
 """Sınaqda imtahandan çıxma sayğacı (task_attempts.focus_log) və sınaq apelyasiyaları (task_appeals).
 
 Revision ID: f1c5a9d3e7b4
-Revises: e6b0d4f8a2c5
+Revises: f7c1e5a9b3d2
 Create Date: 2026-10-24 16:00:00
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = 'f1c5a9d3e7b4'
-down_revision: Union[str, Sequence[str], None] = 'e6b0d4f8a2c5'
+down_revision: Union[str, Sequence[str], None] = 'f7c1e5a9b3d2'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

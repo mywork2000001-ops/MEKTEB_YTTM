@@ -149,3 +149,19 @@ def test_apply_all_covers_every_attempt_in_batch(world, clock):
         a = db.query(TaskAttempt).filter_by(task_id=new['id'], student_id=st[2]['id']).one()
         assert (a.manual or {}).get(str(by2['2+2=?'])) is True and a.correct == 2
         assert db.query(TaskAppeal).count() == 1 and db.get(OnlineTask, new['id']).batch_id == t['batch_id']
+
+
+def test_appeal_in_teacher_release_mode(world, clock):
+    """show_answers='teacher': cavab göndərilməyibsə apelyasiya yoxdur; göndərildikdən sonra mümkündür."""
+    from app.models import OnlineTask
+    admin, ta, st, t, ss, by = _appeal_setup(world, clock)
+    with world[1]() as db:
+        db.get(OnlineTask, t['id']).show_answers = 'teacher'
+        db.commit()
+    clock.t = dt.datetime(2026, 9, 29, 16, 5, tzinfo=UTC)
+    url = f'/api/portal/tasks/{t["id"]}/appeals'
+    body = {'q_index': by[0]['2+2=?'], 'reason': 'Cavabım düzdür'}
+    assert ss[0].post(url, json=body).status_code == 403
+    assert admin.post(f'/api/tasks/{ta}/{t["id"]}/release-answers', json={'student_ids': [st[0]['id']]}).status_code == 200
+    assert ss[0].post(url, json=body).status_code == 200
+    assert ss[1].post(url, json={**body, 'q_index': by[1]['2+2=?']}).status_code == 403          # ona göndərilməyib
