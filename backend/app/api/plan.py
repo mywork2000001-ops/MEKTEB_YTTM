@@ -179,7 +179,7 @@ def plan_view(ta_id: int, view: str = 'week', date: dt.date | None = None, user:
             i['lesson']['tests'] = tests.get(i['lesson']['id'], [])
     attach_p0010(db, ctx.cls, [i['lesson'] for i in items if i['lesson']], ctx.ta)
     return {'class_name': ctx.cls.name, 'subject': ta.subject, 'from': a, 'to': b, 'items': items, 'auto_tests': bool(ta.auto_tests),
-            'unfit': [lesson_out(ctx.lessons[i]) for i in ctx.unfit], 'has_plan': bool(ctx.lessons)}
+            'review_tests': bool((ta.cert_rules or {}).get('review_tests')), 'unfit': [lesson_out(ctx.lessons[i]) for i in ctx.unfit], 'has_plan': bool(ctx.lessons)}
 
 
 class AutoTestsIn(BaseModel):
@@ -198,6 +198,17 @@ def set_auto_tests(ta_id: int, body: AutoTestsIn, user: User = Depends(staff), d
         from ..auto_tests import run
         made = run(db)
     return {'auto_tests': ta.auto_tests, 'created_today': made}
+
+
+@router.put('/plan/{ta_id}/review-tests')
+def set_review_tests(ta_id: int, body: AutoTestsIn, user: User = Depends(staff), db: Session = Depends(get_db)):
+    """«Təkrar testləri» (interval təkrar, plan_tests.review_assign): sinif səviyyəsində açar, defolt söndürülü."""
+    from ..plan_tests import review_on, set_review
+    ta = own_assignment(db, user, ta_id)
+    set_review(ta, body.on)
+    audit(db, user, 'update', 'teaching_assignment', ta.id, review_tests=body.on)
+    db.commit()
+    return {'review_tests': review_on(ta)}
 
 
 @router.get('/plan/{ta_id}/docx')

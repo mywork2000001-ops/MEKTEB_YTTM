@@ -58,7 +58,7 @@ def components(db: Session, ctx: PlanCtx) -> dict[int, dict[str, float | None]]:
     grade = class_grade(db, ctx.cls)
     tasks = list(db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ctx.ta.id)))
     sinaq = _task_pcts(db, [t for t in tasks if t.kind == 'sinaq'])
-    diag = _task_pcts(db, _diagnostic_tasks(db, [t for t in tasks if t.kind not in ('sinaq', 'ksq', 'sehv')]))
+    diag = _task_pcts(db, _diagnostic_tasks(db, [t for t in tasks if t.kind not in ('sinaq', 'ksq', 'sehv', 'tekrar')]))
     rating = {r['student_id']: r['rating'] for r in analyze(db, ctx, Period(ctx.year.start, ctx.year.end), links=False)['students']}
     out = {}
     for s in studs:

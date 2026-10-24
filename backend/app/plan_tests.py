@@ -49,6 +49,8 @@ R_NOSLOT = 'Dərs cədvəldə yerləşmir'
 R_AUTO = 'Avtomatik uyğunluq'
 R_PENDING = 'Gözlənilir – bu sinif üçün test sualları hələ hazırlanır'
 R_MISSING = 'Keçmiş dərs – çatışan test'
+W_REPEAT = 'təkrar suallar: {n}'                     # M7: bankda yeni sual çatmadı
+R_REVIEW = 'Təkrar testi'
 
 
 @dataclass
@@ -100,6 +102,7 @@ class Choice:
     title: str | None = None
     questions: list[dict] | None = None    # hazırdırsa (toplu); fayldan – build zamanı seçilir
     cover: float | None = None
+    warn: int = 0                          # anti-təkrar: bankda yeni sual çatmadı, N sual təkrar verilir (M7)
 
     @property
     def creatable(self) -> bool:
@@ -271,6 +274,24 @@ def r_grade_matcher(c: TaCtx, item: Item, opts: Opts) -> Choice | None:
 R_ANALOG = 'KSQ/BSQ əsasında sınaq'
 
 
+def given_bank_ids(db: Session, ta_id: int, lesson_ids: set[int] | None = None, except_exam: int | None = None,
+                   with_exams: bool = False) -> set[int]:
+    """Bu sinif/qrupa əvvəl verilmiş bank suallarının id-ləri (onlayn testlər; lesson_ids verilsə – yalnız həmin plan dərslərinin
+    testləri; with_exams – digər KSQ/BSQ variantları da). Ortaq köməkçi: analog_pick (sınaq) və select_questions (mövzu testi, M7)."""
+    from .models import Exam, ExamVariant
+    q = select(OnlineTask).where(OnlineTask.assignment_id == ta_id, OnlineTask.archived_at.is_(None))
+    if lesson_ids is not None:
+        q = q.where(OnlineTask.plan_lesson_id.in_(lesson_ids or {-1}))
+    out: set[int] = set()
+    for t in db.scalars(q):
+        out |= {x.get('bank_id') for x in (t.questions or []) if isinstance(x, dict) and x.get('bank_id')}
+    if with_exams:
+        for v in db.scalars(select(ExamVariant).join(Exam, Exam.id == ExamVariant.exam_id)
+                            .where(Exam.assignment_id == ta_id, ExamVariant.exam_id != except_exam)):
+            out |= {x.get('bank_id') for x in v.questions if x.get('bank_id')}
+    return out
+
+
 def analog_pick(db: Session, ta: TeachingAssignment, exam_id: int, mode: str = 'analog', rng: random.Random | None = None) -> dict:
     """KSQ/BSQ əsasında sınaq sualları: {'bank_ids': [...], 'missing': [slot,…], 'total': n, 'fallback': [slot,…]}.
     same – A variantının (ilk variantın) bank sualları; analog – hər sualın bank faylından (alt mövzu) BAŞQA sual: KSQ-nin
@@ -294,12 +315,7 @@ def analog_pick(db: Session, ta: TeachingAssignment, exam_id: int, mode: str = '
                 miss.append(q['slot'])
         return {'bank_ids': ids, 'missing': miss, 'total': total, 'fallback': []}
     used_ids = {q.get('bank_id') for v in vs for q in v.questions if q.get('bank_id')}
-    given_ids: set[int] = set()
-    for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, OnlineTask.archived_at.is_(None))):
-        given_ids |= {q.get('bank_id') for q in (t.questions or []) if isinstance(q, dict) and q.get('bank_id')}
-    for v in db.scalars(select(ExamVariant).join(Exam, Exam.id == ExamVariant.exam_id)
-                        .where(Exam.assignment_id == ta.id, ExamVariant.exam_id != exam_id)):
-        given_ids |= {q.get('bank_id') for q in v.questions if q.get('bank_id')}
+    given_ids = given_bank_ids(db, ta.id, except_exam=exam_id, with_exams=True)
     banned = used_ids | given_ids
     src = {q.id: q for q in db.scalars(select(BankQuestion).where(BankQuestion.id.in_(used_ids)))} if used_ids else {}
     files = {f.id: f for f in db.scalars(select(BankFile).where(BankFile.id.in_({q.file_id for q in src.values()})))} if src else {}
@@ -396,18 +412,36 @@ def locate(db: Session, ta: TeachingAssignment, pl: PlanLesson, limit: int = 6, 
 POST_STEPS: list[Callable[[Session, OnlineTask, TeachingAssignment, Item, Opts], None]] = []
 
 
-def _questions(db: Session, choice: Choice, opts: Opts) -> list[dict]:
-    if choice.questions is not None:
-        return choice.questions
+def topic_lesson_ids(db: Session, item: Item) -> set[int]:
+    """Mövzunun bütün plan dərsləri (eyni əsas ad) – anti-təkrar üçün."""
+    base = base_topic(item.pl.topic) or item.pl.topic
+    return {l.id for l in db.scalars(select(PlanLesson).where(PlanLesson.assignment_id == item.ta.id))
+            if (base_topic(l.topic) or l.topic) == base} | {l.id for l in item.lessons if l.id}
+
+
+def select_questions(db: Session, choice: Choice, opts: Opts, item: Item | None = None,
+                     n: int | None = None) -> tuple[list[dict], int]:
+    """(suallar, təkrar sayı). M7: həmin sinfə həmin mövzu üzrə əvvəl verilmiş suallar (bank_id) çıxılır; yeni sual çatmırsa
+    təkrara icazə verilir və təkrar sayı qaytarılır (xəbərdarlıq üçün)."""
     from .api.programs import _pick
     from .api.tasks import _snapshot
+    if choice.questions is not None:                 # hazır siyahı (toplu/analog): yalnız n açıq verilibsə (təkrar testi) kəsilir
+        return (choice.questions if not n or n >= len(choice.questions) else random.sample(choice.questions, n)), 0
+    n = max(1, min(n or opts.n_questions, 100))
     qs = list(db.scalars(select(BankQuestion).where(BankQuestion.file_id == choice.file.id, BankQuestion.active.is_(True))
                          .order_by(BankQuestion.n)))
-    n = max(1, min(opts.n_questions, 100))
-    if len(qs) > n:
-        keep = {q.id for q in _pick(qs, n, random.Random())}
-        qs = [q for q in qs if q.id in keep]
-    return [{k: v for k, v in q.items() if k != 'qid'} for q in _snapshot(db, [q.id for q in qs])] if qs else []
+    given = given_bank_ids(db, item.ta.id, topic_lesson_ids(db, item)) if item is not None else set()
+    fresh = [q for q in qs if q.id not in given]
+    rng = random.Random()
+    if len(fresh) >= n:
+        keep = {q.id for q in (_pick(fresh, n, rng) if len(fresh) > n else fresh)}
+    else:
+        old = [q for q in qs if q.id in given]
+        extra = _pick(old, min(n, len(qs)) - len(fresh), rng) if old else []
+        keep = {q.id for q in fresh} | {q.id for q in extra}
+    qs = [q for q in qs if q.id in keep]
+    rep = sum(1 for q in qs if q.id in given)
+    return ([{k: v for k, v in q.items() if k != 'qid'} for q in _snapshot(db, [q.id for q in qs])] if qs else []), rep
 
 
 def _times(db: Session, item: Item, opts: Opts, past: bool) -> tuple[dt.datetime, dt.datetime]:
@@ -428,10 +462,20 @@ def _times(db: Session, item: Item, opts: Opts, past: bool) -> tuple[dt.datetime
 
 
 def build_task(db: Session, ta: TeachingAssignment, teacher: User, item: Item, choice: Choice, opts: Opts,
-               past: bool = False) -> OnlineTask:
-    qs = _questions(db, choice, opts)
+               past: bool = False, review_stage: int | None = None) -> OnlineTask:
+    qs, choice.warn = select_questions(db, choice, opts, item, REVIEW_N if review_stage else None)
     pl = item.pl
     title = (choice.title or f'№{pl.seq} {pl.topic} – mövzu testi')[:200]
+    if review_stage:                                   # M10: təkrar testi – indi açılır, müddətsiz, jurnala yazılmır
+        title = f'{R_REVIEW} ({review_stage} gün): {base_topic(pl.topic) or pl.topic}'[:200]
+        t = OnlineTask(assignment_id=ta.id, title=title, description=f'{REVIEW_TAG}{review_stage}', opens_at=now(), closes_at=NO_DEADLINE,
+                       duration_min=0, questions=qs, shuffle=True, show_answers='after_submit', student_ids=None,
+                       created_by=teacher.id, kind='tekrar', plan_lesson_id=pl.id, journal_auto=False)
+        db.add(t)
+        db.flush()
+        for step in POST_STEPS:
+            step(db, t, ta, item, opts)
+        return t
     o, c = _times(db, item, opts, past)
     # müddətsiz (bağlanma yoxdur) testdə «bağlandıqdan sonra» heç vaxt gəlməzdi – izah təhvildən dərhal sonra görünür
     show = 'after_submit' if c >= NO_DEADLINE else 'after_close'
@@ -490,7 +534,7 @@ def assign(db: Session, user: User | None, tas: list[TeachingAssignment], date_f
             row = {'ta_id': ta.id, 'class_name': it.cls.name, 'date': it.date.isoformat() if it.date else None,
                    'seq': it.pl.seq, 'plan_lesson_id': it.pl.id, 'topic_no': it.no, 'topic': base_topic(it.pl.topic) or it.pl.topic,
                    'file': None, 'source': None, 'questions': 0, 'status': 'none', 'reason': '', 'will_create': False,
-                   'created': False, 'task_id': None}
+                   'created': False, 'task_id': None, 'warn': None}
             rep.rows.append(row)
             if it.date is None:
                 row['reason'] = R_NOSLOT
@@ -516,9 +560,14 @@ def assign(db: Session, user: User | None, tas: list[TeachingAssignment], date_f
             if past:
                 row['status'], row['reason'] = 'missing', R_MISSING
             row['will_create'] = True
-            if apply:
+            if not apply:
+                ch.warn = select_questions(db, ch, opts, it)[1]
+            else:
                 t = build_task(db, ta, c.teacher, it, ch, opts, past)
                 row.update(created=True, task_id=t.id, questions=len(t.questions))
+            if ch.warn:
+                row['warn'] = W_REPEAT.format(n=ch.warn)
+            if apply:
                 audit(db, user or c.teacher, 'create', 'task', t.id, kind='movzu', auto=True, plan_seq=it.pl.seq,
                       questions=len(t.questions), by='plan_tests', status=row['status'])
     if apply:
@@ -526,6 +575,88 @@ def assign(db: Session, user: User | None, tas: list[TeachingAssignment], date_f
         if n:
             audit(db, user, 'create', 'plan_tests', len(tas), tasks=n, classes=len({r['ta_id'] for r in rep.rows if r['created']}),
                   date_from=str(date_from), date_to=str(date_to), missing=opts.missing)
+        db.commit()
+    return rep
+
+
+# ---------------------------------------------------------------- «Təkrar testi» (M10, interval təkrar)
+REVIEW_STAGES = (14, 42)          # mövzu bitəndən neçə gün sonra
+REVIEW_WINDOW = 7                 # planlaşdırıcı bir neçə gün dayansa da mərhələ qaçırılmasın: [mərhələ, mərhələ+7) gün
+REVIEW_MAX_PCT = 60               # sinfin mövzu testində ortası bundan azdırsa
+REVIEW_N = 6                      # 5–7 sual
+REVIEW_TAG = 'tekrar:'            # OnlineTask.description = 'tekrar:<mərhələ>' – (sinif, mövzu, mərhələ) üzrə bir dəfə
+
+
+def review_on(ta: TeachingAssignment) -> bool:
+    """Sinif səviyyəsində «Təkrar testləri» açarı (defolt söndürülü) – cert_rules JSON-da 'review_tests' (miqrasiyasız)."""
+    return bool((ta.cert_rules or {}).get('review_tests'))
+
+
+def set_review(ta: TeachingAssignment, on: bool) -> None:
+    ta.cert_rules = {**(ta.cert_rules or {}), 'review_tests': bool(on)}     # yeni dict – JSON dəyişikliyi izlənsin
+
+
+def topic_avg_pct(db: Session, ta: TeachingAssignment, item: Item) -> float | None:
+    """Sinfin həmin mövzunun testində orta faizi (təhvil verilmiş cavablar); test/cavab yoxdursa None."""
+    from .api.tasks import attempt_pct
+    from .models import TaskAttempt
+    ids = topic_lesson_ids(db, item)
+    vals = []
+    for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, OnlineTask.kind == 'movzu',
+                                                 OnlineTask.plan_lesson_id.in_(ids or {-1}), OnlineTask.archived_at.is_(None))):
+        for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.submitted_at.is_not(None))):
+            p = attempt_pct(db, t, a)
+            if p is not None:
+                vals.append(p)
+    return sum(vals) / len(vals) if vals else None
+
+
+def review_assign(db: Session, tas: list[TeachingAssignment], day: dt.date | None = None, apply: bool = False,
+                  opts: Opts | None = None, gm: GradeMatcher | None = None) -> Report:
+    """Təkrar testləri: açarı açıq siniflərdə mövzu bitəndən 14 və 42 gün sonra, sinif ortası < 60% olan mövzulara 6 suallıq
+    test (mövzu bankından, M7 anti-təkrarı ilə), müddətsiz, izah təhvildən sonra, jurnala YAZILMIR (kind='tekrar').
+    (sinif, mövzu, mərhələ) üzrə bir dəfə (arxivə düşmüş də sayılır)."""
+    opts = (opts or Opts()).norm()
+    d = day or today()
+    rep = Report(applied=apply)
+    for ta in tas:
+        if not review_on(ta):
+            continue
+        c = TaCtx(db, ta, gm)
+        for it in plan_items(db, ta, None, d, c):
+            if it.kind != 'topic' or it.date is None:
+                continue
+            age = (d - it.date).days
+            stage = next((s for s in REVIEW_STAGES if s <= age < s + REVIEW_WINDOW), None)
+            if stage is None:
+                continue
+            tag = f'{REVIEW_TAG}{stage}'
+            if db.scalar(select(OnlineTask.id).where(OnlineTask.assignment_id == ta.id, OnlineTask.kind == 'tekrar',
+                                                     OnlineTask.plan_lesson_id.in_([l.id for l in it.lessons]),
+                                                     OnlineTask.description == tag)):
+                continue
+            avg = topic_avg_pct(db, ta, it)
+            if avg is None or avg >= REVIEW_MAX_PCT:
+                continue
+            ch = resolve(db, ta, it, opts, c)
+            row = {'ta_id': ta.id, 'class_name': it.cls.name, 'date': d.isoformat(), 'seq': it.pl.seq, 'plan_lesson_id': it.pl.id,
+                   'topic_no': it.no, 'topic': base_topic(it.pl.topic) or it.pl.topic, 'file': ch.file.label if ch.file else None,
+                   'source': ch.source, 'questions': min(REVIEW_N, ch.count), 'status': ch.status, 'reason': R_REVIEW, 'will_create': False,
+                   'created': False, 'task_id': None, 'warn': None, 'stage': stage, 'avg': round(avg, 1)}
+            rep.rows.append(row)
+            if not ch.creatable:
+                continue
+            row['will_create'] = True
+            if apply:
+                t = build_task(db, ta, c.teacher, it, ch, opts, review_stage=stage)
+                row.update(created=True, task_id=t.id, questions=len(t.questions))
+                from .api.common import audit
+                audit(db, c.teacher, 'create', 'task', t.id, kind='tekrar', auto=True, by='plan_tests', stage=stage)
+            else:
+                ch.warn = select_questions(db, ch, opts, it, REVIEW_N)[1]
+            if ch.warn:
+                row['warn'] = W_REPEAT.format(n=ch.warn)
+    if apply:
         db.commit()
     return rep
 

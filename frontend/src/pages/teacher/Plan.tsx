@@ -115,7 +115,7 @@ export default function Plan() {
   const cur = lessons?.find(l => l.id === ta)
   const [testFor, setTestFor] = useState<number | null>(null)
   const [assignOpen, setAssignOpen] = useState(false)
-  const [d, err, loading, reload] = useLoad<{ items: Item[]; unfit: any[]; has_plan: boolean; from: string; to: string; auto_tests?: boolean } | null>(
+  const [d, err, loading, reload] = useLoad<{ items: Item[]; unfit: any[]; has_plan: boolean; from: string; to: string; auto_tests?: boolean; review_tests?: boolean } | null>(
     () => (ta ? get(`/api/plan/${ta}`, { view, date }) : Promise.resolve(null)), [ta, view, date])
   let lastDate = ''
   return (
@@ -150,6 +150,13 @@ export default function Plan() {
                   toast(e.target.checked ? tt('Avtomatik mövzu testi açıldı') + (r.created_today ? ' · ' + tt('bu gün {n} test yaradıldı', { n: r.created_today }) : '') : tt('Avtomatik mövzu testi bağlandı')); reload()
                 } catch (x: any) { toast(x?.message || tt('Saxlanmadı')) }
               }} /> {t('Hər dərsə avtomatik mövzu testi')}</label>
+            <label className="check small" title={t('Mövzu bitəndən 14 və 42 gün sonra sinfin mövzu testində ortası 60%-dən aşağı idisə, 6 suallıq təkrar testi avtomatik yaradılır (müddətsiz, izah təhvildən sonra, jurnala yazılmır)')}>
+              <input type="checkbox" checked={!!d.review_tests} onChange={async e => {
+                try {
+                  await put(`/api/plan/${ta}/review-tests`, { on: e.target.checked })
+                  toast(e.target.checked ? tt('Təkrar testləri açıldı') : tt('Təkrar testləri bağlandı')); reload()
+                } catch (x: any) { toast(x?.message || tt('Saxlanmadı')) }
+              }} /> {t('Təkrar testləri')}</label>
           </div>
           {!d.has_plan && <div className="banner">{t('Bu sinif üçün plan yoxdur – yuxarıdakı «Proqramlar: seç / dəyiş» bölməsində «Əsas proqramı seç» düyməsi ilə kitabxanadan proqram seçin (Word planınızı Tənzimləmələr → Proqramlar → «Word planını yüklə» ilə əlavə edə bilərsiniz).')}</div>}
           {d.unfit.length > 0 && <div className="banner" style={{ background: 'var(--warn-soft)', color: 'var(--warn)' }}>{t('İlin sonuna {n} dərs sığmır – geriləməni aradan qaldırmaq lazımdır.', { n: d.unfit.length })}</div>}

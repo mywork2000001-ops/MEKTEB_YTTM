@@ -237,3 +237,140 @@ def test_api_preview_assign_and_script(world, day, capsys):
     os.remove('plan_tests_out.csv')
     out = capsys.readouterr().out
     assert 'Yaradıldı: 1' in out
+
+
+# ---------------------------------------------------------------- M7 anti-təkrar + M10 «Təkrar testi»
+def _attempts(S, ta, pcts):
+    """Mövzu testinə təhvil verilmiş cavablar: pcts – hər şagirdin faizi (total=10)."""
+    from app.models import Student, TaskAttempt
+    with S() as db:
+        t = db.query(OnlineTask).filter_by(assignment_id=ta, kind='movzu').one()
+        cls = db.get(TeachingAssignment, ta).cls
+        for i, p in enumerate(pcts):
+            s = Student(school_id=cls.school_id, class_id=cls.id, full_name=f'Şagird {i}', portal_code=f'R{ta}{i}')
+            db.add(s)
+            db.flush()
+            db.add(TaskAttempt(task_id=t.id, student_id=s.id, deadline=t.closes_at, order=[], answers={},
+                               submitted_at=dt.datetime(2026, 9, 18, tzinfo=dt.timezone.utc), correct=p // 10, total=10))
+        db.commit()
+
+
+def _review_world(world, day, name='X r', pcts=(30, 50), n_questions=15, on=True):
+    as_, S = world
+    admin = as_('admin')
+    with S() as db:
+        has_bank = db.query(BankFile).count()
+    if not has_bank:
+        _bank(S, [('p003', 'a', 'Tənliklər — Kvadrat tənliklər', None)])
+    ta = _class(admin, S, name, [('Kvadrat tənliklər', 'formativ', None)])
+    day[0] = dt.date(2026, 9, 17)
+    assert sum(r['created'] for r in _assign(S, [ta], day[0], day[0], apply=True, n_questions=n_questions).rows) == 1
+    _attempts(S, ta, pcts)
+    if on:
+        with S() as db:
+            E.set_review(db.get(TeachingAssignment, ta), True)
+            db.commit()
+    return S, ta
+
+
+def _review(S, ta, d, apply=True):
+    with S() as db:
+        return E.review_assign(db, [db.get(TeachingAssignment, ta)], d, apply=apply)
+
+
+def _bank_ids(S, **flt):
+    with S() as db:
+        return [{q['bank_id'] for q in t.questions} for t in db.query(OnlineTask).filter_by(**flt).order_by(OnlineTask.id)]
+
+
+def test_m7_second_assignment_different_questions_and_warning(world, day):
+    """M7: eyni mövzuya ikinci seçim əvvəl verilmiş suallardan qaçır; bank kiçikdirsə təkrar + xəbərdarlıq."""
+    as_, S = world
+    admin = as_('admin')
+    _bank(S, [('p003', 'a', 'Tənliklər — Kvadrat tənliklər', None)])        # bankda 20 sual
+    ta = _class(admin, S, 'X m7', [('Kvadrat tənliklər', 'formativ', None)])
+    day[0] = dt.date(2026, 9, 17)
+    rep = _assign(S, [ta], day[0], day[0], apply=True, n_questions=8)
+    assert rep.rows[0]['warn'] is None
+    first = _bank_ids(S, assignment_id=ta)[0]
+    with S() as db:
+        a = db.get(TeachingAssignment, ta)
+        it = E.plan_items(db, a, None, None)[0]
+        o8 = E.Opts(n_questions=8).norm()
+        ch = E.resolve(db, a, it, o8)
+        qs, rep_n = E.select_questions(db, ch, o8, it)
+        assert rep_n == 0 and not ({q['bank_id'] for q in qs} & first)
+        qs, rep_n = E.select_questions(db, ch, E.Opts(n_questions=15).norm(), it)         # 12 yeni var, 15 lazım → 3 təkrar
+        assert rep_n == 3 and len(qs) == 15
+    ta2 = _class(admin, S, 'X m7b', [('Kvadrat tənliklər', 'formativ', None)])            # əvvəl 15 verilib → 5 yeni qalır
+    _assign(S, [ta2], day[0], day[0], apply=True, n_questions=15)
+    with S() as db:
+        a = db.get(TeachingAssignment, ta2)
+        it = E.plan_items(db, a, None, None)[0]
+        ch = E.resolve(db, a, it, E.Opts().norm())
+        warn = E.select_questions(db, ch, E.Opts().norm(), it)[1]
+        assert warn == 10 and E.W_REPEAT.format(n=warn) == 'təkrar suallar: 10'
+
+
+def test_m10_review_day13_vs_day14_and_once(world, day):
+    """M10: 13-cü gün yaranmır, 14-cü gün yaranır; ikinci dəfə yox; jurnala getmir, müddətsiz, izah təhvildən sonra."""
+    S, ta = _review_world(world, day)
+    assert _review(S, ta, dt.date(2026, 9, 30)).rows == []                 # 13-cü gün
+    r = _review(S, ta, dt.date(2026, 10, 1))                               # 14-cü gün
+    assert [x['created'] for x in r.rows] == [True] and r.rows[0]['stage'] == 14 and r.rows[0]['questions'] == 6
+    assert r.rows[0]['warn'] == 'təkrar suallar: 1'                          # 15 verilib, bankda 5 yeni, 6 lazım
+    assert _review(S, ta, dt.date(2026, 10, 2)).rows == []                 # təkrar yaranmır
+    assert _review(S, ta, dt.date(2026, 10, 1)).rows == []
+    with S() as db:
+        t = db.query(OnlineTask).filter_by(kind='tekrar').one()
+        assert t.journal_auto is False and t.closes_at.year == 2100 and t.show_answers == 'after_submit' and len(t.questions) == 6
+        assert t.batch_id is None and t.description == 'tekrar:14'
+    r = _review(S, ta, dt.date(2026, 10, 29))                              # 42-ci gün – ikinci mərhələ
+    assert [x['stage'] for x in r.rows] == [42] and r.rows[0]['created']
+    with S() as db:
+        assert db.query(OnlineTask).filter_by(kind='tekrar').count() == 2
+
+
+def test_m10_not_created_when_avg_high_or_switch_off(world, day):
+    """M10: ortası ≥60% – yaranmır; açar söndürülü – heç nə; quru rejim yazmır."""
+    S, ta = _review_world(world, day, 'X r2', pcts=(60, 90))
+    assert _review(S, ta, dt.date(2026, 10, 1)).rows == []
+    S2, ta2 = _review_world(world, day, 'X r3', on=False)
+    assert _review(S2, ta2, dt.date(2026, 10, 1)).rows == []
+    with S2() as db:
+        E.set_review(db.get(TeachingAssignment, ta2), True)
+        db.commit()
+    dry = _review(S2, ta2, dt.date(2026, 10, 1), apply=False)
+    assert dry.rows[0]['will_create'] and not dry.rows[0]['created']
+    with S2() as db:
+        assert db.query(OnlineTask).filter_by(kind='tekrar').count() == 0
+
+
+def test_m10_daily_job_and_exclusions(world, day):
+    """Gündəlik auto_tests.run_review təkrar testi yaradır (auto_tests özü söndürülü); orta/jurnal/portal hesablamasına düşmür;
+    kind NULL adi tapşırıq filtrdə qalır; sertifikat qaydaları saxlananda açar silinmir; API açarı."""
+    from sqlalchemy import select
+
+    from app.api.portal import _shown_grade
+    from app.auto_tests import run, run_review
+    from app.models import TaskAttempt
+    from app.task_journal import run_due
+    S, ta = _review_world(world, day, 'X r4')
+    d = dt.date(2026, 10, 1)
+    with S() as db:
+        assert run_review(db, d) == 1 and run_review(db, d) == 0 and run(db, d) == 0
+        t = db.query(OnlineTask).filter_by(kind='tekrar').one()
+        plain = OnlineTask(assignment_id=ta, title='adi', opens_at=t.opens_at, closes_at=t.closes_at, duration_min=0, questions=[],
+                           created_by=1)
+        db.add(plain)
+        db.commit()
+        kept = set(db.scalars(select(OnlineTask.id).where((OnlineTask.kind.is_(None)) |
+                                                          (OnlineTask.kind.not_in(('sinaq', 'ksq', 'tekrar'))))))
+        assert plain.id in kept and t.id not in kept
+        assert _shown_grade(t, TaskAttempt(grade=5)) is None
+        assert run_due(db) == 0
+    admin = world[0]('admin')
+    assert admin.put(f'/api/certificates/rules/{ta}', json={'movzu': 85}).status_code == 200
+    with S() as db:
+        assert E.review_on(db.get(TeachingAssignment, ta))
+    assert admin.put(f'/api/plan/{ta}/review-tests', json={'on': False}).json() == {'review_tests': False}

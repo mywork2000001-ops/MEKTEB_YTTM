@@ -311,7 +311,7 @@ def _can_review(db: Session, t: OnlineTask, a: TaskAttempt | None, at: dt.dateti
 
 
 def _shown_grade(t: OnlineTask, a: TaskAttempt) -> int | None:
-    return None if t.kind in ('sinaq', 'ksq', 'sehv') else a.grade   # sınaq formativ qiymətə təsir etmir; KSQ – nəticəni müəllim açır
+    return None if t.kind in ('sinaq', 'ksq', 'sehv', 'tekrar') else a.grade   # təkrar testi və səhv üzərində iş qiymətsizdir; sınaq formativ qiymətə təsir etmir; KSQ – nəticəni müəllim açır
 
 
 def _mw_info(db: Session, t: OnlineTask, a: TaskAttempt | None, can_review: bool, x: OnlineTask | None) -> dict | None:
