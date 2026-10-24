@@ -6,6 +6,14 @@ export type Lang = 'az' | 'en' | 'ru'
 
 const D: Record<string, [string, string]> = {
   "I yarımil": ["Semester I", "I полугодие"],
+  "Yüksək": ["High", "Высокий"],
+  "Formativ şkala (mövzu testi)": ["Formative scale (topic test)", "Формативная шкала (тематический тест)"],
+  "Qiymət «{g}» üçün ən azı, %": ["At least for grade “{g}”, %", "Не менее для оценки «{g}», %"],
+  "Defolta qaytar": ["Reset to default", "Вернуть по умолчанию"],
+  "Defolta qaytarıldı": ["Reset to default", "Возвращено по умолчанию"],
+  "Hədlər 1 ilə 100 arasında olmalıdır": ["Thresholds must be between 1 and 100", "Пороги должны быть от 1 до 100"],
+  "Hədlər ciddi artan olmalıdır: «3» < «4» < «5»": ["Thresholds must be strictly increasing: “3” < “4” < “5”", "Пороги должны строго возрастать: «3» < «4» < «5»"],
+  "Mövzu testinin faizi bu hədlərlə qiymətə çevrilir (altı «2»). Yeni şkala yalnız yeni təhvillərə və yenidən qiymətləndirməyə tətbiq olunur; köhnə qiymətlər dəyişmir. KSQ, BSQ və sınaq həmişə 31 / 61 / 81 şkalası ilə.": ["A topic test percentage is converted to a grade with these thresholds (below is “2”). The new scale applies only to new submissions and re-grading; existing grades do not change. KSQ, BSQ and mock exams always use the 31 / 61 / 81 scale.", "Процент тематического теста переводится в оценку по этим порогам (ниже — «2»). Новая шкала применяется только к новым сдачам и пересчёту; прежние оценки не меняются. КСО, БСО и пробные экзамены всегда по шкале 31 / 61 / 81."],
   "II yarımil": ["Semester II", "II полугодие"],
   "Bütün il": ["Whole year", "Весь год"],
   "Rəsmi perspektiv plan – Word sənədi (yalnız Azərbaycan dilində)": ["Official long-term plan – Word document (Azerbaijani only)", "Официальный перспективный план – документ Word (только на азербайджанском)"],

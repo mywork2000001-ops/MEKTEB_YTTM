@@ -195,7 +195,7 @@ function TaskStudents({ ta, id }: { ta: number; id: number }) {
           {rows.map((r: any) => (
             <li key={r.student_id} style={{ breakInside: 'avoid', marginBottom: 2 }}>{r.full_name}{' '}
               <Pill tone={r.status === 'təhvil verib' ? (r.pct >= 70 ? 'ok' : r.pct >= 40 ? 'warn' : 'bad') : TASK_TONE[r.status]}>
-                {r.status === 'təhvil verib' ? `${fmt(r.pct, r.grade ? 0 : 1)}%${r.grade ? ` → ${r.grade}` : ''}` : t(r.status)}</Pill></li>))}
+                {r.status === 'təhvil verib' ? `${fmt(r.pct, r.grade ? 0 : 1)}%${r.grade ? ` → ${r.grade}${r.level ? ` (${t(r.level)})` : ''}` : ''}` : t(r.status)}</Pill></li>))}
         </ol>}
     </div></div>
   )

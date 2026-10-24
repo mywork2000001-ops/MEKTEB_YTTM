@@ -24,6 +24,7 @@ from ..services import SCHOOL_TZ, journal_entries, plan_ctx, roster, taught_less
 from .plan import WEEKDAYS, bell
 from ..timing import attempt_deadline, is_unlimited, no_timer
 from ..exam_cards import published_for
+from ..domain.rules import level as level_word
 from .tasks import apct, attempt_pct, aware, expire_due, finalize, is_ok, review_opens_at
 
 router = APIRouter(prefix='/api/portal', tags=['portal'])
@@ -314,6 +315,11 @@ def _shown_grade(t: OnlineTask, a: TaskAttempt) -> int | None:
     return None if t.kind in ('sinaq', 'ksq') else a.grade   # sınaq formativ qiymətə təsir etmir; KSQ – nəticəni müəllim açır
 
 
+def _shown_level(t: OnlineTask, a: TaskAttempt) -> str | None:
+    """Səviyyə sözlə (Yüksək / Orta / Zəif) – formativ testin qiymətinin yanında; sınaq və KSQ-də yox."""
+    return None if t.kind in ('sinaq', 'ksq') or not a.total else level_word(apct(a))
+
+
 @router.get('/tasks')
 def tasks(user: User = Depends(student_only), db: Session = Depends(get_db)):
     s = me_student(db, user)
@@ -329,7 +335,7 @@ def tasks(user: User = Depends(student_only), db: Session = Depends(get_db)):
                     'duration_min': t.duration_min, 'questions': len(t.questions), 'status': _status(t, a, at),
                     'unlimited': is_unlimited(t), 'no_timer': no_timer(t),
                     'deadline': aware(a.deadline) if a else None,
-                    'result': {'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a),
+                    'result': {'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a), 'level': _shown_level(t, a),
                                'pct': attempt_pct(db, t, a)} if a and a.submitted_at and t.kind != 'ksq' else None,
                     'can_review': _can_review(db, t, a, at), 'kind': t.kind,
                     'solution_at': a.solution_at if a and a.solution_key else None,
@@ -433,8 +439,8 @@ def submit(task_id: int, body: AnswersIn | None = None, user: User = Depends(stu
     if t.kind == 'ksq':                                      # KSQ/BSQ: bal jurnala yazıldı, şagirdə müəllim açanda görünür
         return {'ksq': True, 'correct': None, 'total': None, 'grade': None, 'pct': None, 'points': None,
                 'auto_submitted': a.auto_submitted, 'can_review': False, 'certificate': None}
-    return {'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a), 'auto_submitted': a.auto_submitted,
-            'can_review': _can_review(db, t, a, at), 'pct': attempt_pct(db, t, a), 'points': attempt_pct(db, t, a),
+    return {'correct': a.correct, 'total': a.total, 'grade': _shown_grade(t, a), 'level': _shown_level(t, a),
+            'auto_submitted': a.auto_submitted, 'can_review': _can_review(db, t, a, at), 'pct': attempt_pct(db, t, a), 'points': attempt_pct(db, t, a),
             'certificate': {'code': cert.code, 'title': cert.title} if cert else None}
 
 
