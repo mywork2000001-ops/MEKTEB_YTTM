@@ -7,7 +7,7 @@ import { ProgramBox, PURPOSES } from './Programs'
 import { AsyncBtn, ConfirmName, Disclosure, Drawer, ErrorBox, Field, fmt, fmtDate, isoDate, Loading, PickFirst, Pill, Seg, toast, useLoad, hourN } from '../../ui'
 import { useT, tt } from '../../i18n'
 
-type Cls = { id: number; name: string; code: string; kind: string; purpose?: string | null; parent_id: number | null; group_type?: 'bölünmə' | 'tədris' | null; split_with: string | null; utis_class: string | null; grade?: number | null; grade_set?: number | null
+type Cls = { id: number; name: string; code: string; kind: string; purpose?: string | null; parent_id: number | null; group_type?: 'bölünmə' | 'tədris' | null; split_with: string | null; utis_class: string | null; grade?: number | null; grade_set?: number | null; sector?: 'az' | 'ru' | null; exam_language?: string | null
   exam_date: string | null; bells: Record<string, string> | null; students: number; can_open: boolean; archived: boolean
   homeroom: { id: number; name: string } | null
   teachers: { id: number; name: string; subject: string }[]; mine: { ta_id: number; subject: string; weekly_hours: number; slots: Record<string, number[]>; has_summative: boolean; program_id: number | null; starts_on?: string | null; ends_on?: string | null
@@ -103,7 +103,7 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
   const type0 = !cls ? 'TOM' : cls.kind !== 'qrup' ? cls.kind : cls.parent_id ? 'split' : 'study'
   const [f, setF] = useState({ name: cls?.name || '', code: cls?.code || '', type: type0, parent_id: cls?.parent_id || '', split_with: cls?.split_with || '',
     utis_class: cls?.utis_class || '', grade: cls?.grade_set ? String(cls.grade_set) : '', exam_date: cls?.exam_date || '', bells: (cls?.bells || {}) as Record<string, string>,
-    purpose: cls?.purpose || '' })
+    purpose: cls?.purpose || '', sector: cls?.sector || '', exam_language: cls?.exam_language || '' })
   const [ownBells, setOwnBells] = useState(!!cls?.bells && Object.keys(cls.bells).length > 0)
   const { me } = useAuth()
   const [where, setWhere] = useState<'school' | 'private'>(me?.workspace === 'private' ? 'private' : 'school')
@@ -118,7 +118,7 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
     try {
       const body: any = { name: f.name, split_with: f.type === 'split' ? f.split_with || null : null, utis_class: group ? null : f.utis_class || null, grade: f.grade ? Number(f.grade) : null,
         exam_date: f.exam_date || null, bells: ownBells && !priv ? Object.fromEntries(Object.entries(f.bells).filter(([, v]) => v.trim())) : {},
-        ...(priv ? { purpose: f.purpose || null } : {}) }
+        ...(priv ? { purpose: f.purpose || null } : { sector: f.sector || null, exam_language: f.exam_language || null }) }
       if (cls) await patch(`/api/classes/${cls.id}`, { ...body, ...(group ? {} : { kind: f.type }), ...(f.code && f.code !== cls.code ? { code: f.code } : {}) })
       else await post('/api/classes', { ...body, kind: group ? 'qrup' : f.type, parent_id: f.type === 'split' && f.parent_id ? Number(f.parent_id) : null, private: where === 'private' })
       if (!cls && where === 'private' && me?.workspace !== 'private') { toast(t('Fərdi sinif yaradıldı – fərdi məkana keçilir')); setTimeout(() => location.reload(), 600); return }
@@ -158,6 +158,10 @@ function ClassForm({ cls, all, onClose, onDone }: { cls: Cls | null; all: Cls[];
           {!group && !priv && <Field label={t('UTİS sinfi')}><input value={f.utis_class} onChange={e => setF({ ...f, utis_class: e.target.value })} placeholder="10 e" /></Field>}
           <Field label={t('Sinif rəqəmi')} hint="boş – addan (IX a → 9); eyni mövzulu sinifləri tapmaq üçün"><select value={f.grade} onChange={e => setF({ ...f, grade: e.target.value })}>
             <option value="">{t('avtomatik')}{cls?.grade ? ` (${cls.grade})` : ''}</option>{Array.from({ length: 11 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select></Field>
+          {!priv && <Field label={t('Sektor')} hint={group ? t('boş – ana sinifdən / Azərbaycan') : undefined}><select value={f.sector} onChange={e => setF({ ...f, sector: e.target.value })}>
+            <option value="">{t('Azərbaycan')}</option><option value="ru">{t('Rus')}</option></select></Field>}
+          {!priv && <Field label={t('Yazılı imtahanın dili')} hint={t('KSQ/BSQ və kağız testlər bu dildə çap olunur. Şagirdlərin interfeys dili vərəqə təsir etmir.')}><select value={f.exam_language} onChange={e => setF({ ...f, exam_language: e.target.value })}>
+            <option value="">{t('Sektora uyğun')}</option><option value="az">{t('Azərbaycan dili')}</option><option value="ru">{t('Rus dili')}</option><option value="az_ru">{t('İkidilli (AZ + RU)')}</option></select></Field>}
           <Field label={t('İmtahan tarixi')} hint="şagird portalında sayğac"><input type="date" value={f.exam_date} onChange={e => setF({ ...f, exam_date: e.target.value })} /></Field>
         </div>
         {f.type === 'study' && <p className="small muted" style={{ margin: 0 }}>{t('Tədris qrupu (olimpiada, hazırlıq, dərnək): yaratdıqdan sonra «Qoşul» ilə cədvəli, «Üzvlər» ilə müxtəlif siniflərdən şagirdləri seçin.')}</p>}

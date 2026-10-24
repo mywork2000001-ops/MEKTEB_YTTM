@@ -44,12 +44,14 @@ class PaperIn(BaseModel):
     to_journal: bool = False                        # nəticə jurnala düşsün? (standart – yox, testin öz nəticəsidir)
     viktorina: bool = False                         # file_ids bütün viktorina bazasından (bir neçə mənbə) → növ VIK
     student_ids: list[int] | None = None            # yalnız bu şagirdlər (standart: bütün sinif / tapşırığın şagirdləri)
+    language: Literal['az', 'ru', 'az_ru'] | None = None   # yazılı dil (istisna); None – sinfin qaydası (domain/exam_lang.py)
 
 
 class PaperPatch(BaseModel):
     to_journal: bool | None = None
     title: str | None = Field(None, max_length=200)
     date: dt.date | None = None
+    language: Literal['az', 'ru', 'az_ru'] | None = None
 
 
 def _semester(db: Session, ta, d: dt.date) -> int:
@@ -190,7 +192,7 @@ def create_paper(ta_id: int, body: PaperIn, user: User = Depends(staff), db: Ses
     e = Exam(assignment_id=ta.id, kind=kind, no=_next_no(db, ta.id, kind), semester=_semester(db, ta, d), date=d, max_points=100,
              title=(body.title or (task.title if task else 'Viktorina' if body.viktorina else 'Yazılı iş'))[:200], online_task_id=task.id if task else None,
              batch_id=task.batch_id if task else None, to_journal=body.to_journal, variant_mode='numbers' if body.variant_mode == 'same_numbers' else body.variant_mode,
-             extra_students=sorted(students) if body.student_ids is not None or (task and gstud) else None)
+             extra_students=sorted(students) if body.student_ids is not None or (task and gstud) else None, language=body.language)
     db.add(e)
     db.flush()
     try:
@@ -250,6 +252,8 @@ def patch_paper(ta_id: int, exam_id: int, body: PaperPatch, user: User = Depends
         e.title = body.title
     if body.date is not None:
         e.date, e.semester = body.date, _semester(db, ta, body.date)
+    if 'language' in body.model_fields_set:               # null – «sinfin qaydası»
+        e.language = body.language
     audit(db, user, 'update', 'exam', e.id, to_journal=e.to_journal)
     db.commit()
     return exam_out(e)

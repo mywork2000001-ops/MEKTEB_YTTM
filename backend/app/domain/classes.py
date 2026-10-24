@@ -6,11 +6,21 @@ import re
 ROMAN = {'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5, 'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10, 'XI': 11, 'XII': 12}
 
 
+# kiril/rəqəm-simvol oxşarları (rus sektoru: «IХ а», «VІ б», «Ⅸ»): latın rəqəm hərflərinə çevrilir
+_HOMOGLYPHS = {ord(k): v for k, v in {"І": "I", "і": "i", "Х": "X", "х": "x", "Ӏ": "I", "Ѵ": "V", "ѵ": "v"}.items()}
+_HOMOGLYPHS.update({0x2160 + i: r for i, r in enumerate(["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"])})
+
+
+def _norm(name: str) -> str:
+    return name.translate(_HOMOGLYPHS)
+
+
 def grade_of(*names: str | None) -> int | None:
     """Birinci tanınan addan sinif rəqəmi (ad, sonra UTİS sinfi)."""
     for name in names:
         if not name:
             continue
+        name = _norm(name)
         m = re.match(r'\s*(\d{1,2})', name)
         if m and 1 <= int(m.group(1)) <= 12:
             return int(m.group(1))

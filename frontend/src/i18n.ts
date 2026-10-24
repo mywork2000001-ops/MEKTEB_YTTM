@@ -3623,6 +3623,22 @@ const D: Record<string, [string, string]> = {
   'həll müddəti {x}': ['time to solve: {x}', 'время на решение — {x}'],
   'vaxt məhdudiyyəti yoxdur': ['no time limit', 'без ограничения времени'],
   'Növbədə sınaq sayı: {n} – təxminən {cover} (son: {date}).': ['Tests in the queue: {n} – enough for about {cover} (last: {date}).', 'Тестов в очереди: {n} – хватит примерно на {cover} (последний: {date}).'],
+  'Sektor': ['Sector', 'Сектор'],
+  'Azərbaycan': ['Azerbaijani', 'Азербайджанский'],
+  'Rus': ['Russian', 'Русский'],
+  'boş – ana sinifdən / Azərbaycan': ['empty – from the parent class / Azerbaijani', 'пусто – от родительского класса / азербайджанский'],
+  'Yazılı imtahanın dili': ['Language of written exams', 'Язык письменных работ'],
+  'KSQ/BSQ və kağız testlər bu dildə çap olunur. Şagirdlərin interfeys dili vərəqə təsir etmir.': ["Summative exams and paper tests are printed in this language. Students' interface language does not affect the sheet.", 'Письменные работы (КСК/БСК) и бумажные тесты печатаются на этом языке. Язык интерфейса учеников на бланк не влияет.'],
+  'Sektora uyğun': ['Same as sector', 'По сектору'],
+  'Azərbaycan dili': ['Azerbaijani', 'Азербайджанский язык'],
+  'Rus dili': ['Russian', 'Русский язык'],
+  'İkidilli (AZ + RU)': ['Bilingual (AZ + RU)', 'Двуязычный (AZ + RU)'],
+  'RU sektoru': ['RU sector', 'Русский сектор'],
+  'yazılı: {lang}': ['written: {lang}', 'письменно: {lang}'],
+  'Yazılı dil': ['Written language', 'Язык работы'],
+  'Sinfin qaydası': ['Class default', 'По правилу класса'],
+  'Şagirdlərin interfeys dili vərəqə təsir etmir': ["Students' interface language does not affect the sheet", 'Язык интерфейса учеников на бланк не влияет'],
+  '{n} sualın rus dilində mətni yoxdur – Azərbaycan dilində çap olunacaq (sual №: {list}). Davam edilsin?': ['{n} question(s) have no Russian text – they will be printed in Azerbaijani (question #: {list}). Continue?', 'У {n} вопр. нет русского текста – они будут напечатаны на азербайджанском (№ вопросов: {list}). Продолжить?'],
 }
 
 export const I18nCtx = createContext<Lang>('az')

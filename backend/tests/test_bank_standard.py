@@ -30,7 +30,7 @@ def test_migration_adds_and_drops_column(tmp_path):
         return {c['name'] for c in inspect(create_engine(url)).get_columns('bank_questions')}
     run('upgrade', 'head')
     assert 'standard' in cols()
-    run('downgrade', '-1')
+    run('downgrade', 'c4e8a2f6b1d9')      # d5a9c3e7b1f4-dən əvvəlki (sonrakı miqrasiyalar da geri qayıdır)
     assert 'standard' not in cols()
     run('upgrade', 'head')
     assert 'standard' in cols()

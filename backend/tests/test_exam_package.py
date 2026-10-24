@@ -85,7 +85,7 @@ def test_own_variant_text_is_shown(world, monkeypatch):
     for i, sid in enumerate(scanned):
         u = next(x for x in st if x['id'] == sid)
         p = student_client(u['portal_code'], u['initial_pin']).get(f'/api/portal/exams/{e["id"]}/package').json()
-        got.append(p['questions'][0]['text']['az'])
+        got.append(p['questions'][0]['text'])   # mətn imtahan dilində – tək sətir
         assert f'öz rəqəmlərim {i}' in got[-1]
     assert got[0] != got[1]
 

@@ -8,7 +8,7 @@ import { printBooklet, printKey, printSheets, type KsqPrint } from '../../ksqPri
 import OwnNumbersReport, { type OwnReport } from '../../OwnNumbersReport'
 
 type Paper = { id: number; kind: 'TEST' | 'SINAQ' | 'YI' | 'VIK'; no: number; title: string | null; date: string; to_journal: boolean
-  online_task_id: number | null; variants: number; printed: boolean; scanned: number; graded: number; variant_mode: string | null }
+  online_task_id: number | null; variants: number; printed: boolean; scanned: number; graded: number; variant_mode: string | null; language?: string | null }
 type SG = { key: string; main_task_id: number; task_ids: number[]; sends: number; students: 'all' | number; students_n: number | null; submitted: number
   first_opens_at: string; last_opens_at: string; title: string; kind: string | null; seq: number | null; grade_hint: number | null
   has_paper: boolean; grade_mismatch: boolean }
@@ -60,6 +60,9 @@ export default function PaperExams({ ta }: { ta: number | null }) {
                 <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
                   <input type="checkbox" checked={p.to_journal} onChange={async e => { await patch(`/api/paper-exams/${ta}/${p.id}`, { to_journal: e.target.checked }); reload() }} />
                   {t('Jurnala yaz')}</label>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>{t('Yazılı dil')}
+                  <select value={p.language || ''} onChange={async e => { await patch(`/api/paper-exams/${ta}/${p.id}`, { language: e.target.value || null }); reload() }}>
+                    <option value="">{t('Sinfin qaydası')}</option><option value="az">{t('Azərbaycan dili')}</option><option value="ru">{t('Rus dili')}</option><option value="az_ru">{t('İkidilli (AZ + RU)')}</option></select></label>
                 <AsyncBtn className="btn sm danger" onClick={async () => {
                   if (!confirm(t('Yazılı iş silinsin?'))) return
                   try { await del(`/api/paper-exams/${ta}/${p.id}`); reload() } catch (x) {
