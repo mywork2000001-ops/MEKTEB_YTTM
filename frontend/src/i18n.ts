@@ -3531,6 +3531,8 @@ const D: Record<string, [string, string]> = {
   "Standartlar üzrə": ["By standards", "По стандартам"],
   "Perspektiv plan testlərinə əsasən standart və mövzular üzrə mənimsəmə; bölmələr üzrə plan icrası.": ["Mastery by standard and topic based on long-term plan tests; plan progress by section.", "Освоение по стандартам и темам на основе тестов перспективного плана; выполнение плана по разделам."],
   "Sual təhlili": ["Question analysis", "Анализ вопросов"],
+  "Dərsdə izah edin": ["Explain in class", "Разберите на уроке"],
+  "Variantlar: yaşıl – düzgün, narıncı – sinfin ≥30 %-inin (və ən azı 3 şagirdin) seçdiyi eyni səhv variant.": ["Options: green – correct, orange – the same wrong option chosen by ≥30% of the class (and at least 3 students).", "Варианты: зелёный – верный, оранжевый – один и тот же неверный вариант, выбранный ≥30 % класса (и не менее 3 учеников)."],
   "Seçilən testin hər sualı üzrə düzgün cavab faizi.": ["Percentage of correct answers for each question of the selected test.", "Процент правильных ответов по каждому вопросу выбранного теста."],
   "Qrupların statistikası": ["Group statistics", "Статистика групп"],
   "Əlavə məşğələ qruplarının müqayisəsi, iştirak, «Effekt» və hesabat çapı.": ["Comparison of extra-class groups, attendance, “Effect” and report printing.", "Сравнение групп доп. занятий, посещаемость, «Эффект» и печать отчёта."],
