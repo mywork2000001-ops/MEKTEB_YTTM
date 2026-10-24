@@ -56,7 +56,7 @@ def _collect(db: Session, ta_id: int, p: Period):
                             .order_by(Exam.date)))
     scores = list(db.scalars(select(ExamScore).where(ExamScore.exam_id.in_([e.id for e in exams]))))
     tasks = [t.id for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta_id,   # sınaq – ayrıca blokda
-                                                               (OnlineTask.kind.is_(None)) | (OnlineTask.kind.not_in(('sinaq', 'ksq')))))]   # KSQ – imtahan balında
+                                                               (OnlineTask.kind.is_(None)) | (OnlineTask.kind.not_in(('sinaq', 'ksq', 'sehv')))))]   # KSQ – imtahan balında
     attempts = [a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id.in_(tasks),
                                                                 TaskAttempt.submitted_at.is_not(None)))
                 if p.a <= _local_date(a.submitted_at) <= p.b]

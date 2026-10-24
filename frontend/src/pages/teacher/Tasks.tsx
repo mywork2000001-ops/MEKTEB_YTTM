@@ -383,7 +383,7 @@ function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; on
           </div>
           <div className="jlist">{rows.map((r: any) => (
             <div className="jrow" key={r.student_id} style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}>
-              <span><b>{r.full_name}</b><span className="sub small muted"> {r.portal_code}{r.auto_submitted ? (' · ' + t('vaxt bitdi')) : ''}</span>
+              <span><b>{r.full_name}</b><span className="sub small muted"> {r.portal_code}{r.auto_submitted ? (' · ' + t('vaxt bitdi')) : ''}{r.mistake_work ? (' · ' + t('Səhv üzərində iş: {c}/{n}', { c: r.mistake_work.correct, n: r.mistake_work.total })) : ''}</span>
                 {r.solution_at && <> <a className="small" href={`/api/tasks/${ta}/${id}/solution/${r.student_id}`} target="_blank" rel="noreferrer" title={t('Şagirdin həll şəkilləri (PDF)')}>{t('📄 Həll')}</a></>}
                 {r.status === 'həll edir' && <>
                   <div className="cmp" style={{ marginTop: 6 }}><i style={{ width: (total ? r.answered * 100 / total : 0) + '%' }} /></div>

@@ -69,6 +69,12 @@ export default function Tasks() {
               <span className="row">{x.result ? <Pill tone={x.result.grade ? gradeTone(x.result.grade) : x.result.pct >= 70 ? 'ok' : x.result.pct >= 40 ? 'warn' : 'bad'}>{fmt(x.result.pct)} {t('bal')}{x.result.grade ? ` → ${x.result.grade}` : ''}</Pill> : <Pill tone={x.status === 'açıq' || x.status === 'həll edilir' ? 'ok' : x.status === 'buraxılıb' ? 'bad' : undefined}>{t(x.status)}</Pill>}</span>
               <span>{(x.status === 'açıq' || x.status === 'həll edilir') && <button className="btn primary sm" onClick={() => { enterFs(); setSolving(x.id) }}>{x.status === 'açıq' ? t('Başla') : t('Davam et')}</button>}
                 {x.can_review && <button className="btn sm" onClick={() => setReview(x.id)}>{t('Cavablara bax')}</button>}
+                {x.mistake_work?.allowed && <AsyncBtn className="btn sm" onClick={async () => {
+                  try { const r = await post<any>(`/api/portal/tasks/${x.id}/mistake-work`, {}); enterFs(); setSolving(r.task_id) } catch (e) { toast((e as Error).message); reload() }
+                }}>{t('Səhvlər üzərində iş')}</AsyncBtn>}
+                {x.mistake_work && !x.mistake_work.allowed && !x.mistake_work.done &&
+                  <button className="btn sm" onClick={() => { enterFs(); setSolving(x.mistake_work.task_id) }}>{t('Səhvlər üzərində işi davam et')}</button>}
+                {x.mistake_work?.done && <Pill tone={x.mistake_work.correct === x.mistake_work.total ? 'ok' : 'warn'}>{t('Səhvlər üzərində iş: {c}/{n} düzəldi', { c: x.mistake_work.correct, n: x.mistake_work.total })}</Pill>}
                 {(x.status === 'həll edilir' || x.status === 'təhvil verilib') && new Date(x.closes_at) > new Date() &&
                   <SolutionUpload id={x.id} at={x.solution_at} compact onDone={reload} />}</span>
             </div>))}

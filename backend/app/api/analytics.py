@@ -374,7 +374,8 @@ def toplu_chapters(ta_id: int, user: User = Depends(staff), db: Session = Depend
     src = _toplu_src()
     chap = {c['p007']['lesson']: c for c in src['chapters']}
     acc: dict[str, list[int]] = {}
-    tasks = list(db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, OnlineTask.archived_at.is_(None))))
+    tasks = [t for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, OnlineTask.archived_at.is_(None)))
+             if t.kind != 'sehv']
     ids = {q.get('bank_id') for t in tasks for q in t.questions or [] if q.get('source') == 'p007' and q.get('bank_id')}
     file_of = dict(db.execute(select(BankQuestion.id, BankFile.lesson).join(BankFile).where(BankQuestion.id.in_(ids or {0}))).all())
     for t in tasks:

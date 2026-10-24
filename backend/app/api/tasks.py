@@ -310,7 +310,7 @@ def list_tasks(ta_id: int, archived: bool = False, user: User = Depends(staff), 
     out = []
     flt = OnlineTask.archived_at.is_not(None) if archived else OnlineTask.archived_at.is_(None)
     for t in db.scalars(select(OnlineTask).where(OnlineTask.assignment_id == ta.id, flt,
-                                                 (OnlineTask.kind.is_(None)) | (OnlineTask.kind != 'ksq'))   # onlayn KSQ – KSQ səhifəsində
+                                                 (OnlineTask.kind.is_(None)) | (OnlineTask.kind.not_in(('ksq', 'sehv'))))   # onlayn KSQ – KSQ səhifəsində; «Səhvlər üzərində iş» – şagirdin şəxsi işi
                         .order_by(OnlineTask.opens_at.desc())):
         expire_due(db, t)
         done = [a for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id == t.id, TaskAttempt.submitted_at.is_not(None)))
@@ -319,6 +319,15 @@ def list_tasks(ta_id: int, archived: bool = False, user: User = Depends(staff), 
         out.append({**task_out(t), 'submitted': len(done), 'topic': pl and {'seq': pl.seq, 'topic': pl.topic},
                     'avg_pct': round(sum(apct(a) for a in done) / len(done), 1) if done else None})
     return out
+
+
+def mistake_work_of(db: Session, t: OnlineTask, sid: int, a: TaskAttempt | None) -> dict | None:
+    """Müəllim sətrinə: «Səhv üzərində iş: 3/5» (yalnız şagird bitiribsə)."""
+    if t.kind != 'movzu' or not a or not a.submitted_at:
+        return None
+    from ..mistake_work import result_of
+    r = result_of(db, t, sid)
+    return r if r and r['done'] else None
 
 
 @router.get('/{ta_id}/{task_id}')
@@ -344,7 +353,8 @@ def task_results(ta_id: int, task_id: int, user: User = Depends(staff), db: Sess
                      'total': a.total if a else None, 'grade': None if sinaq or not a else a.grade,
                      'pct': (exam_score(t, a, pen)['pct'] if sinaq else round(apct(a), 1))
                      if a and a.submitted_at and a.total else None,
-                     'solution_at': aware(a.solution_at) if a and a.solution_key and a.solution_at else None})
+                     'solution_at': aware(a.solution_at) if a and a.solution_key and a.solution_at else None,
+                     'mistake_work': mistake_work_of(db, t, s.id, a)})
     done = [a for a in atts.values() if a.submitted_at]
     per_q = []
     for i, q in enumerate(t.questions):
