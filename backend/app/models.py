@@ -267,6 +267,8 @@ class BankQuestion(Base):
     stat_ok: Mapped[int | None] = mapped_column(Integer)               # düz cavab sayı
     # apelyasiyada açar səhv çıxdı («hamıya tətbiq et») – bankı müəllim/admin düzəldir, avtomatik dəyişmə yoxdur
     needs_review: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # məzmun standartı («1.2.3»): «Standartlar üzrə» hesabat onlayn cavabda dərsin yerinə sualın öz standartını götürür (M8)
+    standard: Mapped[str | None] = mapped_column(String(64))
     __table_args__ = (UniqueConstraint('file_id', 'n'),)
 
 

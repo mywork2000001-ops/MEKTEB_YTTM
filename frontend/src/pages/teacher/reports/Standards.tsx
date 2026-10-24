@@ -17,7 +17,7 @@ export default function Standards({ ta }: { ta: number }) {
         <div className="tbl-wrap"><table>
           <thead><tr><th>{key === 'standard' ? t('Standart') : t('Mövzu')}</th><th className="r">{t('Test sayı')}</th><th className="r">{t('Sinif ortası %')}</th><th>{t('Şagirdlər (orta %, aşağıdan yuxarı)')}</th></tr></thead>
           <tbody>{rows.map(r => (
-            <tr key={r[key]}><td><b>{r[key]}</b></td><td className="r num">{r.tests}</td>
+            <tr key={r[key]}><td><b>{r[key]}</b>{key === 'standard' && r.source && <div className="small muted">{t(r.source === 'question' ? 'Mənbə: sualın öz standartı' : r.source === 'mixed' ? 'Mənbə: qarışıq (sual + dərs)' : 'Mənbə: dərsin standartı')}</div>}</td><td className="r num">{r.tests}</td>
               <td className="r">{r.class_pct == null ? '—' : <Pill tone={tone(r.class_pct)}>{fmt(r.class_pct)}%</Pill>}</td>
               <td className="small">{r.students.map((s: any) => <span key={s.student_id} style={{ marginRight: 8, whiteSpace: 'nowrap', color: s.pct < 50 ? 'var(--bad)' : undefined }}>{s.full_name.split(' ').slice(0, 2).join(' ')} <b>{fmt(s.pct)}%</b></span>)}</td></tr>))}</tbody>
         </table></div>)}
@@ -28,6 +28,7 @@ export default function Standards({ ta }: { ta: number }) {
       <div className="row" style={{ marginBottom: 8 }}>{([['1', 'I yarımil'], ['2', 'II yarımil'], ['all', 'Bütün il']] as const).map(([k, l]) => <button key={k} className="chip" aria-pressed={sem === k} onClick={() => setSem(k)}>{t(l)}</button>)}</div>
       <p className="small muted">{t('Formativ qiymətləndirmə perspektiv plan testlərinə əsaslanır: standart və mövzu dərsin plan sətrindən götürülür. Şifahi/yazılı qiymətlər burada yoxdur.')}</p>
       {loading && !d ? <Loading /> : d && <>
+        <p className="small muted">{t('Standart suala yazılıbsa, onlayn cavablar sualın öz standartı ilə hesablanır; yoxdursa – dərsin standartı ilə.')}</p>
         {d.class_avg_hidden && <p className="small muted">{t('Sinif ortası 5-dən az şagirddə göstərilmir.')}</p>}
         {block(t('Standartlar üzrə mənimsəmə'), 'standard', d.standards)}
         {block(t('Mövzular üzrə mənimsəmə'), 'topic', d.topics)}

@@ -378,6 +378,35 @@ def summary(ta_id: int, semester: int | None = None, user: User = Depends(staff)
 CLASS_AVG_MIN_STUDENTS = 5          # sinif ortası 5-dən az şagirddə göstərilmir (portaldakı qayda ilə eyni)
 
 
+def _question_standards(db: Session, task_ids: list[int]) -> dict:
+    """M8: testin sualları (bank_id) → bankdakı öz standartı. {task_id: (task, {sual indeksi: standart}, {student_id: cəhd})};
+    sualın standartı yoxdursa indeksə düşmür (köhnə yol – dərsin standartı)."""
+    from ..models import BankQuestion, OnlineTask, TaskAttempt
+    ids = set(task_ids)
+    if not ids:
+        return {}
+    tasks = {t.id: t for t in db.scalars(select(OnlineTask).where(OnlineTask.id.in_(ids)))}
+    bank_ids = {q.get('bank_id') for t in tasks.values() for q in (t.questions or []) if q.get('bank_id')}
+    stds = dict(db.execute(select(BankQuestion.id, BankQuestion.standard).where(
+        BankQuestion.id.in_(bank_ids), BankQuestion.standard.is_not(None))).all()) if bank_ids else {}
+    stds = {k: v.strip() for k, v in stds.items() if v and v.strip()}
+    atts: dict[int, dict] = {}
+    for a in db.scalars(select(TaskAttempt).where(TaskAttempt.task_id.in_(ids), TaskAttempt.submitted_at.is_not(None))):
+        atts.setdefault(a.task_id, {})[a.student_id] = a
+    return {tid: (t, {i: stds[q['bank_id']] for i, q in enumerate(t.questions or []) if q.get('bank_id') in stds}, atts.get(tid, {}))
+            for tid, t in tasks.items()}
+
+
+def _attempt_oks(db: Session, qstd: dict, m: Mark) -> tuple[dict[int, str], list[bool]]:
+    """(sual indeksi → standart, sualların düz/səhv siyahısı); testdə sualın standartı yoxdursa ({}, [])."""
+    from .tasks import is_ok
+    t, idx, per = qstd.get(m.task_id, (None, {}, {}))
+    a = per.get(m.student_id)
+    if not idx or a is None:
+        return {}, []
+    return idx, [is_ok(t, a, i) for i in range(len(t.questions))]
+
+
 @router.get('/{ta_id}/standards')
 def standards(ta_id: int, semester: int | None = None, user: User = Depends(staff), db: Session = Depends(get_db)):
     """Standartlar / mövzular üzrə mənimsəmə (J5). Formativ qiymətləndirmə = perspektiv plan testləri: jurnalda
@@ -395,16 +424,33 @@ def standards(ta_id: int, semester: int | None = None, user: User = Depends(staf
     by_std: dict[str, dict] = {}
     by_topic: dict[str, dict] = {}
     unlinked = 0
+    rows = list(rows)
+    qstd = _question_standards(db, [m.task_id for m, _ in rows])        # M8: {task_id: ({sual indeksi: standart}, cavablar)}
     for m, plid in rows:
         pl = lessons.get(plid)
         if pl is None or m.student_id not in studs:
             unlinked += pl is None
             continue
         pct = (m.test_correct or 0) * 100 / m.test_total
-        for bucket, key in [(by_std, k) for k in dict.fromkeys(pl.standards or [])] + ([(by_topic, pl.topic)] if pl.topic else []):
-            g = bucket.setdefault(key, {'tasks': set(), 'per': {}})
+        # (bucket, açar, faiz, mənbə): sualın öz standartı olanlar – sual üzrə; qalanlar (və standartı olmayan test) – dərsin standartı ilə
+        parts: list[tuple[dict, str, float, str]] = []
+        std_idx, oks = _attempt_oks(db, qstd, m)
+        by_q: dict[str, list[bool]] = {}
+        for i, st in std_idx.items():
+            by_q.setdefault(st, []).append(oks[i])
+        for st, v in by_q.items():
+            parts.append((by_std, st, sum(v) * 100 / len(v), 'question'))
+        rest = [oks[i] for i in range(len(oks)) if i not in std_idx] if std_idx else None
+        if rest is None or rest:
+            lp = pct if rest is None else sum(rest) * 100 / len(rest)
+            parts += [(by_std, k, lp, 'lesson') for k in dict.fromkeys(pl.standards or [])]
+        if pl.topic:
+            parts.append((by_topic, pl.topic, pct, 'lesson'))
+        for bucket, key, p, src in parts:
+            g = bucket.setdefault(key, {'tasks': set(), 'per': {}, 'src': set()})
             g['tasks'].add(m.task_id)
-            g['per'].setdefault(m.student_id, []).append(pct)
+            g['per'].setdefault(m.student_id, []).append(p)
+            g['src'].add(src)
     hidden = sum(1 for s in studs.values() if not s.archived_at) < CLASS_AVG_MIN_STUDENTS
 
     def build(bucket: dict, field: str) -> list[dict]:
@@ -412,6 +458,7 @@ def standards(ta_id: int, semester: int | None = None, user: User = Depends(staf
         for key, g in sorted(bucket.items()):
             allp = [p for v in g['per'].values() for p in v]
             out.append({field: key, 'tests': len(g['tasks']), 'results': len(allp),
+                        'source': 'question' if g['src'] == {'question'} else 'lesson' if g['src'] == {'lesson'} else 'mixed',
                         'class_pct': None if hidden else round(sum(allp) / len(allp), 1),
                         'students': sorted(({'student_id': sid, 'full_name': studs[sid].full_name,
                                              'tests': len(v), 'pct': round(sum(v) / len(v), 1)} for sid, v in g['per'].items()),
