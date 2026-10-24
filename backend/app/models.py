@@ -677,7 +677,30 @@ class TaskAttempt(Base):
     solution_key: Mapped[str | None] = mapped_column(String(200))       # həllin şəkilləri – bir PDF (storage açarı)
     solution_size: Mapped[int | None] = mapped_column(Integer)
     solution_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    focus_log: Mapped[dict | None] = mapped_column(JSON)                # imtahandan çıxma sayğacı {"n": say, "ms": cəmi millisaniyə} (portal /focus)
     __table_args__ = (UniqueConstraint('task_id', 'student_id'),)
+
+
+class TaskAppeal(Base):
+    """Onlayn sınaqda (OnlineTask kind='sinaq') sual üzrə apelyasiya: bir sual – bir apelyasiya. q – sualın o anki surəti.
+    Qəbul → TaskAttempt.manual[q_index]=True və bal yenidən hesablanır; apply_all – eyni paketin hamı cəhdlərində həmin sual düz sayılır."""
+    __tablename__ = 'task_appeals'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey('online_tasks.id', ondelete='CASCADE'), index=True)
+    student_id: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'))
+    q_index: Mapped[int] = mapped_column(Integer)
+    bank_id: Mapped[int | None] = mapped_column(Integer)
+    q: Mapped[dict | None] = mapped_column(JSON)
+    my_answer: Mapped[str | None] = mapped_column(Text)
+    correct_at_time: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(10), default='open')           # open | accepted | rejected
+    teacher_reply: Mapped[str | None] = mapped_column(Text)
+    apply_all: Mapped[bool] = mapped_column(Boolean, default=False)
+    decided_by: Mapped[int | None] = mapped_column(ForeignKey('users.id', ondelete='SET NULL'))
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('task_id', 'student_id', 'q_index'),)
 
 
 # ---------------------------------------------------------------- daxili çat (tam məxfilik)

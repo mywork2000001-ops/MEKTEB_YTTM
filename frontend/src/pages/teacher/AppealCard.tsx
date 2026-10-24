@@ -88,7 +88,9 @@ export function AppealCard({ taId, examId, a, onMsg, onError, onChanged }: {
   const decide = async (decision: 'accept' | 'reject', apply_all = false) => {
     onError(undefined)
     try {
-      const r = await put<any>(`/api/exam-appeals/${taId}/${examId}/${a.id}`, { decision, apply_all, reply: reply.trim() || null })
+      const r = a.kind === 'sinaq'          // onlayn sınaq apelyasiyası – ayrıca endpoint (api/task_appeals.py)
+        ? await put<any>(`/api/task-appeals/${a.id}`, { status: decision === 'accept' ? 'accepted' : 'rejected', apply_all, teacher_reply: reply.trim() || null })
+        : await put<any>(`/api/exam-appeals/${taId}/${examId}/${a.id}`, { decision, apply_all, reply: reply.trim() || null })
       onMsg([changesText(r), manualText(r)].filter(Boolean).join(' · ') || null)
       onChanged()
     } catch (x) { onError(x) }
@@ -96,7 +98,7 @@ export function AppealCard({ taId, examId, a, onMsg, onError, onChanged }: {
   return (
     <section className="panel" style={{ marginBottom: 10 }}>
       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}><b className="grow">{a.full_name} · №{a.slot}</b>
-        <Pill>{a.source === 'online' ? tt('Onlayn') : tt('Yazılı')}</Pill><Pill tone={stTone[a.status]}>{stName(a.status)}</Pill>
+        <Pill>{a.kind === 'sinaq' ? tt('Sınaq') : a.source === 'online' ? tt('Onlayn') : tt('Yazılı')}</Pill><Pill tone={stTone[a.status]}>{stName(a.status)}</Pill>
         {a.created_at && <span className="small muted">{fmtDate(a.created_at)}</span>}</div>
       <div style={{ margin: '8px 0', padding: '10px 12px', border: '2px solid var(--warn)', borderRadius: 8 }}>
         <div className="small muted">{tt('Şagirdin yazdığı')}</div>
@@ -122,11 +124,12 @@ export function AppealCard({ taId, examId, a, onMsg, onError, onChanged }: {
       {a.bank && <div className="small muted">{tt('Bankda indi')}: {String(ml(a.bank.text) ?? '').slice(0, 120)} → {a.bank.answer ?? a.bank.correct}</div>}
       {a.crop && <img src={`/api/exam-scans/image/${a.scan_id}`} alt={tt('Skan kəsiyi')} loading="lazy" style={{ width: '100%', maxWidth: 560, border: '1px solid var(--line)', borderRadius: 6 }} />}
       {a.teacher_reply && <p className="small">↪ {a.teacher_reply}</p>}
-      <AppealFix taId={taId} examId={examId} a={a} onError={onError} onDone={(r: any) => {
+      {a.kind !== 'sinaq' && <AppealFix taId={taId} examId={examId} a={a} onError={onError} onDone={(r: any) => {
         onMsg([r.still_wrong ? tt('Düzəlişdən sonra da şagirdin cavabı səhvdir – apelyasiya rədd edildi') : tt('Düzəldildi, apelyasiya qəbul edildi'),
           tt('{n} şagirdin balı yenidən hesablandı', { n: (r.changes || []).length }), changesText(r), manualText(r)].filter(Boolean).join(' · '))
         onChanged()
-      }} />
+      }} />}
+      {a.kind === 'sinaq' && a.explanation && <div className="small muted">{tt('İzah')}: <MathText text={String(ml(a.explanation) ?? '')} /></div>}
       <textarea className="sel" style={{ width: '100%', marginTop: 6 }} rows={2} placeholder={tt('Şagirdə cavab (rədd üçün məcburi)')} value={reply} onChange={e => setReply(e.target.value)} />
       <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
         <button className="btn sm primary" onClick={() => decide('accept')}>✓ {tt('Qəbul')}</button>

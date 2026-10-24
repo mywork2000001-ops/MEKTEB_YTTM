@@ -3639,6 +3639,19 @@ const D: Record<string, [string, string]> = {
   'Sinfin qaydası': ['Class default', 'По правилу класса'],
   'Şagirdlərin interfeys dili vərəqə təsir etmir': ["Students' interface language does not affect the sheet", 'Язык интерфейса учеников на бланк не влияет'],
   '{n} sualın rus dilində mətni yoxdur – Azərbaycan dilində çap olunacaq (sual №: {list}). Davam edilsin?': ['{n} question(s) have no Russian text – they will be printed in Azerbaijani (question #: {list}). Continue?', 'У {n} вопр. нет русского текста – они будут напечатаны на азербайджанском (№ вопросов: {list}). Продолжить?'],
+  // sınaq: təhvil ən sonda, imtahandan çıxma qeydi, apelyasiya (24.10.2026)
+  'Testi təhvil ver': ['Submit the test', 'Сдать тест'],
+  'Bütün sualları cavabladınızsa, testi təhvil verin. Təhvil verməzdən əvvəl yoxlama pəncərəsi açılacaq.': ['If you have answered all the questions, submit the test. A review window will open before submitting.', 'Если вы ответили на все вопросы, сдайте тест. Перед сдачей откроется окно проверки.'],
+  'Testdən çıxdınız ({n} dəfə). Müəllim bunu görür.': ['You left the test ({n} time(s)). Your teacher can see this.', 'Вы выходили из теста ({n} раз). Учитель это видит.'],
+  'Apelyasiya ver': ['Submit an appeal', 'Подать апелляцию'],
+  'Apelyasiya: gözləyir': ['Appeal: pending', 'Апелляция: на рассмотрении'],
+  'Apelyasiya qəbul edildi': ['Appeal accepted', 'Апелляция принята'],
+  'Apelyasiya rədd edildi': ['Appeal rejected', 'Апелляция отклонена'],
+  'Apelyasiya göndərildi': ['Appeal sent', 'Апелляция отправлена'],
+  'Niyə cavabınızın düzgün olduğunu düşünürsünüz? (ən azı 5 simvol)': ['Why do you think your answer is correct? (at least 5 characters)', 'Почему вы считаете свой ответ верным? (не менее 5 символов)'],
+  '{n} şagirdə yenidən göndərilsin? Köhnə nəticə qalır.': ['Resend to {n} student(s)? The old result stays.', 'Отправить повторно {n} ученику(ам)? Прежний результат сохранится.'],
+  '{n} dəfə çıxıb (cəmi {s} san.)': ['left {n} time(s) (total {s} s)', 'выходил {n} раз (всего {s} с)'],
+  'Test zamanı ekrandan/tətbiqdən çıxma sayı. Android-in sistem assistentini (Gemini, «Circle to Search») brauzer bağlaya bilmir – çıxma qeyd olunur.': ['Number of times the student left the screen/app during the test. A browser cannot block the Android system assistant (Gemini, Circle to Search) – leaving is recorded.', 'Сколько раз ученик покидал экран/приложение во время теста. Браузер не может заблокировать системного ассистента Android (Gemini, «Circle to Search») – выход фиксируется.'],
 }
 
 export const I18nCtx = createContext<Lang>('az')

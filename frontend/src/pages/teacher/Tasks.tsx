@@ -257,9 +257,10 @@ function Resend({ ta, task, lessons, preset, onlyIds, onClose, onDone }: { ta: n
   useEffect(() => { if (res && preset === 'absent' && !onlyIds) setIds(presets[0].ids) }, [res])
   const start = new Date(); start.setMinutes(Math.ceil(start.getMinutes() / 5) * 5 + 5, 0, 0)
   const end = new Date(start.getTime() + Math.max(Math.max(task.duration_min, 45) + 10, 60) * 60000)
-  const [f, setF] = useState({ target: ta, opens: localInput(start), closes: localInput(end), duration: Math.max(task.duration_min, 45), title: task.title, unl: true })
+  const [f, setF] = useState({ target: ta, opens: localInput(start), closes: localInput(end), duration: Math.max(task.duration_min, 45), title: task.title, unl: !task.duration_min })   // taymerli testin (məs. sınaq 90 dəq) surəti də taymerli olur
   const [err, setErr] = useState<unknown>()
   const save = async () => {
+    if (ids && ids.length && !window.confirm(t('{n} şagirdə yenidən göndərilsin? Köhnə nəticə qalır.', { n: ids.length }))) return
     try {
       const t = await post<Task>(`/api/tasks/${ta}/${task.id}/copy`, { target_ta_id: f.target, opens_at: new Date(f.opens).toISOString(),
         closes_at: f.unl ? null : new Date(f.closes).toISOString(), duration_min: f.unl ? 0 : f.duration, title: f.title, student_ids: ids })
@@ -347,6 +348,14 @@ function ToJournal({ ta, id, opens }: { ta: number; id: number; opens: string })
   )
 }
 
+/** «⚠ N dəfə çıxıb (cəmi M san.)» – şagird test zamanı ekrandan/tətbiqdən çıxıb (başqa tətbiq, Gemini, «Circle to Search» və s.).
+ *  Android sistem assistentini brauzer tam bağlaya bilmir – sistem çıxmanı qeyd edib müəllimə göstərir. */
+export function FocusBadge({ f }: { f?: { n: number; ms: number } | null }) {
+  if (!f || !f.n) return null
+  return <span className="pill warn" style={{ marginLeft: 4 }} title={tt('Test zamanı ekrandan/tətbiqdən çıxma sayı. Android-in sistem assistentini (Gemini, «Circle to Search») brauzer bağlaya bilmir – çıxma qeyd olunur.')}>
+    ⚠ {tt('{n} dəfə çıxıb (cəmi {s} san.)', { n: f.n, s: Math.round(f.ms / 1000) })}</span>
+}
+
 // ---------------------------------------------------------------- canlı izləmə və nəticələr
 function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; onClose: () => void; onResendAbsent?: () => void }) {
   const t = useT()
@@ -384,6 +393,7 @@ function Watch({ ta, id, onClose, onResendAbsent }: { ta: number; id: number; on
           <div className="jlist">{rows.map((r: any) => (
             <div className="jrow" key={r.student_id} style={{ gridTemplateColumns: 'minmax(0,1fr) auto' }}>
               <span><b>{r.full_name}</b><span className="sub small muted"> {r.portal_code}{r.auto_submitted ? (' · ' + t('vaxt bitdi')) : ''}{r.mistake_work ? (' · ' + t('Səhv üzərində iş: {c}/{n}', { c: r.mistake_work.correct, n: r.mistake_work.total })) : ''}</span>
+                <FocusBadge f={r.focus} />
                 {r.solution_at && <> <a className="small" href={`/api/tasks/${ta}/${id}/solution/${r.student_id}`} target="_blank" rel="noreferrer" title={t('Şagirdin həll şəkilləri (PDF)')}>{t('📄 Həll')}</a></>}
                 {r.status === 'həll edir' && <>
                   <div className="cmp" style={{ marginTop: 6 }}><i style={{ width: (total ? r.answered * 100 / total : 0) + '%' }} /></div>

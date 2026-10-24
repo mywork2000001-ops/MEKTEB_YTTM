@@ -132,9 +132,19 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
     document.addEventListener('fullscreenchange', ch)
     // seçmə, kopyalama, kəsmə, yapışdırma, sürükləmə, uzun basma menyusu və Ctrl+C/A/X/V/P/S – test boyunca bağlıdır
     const sel = (e: Event) => { if (!isField(e.target)) e.preventDefault() }
-    const keys = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && 'cxavps'.includes(e.key.toLowerCase())) e.preventDefault() }
+    const keys = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && 'cxavps'.includes(e.key.toLowerCase())) e.preventDefault()
+      if (e.key === 'PrintScreen') { try { navigator.clipboard?.writeText('').catch(() => {}) } catch { /* icazə yoxdur */ } }   // ekran şəkli mübadilə yaddaşında qalmasın
+    }
+    // seçim yaranarsa dərhal ləğv (Android uzun basma / «Circle to Search» mətn götürməsin)
+    const clearSel = () => { const g = window.getSelection?.(); if (g && g.rangeCount && !isField(document.activeElement)) g.removeAllRanges() }
+    // uzun basma (>450 ms) – yalnız sual sahəsində; preventDefault yoxdur (skrol və toxunuş pozulmasın), yaranan seçim ləğv olunur
+    let lp = 0
+    const tstart = (e: Event) => { if (!isField(e.target) && (e.target as HTMLElement).closest?.('.exam-q')) { clearTimeout(lp); lp = window.setTimeout(clearSel, 450) } }
+    const tend = () => clearTimeout(lp)
     const evs: [string, EventListener][] = [['copy', block], ['cut', block], ['paste', block], ['contextmenu', block], ['dragstart', block],
-      ['selectstart', sel], ['keydown', keys as EventListener]]
+      ['selectstart', sel], ['selectionchange', clearSel], ['keydown', keys as EventListener],
+      ['touchstart', tstart], ['touchend', tend], ['touchmove', tend], ['touchcancel', tend]]
     evs.forEach(([n, f]) => document.addEventListener(n, f))
     document.body.classList.add('exam-guard')
     return () => {
@@ -171,6 +181,31 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
     window.addEventListener('pagehide', flush)
     return () => { clearInterval(iv); clearInterval(sv); document.removeEventListener('visibilitychange', hide); window.removeEventListener('pagehide', flush); flush() }
   }, [d])
+  // Fokus itkisi: başqa tətbiq / pəncərə (Gemini, «Circle to Search», assistent), ekranın bağlanması, tam ekrandan çıxış –
+  // hər hadisə sayılır və serverə gedir; müəllim nəticə cədvəlində «⚠ N dəfə çıxıb» görür. Qayıdanda şagird xəbərdar olunur.
+  const focus = useRef({ n: 0, ms: 0, away: 0 })
+  useEffect(() => {
+    if (!d) return
+    const f = focus.current
+    const report = () => { post(`/api/portal/tasks/${id}/focus`, { n: f.n, ms: f.ms + (f.away ? Date.now() - f.away : 0) }).catch(() => {}) }
+    const leave = () => { if (f.away || finished.current) return; f.away = Date.now(); f.n += 1; report() }
+    const back = () => {
+      if (!f.away) return
+      f.ms += Date.now() - f.away; f.away = 0
+      report()
+      toast(tt('Testdən çıxdınız ({n} dəfə). Müəllim bunu görür.', { n: f.n }))
+    }
+    const vis = () => (document.visibilityState === 'hidden' ? leave() : back())
+    const fs = () => { if (!document.fullscreenElement && !f.away && document.visibilityState === 'visible' && !finished.current) { f.n += 1; report() } }
+    document.addEventListener('visibilitychange', vis)
+    window.addEventListener('blur', leave)
+    window.addEventListener('focus', back)
+    document.addEventListener('fullscreenchange', fs)
+    return () => {
+      document.removeEventListener('visibilitychange', vis); window.removeEventListener('blur', leave)
+      window.removeEventListener('focus', back); document.removeEventListener('fullscreenchange', fs)
+    }
+  }, [d])
   const flush = async () => {
     const pending = dirty.current
     if (!Object.keys(pending).length) return
@@ -201,10 +236,10 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
     clearTimeout(debounce.current)
     debounce.current = window.setTimeout(flush, 800)          // son cavablar vaxt bitməzdən əvvəl serverə çatsın
   }
-  // yoxlama pəncərəsi: «Bəli, təhvil ver» 1 san. sonra aktiv olur (təsadüfi ikiqat toxunuş təhvil verməsin)
+  // yoxlama pəncərəsi: «Bəli, təhvil ver» 2 san. sonra aktiv olur (təsadüfi ikiqat toxunuş təhvil verməsin)
   const [review, setReview] = useState(false)
   const [armed, setArmed] = useState(false)
-  useEffect(() => { if (!review) { setArmed(false); return } const tm = window.setTimeout(() => setArmed(true), 1000); return () => clearTimeout(tm) }, [review])
+  useEffect(() => { if (!review) { setArmed(false); return } const tm = window.setTimeout(() => setArmed(true), 2000); return () => clearTimeout(tm) }, [review])
   const openReview = () => { flush(); setReview(true) }
   if (err) return <><ErrorBox error={err} /><button className="btn" onClick={onDone}>‹ {t('Geri')}</button></>
   if (!d) return <Loading />
@@ -226,8 +261,7 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
       <div className="row" style={{ marginBottom: 12, position: 'sticky', top: 0, background: 'var(--bg)', padding: '8px 0', zIndex: 5 }}>
         <b className="grow">{d.title}</b>{noLimit ? <span className="small muted" title={t('Müddətsiz test: cavablar avtomatik saxlanır, istədiyiniz vaxt «Təhvil ver» edə bilərsiniz.')}>{t('Vaxt məhdudiyyəti yoxdur')}</span>
           : <><span className="small muted">{t('Qalan vaxt')}</span><span className={'timer' + (left < 60 ? ' low' : '')}>{mm}:{ss}</span></>}
-        {/* təhvil – barmaq zonasından uzaqda, yalnız yoxlama pəncərəsi ilə (docs/tasks/tehvil-ver-2026-10-21.md) */}
-        <button className="btn sm danger" onClick={openReview}>{t('Testi bitir')}</button>
+        {/* «Testi təhvil ver» yalnız son suala çatanda, səhifənin ən aşağısında (təsadüfən basılmasın) */}
       </div>
       {review && (
         <div className="fs-guard" role="alertdialog" aria-modal="true" aria-labelledby="rv-t">
@@ -250,7 +284,7 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
           <button key={k} className="chip" style={{ minWidth: 38, padding: 0 }} aria-pressed={k === i} onClick={() => setI(k)}
             title={ans[x.index] != null && ans[x.index] !== '' ? t('cavablanıb') : t('cavabsız')}>{k + 1}{ans[x.index] != null && ans[x.index] !== '' ? '•' : ''}</button>))}
       </div>
-      <section className="panel">
+      <section className="panel exam-q">
         <p className="small muted">{t('Sual')} {i + 1} / {d.questions.length}{q.points != null ? <> · <b>{String(q.points).replace('.', ',')} {t('bal')}</b> <span className="muted">({t('cəmi 100')})</span></> : ''}</p>
         <MathText as="p" style={{ fontSize: 17, whiteSpace: 'pre-wrap' }} text={ml(q.text)} />
         {q.image && <img className="q-img" src={q.image} alt="" draggable={false} />}
@@ -263,17 +297,50 @@ function Solver({ id, onDone }: { id: number; onDone: () => void }) {
         )}
         <div className="row exam-nav" style={{ marginTop: 16 }}>
           <button className="btn" disabled={i === 0} onClick={() => setI(i - 1)}>‹ {t('Əvvəlki')}</button>
-          {i < d.questions.length - 1 ? <button className="btn primary" onClick={() => { flush(); setI(i + 1) }}>{t('Növbəti')} ›</button>
-            : <button className="btn primary" onClick={openReview}>{t('Yoxla və bitir')} ›</button>}
+          <button className="btn primary" disabled={i >= d.questions.length - 1} onClick={() => { flush(); setI(i + 1) }}>{t('Növbəti')} ›</button>
         </div>
       </section>
+      {i >= d.questions.length - 1 && (
+        <div className="exam-submit">
+          <p className="small muted">{t('Bütün sualları cavabladınızsa, testi təhvil verin. Təhvil verməzdən əvvəl yoxlama pəncərəsi açılacaq.')}</p>
+          <button className="btn danger w100" onClick={openReview}>{t('Testi təhvil ver')}</button>
+        </div>)}
     </>
+  )
+}
+
+/** Sınaqda sual üzrə apelyasiya: mətn sahəsi + göndər; verildikdən sonra status və müəllimin cavabı. */
+function AppealBox({ taskId, q, canAppeal, onSent }: { taskId: number; q: any; canAppeal: boolean; onSent: () => void }) {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const ap = q.appeal
+  if (ap) {
+    const name = ap.status === 'open' ? t('Apelyasiya: gözləyir') : ap.status === 'accepted' ? t('Apelyasiya qəbul edildi') : t('Apelyasiya rədd edildi')
+    return <p className="small" style={{ marginTop: 6 }}><Pill tone={ap.status === 'accepted' ? 'ok' : ap.status === 'rejected' ? 'bad' : 'warn'}>{name}</Pill>{ap.teacher_reply ? <> ↪ {ap.teacher_reply}</> : null}</p>
+  }
+  if (!canAppeal) return null
+  if (!open) return <button type="button" className="btn sm ghost" style={{ marginTop: 6 }} onClick={() => setOpen(true)}>⚖ {t('Apelyasiya ver')}</button>
+  const send = async () => {
+    setBusy(true)
+    try { await post(`/api/portal/tasks/${taskId}/appeals`, { q_index: q.index, reason: reason.trim() }); toast(t('Apelyasiya göndərildi')); onSent() }
+    catch (e) { toast(t('Xəta') + ': ' + (e as Error).message) } finally { setBusy(false) }
+  }
+  return (
+    <div style={{ marginTop: 6 }}>
+      <textarea className="sel" style={{ width: '100%' }} rows={3} maxLength={1000} placeholder={t('Niyə cavabınızın düzgün olduğunu düşünürsünüz? (ən azı 5 simvol)')} value={reason} onChange={e => setReason(e.target.value)} />
+      <div className="row" style={{ gap: 6, marginTop: 4 }}>
+        <button type="button" className="btn sm primary" disabled={busy || reason.trim().length < 5} onClick={send}>{t('Göndər')}</button>
+        <button type="button" className="btn sm ghost" onClick={() => setOpen(false)}>{t('Ləğv')}</button>
+      </div>
+    </div>
   )
 }
 
 export function Review({ id, onClose }: { id: number; onClose: () => void }) {
   const { me } = useAuth()
-  const [d, err] = useLoad<any>(() => get(`/api/portal/tasks/${id}/review`), [id])
+  const [d, err, , reload] = useLoad<any>(() => get(`/api/portal/tasks/${id}/review`), [id])
   return (
     <Drawer title={d ? `${d.title} · ${d.correct}/${d.total}` : tt('Cavablar')} onClose={onClose}
       footer={d ? <button className="btn" onClick={() => printReview(d, me)}>{tt('Çap / PDF')}</button> : undefined}>
@@ -286,6 +353,7 @@ export function Review({ id, onClose }: { id: number; onClose: () => void }) {
             <div key={j} className="small" style={{ color: j === q.correct ? 'var(--ok)' : j === q.given ? 'var(--bad)' : undefined, fontWeight: j === q.correct ? 600 : 400 }}>{'ABCDE'[j]}) <MathText text={ml(o)} />{j === q.given ? ` ← ${tt('sizin cavab')}` : ''}</div>))
             : <p className="small">{tt('Sizin cavab')}: <b>{q.given || '—'}</b> · {tt('Düzgün')}: <b style={{ color: 'var(--ok)' }}>{String(q.answer).split('|')[0]}</b></p>}
           {q.explanation && <p className="small muted" style={{ whiteSpace: 'pre-wrap' }}>{tt('İzah')}: <MathText text={ml(q.explanation)} /></p>}
+          <AppealBox taskId={id} q={q} canAppeal={!!d.can_appeal} onSent={reload} />
         </section>))}
     </Drawer>
   )

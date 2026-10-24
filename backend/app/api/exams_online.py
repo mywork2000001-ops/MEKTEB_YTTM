@@ -176,6 +176,13 @@ def grade_issues(db: Session, classes: list[tuple[str, int | None]], cnt: Counte
 
 
 # ---------------------------------------------------------------- hesab
+def _focus_sum(attempts: list) -> dict | None:
+    """Şagirdin sınaq cəhdlərində imtahandan çıxma sayğacı (n – dəfə, ms – cəmi müddət); heç biri yoxdursa None."""
+    n = sum((a.focus_log or {}).get('n', 0) for a in attempts)
+    ms = sum((a.focus_log or {}).get('ms', 0) for a in attempts)
+    return {'n': n, 'ms': ms} if n else None
+
+
 def results(db: Session, b: TestBatch) -> dict:
     """Sınaq jurnalı (adlarla – çağıran tərəf məxfiliyi özü tətbiq edir)."""
     tasks = _tasks(db, b)
@@ -215,7 +222,8 @@ def results(db: Session, b: TestBatch) -> dict:
                    'ta_id': ta.id, 'teacher_id': ta.teacher_id, 'status': 'yazmayıb', 'correct': None, 'wrong': None,
                    'blank': None, 'points': None, 'pct': None, 'grade': None,
                    'retake': any((x.id, st.id) in retakes for x in mine), 'late': bool(done) and t.id != ts[0].id,
-                   'submitted_at': None}
+                   'submitted_at': None,
+                   'focus': _focus_sum([x for _, x in got])}        # imtahandan çıxma: {n, ms} (portal /focus), yoxsa None
             if a:
                 sc = exam_score(t, a, b.penalty)
                 row.update(status='yazıb', **sc, grade=summative_grade(sc['pct']), submitted_at=aware(a.submitted_at))
@@ -281,7 +289,7 @@ def _private(res: dict, user: User, access: str) -> dict:
         return res
     for r in res['rows']:
         if r['teacher_id'] != user.id:
-            r['full_name'], r['student_id'] = None, None
+            r['full_name'], r['student_id'], r['focus'] = None, None, None
     return res
 
 
